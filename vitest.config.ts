@@ -22,6 +22,12 @@ export default defineConfig({
 				// TUI dialog is integration glue for pi-tui; the state machine that
 				// drives it lives in controller.ts and is fully covered there.
 				"**/dialog.ts",
+				// Thin `spawn("cmux", …)` shim; the rest of cmux.ts is pure argv
+				// builders + dispatch and is fully covered.
+				"**/cmuxSpawner.ts",
+				// Thin `completeSimple(...)` shim; the orchestration in names.ts
+				// is exercised through an injectable completion hook.
+				"**/namesCompletion.ts",
 			],
 			reporter: ["text", "html"],
 			// Fail the suite (non-zero exit) when any threshold is not met.
