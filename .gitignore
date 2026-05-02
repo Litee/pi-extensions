@@ -1,9 +1,9 @@
-node_modules/
-*.log
 .DS_Store
+.pi/settings.json
 .vitest-cache/
+.worktrees/
+*.log
+*.tsbuildinfo
 coverage/
 dist/
-*.tsbuildinfo
-.worktrees/
-.pi/settings.json
+node_modules
