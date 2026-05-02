@@ -2,11 +2,11 @@
 
 ### Skill Maintenance
 
-- You MUST keep skills alphabetically sorted inside `README.md`.
+- You MUST keep extensions alphabetically sorted inside `README.md`.
 
 ### Issue Fixing Workflow
 
-When fixing skill issues from the issue tracker:
+When fixing extension issues from the issue tracker:
 
 - **Each issue gets its own worktree**, named after the issue (e.g. `fix-use-cmux-terminal-0008`). Exception: closely related issues that touch the same file(s) and would produce a coherent single commit may share one worktree.
 - **Use sub-agents** to fix issues in parallel. Dispatch one sub-agent per worktree so the main session stays uncluttered and independent issues are worked on concurrently.
