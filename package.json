@@ -13,8 +13,9 @@
   "scripts": {
     "test": "vitest run",
     "test:watch": "vitest",
+    "test:coverage": "vitest run --coverage",
     "typecheck": "tsc -b --pretty",
-    "check": "npm run typecheck && npm run test"
+    "check": "npm run typecheck && npm run test:coverage"
   },
   "pi": {
     "extensions": [
@@ -28,6 +29,7 @@
     "@tsconfig/node22": "^22.0.5",
     "@tsconfig/strictest": "^2.0.8",
     "@types/node": "^22.10.0",
+    "@vitest/coverage-v8": "^2.1.9",
     "typebox": "*",
     "typescript": "^5.6.0",
     "vitest": "^2.1.0"
