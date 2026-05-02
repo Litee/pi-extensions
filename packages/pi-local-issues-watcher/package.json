@@ -1,0 +1,14 @@
+{
+  "name": "pi-local-issues-watcher",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Pi extension that watches a local-skill-issues-tracker database and injects issue change notifications into chat as custom 'issue-watcher' messages.",
+  "type": "module",
+  "keywords": ["pi-package"],
+  "pi": {
+    "extensions": ["./src/index.ts"]
+  },
+  "peerDependencies": {
+    "@mariozechner/pi-coding-agent": "*"
+  }
+}
