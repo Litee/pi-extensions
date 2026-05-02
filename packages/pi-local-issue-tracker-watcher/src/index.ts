@@ -44,6 +44,7 @@ import {
 import {
 	STATE_ENTRY_TYPE,
 	rehydrateFromSession,
+	type SerialisedSnapshot,
 	type SessionLike,
 } from "./persistence.js";
 import { scanIssueFiles } from "./scanner.js";
@@ -78,9 +79,12 @@ const CUSTOM_MESSAGE_TYPE = "issue-watcher";
  */
 const STATUS_KEY = "issue-watcher";
 
-/** Apply SGR cyan to a status string so it's visually distinct in the footer. */
-function colorize(text: string): string {
-	return `\x1b[36m${text}\x1b[39m`;
+/** Apply the pi theme's accent color via `ctx.ui.theme.fg`. */
+function colorize(
+	theme: { fg: (color: string, text: string) => string } | undefined,
+	text: string,
+): string {
+	return theme ? theme.fg("accent", text) : text;
 }
 
 function resolveDbRoot(env: NodeJS.ProcessEnv, home: string): string {
@@ -96,9 +100,12 @@ function resolveDbRoot(env: NodeJS.ProcessEnv, home: string): string {
 export interface HandleSessionStartOptions {
 	pi: Pick<ExtensionAPI, "sendMessage" | "appendEntry">;
 	ctx: SessionLike & {
-		ui: {
-			notify: (msg: string, level?: string) => void;
-			setStatus: (key: string, text: string | undefined) => void;
+		hasUI?: boolean;
+		ui?: {
+			notify?: (msg: string, level?: string) => void;
+			setStatus?: (key: string, text: string | undefined) => void;
+			theme?: { fg: (color: string, text: string) => string };
+			hasUI?: boolean;
 		};
 	};
 	dbRoot: string;
@@ -107,6 +114,13 @@ export interface HandleSessionStartOptions {
 export interface HandleSessionStartResult {
 	/** Did polling start? `false` when dbRoot was missing. */
 	started: boolean;
+	/**
+	 * The on-disk snapshot captured during this call. Callers (the default
+	 * export wrapper) should reuse this exact value as the polling baseline
+	 * instead of re-scanning — re-scanning introduces a TOCTOU window where
+	 * a file written between the two scans can be silently lost.
+	 */
+	snapshot: Snapshot;
 }
 
 /**
@@ -118,26 +132,33 @@ export async function handleSessionStart(
 	opts: HandleSessionStartOptions,
 ): Promise<HandleSessionStartResult> {
 	const { pi, ctx, dbRoot } = opts;
+	const hasUI = ctx.hasUI ?? ctx.ui?.hasUI ?? ctx.ui !== undefined;
+	const notify = hasUI ? ctx.ui?.notify : undefined;
+	const setStatus = hasUI ? ctx.ui?.setStatus : undefined;
+	const theme = hasUI ? ctx.ui?.theme : undefined;
 
 	if (!existsSync(dbRoot)) {
-		ctx.ui.notify(
+		notify?.(
 			`issue-watcher: dbRoot not found (${dbRoot}); not watching.`,
 			"warning",
 		);
-		return { started: false };
+		return { started: false, snapshot: {} };
 	}
 
-	const currentSnapshot = scanIssueFiles(dbRoot);
 	const baseline = rehydrateFromSession(ctx);
+	const currentSnapshot = scanIssueFiles(dbRoot, baseline?.snapshot);
 
 	// Emit a single, informational startup announcement so the user can see
 	// the watcher is running and which dbRoot is in effect — without having
 	// to run `/issue-watcher status`. Uses `ctx.ui.setStatus` so it pins to
 	// the extension-status row (below the main status line) and cannot
 	// trigger an agent turn (see issue #0001).
-	ctx.ui.setStatus(
+	setStatus?.(
 		STATUS_KEY,
-		colorize(buildStartupAnnouncement("active", dbRoot, POLL_INTERVAL_MS, currentSnapshot)),
+		colorize(
+			theme,
+			buildStartupAnnouncement("active", dbRoot, POLL_INTERVAL_MS, currentSnapshot),
+		),
 	);
 
 	if (baseline === null) {
@@ -146,7 +167,7 @@ export async function handleSessionStart(
 			savedAt: Date.now(),
 			snapshot: serialisableSnapshot(currentSnapshot),
 		});
-		return { started: true };
+		return { started: true, snapshot: currentSnapshot };
 	}
 
 	const changes = diffSnapshots(baseline.snapshot, currentSnapshot);
@@ -170,7 +191,7 @@ export async function handleSessionStart(
 		});
 	}
 
-	return { started: true };
+	return { started: true, snapshot: currentSnapshot };
 }
 
 /**
@@ -178,8 +199,8 @@ export async function handleSessionStart(
  * through `pi.appendEntry`, which round-trips through JSON. We stringify
  * every bigint; `rehydrateFromSession` converts it back.
  */
-function serialisableSnapshot(snap: Snapshot): Record<string, unknown> {
-	const out: Record<string, unknown> = {};
+function serialisableSnapshot(snap: Snapshot): SerialisedSnapshot {
+	const out: SerialisedSnapshot = {};
 	for (const [path, info] of Object.entries(snap)) {
 		out[path] = { ...info, mtimeNs: info.mtimeNs.toString() };
 	}
@@ -200,8 +221,10 @@ interface Runtime {
 	/** Set once `session_start` fires; `null` before that. */
 	ui:
 		| {
-				notify: (m: string, l?: string) => void;
-				setStatus: (key: string, text: string | undefined) => void;
+				notify?: (m: string, l?: string) => void;
+				setStatus?: (key: string, text: string | undefined) => void;
+				theme?: { fg: (color: string, text: string) => string };
+				hasUI?: boolean;
 		  }
 		| null;
 }
@@ -227,7 +250,9 @@ function stopPolling(rt: Runtime): void {
 async function pollOnce(rt: Runtime): Promise<void> {
 	if (rt.paused) return;
 	if (!existsSync(rt.dbRoot)) return;
-	const next = scanIssueFiles(rt.dbRoot);
+	// Carry forward the previous snapshot so transient read/parse failures
+	// (writer mid-flush) don't produce spurious `removed -> new` diffs (#0003).
+	const next = scanIssueFiles(rt.dbRoot, rt.snapshot);
 	const changes = diffSnapshots(rt.snapshot, next);
 	if (changes.length > 0) {
 		rt.pi.sendMessage(
@@ -259,16 +284,22 @@ export default function issueWatcher(pi: ExtensionAPI): void {
 	const rt = makeRuntime(dbRoot, pi);
 
 	pi.on("session_start", async (_event, ctx) => {
-		rt.ui = ctx.ui as Runtime["ui"];
+		const anyCtx = ctx as unknown as {
+			hasUI?: boolean;
+			ui?: Runtime["ui"];
+		};
+		const hasUI = anyCtx.hasUI ?? anyCtx.ui?.hasUI ?? anyCtx.ui !== undefined;
+		rt.ui = hasUI ? (anyCtx.ui as Runtime["ui"]) ?? null : null;
 		const res = await handleSessionStart({
 			pi,
 			ctx: ctx as unknown as HandleSessionStartOptions["ctx"],
 			dbRoot,
 		});
 		if (res.started && !rt.paused) {
-			// Seed runtime snapshot so the first poll doesn't re-emit the
-			// startup diff we just delivered in handleSessionStart.
-			rt.snapshot = scanIssueFiles(dbRoot);
+			// Reuse the exact snapshot handleSessionStart already scanned. A
+			// second scanIssueFiles() here would open a TOCTOU window where
+			// a file written between the two scans is silently lost (#0001).
+			rt.snapshot = res.snapshot;
 			startPolling(rt);
 		}
 	});
@@ -276,7 +307,7 @@ export default function issueWatcher(pi: ExtensionAPI): void {
 	pi.on("session_shutdown", async () => {
 		stopPolling(rt);
 		try {
-			rt.ui?.setStatus(STATUS_KEY, undefined);
+			rt.ui?.setStatus?.(STATUS_KEY, undefined);
 		} catch {
 			/* noop — UI may already be torn down */
 		}
@@ -286,21 +317,28 @@ export default function issueWatcher(pi: ExtensionAPI): void {
 	pi.registerCommand("issue-watcher", {
 		description: "Control the local-skill-issues-tracker watcher (pause/resume/status)",
 		handler: async (args, ctx) => {
-			const ui = (ctx as {
-				ui: {
-					notify: (m: string, l?: string) => void;
-					setStatus: (key: string, text: string | undefined) => void;
+			const anyCtx = ctx as unknown as {
+				hasUI?: boolean;
+				ui?: {
+					notify?: (m: string, l?: string) => void;
+					setStatus?: (key: string, text: string | undefined) => void;
+					theme?: { fg: (color: string, text: string) => string };
+					hasUI?: boolean;
 				};
-			}).ui;
+			};
+			const hasUI = anyCtx.hasUI ?? anyCtx.ui?.hasUI ?? anyCtx.ui !== undefined;
+			const ui = hasUI ? anyCtx.ui : undefined;
+			const theme = ui?.theme;
 			const sub = args.trim().toLowerCase();
 			switch (sub) {
 				case "pause": {
 					rt.paused = true;
 					stopPolling(rt);
 					const snap = existsSync(rt.dbRoot) ? scanIssueFiles(rt.dbRoot) : {};
-					ui.setStatus(
+					ui?.setStatus?.(
 						STATUS_KEY,
 						colorize(
+							theme,
 							buildStartupAnnouncement(
 								"paused",
 								rt.dbRoot,
@@ -309,19 +347,22 @@ export default function issueWatcher(pi: ExtensionAPI): void {
 							),
 						),
 					);
-					ui.notify(`issue-watcher: paused (dbRoot=${rt.dbRoot})`, "info");
+					ui?.notify?.(`issue-watcher: paused (dbRoot=${rt.dbRoot})`, "info");
 					return;
 				}
 				case "resume": {
 					rt.paused = false;
-					const resumedSnap = existsSync(rt.dbRoot) ? scanIssueFiles(rt.dbRoot) : {};
+					const resumedSnap = existsSync(rt.dbRoot)
+						? scanIssueFiles(rt.dbRoot, rt.snapshot)
+						: {};
 					if (existsSync(rt.dbRoot)) {
 						rt.snapshot = resumedSnap;
 						startPolling(rt);
 					}
-					ui.setStatus(
+					ui?.setStatus?.(
 						STATUS_KEY,
 						colorize(
+							theme,
 							buildStartupAnnouncement(
 								"resumed",
 								rt.dbRoot,
@@ -330,7 +371,7 @@ export default function issueWatcher(pi: ExtensionAPI): void {
 							),
 						),
 					);
-					ui.notify(`issue-watcher: resumed (dbRoot=${rt.dbRoot})`, "info");
+					ui?.notify?.(`issue-watcher: resumed (dbRoot=${rt.dbRoot})`, "info");
 					return;
 				}
 				case "":
@@ -338,14 +379,14 @@ export default function issueWatcher(pi: ExtensionAPI): void {
 					const snap = existsSync(rt.dbRoot) ? scanIssueFiles(rt.dbRoot) : {};
 					const summary = formatStatusSummary(snap);
 					const state = rt.paused ? "paused" : "running";
-					ui.notify(
+					ui?.notify?.(
 						`issue-watcher: ${state} | dbRoot=${rt.dbRoot} | ${summary}`,
 						"info",
 					);
 					return;
 				}
 				default:
-					ui.notify(
+					ui?.notify?.(
 						`issue-watcher: unknown subcommand '${sub}'. Use: pause | resume | status`,
 						"warning",
 					);

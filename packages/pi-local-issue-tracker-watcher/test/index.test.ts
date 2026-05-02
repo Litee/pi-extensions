@@ -64,7 +64,13 @@ interface StubCtx {
 	ui: {
 		notify: ReturnType<typeof vi.fn>;
 		setStatus: ReturnType<typeof vi.fn>;
+		theme: {
+			fg: ReturnType<typeof vi.fn>;
+			bold: ReturnType<typeof vi.fn>;
+		};
+		hasUI: boolean;
 	};
+	hasUI: boolean;
 	sessionManager: {
 		getEntries: () => Array<{ type?: string; customType?: string; data?: unknown }>;
 	};
@@ -73,7 +79,17 @@ interface StubCtx {
 
 function makeFakeCtx(entries: Array<{ type?: string; customType?: string; data?: unknown }> = []): StubCtx {
 	return {
-		ui: { notify: vi.fn(), setStatus: vi.fn() },
+		ui: {
+			notify: vi.fn(),
+			setStatus: vi.fn(),
+			// Minimal Theme stub — real pi ships a full Theme object on ctx.ui.theme.
+			theme: {
+				fg: vi.fn((_color: string, text: string) => `<fg:${_color}>${text}</fg>`),
+				bold: vi.fn((text: string) => `<b>${text}</b>`),
+			},
+			hasUI: true,
+		},
+		hasUI: true,
 		sessionManager: { getEntries: () => entries },
 		cwd: "/tmp",
 	};
@@ -337,6 +353,85 @@ describe("handleSessionStart", () => {
 		const statusCalls = ctx.ui.setStatus.mock.calls as Array<[string, string | undefined]>;
 		expect(statusCalls.some(([k]) => k === "issue-watcher")).toBe(true);
 	});
+
+	// -- issue #0001 (H1): no double-scan on session_start --
+	it("returns the snapshot it scanned so the caller can reuse it without rescanning (issue #0001)", async () => {
+		writeIssue("skill-a", "0001-a.json", { id: "0001", status: "open", skill: "skill-a" });
+		const pi = makeFakePi();
+		const ctx = makeFakeCtx([]);
+
+		const out = await handleSessionStart({ pi: pi as never, ctx: ctx as never, dbRoot });
+
+		expect(out.started).toBe(true);
+		expect(out.snapshot).toBeDefined();
+		// Exactly the file we wrote should be in the returned snapshot.
+		const keys = Object.keys(out.snapshot ?? {});
+		expect(keys).toHaveLength(1);
+		expect(keys[0]).toContain("0001-a.json");
+	});
+
+	it("returns an empty snapshot when dbRoot is missing (issue #0001)", async () => {
+		const pi = makeFakePi();
+		const ctx = makeFakeCtx();
+		const missing = join(dbRoot, "does-not-exist");
+		const out = await handleSessionStart({
+			pi: pi as never,
+			ctx: ctx as never,
+			dbRoot: missing,
+		});
+		expect(out.started).toBe(false);
+		expect(out.snapshot).toEqual({});
+	});
+
+	// -- issue #0004 (S1): ctx.ui guards for headless mode --
+	it("when ctx has no ui at all, still persists baseline and returns started=true (issue #0004)", async () => {
+		writeIssue("skill-a", "0001-a.json", { id: "0001", status: "open", skill: "skill-a" });
+		const pi = makeFakePi();
+		const ctx: unknown = {
+			// No `ui`. This mirrors pi's print/RPC mode where ctx.hasUI === false.
+			hasUI: false,
+			sessionManager: { getEntries: () => [] },
+		};
+		const out = await handleSessionStart({ pi: pi as never, ctx: ctx as never, dbRoot });
+
+		expect(out.started).toBe(true);
+		expect(pi.appendEntry).toHaveBeenCalledTimes(1);
+	});
+
+	it("when ctx.hasUI is false, does not call ui.setStatus or ui.notify (issue #0004)", async () => {
+		const pi = makeFakePi();
+		const ctx = makeFakeCtx();
+		ctx.hasUI = false;
+		ctx.ui.hasUI = false;
+
+		const missing = join(dbRoot, "does-not-exist");
+		await handleSessionStart({ pi: pi as never, ctx: ctx as never, dbRoot: missing });
+
+		expect(ctx.ui.notify).not.toHaveBeenCalled();
+		expect(ctx.ui.setStatus).not.toHaveBeenCalled();
+	});
+
+	// -- issue #0005 (S2): theme-aware status line --
+	it("uses ctx.ui.theme.fg('accent', ...) for the pinned status line; no hard-coded ANSI (issue #0005)", async () => {
+		writeIssue("skill-a", "0001-a.json", { id: "0001", status: "open", skill: "skill-a" });
+		const pi = makeFakePi();
+		const ctx = makeFakeCtx([]);
+
+		await handleSessionStart({ pi: pi as never, ctx: ctx as never, dbRoot });
+
+		// theme.fg('accent', ...) was called with the announcement string.
+		const fgCalls = ctx.ui.theme.fg.mock.calls as Array<[string, string]>;
+		const accentCall = fgCalls.find(([c]) => c === "accent");
+		expect(accentCall).toBeDefined();
+		expect(accentCall![1]).toContain("active");
+		expect(accentCall![1]).toContain(dbRoot);
+
+		// The pinned status text is the theme-wrapped output, not a raw ANSI escape.
+		const statusCalls = ctx.ui.setStatus.mock.calls as Array<[string, string | undefined]>;
+		const issueStatus = statusCalls.find(([k]) => k === "issue-watcher");
+		expect(issueStatus![1]).not.toMatch(/\x1b\[36m/);
+		expect(issueStatus![1]).toContain("<fg:accent>");
+	});
 });
 
 // ---------------------------------------------------------------------------
@@ -563,5 +658,63 @@ describe("polling lifecycle", () => {
 		writeIssue("skill-a", "0001-a.json", { id: "0001", status: "done", skill: "skill-a" });
 		await vi.advanceTimersByTimeAsync(POLL_INTERVAL_MS * 2);
 		expect(pi.sendMessage).not.toHaveBeenCalled();
+	});
+
+	// -- issue #0003 (H3): poll catching a mid-write parse failure emits no diff --
+	it("poll catching a file mid-write (transient parse error) emits no spurious diff (issue #0003)", async () => {
+		const filePath = writeIssue("skill-a", "0001-a.json", {
+			id: "0001",
+			status: "open",
+			title: "t",
+			skill: "skill-a",
+		});
+
+		const pi = makeFakePi();
+		const prev = process.env["LOCAL_ISSUE_TRACKER_DB_ROOT"];
+		process.env["LOCAL_ISSUE_TRACKER_DB_ROOT"] = dbRoot;
+		try {
+			createExtension(pi as never);
+		} finally {
+			if (prev === undefined) delete process.env["LOCAL_ISSUE_TRACKER_DB_ROOT"];
+			else process.env["LOCAL_ISSUE_TRACKER_DB_ROOT"] = prev;
+		}
+
+		const handler = pi.sessionStartHandler!;
+		const ctx = makeFakeCtx([]);
+		await handler({}, ctx);
+		expect(pi.sendMessage).not.toHaveBeenCalled();
+
+		// Simulate a mid-write catch: overwrite the file with invalid JSON.
+		writeFileSync(filePath, "{ incomplete", "utf8");
+		const { utimesSync } = await import("node:fs");
+		const future = new Date(Date.now() + 60_000);
+		utimesSync(filePath, future, future);
+
+		const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+		await vi.advanceTimersByTimeAsync(POLL_INTERVAL_MS);
+		warn.mockRestore();
+
+		// No spurious `removed` message was sent — carry-forward kept the entry.
+		expect(pi.sendMessage).not.toHaveBeenCalled();
+
+		// Now the writer finishes — legitimate status change lands on disk.
+		writeIssue("skill-a", "0001-a.json", {
+			id: "0001",
+			status: "done",
+			title: "t",
+			skill: "skill-a",
+		});
+		const future2 = new Date(Date.now() + 120_000);
+		utimesSync(filePath, future2, future2);
+		await vi.advanceTimersByTimeAsync(POLL_INTERVAL_MS);
+
+		// Exactly ONE message, with a status_changed diff from the carried-forward
+		// baseline — not a spurious `new` pair.
+		expect(pi.sendMessage).toHaveBeenCalledTimes(1);
+		const [payload] = pi.sendMessage.mock.calls[0] as [
+			{ content: string; details?: { changes?: Array<{ kind: string }> } },
+		];
+		expect(payload.content).toMatch(/status changed/);
+		expect(payload.content).not.toMatch(/new issue/);
 	});
 });

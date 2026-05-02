@@ -127,4 +127,47 @@ describe("rehydrateFromSession", () => {
 		expect(rehydrateFromSession(ctx as never)).toBeNull();
 		warn.mockRestore();
 	});
+
+	it("skips a malformed newest entry and returns the older valid one (issue #0002)", () => {
+		// Regression: previously, a single malformed entry anywhere in the walk
+		// caused rehydrate to return null, discarding older valid baselines.
+		const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+		const validData = {
+			savedAt: now(),
+			snapshot: {
+				"/db/skill-a/0001-x.json": {
+					...FRESH_SNAPSHOT["/db/skill-a/0001-x.json"]!,
+					mtimeNs: "777",
+				},
+			},
+		};
+		const ctx = makeCtx([
+			// Older — valid.
+			entry("custom", validData, STATE_ENTRY_TYPE),
+			// Noise between state entries.
+			entry("message", "noise"),
+			// Newest — malformed snapshot (not an object).
+			entry("custom", { savedAt: now(), snapshot: null }, STATE_ENTRY_TYPE),
+		]);
+		const got = rehydrateFromSession(ctx as never);
+		expect(got).not.toBeNull();
+		expect(got!.snapshot["/db/skill-a/0001-x.json"]!.mtimeNs).toBe(777n);
+		warn.mockRestore();
+	});
+
+	it("skips a newest entry with missing data and returns the older valid one (issue #0002)", () => {
+		const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+		const validData = {
+			savedAt: now(),
+			snapshot: FRESH_SNAPSHOT,
+		};
+		const ctx = makeCtx([
+			entry("custom", validData, STATE_ENTRY_TYPE),
+			entry("custom", undefined, STATE_ENTRY_TYPE), // newest, missing data
+		]);
+		const got = rehydrateFromSession(ctx as never);
+		expect(got).not.toBeNull();
+		expect(Object.keys(got!.snapshot)).toEqual(["/db/skill-a/0001-x.json"]);
+		warn.mockRestore();
+	});
 });

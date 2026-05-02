@@ -100,4 +100,39 @@ describe("scanIssueFiles", () => {
 		const snap = scanIssueFiles(dbRoot);
 		expect(Object.keys(snap)).toEqual([join(skillDir, "0009-found.json")]);
 	});
+
+	// -- issue #0003 (H3): carry-forward on transient read/parse failures --
+	it("preserves the previous snapshot entry when a file is transiently unparseable (issue #0003)", () => {
+		const skillDir = join(dbRoot, "skill-c");
+		mkdirSync(skillDir, { recursive: true });
+		const filePath = join(skillDir, "0010-transient.json");
+
+		// 1st scan: valid content on disk.
+		writeFileSync(filePath, JSON.stringify({ id: "0010", status: "open", title: "t", skill: "skill-c" }), "utf8");
+		const first = scanIssueFiles(dbRoot);
+		expect(first[filePath]).toBeDefined();
+		expect(first[filePath]!.status).toBe("open");
+
+		// 2nd scan: writer caught mid-flush (file exists but is invalid JSON).
+		writeFileSync(filePath, "{ incomplete", "utf8");
+		const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+		const second = scanIssueFiles(dbRoot, first);
+		warn.mockRestore();
+
+		// We should keep the previous entry — not lose it and emit a spurious
+		// `removed` on the next diff.
+		expect(second[filePath]).toBeDefined();
+		expect(second[filePath]!.status).toBe("open");
+	});
+
+	it("without a previous snapshot, still skips unparseable files as before (issue #0003)", () => {
+		const skillDir = join(dbRoot, "skill-d");
+		mkdirSync(skillDir, { recursive: true });
+		writeFileSync(join(skillDir, "0011-bad.json"), "{ bad", "utf8");
+
+		const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+		const snap = scanIssueFiles(dbRoot); // no previous arg
+		warn.mockRestore();
+		expect(snap[join(skillDir, "0011-bad.json")]).toBeUndefined();
+	});
 });

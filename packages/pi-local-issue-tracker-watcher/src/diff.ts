@@ -63,6 +63,16 @@ export type Change =
  *  - Paths in `old` but not `next` → "removed"
  *  - Paths in both: short-circuit on equal mtime; otherwise compare status,
  *    title, description, and comment list length for individual change kinds.
+ *
+ * ## Intentional gap: in-place comment edits
+ *
+ * `diffSnapshots` only emits `comment_added` / `comment_removed` based on
+ * the comment array *length*. If a comment's `text` is edited in place
+ * (same array length), this function emits no diff for it. This matches the
+ * upstream `watch_issues.py` behaviour and is deliberate: the upstream CLI
+ * does not support editing a comment, so in practice only adds and deletes
+ * happen. Callers that need byte-level comment change detection should
+ * compare `IssueInfo.comments` directly.
  */
 export function diffSnapshots(old: Snapshot, next: Snapshot): Change[] {
 	const changes: Change[] = [];
@@ -114,9 +124,14 @@ export function diffSnapshots(old: Snapshot, next: Snapshot): Change[] {
 		if (newCount > oldCount) {
 			for (const c of n.comments.slice(oldCount)) {
 				const text = typeof c.text === "string" ? c.text : "";
+				// Preserve the total preview length (including the ellipsis) at
+				// COMMENT_PREVIEW_LEN so downstream consumers can size UI buffers
+				// against a single, honest constant (#0007).
+				const ellipsis = "...";
+				const budget = COMMENT_PREVIEW_LEN - ellipsis.length;
 				const preview =
 					text.length > COMMENT_PREVIEW_LEN
-						? `${text.slice(0, COMMENT_PREVIEW_LEN)}...`
+						? `${text.slice(0, budget)}${ellipsis}`
 						: text;
 				changes.push({
 					kind: "comment_added",

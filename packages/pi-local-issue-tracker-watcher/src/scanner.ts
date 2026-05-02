@@ -20,8 +20,14 @@ const ISSUE_FNAME_RE = /^\d{4}-[a-z0-9-]+\.json$/;
  * Returns an empty snapshot if `dbRoot` is missing or not a directory. Files
  * that fail to parse are skipped with a `console.warn` (not thrown) — the
  * watcher must stay alive across transient writer/reader races.
+ *
+ * When `previous` is provided, transient per-file read / stat / parse failures
+ * fall back to the entry in `previous[filePath]` (if any), instead of
+ * dropping the file. This prevents the spurious `removed -> new` churn that
+ * otherwise fires when a poll catches the upstream `skill_issues_cli.py`
+ * mid-write (see issue #0003).
  */
-export function scanIssueFiles(dbRoot: string): Snapshot {
+export function scanIssueFiles(dbRoot: string, previous?: Snapshot): Snapshot {
 	const snapshot: Snapshot = {};
 
 	let topEntries;
@@ -59,6 +65,8 @@ export function scanIssueFiles(dbRoot: string): Snapshot {
 			} catch (exc) {
 				// eslint-disable-next-line no-console
 				console.warn(`[issue-watcher] could not read ${filePath}: ${String(exc)}`);
+				const carried = previous?.[filePath];
+				if (carried !== undefined) snapshot[filePath] = carried;
 				continue;
 			}
 
@@ -68,6 +76,8 @@ export function scanIssueFiles(dbRoot: string): Snapshot {
 			} catch (exc) {
 				// eslint-disable-next-line no-console
 				console.warn(`[issue-watcher] could not parse ${filePath}: ${String(exc)}`);
+				const carried = previous?.[filePath];
+				if (carried !== undefined) snapshot[filePath] = carried;
 				continue;
 			}
 

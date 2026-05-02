@@ -6,9 +6,37 @@ export const STATE_ENTRY_TYPE = "issue-watcher-state";
 /** Maximum age at which a persisted snapshot is still trusted as baseline. */
 export const STATE_MAX_AGE_MS = 24 * 60 * 60 * 1000; // 24h — matches watch_issues.py
 
+/**
+ * On-disk shape of a single issue entry. Differs from {@link IssueInfo} in
+ * that `mtimeNs` is a decimal string — `pi.appendEntry` ultimately JSON-
+ * encodes the payload, and JSON cannot round-trip `bigint`.
+ */
+export interface SerialisedIssueInfo {
+	mtimeNs: string;
+	issueId: string;
+	status: string;
+	title: string;
+	description: string;
+	comments: IssueInfo["comments"];
+	skill: string;
+	skillVersion: string;
+}
+
+/** On-disk shape of a full snapshot. */
+export type SerialisedSnapshot = Record<string, SerialisedIssueInfo>;
+
 /** Shape of the `data` payload we store via `pi.appendEntry`. */
 export interface PersistedState {
 	/** Epoch ms at which the snapshot was captured. */
+	savedAt: number;
+	snapshot: SerialisedSnapshot;
+}
+
+/**
+ * In-memory shape returned by {@link rehydrateFromSession} once the stored
+ * snapshot has been converted back to {@link Snapshot} (i.e. bigint mtime).
+ */
+export interface RehydratedState {
 	savedAt: number;
 	snapshot: Snapshot;
 }
@@ -42,7 +70,7 @@ interface RawIssueInfo {
  * `mtimeNs` is re-hydrated back to `bigint` because `appendEntry` typically
  * round-trips through JSON where bigint is serialised as a string.
  */
-export function rehydrateFromSession(ctx: SessionLike): PersistedState | null {
+export function rehydrateFromSession(ctx: SessionLike): RehydratedState | null {
 	const entries = ctx.sessionManager.getEntries();
 	for (let i = entries.length - 1; i >= 0; i--) {
 		const e = entries[i];
@@ -51,14 +79,14 @@ export function rehydrateFromSession(ctx: SessionLike): PersistedState | null {
 		if (!data || typeof data !== "object") {
 			// eslint-disable-next-line no-console
 			console.warn(`[issue-watcher] persisted entry missing data`);
-			return null;
+			continue;
 		}
 		const savedAt = typeof data.savedAt === "number" ? data.savedAt : NaN;
 		const snapshotRaw = data.snapshot;
 		if (!Number.isFinite(savedAt) || typeof snapshotRaw !== "object" || snapshotRaw === null) {
 			// eslint-disable-next-line no-console
 			console.warn(`[issue-watcher] persisted entry malformed; ignoring`);
-			return null;
+			continue;
 		}
 		if (Date.now() - savedAt > STATE_MAX_AGE_MS) return null;
 		return { savedAt, snapshot: normaliseSnapshot(snapshotRaw as Record<string, RawIssueInfo>) };

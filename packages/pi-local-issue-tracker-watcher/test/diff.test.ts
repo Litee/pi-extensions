@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { diffSnapshots, changedPaths, formatChange } from "../src/diff.js";
+import { diffSnapshots, changedPaths, formatChange, COMMENT_PREVIEW_LEN } from "../src/diff.js";
 import type { IssueInfo, Snapshot } from "../src/types.js";
 
 /**
@@ -91,7 +91,7 @@ describe("diffSnapshots", () => {
 		expect(kinds).toContain("description_updated");
 	});
 
-	it("emits one 'comment_added' per new comment with 80-char preview truncation", () => {
+	it("emits one 'comment_added' per new comment with preview capped at COMMENT_PREVIEW_LEN chars (issue #0007)", () => {
 		const longText = "x".repeat(100);
 		const old: Snapshot = {
 			[P1]: info({ mtimeNs: 10n, comments: [{ text: "first" }] }),
@@ -107,8 +107,9 @@ describe("diffSnapshots", () => {
 		expect(changes[0]).toMatchObject({ kind: "comment_added", preview: "short one" });
 		expect(changes[1]).toMatchObject({
 			kind: "comment_added",
-			preview: "x".repeat(80) + "...",
+			preview: "x".repeat(COMMENT_PREVIEW_LEN - 3) + "...",
 		});
+		expect((changes[1] as { preview: string }).preview.length).toBe(COMMENT_PREVIEW_LEN);
 	});
 
 	it("emits a 'comment_removed' change when a comment disappears", () => {
@@ -241,5 +242,23 @@ describe("formatChange", () => {
 				skill: "my-skill",
 			}),
 		).toMatch(/comment removed/);
+	});
+
+	// -- issue #0007 (N1): preview length discipline --
+	it("comment_added preview never exceeds COMMENT_PREVIEW_LEN characters (issue #0007)", () => {
+		const long = "x".repeat(1000);
+		const old: Snapshot = {
+			[P1]: info({ mtimeNs: 1n, comments: [] }),
+		};
+		const next: Snapshot = {
+			[P1]: info({ mtimeNs: 2n, comments: [{ text: long }] }),
+		};
+		const changes = diffSnapshots(old, next);
+		const added = changes.find((c) => c.kind === "comment_added") as
+			| { kind: "comment_added"; preview: string }
+			| undefined;
+		expect(added).toBeDefined();
+		expect(added!.preview.length).toBeLessThanOrEqual(COMMENT_PREVIEW_LEN);
+		expect(added!.preview.endsWith("...")).toBe(true);
 	});
 });
