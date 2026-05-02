@@ -1,0 +1,130 @@
+import { homedir } from "node:os";
+import { join } from "node:path";
+
+import type { ExtensionAPI } from "@mariozechner/pi-coding-agent";
+
+import { computeCollisions } from "./collisions.js";
+import { discoverAllSkills } from "./discover.js";
+import { readDisabled, writeDisabled } from "./persistence.js";
+import { resolveClaudeDir } from "./resolve.js";
+import { buildSettingItems, type ToggleSettingItem } from "./settingItems.js";
+import { applyToggle } from "./toggle.js";
+import { makeTuiPicker } from "./tuiPicker.js";
+import type { DiscoveredSkill } from "./types.js";
+
+/** Arguments handed to a `/cc-skills` picker strategy. */
+export interface CcSkillsPickerArgs {
+	skills: DiscoveredSkill[];
+	disabled: Set<string>;
+	items: ToggleSettingItem[];
+	collisions: Map<string, DiscoveredSkill[]>;
+	/** Invoke to toggle a skill. Updates `disabled` and persists to `stateFile`. */
+	onToggle: (id: string, value: "enabled" | "disabled") => void;
+}
+
+/** Pluggable picker — real one drives pi-tui; tests pass a stub. */
+export type CcSkillsPicker = (args: CcSkillsPickerArgs) => Promise<void>;
+
+export interface HandleCcSkillsOptions {
+	ctx: { reload: () => Promise<void> | void };
+	claudeDir: string;
+	stateFile: string;
+	cwd?: string;
+	picker: CcSkillsPicker;
+}
+
+/**
+ * Core `/cc-skills` flow. Factored out of the TUI wiring so the control flow
+ * (discover → present → toggle → persist → reload-if-dirty) is unit-testable
+ * without a live TUI runtime.
+ */
+export async function handleCcSkills(opts: HandleCcSkillsOptions): Promise<void> {
+	const skills = discoverAllSkills(
+		opts.cwd === undefined
+			? { claudeDir: opts.claudeDir }
+			: { claudeDir: opts.claudeDir, cwd: opts.cwd },
+	);
+	const disabled = readDisabled(opts.stateFile);
+	const collisions = computeCollisions(skills);
+	const items = buildSettingItems(skills, disabled, collisions);
+
+	let dirty = false;
+	const onToggle: CcSkillsPickerArgs["onToggle"] = (id, value) => {
+		const r = applyToggle(id, value, disabled);
+		if (r.changed) {
+			dirty = true;
+			writeDisabled(opts.stateFile, disabled);
+		}
+	};
+
+	await opts.picker({ skills, disabled, items, collisions, onToggle });
+
+	if (dirty) await opts.ctx.reload();
+}
+
+/** Default location for the persisted disabled-skills state file.
+ *
+ * Stored in a shared per-user `extensions-data/` directory, sibling to
+ * `~/.pi/agent/extensions/`, named after the extension package so multiple
+ * extensions can coexist without collisions. The `$PI_CLAUDE_SKILLS_STATE`
+ * env var is honored as an override (used by tests and as an escape hatch).
+ */
+export function defaultStateFile(env: NodeJS.ProcessEnv, home: string): string {
+	const override = env["PI_CLAUDE_SKILLS_STATE"];
+	if (override !== undefined && override !== "") return override;
+	return join(home, ".pi", "agent", "extensions-data", "pi-claude-code-skills-import.json");
+}
+
+/** Pi extension default export. */
+export default function (pi: ExtensionAPI): void {
+	pi.on("resources_discover", async (event, ctx) => {
+		const claudeDir = resolveClaudeDir(process.env, homedir());
+		const stateFile = defaultStateFile(process.env, homedir());
+
+		const all = discoverAllSkills({ claudeDir, cwd: event.cwd });
+		const disabled = readDisabled(stateFile);
+		const collisions = computeCollisions(all);
+
+		const enabled = all.filter((s) => !disabled.has(s.qualifiedName));
+		const skillPaths = enabled.map((s) => s.skillDir);
+
+		const on = enabled.length;
+		const off = all.length - on;
+		ctx.ui.notify(
+			`Claude Code skills: ${on} loaded${off ? ` (${off} disabled)` : ""}`,
+			"info",
+		);
+
+		if (collisions.size > 0) {
+			const lines: string[] = [`${collisions.size} Claude Code skill name collision(s):`];
+			for (const [name, list] of collisions) {
+				const sources = list.map((s) => s.qualifiedName).join(", ");
+				lines.push(`  • "${name}" appears in: ${sources}`);
+			}
+			ctx.ui.notify(lines.join("\n"), "warning");
+		}
+
+		return { skillPaths };
+	});
+
+	pi.registerCommand("cc-skills", {
+		description: "List & toggle Claude Code skills (global, persistent)",
+		handler: async (_args, ctx) => {
+			const claudeDir = resolveClaudeDir(process.env, homedir());
+			const stateFile = defaultStateFile(process.env, homedir());
+			await handleCcSkills({
+				ctx,
+				claudeDir,
+				stateFile,
+				cwd: ctx.cwd,
+				picker: makeTuiPicker(ctx),
+			});
+		},
+	});
+}
+
+export { discoverAllSkills } from "./discover.js";
+export { computeCollisions } from "./collisions.js";
+export { resolveClaudeDir } from "./resolve.js";
+export { buildSettingItems } from "./settingItems.js";
+export type { DiscoveredSkill, PluginEntry, PersistedState } from "./types.js";
