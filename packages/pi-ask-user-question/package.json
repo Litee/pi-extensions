@@ -1,0 +1,16 @@
+{
+  "name": "pi-ask-user-question",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Pi extension that registers an ask_user_question tool so the LLM can ask the user structured clarifying questions (tabbed TUI with single/multi-select, optional per-option preview, free-text fallback, and a 'Chat about this' escape hatch).",
+  "type": "module",
+  "keywords": ["pi-package"],
+  "pi": {
+    "extensions": ["./src/index.ts"]
+  },
+  "peerDependencies": {
+    "@mariozechner/pi-coding-agent": "*",
+    "@mariozechner/pi-tui": "*",
+    "typebox": "*"
+  }
+}
