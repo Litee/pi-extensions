@@ -193,6 +193,15 @@ describe("handleSessionStart", () => {
 		// No chat message delivered — nothing to report yet.
 		expect(pi.sendMessage).not.toHaveBeenCalled();
 		expect(out.started).toBe(true);
+
+		// Startup announcement emitted via ui.setStatus (pins to extension-status row),
+		// not via sendMessage (no agent turn).
+		const statusCalls = ctx.ui.setStatus.mock.calls as Array<[string, string | undefined]>;
+		const issueStatus = statusCalls.find(([k]) => k === "issue-watcher");
+		expect(issueStatus).toBeDefined();
+		expect(issueStatus![1]).toContain("active");
+		expect(issueStatus![1]).toContain(dbRoot);
+		expect(issueStatus![1]).toContain("1 open");
 	});
 
 	it("with a fresh persisted baseline and new changes: emits sendMessage with triggerTurn and updates baseline", async () => {
@@ -285,6 +294,48 @@ describe("handleSessionStart", () => {
 
 		expect(pi.sendMessage).not.toHaveBeenCalled();
 		expect(pi.appendEntry).not.toHaveBeenCalled();
+
+		// Startup announcement still fires even when there are no changes,
+		// so the user can see the watcher is active (issue #0001).
+		const statusCalls = ctx.ui.setStatus.mock.calls as Array<[string, string | undefined]>;
+		const issueStatus = statusCalls.find(([k]) => k === "issue-watcher");
+		expect(issueStatus).toBeDefined();
+		expect(issueStatus![1]).toContain("active");
+		expect(issueStatus![1]).toContain(dbRoot);
+	});
+
+	it("missing-dbRoot path does NOT pin an 'active' status line", async () => {
+		const pi = makeFakePi();
+		const ctx = makeFakeCtx();
+		const missing = join(dbRoot, "does-not-exist");
+
+		await handleSessionStart({ pi: pi as never, ctx: ctx as never, dbRoot: missing });
+
+		const notifies = ctx.ui.notify.mock.calls.map((c) => String(c[0]));
+		// Existing warning path unchanged.
+		expect(notifies.some((m) => m.includes("not found"))).toBe(true);
+
+		// No status line pinned when the watcher bails out.
+		const statusCalls = ctx.ui.setStatus.mock.calls as Array<[string, string | undefined]>;
+		expect(statusCalls.find(([k]) => k === "issue-watcher")).toBeUndefined();
+	});
+
+	it("startup announcement is emitted via ctx.ui.setStatus, NOT via pi.sendMessage (no triggerTurn)", async () => {
+		writeIssue("skill-a", "0001-a.json", { id: "0001", status: "open", skill: "skill-a" });
+		const pi = makeFakePi();
+		const ctx = makeFakeCtx([]);
+
+		await handleSessionStart({ pi: pi as never, ctx: ctx as never, dbRoot });
+
+		// Announcement goes to the extension-status row, never to chat —
+		// guarantees no agent turn is triggered by the startup message.
+		const sendMessageTypes = pi.sendMessage.mock.calls.map(
+			(c) => (c[0] as { customType?: string })?.customType,
+		);
+		expect(sendMessageTypes).not.toContain("issue-watcher");
+
+		const statusCalls = ctx.ui.setStatus.mock.calls as Array<[string, string | undefined]>;
+		expect(statusCalls.some(([k]) => k === "issue-watcher")).toBe(true);
 	});
 });
 
@@ -340,6 +391,33 @@ describe("/issue-watcher command", () => {
 
 		const notifies = ctx.ui.notify.mock.calls.map((c) => String(c[0]));
 		expect(notifies.some((m) => /resumed/i.test(m))).toBe(true);
+
+		// Resume also updates the pinned status line to mirror session_start.
+		const statusCalls = ctx.ui.setStatus.mock.calls as Array<[string, string | undefined]>;
+		const resumedStatus = statusCalls
+			.filter(([k]) => k === "issue-watcher")
+			.map(([, v]) => v ?? "")
+			.find((v) => /resumed/i.test(v));
+		expect(resumedStatus).toBeDefined();
+		expect(resumedStatus!).toContain(dbRoot);
+		expect(resumedStatus!).toContain("poll=");
+	});
+
+	it("'pause' updates the pinned status line to show paused state", async () => {
+		const pi = makeFakePi();
+		extensionWithDbRoot(pi, dbRoot);
+
+		const cmd = pi.commands.get("issue-watcher");
+		const ctx = makeFakeCtx();
+		await cmd!.handler("pause", ctx);
+
+		const statusCalls = ctx.ui.setStatus.mock.calls as Array<[string, string | undefined]>;
+		const pausedStatus = statusCalls
+			.filter(([k]) => k === "issue-watcher")
+			.map(([, v]) => v ?? "")
+			.find((v) => /paused/i.test(v));
+		expect(pausedStatus).toBeDefined();
+		expect(pausedStatus!).toContain(dbRoot);
 	});
 
 	it("with no args prints a status line that mentions the dbRoot", async () => {

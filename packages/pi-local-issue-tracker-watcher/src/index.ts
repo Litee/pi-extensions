@@ -1,5 +1,5 @@
 /**
- * pi-local-issues-watcher — pi extension.
+ * pi-local-issue-tracker-watcher — pi extension.
  *
  * Watches a single on-disk database produced by the upstream
  * `litee-claude-code-plugins/local-skill-issues-tracker` skill and injects
@@ -36,7 +36,11 @@ import { join } from "node:path";
 import type { ExtensionAPI } from "@mariozechner/pi-coding-agent";
 
 import { changedPaths, diffSnapshots } from "./diff.js";
-import { buildChatMessageContent, formatStatusSummary } from "./format.js";
+import {
+	buildChatMessageContent,
+	buildStartupAnnouncement,
+	formatStatusSummary,
+} from "./format.js";
 import {
 	STATE_ENTRY_TYPE,
 	rehydrateFromSession,
@@ -67,6 +71,18 @@ export const POLL_INTERVAL_MS = 60_000;
 /** customType used on every chat message this extension injects. */
 const CUSTOM_MESSAGE_TYPE = "issue-watcher";
 
+/**
+ * Key used with `ctx.ui.setStatus(...)` to install / update / clear the
+ * persistent status-row line for this watcher. Matches the slack-watcher
+ * convention of one key per extension.
+ */
+const STATUS_KEY = "issue-watcher";
+
+/** Apply SGR cyan to a status string so it's visually distinct in the footer. */
+function colorize(text: string): string {
+	return `\x1b[36m${text}\x1b[39m`;
+}
+
 function resolveDbRoot(env: NodeJS.ProcessEnv, home: string): string {
 	const override = env["LOCAL_ISSUE_TRACKER_DB_ROOT"];
 	if (override !== undefined && override !== "") return override;
@@ -82,6 +98,7 @@ export interface HandleSessionStartOptions {
 	ctx: SessionLike & {
 		ui: {
 			notify: (msg: string, level?: string) => void;
+			setStatus: (key: string, text: string | undefined) => void;
 		};
 	};
 	dbRoot: string;
@@ -113,16 +130,22 @@ export async function handleSessionStart(
 	const currentSnapshot = scanIssueFiles(dbRoot);
 	const baseline = rehydrateFromSession(ctx);
 
+	// Emit a single, informational startup announcement so the user can see
+	// the watcher is running and which dbRoot is in effect — without having
+	// to run `/issue-watcher status`. Uses `ctx.ui.setStatus` so it pins to
+	// the extension-status row (below the main status line) and cannot
+	// trigger an agent turn (see issue #0001).
+	ctx.ui.setStatus(
+		STATUS_KEY,
+		colorize(buildStartupAnnouncement("active", dbRoot, POLL_INTERVAL_MS, currentSnapshot)),
+	);
+
 	if (baseline === null) {
 		// First session, or state stale — adopt current as the new baseline.
 		pi.appendEntry(STATE_ENTRY_TYPE, {
 			savedAt: Date.now(),
 			snapshot: serialisableSnapshot(currentSnapshot),
 		});
-		ctx.ui.notify(
-			`issue-watcher: initialised baseline (${Object.keys(currentSnapshot).length} issues) at ${dbRoot}`,
-			"info",
-		);
 		return { started: true };
 	}
 
@@ -175,7 +198,12 @@ interface Runtime {
 	timer: ReturnType<typeof setInterval> | null;
 	pi: Pick<ExtensionAPI, "sendMessage" | "appendEntry">;
 	/** Set once `session_start` fires; `null` before that. */
-	ui: { notify: (m: string, l?: string) => void } | null;
+	ui:
+		| {
+				notify: (m: string, l?: string) => void;
+				setStatus: (key: string, text: string | undefined) => void;
+		  }
+		| null;
 }
 
 function makeRuntime(dbRoot: string, pi: Runtime["pi"]): Runtime {
@@ -247,27 +275,61 @@ export default function issueWatcher(pi: ExtensionAPI): void {
 
 	pi.on("session_shutdown", async () => {
 		stopPolling(rt);
+		try {
+			rt.ui?.setStatus(STATUS_KEY, undefined);
+		} catch {
+			/* noop — UI may already be torn down */
+		}
 		rt.ui = null;
 	});
 
 	pi.registerCommand("issue-watcher", {
 		description: "Control the local-skill-issues-tracker watcher (pause/resume/status)",
 		handler: async (args, ctx) => {
-			const ui = (ctx as { ui: { notify: (m: string, l?: string) => void } }).ui;
+			const ui = (ctx as {
+				ui: {
+					notify: (m: string, l?: string) => void;
+					setStatus: (key: string, text: string | undefined) => void;
+				};
+			}).ui;
 			const sub = args.trim().toLowerCase();
 			switch (sub) {
 				case "pause": {
 					rt.paused = true;
 					stopPolling(rt);
+					const snap = existsSync(rt.dbRoot) ? scanIssueFiles(rt.dbRoot) : {};
+					ui.setStatus(
+						STATUS_KEY,
+						colorize(
+							buildStartupAnnouncement(
+								"paused",
+								rt.dbRoot,
+								POLL_INTERVAL_MS,
+								snap,
+							),
+						),
+					);
 					ui.notify(`issue-watcher: paused (dbRoot=${rt.dbRoot})`, "info");
 					return;
 				}
 				case "resume": {
 					rt.paused = false;
+					const resumedSnap = existsSync(rt.dbRoot) ? scanIssueFiles(rt.dbRoot) : {};
 					if (existsSync(rt.dbRoot)) {
-						rt.snapshot = scanIssueFiles(rt.dbRoot);
+						rt.snapshot = resumedSnap;
 						startPolling(rt);
 					}
+					ui.setStatus(
+						STATUS_KEY,
+						colorize(
+							buildStartupAnnouncement(
+								"resumed",
+								rt.dbRoot,
+								POLL_INTERVAL_MS,
+								resumedSnap,
+							),
+						),
+					);
 					ui.notify(`issue-watcher: resumed (dbRoot=${rt.dbRoot})`, "info");
 					return;
 				}
@@ -299,5 +361,5 @@ export default function issueWatcher(pi: ExtensionAPI): void {
 export { STATE_ENTRY_TYPE } from "./persistence.js";
 export { scanIssueFiles } from "./scanner.js";
 export { diffSnapshots, changedPaths, formatChange } from "./diff.js";
-export { buildChatMessageContent, formatStatusSummary } from "./format.js";
+export { buildChatMessageContent, buildStartupAnnouncement, formatStatusSummary } from "./format.js";
 export { resolveDbRoot };

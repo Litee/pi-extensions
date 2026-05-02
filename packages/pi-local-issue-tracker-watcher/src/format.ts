@@ -9,6 +9,24 @@ import type { Snapshot } from "./types.js";
  */
 const WELL_KNOWN_STATUSES = ["open", "in_progress", "done", "wont_fix"] as const;
 
+/**
+ * Build the one-line session-start / resume announcement.
+ *
+ * Format: `issue-watcher: <state> | dbRoot=<path> | poll=<N>s | <summary>`
+ * where `<state>` is typically `active` or `resumed`. The message is meant
+ * for `ctx.ui.notify` (informational toast) and must NOT trigger an agent
+ * turn — it is purely a user-visible status line.
+ */
+export function buildStartupAnnouncement(
+	state: string,
+	dbRoot: string,
+	pollIntervalMs: number,
+	snapshot: Snapshot,
+): string {
+	const pollSeconds = Math.round(pollIntervalMs / 1000);
+	return `issue-watcher: ${state} | dbRoot=${dbRoot} | poll=${pollSeconds}s | ${formatStatusSummary(snapshot)}`;
+}
+
 /** Render issue counts as "N open, M in_progress, ..." — matches the Python watcher. */
 export function formatStatusSummary(snapshot: Snapshot): string {
 	const counts: Record<string, number> = {};

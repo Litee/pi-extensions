@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { buildChatMessageContent, formatStatusSummary } from "../src/format.js";
+import { buildChatMessageContent, buildStartupAnnouncement, formatStatusSummary } from "../src/format.js";
 import type { Change } from "../src/diff.js";
 import type { Snapshot } from "../src/types.js";
 
@@ -42,6 +42,35 @@ describe("formatStatusSummary", () => {
 			"/c": issue("alpha"),
 		};
 		expect(formatStatusSummary(snap)).toBe("1 open, 1 alpha, 1 zeta");
+	});
+});
+
+describe("buildStartupAnnouncement", () => {
+	it("includes the state, absolute dbRoot, poll seconds, and status summary", () => {
+		const snap: Snapshot = {
+			"/a": issue("open"),
+			"/b": issue("in_progress"),
+		};
+		const msg = buildStartupAnnouncement("active", "/abs/db", 60_000, snap);
+		expect(msg).toBe(
+			"issue-watcher: active | dbRoot=/abs/db | poll=60s | 1 open, 1 in_progress",
+		);
+	});
+
+	it("renders '0 issues' for an empty tracker", () => {
+		const msg = buildStartupAnnouncement("active", "/abs/db", 60_000, {});
+		expect(msg).toContain("0 issues");
+		expect(msg).toContain("/abs/db");
+	});
+
+	it("honours alternate states like 'resumed'", () => {
+		const msg = buildStartupAnnouncement("resumed", "/abs/db", 60_000, {});
+		expect(msg.startsWith("issue-watcher: resumed | ")).toBe(true);
+	});
+
+	it("rounds the poll interval to whole seconds", () => {
+		const msg = buildStartupAnnouncement("active", "/abs/db", 30_000, {});
+		expect(msg).toContain("poll=30s");
 	});
 });
 

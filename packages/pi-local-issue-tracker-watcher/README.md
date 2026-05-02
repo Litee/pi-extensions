@@ -1,4 +1,4 @@
-# pi-local-issues-watcher
+# pi-local-issue-tracker-watcher
 
 Pi extension that watches a **local-skill-issues-tracker** database on disk
 and injects issue change notifications into the pi chat as custom
@@ -39,8 +39,17 @@ On every `session_start`:
 1. Resolve `dbRoot` from `$LOCAL_ISSUE_TRACKER_DB_ROOT` (or the default path).
 2. If the directory does not exist → `ctx.ui.notify(...)` and bail out.
 3. Scan all `<dbRoot>/<skill>/NNNN-slug.json` files into a `Snapshot`.
-4. Rehydrate any baseline snapshot from the session log (< 24 h old).
-5. If a baseline exists **and** the current on-disk state differs, emit **one**
+4. Pin a one-line **status entry** to the extension-status row via
+   `ctx.ui.setStatus("issue-watcher", ...)` — e.g.
+   `issue-watcher: active | dbRoot=/… | poll=60s | 3 open, 1 in_progress` —
+   so the user can see the watcher is running and which `dbRoot` is in
+   effect without running a slash command. This line is persistent (lives
+   below the main status line, like `slack-watcher`) and never triggers an
+   agent turn. `/issue-watcher pause` / `/issue-watcher resume` update the
+   same entry with `state=paused` / `state=resumed`. `session_shutdown`
+   clears it.
+5. Rehydrate any baseline snapshot from the session log (< 24 h old).
+6. If a baseline exists **and** the current on-disk state differs, emit **one**
    chat message summarising every change (status, title/description update,
    comment added/removed, file added/removed). The message carries:
    - `customType: "issue-watcher"`
@@ -48,8 +57,8 @@ On every `session_start`:
    - `details: { changes, changedPaths }` for programmatic consumers
    - delivery: `{ deliverAs: "followUp", triggerTurn: true }` — the agent is
      prompted to react.
-6. Persist the new snapshot as the baseline.
-7. Start a `setInterval` poll loop at 60 s that repeats steps 3–6.
+7. Persist the new snapshot as the baseline.
+8. Start a `setInterval` poll loop at 60 s that repeats steps 3–7.
 
 ## Slash commands
 
