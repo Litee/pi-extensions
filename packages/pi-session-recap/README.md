@@ -56,7 +56,8 @@ so there are no login surprises.
 - No active model or missing API key → the recap is skipped silently.
 
 Override with `--recap-model "<provider>/<id>"` if you want a specific model
-regardless of the session's active one.
+regardless of the session's active one, or set a persistent preference via
+**user-level settings.json** (see below).
 
 ## Flags
 
@@ -67,6 +68,23 @@ regardless of the session's active one.
 | `--recap-disable-focus` | `false` | Disable DECSET `?1004` focus reporting. Idle fallback still runs. |
 | `--recap-disable` | `false` | Disable the automatic recap entirely. `/recap` still works. |
 | `--recap-model "<p/id>"` | (active model) | Override the default, e.g. `anthropic/claude-sonnet-4-6`. |
+
+## User-level settings
+
+Set a persistent recap-model preference in `~/.pi/agent/settings.json` (honoured
+by `getAgentDir()` / the `$PI_CODING_AGENT_DIR` env override):
+
+```json
+{
+  "sessionRecap": {
+    "model": "anthropic/claude-haiku-4-5"
+  }
+}
+```
+
+Precedence: `--recap-model` CLI flag › `sessionRecap.model` in settings › the
+active model. An invalid / unknown `provider/id` falls through to the active
+model silently (same as the CLI flag).
 
 ## Command
 

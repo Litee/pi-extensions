@@ -53,6 +53,7 @@ import {
 	hasMeaningfulActivity,
 	splitModel,
 } from "./helpers.js";
+import { readUserRecapModel } from "./settings.js";
 
 type Model = Parameters<typeof completeSimple>[0];
 
@@ -217,8 +218,10 @@ export default function (pi: ExtensionAPI) {
 	const isDisabled = (): boolean => Boolean(pi.getFlag("--recap-disable"));
 	const isFocusDisabled = (): boolean => Boolean(pi.getFlag("--recap-disable-focus"));
 	const modelOverride = (): string | undefined => {
-		const v = String(pi.getFlag("--recap-model") ?? "").trim();
-		return v.length > 0 ? v : undefined;
+		// Precedence: CLI flag > user-level settings.json > active-model default.
+		const cli = String(pi.getFlag("--recap-model") ?? "").trim();
+		if (cli.length > 0) return cli;
+		return readUserRecapModel();
 	};
 
 	const clearTimer = () => {
