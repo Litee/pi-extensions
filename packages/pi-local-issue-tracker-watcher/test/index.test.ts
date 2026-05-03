@@ -1397,3 +1397,59 @@ describe("startup chat message (#0011)", () => {
 		expect(payload.content).not.toContain("active | dbRoot=");
 	});
 });
+
+// ---------------------------------------------------------------------------
+// deferMessages — defer sendMessage so the TUI renders its bubble before
+// the first LLM turn absorbs the content (#0015)
+// ---------------------------------------------------------------------------
+
+describe("handleSessionStart deferMessages (#0015)", () => {
+	let dbRoot: string;
+	beforeEach(() => {
+		dbRoot = mkdtempSync(join(tmpdir(), "pi-issue-watcher-defer-"));
+	});
+	afterEach(() => {
+		rmSync(dbRoot, { recursive: true, force: true });
+	});
+
+	it("calls pi.sendMessage synchronously by default (existing tests unchanged)", async () => {
+		mkdirSync(join(dbRoot, "skill-a"), { recursive: true });
+		writeFileSync(
+			join(dbRoot, "skill-a", "0001-a.json"),
+			JSON.stringify({ id: "0001", status: "open", skill: "skill-a" }),
+			"utf8",
+		);
+		const pi = makeFakePi();
+		const ctx = makeFakeCtx([runningRunstate()]);
+		await handleSessionStart({ pi: pi as never, ctx: ctx as never, dbRoot });
+		expect(pi.sendMessage).toHaveBeenCalledTimes(1);
+	});
+
+	it("does NOT call pi.sendMessage synchronously when deferMessages=true", async () => {
+		mkdirSync(join(dbRoot, "skill-a"), { recursive: true });
+		writeFileSync(
+			join(dbRoot, "skill-a", "0001-a.json"),
+			JSON.stringify({ id: "0001", status: "open", skill: "skill-a" }),
+			"utf8",
+		);
+		const pi = makeFakePi();
+		const ctx = makeFakeCtx([runningRunstate()]);
+		await handleSessionStart({
+			pi: pi as never,
+			ctx: ctx as never,
+			dbRoot,
+			deferMessages: true,
+		});
+		expect(pi.sendMessage).not.toHaveBeenCalled();
+		// After one setImmediate tick, the deferred send fires.
+		await new Promise((resolve) => setImmediate(resolve));
+		expect(pi.sendMessage).toHaveBeenCalledTimes(1);
+		const [payload, opts] = pi.sendMessage.mock.calls[0] as [
+			{ customType: string; content: string; display?: boolean },
+			{ triggerTurn?: boolean },
+		];
+		expect(payload.customType).toBe("issue-watcher");
+		expect(payload.content).toContain("active");
+		expect(opts.triggerTurn).toBe(true);
+	});
+});

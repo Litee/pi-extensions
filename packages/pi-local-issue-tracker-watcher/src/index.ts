@@ -113,6 +113,19 @@ export interface HandleSessionStartOptions {
 		};
 	};
 	dbRoot: string;
+	/**
+	 * When true, every `pi.sendMessage(...)` emitted from this function is
+	 * deferred to the next `setImmediate` tick so it fires after the
+	 * `session_start` handler returns and the interactive-mode UI has
+	 * painted at least once. Without this, messages sent inline during
+	 * `session_start` get folded into the very first LLM turn's prompt and
+	 * never render as their own chat bubble (issue #0015).
+	 *
+	 * Default `false` so existing unit tests (which assert synchronous
+	 * `pi.sendMessage` side effects) keep working. The default export at
+	 * the bottom of this file passes `true`.
+	 */
+	deferMessages?: boolean;
 }
 
 export interface HandleSessionStartResult {
@@ -150,11 +163,23 @@ export interface HandleSessionStartResult {
 export async function handleSessionStart(
 	opts: HandleSessionStartOptions,
 ): Promise<HandleSessionStartResult> {
-	const { pi, ctx, dbRoot } = opts;
+	const { pi, ctx, dbRoot, deferMessages } = opts;
 	const hasUI = ctx.hasUI ?? ctx.ui?.hasUI ?? ctx.ui !== undefined;
 	const notify = hasUI ? ctx.ui?.notify : undefined;
 	const setStatus = hasUI ? ctx.ui?.setStatus : undefined;
 	const theme = hasUI ? ctx.ui?.theme : undefined;
+	/**
+	 * Route every `sendMessage` through this helper so we can defer to
+	 * `setImmediate` when called from the real extension (#0015). The inline
+	 * path is preserved for existing synchronous unit tests.
+	 */
+	const emit: typeof pi.sendMessage = ((message, options) => {
+		if (deferMessages) {
+			setImmediate(() => pi.sendMessage(message, options));
+		} else {
+			pi.sendMessage(message, options);
+		}
+	}) as typeof pi.sendMessage;
 
 	if (!existsSync(dbRoot)) {
 		notify?.(
@@ -214,7 +239,7 @@ export async function handleSessionStart(
 		// below. `triggerTurn: true` so the LLM sees the tracker state at
 		// session start (reversed from the original #0011 decision in #0013).
 		if (!paused) {
-			pi.sendMessage(
+			emit(
 				{
 					customType: CUSTOM_MESSAGE_TYPE,
 					content: buildStartupChatMessage(dbRoot, currentSnapshot),
@@ -237,7 +262,7 @@ export async function handleSessionStart(
 
 	const changes = diffSnapshots(baseline.snapshot, currentSnapshot);
 	if (changes.length > 0) {
-		pi.sendMessage(
+		emit(
 			{
 				customType: CUSTOM_MESSAGE_TYPE,
 				content: buildChatMessageContent(changes, new Date()),
@@ -265,7 +290,7 @@ export async function handleSessionStart(
 		// `triggerTurn: true` so the LLM is aware of the tracker state at
 		// session start rather than waiting for the next user input
 		// (reversed from the original #0011 decision in #0013).
-		pi.sendMessage(
+		emit(
 			{
 				customType: CUSTOM_MESSAGE_TYPE,
 				content: buildStartupChatMessage(dbRoot, currentSnapshot),
@@ -445,6 +470,10 @@ export default function issueWatcher(pi: ExtensionAPI): void {
 			pi,
 			ctx: ctx as unknown as HandleSessionStartOptions["ctx"],
 			dbRoot,
+			// Defer every pi.sendMessage(...) emitted during session_start to
+			// the next setImmediate tick so the interactive UI renders the
+			// chat bubble before the LLM turn absorbs the content (#0015).
+			deferMessages: true,
 		});
 		if (!res.started) return;
 		// Reuse the exact snapshot handleSessionStart already scanned. A
