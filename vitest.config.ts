@@ -28,6 +28,10 @@ export default defineConfig({
 				// Thin `completeSimple(...)` shim; the orchestration in names.ts
 				// is exercised through an injectable completion hook.
 				"**/namesCompletion.ts",
+				// session-recap/index.ts is lifecycle wiring + a pi-ai model call
+				// + a raw stdin focus-event listener. All logic worth testing is
+				// factored into helpers.ts and covered there.
+				"**/pi-session-recap/src/index.ts",
 			],
 			reporter: ["text", "html"],
 			// Fail the suite (non-zero exit) when any threshold is not met.
