@@ -10,17 +10,32 @@ unit-tested.
 
 ## What it does
 
-### Status updates (sidebar pill + log + notify)
+### Status updates (two-state sidebar pill + attention signal)
+
+Since #0002 the pill only has two baseline states: `working` while pi is
+chewing on a user turn, `idle` while pi is waiting on the user.
+Per-tool transitions (`bash`, `read`, `edit`, …) were removed because
+they flickered through every tool call inside a single turn without
+carrying any signal the user could act on.
 
 | Pi event               | Effect inside cmux                                    |
 |------------------------|-------------------------------------------------------|
 | `session_start`        | pill → `idle`, log `pi session started`               |
-| `input` (first prompt) | fire-and-forget LLM rename of tab + workspace         |
-| `before_agent_start`   | pill → `working`                                      |
-| `tool_execution_start` | pill → `<toolName>`, progress log                     |
-| `tool_execution_end`   | `success` / `error` log (based on `isError`)          |
+| `input` (eligible)     | pill → `working` every turn; on the first eligible prompt of the pi session also fires the once-per-session LLM tab + workspace rename |
+| `tool_execution_start` (attention tool) | pill → `waiting` (bell, cyan `#5ac8fa`), desktop `notify` `Needs your input (<toolName>)` |
+| `tool_execution_end`   (attention tool) | pill → `working` (agent is processing again)           |
 | `agent_end`            | pill → `idle`, clear-progress, log, desktop `notify`  |
 | `session_shutdown`     | clear progress, clear status pill                     |
+
+An "eligible" input is an interactive or rpc user message whose trimmed
+text is non-empty and does not start with `/` (slash commands do not
+flip the pill).
+
+The **attention tools** list is a short, hardcoded allowlist in
+`src/index.ts` of tools that block pi waiting on the user. Today it's
+just `ask_user_question` from the sibling `pi-ask-user-question`
+extension. Tools outside the list are ignored — no pill change, no
+notification.
 
 ### Auto-rename (once per pi session, on first user prompt)
 

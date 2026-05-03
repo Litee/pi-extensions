@@ -146,22 +146,27 @@ describe("shortCwd", () => {
 // ---------------------------------------------------------------------------
 
 describe("default export — wiring", () => {
-	it("subscribes to every lifecycle event the source .ts uses", () => {
+	it("subscribes to the two-state lifecycle events + ask_user_question attention wiring (#0002)", () => {
 		const pi = makeFakePi();
 		createExtension(pi as never);
 
 		const subscribed = pi.on.mock.calls.map((c) => c[0]);
+		// Four events drive the two-state model.
 		for (const evt of [
 			"session_start",
 			"session_shutdown",
 			"input",
-			"before_agent_start",
 			"agent_end",
-			"tool_execution_start",
-			"tool_execution_end",
 		]) {
 			expect(subscribed).toContain(evt);
 		}
+		// Two more carry the hardcoded attention signal for
+		// `ask_user_question`; they no-op on any other tool name.
+		expect(subscribed).toContain("tool_execution_start");
+		expect(subscribed).toContain("tool_execution_end");
+		// `before_agent_start` is intentionally not wired — the pill is
+		// flipped to 'working' from the `input` handler instead (#0002).
+		expect(subscribed).not.toContain("before_agent_start");
 	});
 
 	it("registers the /cmux-rename command", () => {
@@ -361,32 +366,24 @@ describe("session lifecycle side-effects", () => {
 		expect(argvs.some((a) => a[0] === "log" && a.some((s) => s.includes("pi session started")))).toBe(true);
 	});
 
-	it("before_agent_start flips the pill to 'working'", async () => {
+	it("before_agent_start handler is NOT registered (#0002)", async () => {
 		const pi = makeFakePi();
 		createExtension(pi as never);
-		await pi.handlers.get("before_agent_start")!({}, makeFakeCtx());
-		const argvs = spawner.mock.calls.map((c) => c[0] as string[]);
-		expect(argvs).toContainEqual([
-			"set-status",
-			"pi",
-			"working",
-			"--icon",
-			"bolt",
-			"--color",
-			"#ff9500",
-		]);
+		expect(pi.handlers.get("before_agent_start")).toBeUndefined();
 	});
 
-	it("tool_execution_start uses the tool name as the pill value", async () => {
+	it("tool_execution_start is a no-op for tools outside the attention list (#0002)", async () => {
 		const pi = makeFakePi();
 		createExtension(pi as never);
 		await pi.handlers.get("tool_execution_start")!({ toolName: "read" }, makeFakeCtx());
 		const argvs = spawner.mock.calls.map((c) => c[0] as string[]);
-		expect(argvs.some((a) => a[0] === "set-status" && a[2] === "read")).toBe(true);
-		expect(argvs.some((a) => a[0] === "log" && a.some((s) => s.includes("Running read")))).toBe(true);
+		// No pill update, no progress log, no notify for `read`.
+		expect(argvs.some((a) => a[0] === "set-status")).toBe(false);
+		expect(argvs.some((a) => a[0] === "log")).toBe(false);
+		expect(argvs.some((a) => a[0] === "notify")).toBe(false);
 	});
 
-	it("tool_execution_end failure path logs at error level", async () => {
+	it("tool_execution_end is a no-op for tools outside the attention list (#0002)", async () => {
 		const pi = makeFakePi();
 		createExtension(pi as never);
 		await pi.handlers.get("tool_execution_end")!(
@@ -394,34 +391,41 @@ describe("session lifecycle side-effects", () => {
 			makeFakeCtx(),
 		);
 		const argvs = spawner.mock.calls.map((c) => c[0] as string[]);
-		const logCall = argvs.find((a) => a[0] === "log");
-		expect(logCall).toBeDefined();
-		expect(logCall!).toContain("error");
-		expect(logCall!.some((s) => /bash failed/.test(s))).toBe(true);
+		expect(argvs.some((a) => a[0] === "set-status")).toBe(false);
+		expect(argvs.some((a) => a[0] === "log")).toBe(false);
 	});
 
-	it("tool_execution_end treats nested result.isError as a failure", async () => {
+	it("tool_execution_start on ask_user_question flips pill to 'waiting' and fires a notify (#0002)", async () => {
 		const pi = makeFakePi();
 		createExtension(pi as never);
-		await pi.handlers.get("tool_execution_end")!(
-			{ toolName: "bash", result: { isError: true } },
+		await pi.handlers.get("tool_execution_start")!(
+			{ toolName: "ask_user_question" },
 			makeFakeCtx(),
 		);
 		const argvs = spawner.mock.calls.map((c) => c[0] as string[]);
-		const logCall = argvs.find((a) => a[0] === "log");
-		expect(logCall).toBeDefined();
-		expect(logCall!).toContain("error");
+		expect(argvs.some((a) => a[0] === "set-status" && a[2] === "waiting")).toBe(
+			true,
+		);
+		expect(argvs.some((a) => a[0] === "notify")).toBe(true);
 	});
 
-	it("tool_execution_end success path logs at success level", async () => {
+	it("tool_execution_end on ask_user_question reverts pill to 'working' (#0002)", async () => {
 		const pi = makeFakePi();
 		createExtension(pi as never);
-		await pi.handlers.get("tool_execution_end")!({ toolName: "read" }, makeFakeCtx());
+		await pi.handlers.get("tool_execution_start")!(
+			{ toolName: "ask_user_question" },
+			makeFakeCtx(),
+		);
+		spawner.mockClear();
+		await pi.handlers.get("tool_execution_end")!(
+			{ toolName: "ask_user_question" },
+			makeFakeCtx(),
+		);
 		const argvs = spawner.mock.calls.map((c) => c[0] as string[]);
-		const logCall = argvs.find((a) => a[0] === "log");
-		expect(logCall).toBeDefined();
-		expect(logCall!).toContain("success");
-		expect(logCall!.some((s) => /read done/.test(s))).toBe(true);
+		expect(argvs.some((a) => a[0] === "set-status" && a[2] === "working")).toBe(
+			true,
+		);
+		expect(argvs.some((a) => a[0] === "notify")).toBe(false);
 	});
 
 	it("agent_end clears progress, sets idle, and sends a notify", async () => {
@@ -474,6 +478,11 @@ describe("input handler", () => {
 		);
 		// No model call is made, so no auth lookup.
 		expect(ctx.modelRegistry.getApiKeyAndHeaders).not.toHaveBeenCalled();
+		// And no 'working' pill transition — slash commands are noise-free (#0002).
+		const argvs = spawner.mock.calls.map((c) => c[0] as string[]);
+		expect(argvs.some((a) => a[0] === "set-status" && a[2] === "working")).toBe(
+			false,
+		);
 	});
 
 	it("ignores empty text", async () => {
@@ -482,6 +491,10 @@ describe("input handler", () => {
 		const ctx = makeFakeCtx();
 		await pi.handlers.get("input")!({ source: "interactive", text: "   " }, ctx);
 		expect(ctx.modelRegistry.getApiKeyAndHeaders).not.toHaveBeenCalled();
+		const argvs = spawner.mock.calls.map((c) => c[0] as string[]);
+		expect(argvs.some((a) => a[0] === "set-status" && a[2] === "working")).toBe(
+			false,
+		);
 	});
 
 	it("ignores non-interactive sources", async () => {
@@ -490,6 +503,59 @@ describe("input handler", () => {
 		const ctx = makeFakeCtx();
 		await pi.handlers.get("input")!({ source: "api", text: "hello" }, ctx);
 		expect(ctx.modelRegistry.getApiKeyAndHeaders).not.toHaveBeenCalled();
+		const argvs = spawner.mock.calls.map((c) => c[0] as string[]);
+		expect(argvs.some((a) => a[0] === "set-status" && a[2] === "working")).toBe(
+			false,
+		);
+	});
+
+	it("flips the pill to 'working' on an eligible user message (#0002)", async () => {
+		const pi = makeFakePi();
+		createExtension(pi as never);
+		const ctx = makeFakeCtx({ authOk: false });
+		await pi.handlers.get("input")!(
+			{ source: "interactive", text: "do a thing" },
+			ctx,
+		);
+		const argvs = spawner.mock.calls.map((c) => c[0] as string[]);
+		expect(argvs).toContainEqual([
+			"set-status",
+			"pi",
+			"working",
+			"--icon",
+			"bolt",
+			"--color",
+			"#ff9500",
+		]);
+	});
+
+	it("still flips the pill to 'working' after the once-per-session rename has fired (#0002)", async () => {
+		const pi = makeFakePi();
+		createExtension(pi as never);
+		const ctx = makeFakeCtx({ authOk: false });
+
+		await pi.handlers.get("input")!(
+			{ source: "interactive", text: "first" },
+			ctx,
+		);
+		const afterFirst = spawner.mock.calls.length;
+		await pi.handlers.get("input")!(
+			{ source: "interactive", text: "second" },
+			ctx,
+		);
+		const argvsAfterSecond = spawner.mock.calls
+			.slice(afterFirst)
+			.map((c) => c[0] as string[]);
+		expect(argvsAfterSecond).toContainEqual([
+			"set-status",
+			"pi",
+			"working",
+			"--icon",
+			"bolt",
+			"--color",
+			"#ff9500",
+		]);
+		expect(ctx.modelRegistry.getApiKeyAndHeaders.mock.calls.length).toBe(1);
 	});
 
 	it("only fires on the first eligible prompt per session", async () => {

@@ -1,19 +1,26 @@
 /**
  * pi-update-cmux-status — pi extension.
  *
- * Mirrors pi lifecycle events into cmux (sidebar status pill, log lines,
- * progress, desktop notifications) and auto-renames the cmux tab +
- * workspace based on an LLM summary of the first user prompt.
+ * Mirrors pi lifecycle events into cmux (sidebar status pill, desktop
+ * notifications) and auto-renames the cmux tab + workspace based on an
+ * LLM summary of the first user prompt.
  *
- * Behaviour summary (matches the single-file `cmux-status.ts` starting point):
+ * Simplified two-state status model (#0002): the pill is either
+ * `working` (pi is processing a user request) or `idle` (pi is waiting
+ * for user input). Per-tool transitions were removed because they
+ * flickered the pill across every `bash` / `read` / `edit` inside a
+ * single turn without carrying any signal the user could act on.
  *
  *   session_start          → status "idle" + log "Session started"
- *   input (first user msg) → fire-and-forget rename of tab / workspace
- *   before_agent_start     → status "working"
- *   tool_execution_start   → status "<toolName>" + progress log
- *   tool_execution_end     → success / error log
+ *   input (any eligible)   → status "working" (every turn);
+ *                             fire-and-forget rename on the first
+ *                             eligible prompt of the pi session.
+ *   tool_execution_start   → if toolName is in ATTENTION_TOOLS
+ *                             (hardcoded), status "waiting" + notify.
+ *   tool_execution_end     → if toolName is in ATTENTION_TOOLS,
+ *                             status back to "working".
  *   agent_end              → status "idle" + clear-progress + log + notify
- *   session_shutdown       → clear status pill
+ *   session_shutdown       → clear status pill + clear progress
  *
  * Plus a `/cmux-rename` slash command to regenerate names on demand.
  *
@@ -49,6 +56,18 @@ import { buildSessionRenamePrompt, getBranchSafely } from "./sessionPrompt.js";
  * is not stored.
  */
 export const RENAMED_ENTRY_TYPE = "cmux-status-renamed";
+
+/**
+ * Tool names that should flip the pill to `waiting` and fire a desktop
+ * notification when invoked by any extension (#0002).
+ *
+ * Hardcoded — adding to this list is a source edit, not a config knob.
+ * Currently only the `ask_user_question` tool from the sibling
+ * `pi-ask-user-question` extension qualifies: it blocks the agent
+ * waiting on the user, which is exactly the state a user sitting in
+ * another tab needs to be pinged about.
+ */
+const ATTENTION_TOOLS: readonly string[] = ["ask_user_question"];
 
 /**
  * Test-only hook. When set, `input` and `/cmux-rename` call sites use this
@@ -159,8 +178,6 @@ export interface Runtime {
 	renameWorkspace: boolean;
 	/** Has the one-shot auto-rename fired this session yet? */
 	namedThisSession: boolean;
-	/** Tool currently in flight (for debugging, matches the .ts original). */
-	currentTool: string | null;
 }
 
 function makeRuntime(env: NodeJS.ProcessEnv = process.env): Runtime {
@@ -168,7 +185,6 @@ function makeRuntime(env: NodeJS.ProcessEnv = process.env): Runtime {
 		statusKey: resolveStatusKey(env),
 		renameWorkspace: resolveRenameWorkspace(env),
 		namedThisSession: false,
-		currentTool: null,
 	};
 }
 
@@ -184,7 +200,6 @@ export default function cmuxStatus(pi: ExtensionAPI): void {
 	// ── Session lifecycle ──────────────────────────────────────────────
 	pi.on("session_start", async (_event, ctx) => {
 		rt.namedThisSession = false;
-		rt.currentTool = null;
 		// Rehydrate persistent once-per-session flag from the session log so
 		// a `/reload` does not re-trigger auto-rename. See RENAMED_ENTRY_TYPE.
 		try {
@@ -218,11 +233,17 @@ export default function cmuxStatus(pi: ExtensionAPI): void {
 	// ── User input → auto-rename once per pi session ───────────────────
 	pi.on("input", async (event, ctx) => {
 		if (!cmuxAvailable()) return;
-		if (rt.namedThisSession) return;
 		if (event.source !== "interactive" && event.source !== "rpc") return;
 		const text = (event.text || "").trim();
 		if (!text) return;
 		if (text.startsWith("/")) return; // slash commands
+		// Every eligible user message flips the pill to 'working' so the user
+		// gets immediate feedback that pi has accepted their turn. The pill
+		// stays 'working' across all tool calls in this turn and only returns
+		// to 'idle' on `agent_end` (#0002 — supersedes the old per-tool pill
+		// transitions driven by `before_agent_start` + `tool_execution_*`).
+		setStatus(rt.statusKey, "working", "bolt", "#ff9500");
+		if (rt.namedThisSession) return;
 		rt.namedThisSession = true;
 		// Fire-and-forget — don't block input processing on the LLM call.
 		void (async () => {
@@ -235,45 +256,41 @@ export default function cmuxStatus(pi: ExtensionAPI): void {
 	});
 
 	// ── Agent run lifecycle ────────────────────────────────────────────
-	pi.on("before_agent_start", async () => {
-		if (!cmuxAvailable()) return;
-		setStatus(rt.statusKey, "working", "bolt", "#ff9500");
-	});
-
+	// Agent run lifecycle. Only `agent_end` remains — `before_agent_start`
+	// was removed in #0002 (pill-to-working now happens from `input`).
 	pi.on("agent_end", async () => {
 		if (!cmuxAvailable()) return;
-		rt.currentTool = null;
 		clearProgress();
 		setStatus(rt.statusKey, "idle", "checkmark", "#30d158");
 		logLine(rt.statusKey, "success", `[${hhmm()}] Response complete`);
 		notifyCmux("pi", shortCwd(process.cwd()), `[${hhmm()}] Response complete`);
 	});
 
-	// ── Tool execution ─────────────────────────────────────────────────
+	// Attention tools (hardcoded). When a tool named in `ATTENTION_TOOLS`
+	// starts, the pill flips to `waiting` (bell, cyan) and a desktop
+	// notification fires so a user in another tab sees pi needs them.
+	// On end, the pill reverts to `working`. Tools outside the list are
+	// ignored so the noise-free two-state default from #0002 still holds
+	// for bash / read / edit / etc.
 	pi.on("tool_execution_start", async (event) => {
 		if (!cmuxAvailable()) return;
-		rt.currentTool = event.toolName;
-		setStatus(rt.statusKey, event.toolName, "hammer", "#ff9500");
-		logLine(rt.statusKey, "progress", `[${hhmm()}] Running ${event.toolName}`);
+		const toolName = (event as { toolName?: unknown }).toolName;
+		if (typeof toolName !== "string") return;
+		if (!ATTENTION_TOOLS.includes(toolName)) return;
+		setStatus(rt.statusKey, "waiting", "bell", "#5ac8fa");
+		notifyCmux(
+			"pi",
+			shortCwd(process.cwd()),
+			`[${hhmm()}] Needs your input (${toolName})`,
+		);
 	});
 
 	pi.on("tool_execution_end", async (event) => {
 		if (!cmuxAvailable()) return;
-		const maybeFailed = event as unknown as {
-			isError?: unknown;
-			result?: { isError?: unknown };
-		};
-		const failed =
-			maybeFailed.isError === true ||
-			(typeof maybeFailed.result === "object" &&
-				maybeFailed.result !== null &&
-				maybeFailed.result.isError === true);
-		if (failed) {
-			logLine(rt.statusKey, "error", `[${hhmm()}] ${event.toolName} failed`);
-		} else {
-			logLine(rt.statusKey, "success", `[${hhmm()}] ${event.toolName} done`);
-		}
-		if (rt.currentTool === event.toolName) rt.currentTool = null;
+		const toolName = (event as { toolName?: unknown }).toolName;
+		if (typeof toolName !== "string") return;
+		if (!ATTENTION_TOOLS.includes(toolName)) return;
+		setStatus(rt.statusKey, "working", "bolt", "#ff9500");
 	});
 
 	// ── Manual rename command ──────────────────────────────────────────
