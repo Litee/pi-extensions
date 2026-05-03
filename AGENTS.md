@@ -1,25 +1,36 @@
-## Agentic Instructions
+# Agent Instructions
 
-### Skill Maintenance
+## Package Manager
 
-- You MUST keep extensions alphabetically sorted inside `README.md`.
+Use **npm** (workspaces): `npm install`, `npm test`, `npm run check`.
 
-### Issue Fixing Workflow
+## File-Scoped Commands
 
-When fixing extension issues from the issue tracker:
+| Task | Command |
+|------|---------|
+| Run one test file | `npx vitest run packages/<pkg>/test/<name>.test.ts` |
+| Typecheck one package | `npx tsc -b packages/<pkg>` |
+| Typecheck + all tests | `npm run check` |
 
-- **Each issue gets its own worktree**, named after the issue (e.g. `fix-use-cmux-terminal-0008`). Exception: closely related issues that touch the same file(s) and would produce a coherent single commit may share one worktree.
-- **Use sub-agents** to fix issues in parallel. Dispatch one sub-agent per worktree so the main session stays uncluttered and independent issues are worked on concurrently.
-- **Mark an issue `done` only after its fix is merged into `main`.** Do NOT set status to `done` when a fix is committed to a worktree branch — only after the branch is successfully merged.
+## Key Conventions
 
-### Git Workflow
+- Strict TDD for new extensions and changes to existing ones.
+- Keep the extensions table in `README.md` alphabetically sorted.
 
-All changes follow this sequence — do not skip or reorder steps:
+## Issue Fixing Workflow
 
-1. **Create a worktree**: `git worktree add .worktrees/<branch-name> -b <branch-name>`. Make all changes inside it; keep the main repo clean.
-2. **Implement and test** changes inside the worktree.
-3. **Present changes** to the user for review. Do NOT commit yet.
-4. **Commit only after** the user has reviewed the worktree diff and explicitly confirmed it is OK. Do not commit speculatively or "to save progress" — the user's explicit confirmation is required.
-5. **Rebase onto `main`**: from inside the worktree, run `git rebase origin/main` to keep history linear.
-6. **Merge with fast-forward only**: from the main repo, run `git merge --ff-only`. Never create merge commits.
-7. **Ask for explicit confirmation** before merging any worktree branch into `main`.
+- Each issue gets its own worktree named after the issue (e.g. `fix-use-cmux-terminal-0008`). Exception: closely related issues touching the same file(s) that would produce a coherent single commit may share one worktree.
+- Dispatch one sub-agent per worktree so independent issues are worked on concurrently and the main session stays uncluttered.
+- Mark an issue `done` only after its fix is merged into `main`, not when committed to a worktree branch.
+
+## Git Workflow
+
+Follow this sequence; do not skip or reorder:
+
+1. Create a worktree: `git worktree add .worktrees/<branch-name> -b <branch-name>`. Make all changes inside it; keep the main repo clean.
+2. Implement and test inside the worktree.
+3. Present changes to the user for review. Do not commit yet.
+4. Commit only after the user reviews the worktree diff and explicitly confirms. No speculative or "save progress" commits.
+5. Rebase onto `main` from inside the worktree: `git rebase origin/main`.
+6. Merge fast-forward only from the main repo: `git merge --ff-only`. Never create merge commits.
+7. Ask for explicit confirmation before merging any worktree branch into `main`.
