@@ -295,4 +295,52 @@ describe("handleCcSkills (injectable picker)", () => {
 		expect(JSON.parse(readFileSync(stateFile, "utf8"))).toEqual({ disabled: [] });
 		expect(reload).toHaveBeenCalledTimes(1);
 	});
+
+	// -- issue #0004 (N4): debounce persistence until picker closes --
+	it("persist is invoked exactly once per handleCcSkills even when the picker toggles many times (issue #0004)", async () => {
+		writeSkill(join(claudeDir, "skills", "a"), "a");
+		writeSkill(join(claudeDir, "skills", "b"), "b");
+		writeSkill(join(claudeDir, "skills", "c"), "c");
+
+		const ctx = makeCtx(mkdir(tmpRoot, "project"));
+		const persist = vi.fn();
+
+		await handleCcSkills({
+			ctx: ctx as never,
+			claudeDir,
+			stateFile,
+			persist,
+			picker: async ({ onToggle }) => {
+				onToggle("@user/a", "disabled");
+				onToggle("@user/b", "disabled");
+				onToggle("@user/c", "disabled");
+				onToggle("@user/b", "enabled"); // flip back
+			},
+		});
+
+		expect(persist).toHaveBeenCalledTimes(1);
+		const [writtenFile, writtenSet] = persist.mock.calls[0] as [string, Set<string>];
+		expect(writtenFile).toBe(stateFile);
+		expect([...writtenSet].sort()).toEqual(["@user/a", "@user/c"]);
+	});
+
+	it("persist is NOT invoked when no toggle results in a net change (issue #0004)", async () => {
+		writeSkill(join(claudeDir, "skills", "a"), "a");
+
+		const ctx = makeCtx(mkdir(tmpRoot, "project"));
+		const persist = vi.fn();
+
+		await handleCcSkills({
+			ctx: ctx as never,
+			claudeDir,
+			stateFile,
+			persist,
+			picker: async ({ onToggle }) => {
+				onToggle("@user/a", "disabled");
+				onToggle("@user/a", "enabled"); // net: no change
+			},
+		});
+
+		expect(persist).not.toHaveBeenCalled();
+	});
 });

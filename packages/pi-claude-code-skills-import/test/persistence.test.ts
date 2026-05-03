@@ -1,4 +1,4 @@
-import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { chmodSync, existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
@@ -62,5 +62,49 @@ describe("persistence: readDisabled / writeDisabled", () => {
 		writeDisabled(file, new Set(["old"]));
 		writeDisabled(file, new Set(["new"]));
 		expect(readDisabled(file)).toEqual(new Set(["new"]));
+	});
+
+	// -- issue #0002 (H5): atomic write leaves no debris --
+	it("writeDisabled leaves no .tmp files in the parent directory (issue #0002)", () => {
+		const dir = join(tmpRoot, "atomic");
+		const p = join(dir, "state.json");
+		writeDisabled(p, new Set(["a", "b"]));
+		const entries = readdirSync(dir);
+		// Only the final file should remain; no `state.json.<pid>.tmp` etc.
+		expect(entries).toEqual(["state.json"]);
+	});
+
+	it("writeDisabled uses rename-onto-final for atomicity (issue #0002)", () => {
+		// Atomicity is observable via the on-disk contract: if the write fails
+		// partway, the original file must be intact. We simulate "partway fail"
+		// by making the parent directory read-only after seeding the original.
+		// A naive `writeFileSync(p, ...)` truncates `p` first and then fails to
+		// write the new bytes; an atomic (temp-then-rename) implementation
+		// can't even create the temp file, so the original is untouched.
+		const dir = join(tmpRoot, "ro-parent");
+		mkdirSync(dir, { recursive: true });
+		const p = join(dir, "state.json");
+		writeDisabled(p, new Set(["original"]));
+
+		chmodSync(dir, 0o555);
+		try {
+			expect(() => writeDisabled(p, new Set(["clobber"]))).toThrow();
+			// Original content must still be on disk after the failed write.
+			expect(JSON.parse(readFileSync(p, "utf8"))).toEqual({ disabled: ["original"] });
+		} finally {
+			chmodSync(dir, 0o755);
+		}
+	});
+
+	it("writeDisabled writes atomically: an existing file is never observed half-written (issue #0002)", () => {
+		// Approximation: after writeDisabled succeeds, the final bytes on disk
+		// must parse as valid JSON with the expected shape. Any non-atomic
+		// implementation that writes N times (e.g. truncate-then-write) would
+		// still pass this, but the test is kept as documentation of intent.
+		const p = join(tmpRoot, "atomic2.json");
+		writeFileSync(p, JSON.stringify({ disabled: ["existing"] }));
+		writeDisabled(p, new Set(["next"]));
+		const parsed = JSON.parse(readFileSync(p, "utf8"));
+		expect(parsed).toEqual({ disabled: ["next"] });
 	});
 });

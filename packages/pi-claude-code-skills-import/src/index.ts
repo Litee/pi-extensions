@@ -31,12 +31,23 @@ export interface HandleCcSkillsOptions {
 	stateFile: string;
 	cwd?: string;
 	picker: CcSkillsPicker;
+	/**
+	 * Persist the disabled-skill id set. Defaults to {@link writeDisabled}.
+	 * Exposed so tests can inject a spy and so the production wiring can
+	 * replace the implementation (e.g. batching, mocking in CI) without
+	 * touching the core flow.
+	 */
+	persist?: (stateFile: string, disabled: Set<string>) => void;
 }
 
 /**
  * Core `/cc-skills` flow. Factored out of the TUI wiring so the control flow
- * (discover → present → toggle → persist → reload-if-dirty) is unit-testable
- * without a live TUI runtime.
+ * (discover → present → toggle → persist-on-close → reload-if-dirty) is
+ * unit-testable without a live TUI runtime.
+ *
+ * Persistence is **deferred until the picker closes** (issue #0004): a user
+ * rapidly toggling N skills inside the TUI triggers exactly one write to the
+ * state file, not N. If no net change occurred, no write happens at all.
  */
 export async function handleCcSkills(opts: HandleCcSkillsOptions): Promise<void> {
 	const skills = discoverAllSkills(
@@ -47,19 +58,24 @@ export async function handleCcSkills(opts: HandleCcSkillsOptions): Promise<void>
 	const disabled = readDisabled(opts.stateFile);
 	const collisions = computeCollisions(skills);
 	const items = buildSettingItems(skills, disabled, collisions);
+	const persist = opts.persist ?? writeDisabled;
 
-	let dirty = false;
+	// Capture initial state as a canonicalised fingerprint so we can skip
+	// both the write AND the reload when the picker's net effect is zero
+	// (e.g. toggle-off then toggle-on the same skill).
+	const initialFingerprint = [...disabled].sort().join("\u0000");
+
 	const onToggle: CcSkillsPickerArgs["onToggle"] = (id, value) => {
-		const r = applyToggle(id, value, disabled);
-		if (r.changed) {
-			dirty = true;
-			writeDisabled(opts.stateFile, disabled);
-		}
+		applyToggle(id, value, disabled);
 	};
 
 	await opts.picker({ skills, disabled, items, collisions, onToggle });
 
-	if (dirty) await opts.ctx.reload();
+	const finalFingerprint = [...disabled].sort().join("\u0000");
+	if (initialFingerprint !== finalFingerprint) {
+		persist(opts.stateFile, disabled);
+		await opts.ctx.reload();
+	}
 }
 
 /** Default location for the persisted disabled-skills state file.
