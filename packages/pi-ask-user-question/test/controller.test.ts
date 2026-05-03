@@ -253,6 +253,40 @@ describe("DialogController — free-text input modes", () => {
 		}
 	});
 
+	// -- issue #0002 (N6): empty chat submit should not set chat field --
+	it("empty chat submit cancels without attaching an empty chat field (issue #0002)", () => {
+		const ctrl = new DialogController([single("Q1", ["A", "B"])]);
+		// Move cursor to the Chat sentinel and open the editor.
+		for (let i = 0; i < 10; i++) ctrl.moveDown();
+		ctrl.enter();
+		expect(ctrl.getState().inputMode).toBe("chat");
+		// User presses Enter with an empty editor.
+		ctrl.submitInput("");
+		expect(ctrl.isDone()).toBe(true);
+		const status = ctrl.getStatus();
+		expect(status.kind).toBe("done");
+		if (status.kind === "done") {
+			expect(status.result.cancelled).toBe(true);
+			// No `chat` field — formatToolResult falls through to the plain
+			// "User cancelled the questionnaire." message instead of
+			// "User cancelled the questionnaire. Chat: ".
+			expect(status.result.chat).toBeUndefined();
+			// The answer for the active tab is not populated either.
+			expect(status.result.answers[0]).toBeNull();
+		}
+	});
+
+	it("whitespace-only chat submit is treated as empty (issue #0002)", () => {
+		const ctrl = new DialogController([single("Q1", ["A", "B"])]);
+		for (let i = 0; i < 10; i++) ctrl.moveDown();
+		ctrl.enter();
+		ctrl.submitInput("   \t  ");
+		const status = ctrl.getStatus();
+		if (status.kind === "done") {
+			expect(status.result.chat).toBeUndefined();
+		}
+	});
+
 	it("Esc while in an input mode closes the editor but keeps the dialog alive", () => {
 		const ctrl = new DialogController([single("Q1", ["A", "B"])]);
 		ctrl.moveDown();

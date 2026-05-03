@@ -32,21 +32,24 @@ export function validate(p: TParams): ValidateResult {
 	}
 
 	// Reject duplicate question text across the invocation (matches reference
-	// behaviour). Empty questions fall through to the "missing_question" check.
+	// behaviour). Comparison is case-insensitive and whitespace-insensitive
+	// (same policy as option labels below) so differing only in case or
+	// surrounding whitespace still collides (#0001).
 	const seenQuestions = new Set<string>();
 	for (let qi = 0; qi < qs.length; qi++) {
 		const q = qs[qi];
 		if (q === undefined) continue;
 		const text = typeof q.question === "string" ? q.question.trim() : "";
 		if (text === "") continue;
-		if (seenQuestions.has(text)) {
+		const key = text.toLowerCase();
+		if (seenQuestions.has(key)) {
 			return {
 				ok: false,
 				error: "duplicate_question",
-				message: `question[${qi}] duplicates an earlier question text; question text must be unique within an invocation`,
+				message: `question[${qi}] duplicates an earlier question text; question text must be unique within an invocation (case-insensitive)`,
 			};
 		}
-		seenQuestions.add(text);
+		seenQuestions.add(key);
 	}
 
 	for (let qi = 0; qi < qs.length; qi++) {

@@ -255,6 +255,15 @@ export class DialogController {
 			return;
 		}
 		if (mode === "chat") {
+			// Empty / whitespace-only chat submit: close the dialog as a plain
+			// cancel, without attaching an empty `chat` field. Prevents the
+			// downstream tool-result from reading "Chat: " with no content
+			// (#0002).
+			if (trimmed === "") {
+				this.state.inputMode = "none";
+				this.finish(true);
+				return;
+			}
 			this.recordChat(trimmed);
 			this.state.inputMode = "none";
 			this.finish(true, trimmed);

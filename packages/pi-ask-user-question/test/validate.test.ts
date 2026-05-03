@@ -53,6 +53,29 @@ describe("validate()", () => {
 		expect(r).toMatchObject({ ok: false, error: "duplicate_question" });
 	});
 
+	// -- issue #0001 (N5): duplicate-question check is now case-insensitive, matching option-label dedup --
+	it("rejects duplicate question text differing only in case (issue #0001)", () => {
+		const params: TParams = {
+			questions: [
+				q("Proceed?", [{ label: "A" }, { label: "B" }]),
+				q("PROCEED?", [{ label: "C" }, { label: "D" }]),
+			],
+		};
+		const r = validate(params);
+		expect(r).toMatchObject({ ok: false, error: "duplicate_question" });
+	});
+
+	it("rejects duplicate question text differing only in surrounding whitespace or case (issue #0001)", () => {
+		const params: TParams = {
+			questions: [
+				q("  hello world  ", [{ label: "A" }, { label: "B" }]),
+				q("Hello World", [{ label: "C" }, { label: "D" }]),
+			],
+		};
+		const r = validate(params);
+		expect(r).toMatchObject({ ok: false, error: "duplicate_question" });
+	});
+
 	it("ignores duplicate empty-string questions in the dedup pass (they fail later as missing_question)", () => {
 		const params: TParams = {
 			questions: [
