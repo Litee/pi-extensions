@@ -203,7 +203,7 @@ export async function handleSessionStart(
 		pi.sendMessage(
 			{
 				customType: CUSTOM_MESSAGE_TYPE,
-				content: buildChatMessageContent(changes),
+				content: buildChatMessageContent(changes, new Date()),
 				display: true,
 				details: {
 					changes,
@@ -305,7 +305,7 @@ async function pollOnce(rt: Runtime): Promise<void> {
 		rt.pi.sendMessage(
 			{
 				customType: CUSTOM_MESSAGE_TYPE,
-				content: buildChatMessageContent(changes),
+				content: buildChatMessageContent(changes, new Date()),
 				display: true,
 				details: {
 					changes,

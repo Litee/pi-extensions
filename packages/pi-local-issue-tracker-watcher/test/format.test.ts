@@ -92,14 +92,14 @@ describe("buildChatMessageContent", () => {
 	};
 
 	it("uses a singular header for a single change", () => {
-		const out = buildChatMessageContent([change1]);
-		expect(out.split("\n")[0]).toMatch(/^1 issue update/);
+		const out = buildChatMessageContent([change1], new Date(2026, 4, 3, 14, 30, 5));
+		expect(out.split("\n")[0]).toMatch(/^\[14:30:05\] 1 issue update/);
 	});
 
 	it("uses a plural header for multiple changes and bullets each one", () => {
-		const out = buildChatMessageContent([change1, change2]);
+		const out = buildChatMessageContent([change1, change2], new Date(2026, 4, 3, 9, 5, 8));
 		const lines = out.split("\n");
-		expect(lines[0]).toMatch(/^2 issue updates/);
+		expect(lines[0]).toMatch(/^\[09:05:08\] 2 issue updates/);
 		// Each non-header line is a bullet containing the rendered change.
 		const bullets = lines.slice(1).filter((l) => l.trim().startsWith("-"));
 		expect(bullets).toHaveLength(2);
@@ -108,6 +108,21 @@ describe("buildChatMessageContent", () => {
 	});
 
 	it("returns an empty string when there are no changes (callers must guard)", () => {
-		expect(buildChatMessageContent([])).toBe("");
+		expect(buildChatMessageContent([], new Date())).toBe("");
+	});
+
+	it("zero-pads hours, minutes, and seconds in local time", () => {
+		const out = buildChatMessageContent([change1], new Date(2026, 0, 1, 1, 2, 3));
+		expect(out.split("\n")[0]).toMatch(/^\[01:02:03\] /);
+	});
+
+	it("handles midnight (00:00:00) without collapsing digits", () => {
+		const out = buildChatMessageContent([change1], new Date(2026, 0, 1, 0, 0, 0));
+		expect(out.split("\n")[0]).toMatch(/^\[00:00:00\] /);
+	});
+
+	it("handles the end-of-day boundary (23:59:59)", () => {
+		const out = buildChatMessageContent([change1], new Date(2026, 0, 1, 23, 59, 59));
+		expect(out.split("\n")[0]).toMatch(/^\[23:59:59\] /);
 	});
 });

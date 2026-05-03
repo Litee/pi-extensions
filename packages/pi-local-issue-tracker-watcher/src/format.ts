@@ -49,20 +49,31 @@ export function formatStatusSummary(snapshot: Snapshot): string {
  * Build the `content` field of the `pi.sendMessage` payload the watcher
  * delivers whenever it detects ≥ 1 change. Structure:
  *
- *     N issue update(s)
+ *     [HH:MM:SS] N issue update(s)
  *     - <rendered change 1>
  *     - <rendered change 2>
  *     ...
  *
+ * `HH:MM:SS` is the local-time clock reading of `now` (typically the moment
+ * the watcher observed the change), with zero-padded fields. Callers supply
+ * the `Date` so tests can pin the value without clock mocking.
+ *
  * The empty-array case returns an empty string; callers are expected to skip
  * delivery in that case (we never want to flood chat with a no-op header).
  */
-export function buildChatMessageContent(changes: Change[]): string {
+export function buildChatMessageContent(changes: Change[], now: Date): string {
 	if (changes.length === 0) return "";
+	const stamp = formatLocalHms(now);
 	const header =
 		changes.length === 1
-			? "1 issue update"
-			: `${changes.length} issue updates`;
+			? `[${stamp}] 1 issue update`
+			: `[${stamp}] ${changes.length} issue updates`;
 	const bullets = changes.map((c) => `- ${formatChange(c)}`);
 	return [header, ...bullets].join("\n");
+}
+
+/** Zero-padded local-time `HH:MM:SS` for a given Date. */
+function formatLocalHms(d: Date): string {
+	const pad = (n: number): string => n.toString().padStart(2, "0");
+	return `${pad(d.getHours())}:${pad(d.getMinutes())}:${pad(d.getSeconds())}`;
 }
