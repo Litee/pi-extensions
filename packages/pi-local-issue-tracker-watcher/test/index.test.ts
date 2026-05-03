@@ -989,3 +989,162 @@ describe("persistRunState resilience", () => {
 		expect(notifies.some((m) => /paused/i.test(m))).toBe(true);
 	});
 });
+
+// ---------------------------------------------------------------------------
+// last-update timestamp in pinned status line (#0009)
+// ---------------------------------------------------------------------------
+
+describe("last-update timestamp (#0009)", () => {
+	let dbRoot: string;
+	beforeEach(() => {
+		dbRoot = mkdtempSync(join(tmpdir(), "pi-issue-watcher-lua-"));
+	});
+	afterEach(() => {
+		rmSync(dbRoot, { recursive: true, force: true });
+	});
+
+	function writeIssue(skill: string, fname: string, body: Record<string, unknown>): string {
+		const skillDir = join(dbRoot, skill);
+		mkdirSync(skillDir, { recursive: true });
+		const p = join(skillDir, fname);
+		writeFileSync(p, JSON.stringify(body), "utf8");
+		return p;
+	}
+
+	it("handleSessionStart: first session (no baseline) does NOT set lastUpdateAt", async () => {
+		writeIssue("skill-a", "0001-a.json", { id: "0001", status: "open", skill: "skill-a" });
+		const pi = makeFakePi();
+		const ctx = makeFakeCtx([]);
+		await handleSessionStart({ pi: pi as never, ctx: ctx as never, dbRoot });
+
+		const [, payload] = pi.appendEntry.mock.calls[0] as [
+			string,
+			{ savedAt: number; lastUpdateAt?: number },
+		];
+		expect(payload.lastUpdateAt).toBeUndefined();
+
+		// The pinned status line shows "last update: never" when the clock
+		// segment is rendered.
+		const statusCalls = ctx.ui.setStatus.mock.calls as Array<[string, string | undefined]>;
+		const pinned = statusCalls.find(([k]) => k === "issue-watcher")?.[1] ?? "";
+		expect(pinned).toContain("last update: never");
+	});
+
+	it("handleSessionStart: bumps lastUpdateAt to now when a diff is emitted", async () => {
+		const filePath = writeIssue("skill-a", "0001-a.json", {
+			id: "0001",
+			status: "open",
+			skill: "skill-a",
+		});
+		const baselineSnapshot: Snapshot = {
+			[filePath]: {
+				mtimeNs: 1n,
+				issueId: "0001",
+				status: "open",
+				title: "",
+				description: "",
+				comments: [],
+				skill: "skill-a",
+				skillVersion: "",
+			},
+		};
+		writeIssue("skill-a", "0001-a.json", {
+			id: "0001",
+			status: "done",
+			skill: "skill-a",
+		});
+
+		const pi = makeFakePi();
+		const oldStamp = Date.now() - 10 * 60_000;
+		const ctx = makeFakeCtx([
+			{
+				type: "custom",
+				customType: STATE_ENTRY_TYPE,
+				data: { savedAt: Date.now(), snapshot: baselineSnapshot, lastUpdateAt: oldStamp },
+			},
+		]);
+		const before = Date.now();
+		await handleSessionStart({ pi: pi as never, ctx: ctx as never, dbRoot });
+		const after = Date.now();
+
+		// Last appendEntry call — may be preceded by the baseline-adopt path.
+		const lastCall = pi.appendEntry.mock.calls.at(-1) as [
+			string,
+			{ lastUpdateAt?: number },
+		];
+		expect(lastCall[1].lastUpdateAt).toBeGreaterThanOrEqual(before);
+		expect(lastCall[1].lastUpdateAt).toBeLessThanOrEqual(after);
+	});
+
+	it("handleSessionStart: preserves rehydrated lastUpdateAt when no changes observed", async () => {
+		const filePath = writeIssue("skill-a", "0001-a.json", {
+			id: "0001",
+			status: "open",
+			skill: "skill-a",
+		});
+		const { scanIssueFiles } = await import("../src/scanner.js");
+		const snap = scanIssueFiles(dbRoot);
+		const oldStamp = Date.now() - 2 * 60_000;
+		const ctx = makeFakeCtx([
+			{
+				type: "custom",
+				customType: STATE_ENTRY_TYPE,
+				data: {
+					savedAt: Date.now(),
+					snapshot: { [filePath]: { ...snap[filePath]!, mtimeNs: String(snap[filePath]!.mtimeNs) } },
+					lastUpdateAt: oldStamp,
+				},
+			},
+		]);
+		const pi = makeFakePi();
+		await handleSessionStart({ pi: pi as never, ctx: ctx as never, dbRoot });
+
+		// No changes observed → no appendEntry call at all.
+		expect(pi.appendEntry).not.toHaveBeenCalled();
+
+		// The pinned status line picks up the rehydrated lastUpdateAt and
+		// renders 'Nm ago' rather than 'never'.
+		const statusCalls = ctx.ui.setStatus.mock.calls as Array<[string, string | undefined]>;
+		const pinned = statusCalls.find(([k]) => k === "issue-watcher")?.[1] ?? "";
+		expect(pinned).toMatch(/last update: \dm ago/);
+		expect(pinned).not.toContain("last update: never");
+	});
+
+	it("pollOnce refreshes the pinned status line every tick, even with no changes", async () => {
+		vi.useFakeTimers();
+		try {
+			writeIssue("skill-a", "0001-a.json", { id: "0001", status: "open", skill: "skill-a" });
+
+			const pi = makeFakePi();
+			const prev = process.env["LOCAL_ISSUE_TRACKER_DB_ROOT"];
+			process.env["LOCAL_ISSUE_TRACKER_DB_ROOT"] = dbRoot;
+			try {
+				createExtension(pi as never);
+			} finally {
+				if (prev === undefined) delete process.env["LOCAL_ISSUE_TRACKER_DB_ROOT"];
+				else process.env["LOCAL_ISSUE_TRACKER_DB_ROOT"] = prev;
+			}
+
+			const handler = pi.sessionStartHandler!;
+			const ctx = makeFakeCtx([]);
+			await handler({}, ctx);
+
+			const statusAtStart = ctx.ui.setStatus.mock.calls.filter(
+				([k]) => k === "issue-watcher",
+			).length;
+
+			// Advance through 3 poll cycles with no disk changes.
+			await vi.advanceTimersByTimeAsync(POLL_INTERVAL_MS * 3);
+
+			const statusAfter = ctx.ui.setStatus.mock.calls.filter(
+				([k]) => k === "issue-watcher",
+			).length;
+
+			// Each poll re-pins the status line so the age phrase can tick forward.
+			expect(statusAfter).toBeGreaterThanOrEqual(statusAtStart + 3);
+			expect(pi.sendMessage).not.toHaveBeenCalled();
+		} finally {
+			vi.useRealTimers();
+		}
+	});
+});

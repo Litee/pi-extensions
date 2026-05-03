@@ -38,6 +38,13 @@ export interface PersistedState {
 	/** Epoch ms at which the snapshot was captured. */
 	savedAt: number;
 	snapshot: SerialisedSnapshot;
+	/**
+	 * Epoch ms at which the watcher last observed *changes* (i.e. emitted a
+	 * chat message). Distinct from {@link savedAt}, which ticks on every
+	 * baseline adoption including the first-session "no changes" path.
+	 * Absent in state written by pre-#0009 releases.
+	 */
+	lastUpdateAt?: number;
 }
 
 /**
@@ -47,6 +54,7 @@ export interface PersistedState {
 export interface RehydratedState {
 	savedAt: number;
 	snapshot: Snapshot;
+	lastUpdateAt?: number;
 }
 
 /**
@@ -97,7 +105,16 @@ export function rehydrateFromSession(ctx: SessionLike): RehydratedState | null {
 			continue;
 		}
 		if (Date.now() - savedAt > STATE_MAX_AGE_MS) return null;
-		return { savedAt, snapshot: normaliseSnapshot(snapshotRaw as Record<string, RawIssueInfo>) };
+		const lastUpdateAt =
+			typeof (data as { lastUpdateAt?: unknown }).lastUpdateAt === "number"
+				? ((data as { lastUpdateAt?: number }).lastUpdateAt as number)
+				: undefined;
+		const rehydrated: RehydratedState = {
+			savedAt,
+			snapshot: normaliseSnapshot(snapshotRaw as Record<string, RawIssueInfo>),
+		};
+		if (lastUpdateAt !== undefined) rehydrated.lastUpdateAt = lastUpdateAt;
+		return rehydrated;
 	}
 	return null;
 }

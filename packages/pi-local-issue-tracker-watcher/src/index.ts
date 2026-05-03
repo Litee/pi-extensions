@@ -130,6 +130,14 @@ export interface HandleSessionStartResult {
 	 * a file written between the two scans can be silently lost.
 	 */
 	snapshot: Snapshot;
+	/**
+	 * Epoch ms at which the watcher last observed *changes* (emitted a chat
+	 * message). Seeded into the runtime so `pollOnce` and status-line
+	 * refreshes can render `last update: Nm ago` and keep the age ticking
+	 * forward between changes (#0009). `undefined` when no change has ever
+	 * been observed.
+	 */
+	lastUpdateAt: number | undefined;
 }
 
 /**
@@ -151,11 +159,12 @@ export async function handleSessionStart(
 			`issue-watcher: dbRoot not found (${dbRoot}); not watching.`,
 			"warning",
 		);
-		return { started: false, paused: false, snapshot: {} };
+		return { started: false, paused: false, snapshot: {}, lastUpdateAt: undefined };
 	}
 
 	const baseline = rehydrateFromSession(ctx);
 	const currentSnapshot = scanIssueFiles(dbRoot, baseline?.snapshot);
+	let lastUpdateAt = baseline?.lastUpdateAt;
 
 	// Rehydrate the user's last explicit pause / resume preference. Absent
 	// entry → default to running so fresh installs auto-start polling.
@@ -176,6 +185,8 @@ export async function handleSessionStart(
 				dbRoot,
 				POLL_INTERVAL_MS,
 				currentSnapshot,
+				lastUpdateAt,
+				new Date(),
 			),
 		),
 	);
@@ -186,7 +197,7 @@ export async function handleSessionStart(
 			savedAt: Date.now(),
 			snapshot: serialisableSnapshot(currentSnapshot),
 		});
-		return { started: true, paused, snapshot: currentSnapshot };
+		return { started: true, paused, snapshot: currentSnapshot, lastUpdateAt };
 	}
 
 	// While paused we do NOT diff or emit change messages — the user asked us
@@ -195,7 +206,7 @@ export async function handleSessionStart(
 	// up from the last baseline rather than silently losing the intervening
 	// window.
 	if (paused) {
-		return { started: true, paused, snapshot: currentSnapshot };
+		return { started: true, paused, snapshot: currentSnapshot, lastUpdateAt };
 	}
 
 	const changes = diffSnapshots(baseline.snapshot, currentSnapshot);
@@ -212,14 +223,17 @@ export async function handleSessionStart(
 			},
 			{ deliverAs: "followUp", triggerTurn: true },
 		);
-		// Persist the new baseline so we don't replay these changes next session.
+		lastUpdateAt = Date.now();
+		// Persist the new baseline + last-update stamp so we don't replay these
+		// changes next session and the age phrase survives a reload (#0009).
 		pi.appendEntry(STATE_ENTRY_TYPE, {
 			savedAt: Date.now(),
 			snapshot: serialisableSnapshot(currentSnapshot),
+			lastUpdateAt,
 		});
 	}
 
-	return { started: true, paused, snapshot: currentSnapshot };
+	return { started: true, paused, snapshot: currentSnapshot, lastUpdateAt };
 }
 
 /**
@@ -263,6 +277,12 @@ interface Runtime {
 	paused: boolean;
 	/** Most recent snapshot used as the diff baseline across polls. */
 	snapshot: Snapshot;
+	/**
+	 * Epoch ms of the most recent change emission. Used by the pinned status
+	 * line to render `last update: Nm ago` and kept current across polls so
+	 * the age ticks forward between changes (#0009).
+	 */
+	lastUpdateAt: number | undefined;
 	timer: ReturnType<typeof setInterval> | null;
 	pi: Pick<ExtensionAPI, "sendMessage" | "appendEntry">;
 	/** Set once `session_start` fires; `null` before that. */
@@ -277,7 +297,43 @@ interface Runtime {
 }
 
 function makeRuntime(dbRoot: string, pi: Runtime["pi"]): Runtime {
-	return { dbRoot, paused: false, snapshot: {}, timer: null, pi, ui: null };
+	return {
+		dbRoot,
+		paused: false,
+		snapshot: {},
+		lastUpdateAt: undefined,
+		timer: null,
+		pi,
+		ui: null,
+	};
+}
+
+/**
+ * Re-pin the extension status line with the current state + age phrase.
+ * Safe to call with no UI — the optional-chain calls simply do nothing.
+ * Always uses `new Date()` for the clock so the `last update: Nm ago`
+ * segment ticks forward on each invocation (#0009).
+ */
+function refreshStatusLine(
+	ui: Runtime["ui"],
+	rt: Pick<Runtime, "dbRoot" | "lastUpdateAt">,
+	state: string,
+	snapshot: Snapshot,
+): void {
+	ui?.setStatus?.(
+		STATUS_KEY,
+		colorize(
+			ui?.theme,
+			buildStartupAnnouncement(
+				state,
+				rt.dbRoot,
+				POLL_INTERVAL_MS,
+				snapshot,
+				rt.lastUpdateAt,
+				new Date(),
+			),
+		),
+	);
 }
 
 function startPolling(rt: Runtime): void {
@@ -314,12 +370,18 @@ async function pollOnce(rt: Runtime): Promise<void> {
 			},
 			{ deliverAs: "followUp", triggerTurn: true },
 		);
+		rt.lastUpdateAt = Date.now();
 		rt.pi.appendEntry(STATE_ENTRY_TYPE, {
 			savedAt: Date.now(),
 			snapshot: serialisableSnapshot(next),
+			lastUpdateAt: rt.lastUpdateAt,
 		});
 	}
 	rt.snapshot = next;
+	// Re-pin the status line on every poll, even when no diff was emitted,
+	// so the `last update: Nm ago` phrase ticks forward instead of staying
+	// frozen at its last-change value (#0009).
+	refreshStatusLine(rt.ui, rt, "active", next);
 }
 
 // ---------------------------------------------------------------------------
@@ -348,6 +410,7 @@ export default function issueWatcher(pi: ExtensionAPI): void {
 		// a file written between the two scans is silently lost (#0001).
 		rt.snapshot = res.snapshot;
 		rt.paused = res.paused;
+		rt.lastUpdateAt = res.lastUpdateAt;
 		// If the user explicitly paused in a prior session (or earlier in this
 		// one, before a reload) we honour that and stay quiet until they run
 		// `/issue-watcher resume`. Otherwise start the poll loop.
@@ -378,7 +441,6 @@ export default function issueWatcher(pi: ExtensionAPI): void {
 			};
 			const hasUI = anyCtx.hasUI ?? anyCtx.ui?.hasUI ?? anyCtx.ui !== undefined;
 			const ui = hasUI ? anyCtx.ui : undefined;
-			const theme = ui?.theme;
 			const sub = args.trim().toLowerCase();
 			switch (sub) {
 				case "pause": {
@@ -386,18 +448,7 @@ export default function issueWatcher(pi: ExtensionAPI): void {
 					stopPolling(rt);
 					persistRunState(pi, true);
 					const snap = existsSync(rt.dbRoot) ? scanIssueFiles(rt.dbRoot) : {};
-					ui?.setStatus?.(
-						STATUS_KEY,
-						colorize(
-							theme,
-							buildStartupAnnouncement(
-								"paused",
-								rt.dbRoot,
-								POLL_INTERVAL_MS,
-								snap,
-							),
-						),
-					);
+					refreshStatusLine(ui ?? null, rt, "paused", snap);
 					ui?.notify?.(`issue-watcher: paused (dbRoot=${rt.dbRoot})`, "info");
 					return;
 				}
@@ -411,18 +462,7 @@ export default function issueWatcher(pi: ExtensionAPI): void {
 						rt.snapshot = resumedSnap;
 						startPolling(rt);
 					}
-					ui?.setStatus?.(
-						STATUS_KEY,
-						colorize(
-							theme,
-							buildStartupAnnouncement(
-								"resumed",
-								rt.dbRoot,
-								POLL_INTERVAL_MS,
-								resumedSnap,
-							),
-						),
-					);
+					refreshStatusLine(ui ?? null, rt, "resumed", resumedSnap);
 					ui?.notify?.(`issue-watcher: resumed (dbRoot=${rt.dbRoot})`, "info");
 					return;
 				}

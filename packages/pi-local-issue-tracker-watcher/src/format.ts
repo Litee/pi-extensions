@@ -13,18 +13,50 @@ const WELL_KNOWN_STATUSES = ["open", "in_progress", "done", "wont_fix"] as const
  * Build the one-line session-start / resume announcement.
  *
  * Format: `issue-watcher: <state> | dbRoot=<path> | poll=<N>s | <summary>`
- * where `<state>` is typically `active` or `resumed`. The message is meant
- * for `ctx.ui.notify` (informational toast) and must NOT trigger an agent
- * turn — it is purely a user-visible status line.
+ * where `<state>` is typically `active` or `resumed`. When `lastUpdateAt`
+ * **or** `now` is supplied, a ` | last update: <phrase>` segment is
+ * appended (see {@link formatTimeSince}); omitting both preserves the
+ * original format for back-compat.
+ *
+ * The message is meant for `ctx.ui.setStatus` (pinned status-row text) and
+ * must NOT trigger an agent turn — it is purely a user-visible status line.
  */
 export function buildStartupAnnouncement(
 	state: string,
 	dbRoot: string,
 	pollIntervalMs: number,
 	snapshot: Snapshot,
+	lastUpdateAt?: number,
+	now?: Date,
 ): string {
 	const pollSeconds = Math.round(pollIntervalMs / 1000);
-	return `issue-watcher: ${state} | dbRoot=${dbRoot} | poll=${pollSeconds}s | ${formatStatusSummary(snapshot)}`;
+	const base = `issue-watcher: ${state} | dbRoot=${dbRoot} | poll=${pollSeconds}s | ${formatStatusSummary(snapshot)}`;
+	if (lastUpdateAt === undefined && now === undefined) return base;
+	return `${base} | last update: ${formatTimeSince(now ?? new Date(), lastUpdateAt)}`;
+}
+
+/**
+ * Render a human-friendly "time since N" phrase relative to `now`.
+ *
+ * Bucket rules (#0009):
+ *  - `lastUpdateAt` undefined → `"never"`
+ *  - delta  < 10s   → `"just now"`
+ *  - delta  < 60s   → `"Ns ago"`
+ *  - delta  < 60m   → `"Nm ago"`
+ *  - delta  < 24h   → `"Nh ago"`
+ *  - delta >= 24h   → `"Nd ago"`
+ *
+ * Future timestamps (clock skew / rehydrated-from-future-state) are treated
+ * as `"just now"` — the watcher never surfaces negative ages.
+ */
+export function formatTimeSince(now: Date, lastUpdateAt: number | undefined): string {
+	if (lastUpdateAt === undefined) return "never";
+	const delta = now.getTime() - lastUpdateAt;
+	if (delta < 10_000) return "just now";
+	if (delta < 60_000) return `${Math.floor(delta / 1_000)}s ago`;
+	if (delta < 60 * 60_000) return `${Math.floor(delta / 60_000)}m ago`;
+	if (delta < 24 * 60 * 60_000) return `${Math.floor(delta / (60 * 60_000))}h ago`;
+	return `${Math.floor(delta / (24 * 60 * 60_000))}d ago`;
 }
 
 /** Render issue counts as "N open, M in_progress, ..." — matches the Python watcher. */

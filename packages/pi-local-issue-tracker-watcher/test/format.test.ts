@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { buildChatMessageContent, buildStartupAnnouncement, formatStatusSummary } from "../src/format.js";
+import { buildChatMessageContent, buildStartupAnnouncement, formatStatusSummary, formatTimeSince } from "../src/format.js";
 import type { Change } from "../src/diff.js";
 import type { Snapshot } from "../src/types.js";
 
@@ -124,5 +124,93 @@ describe("buildChatMessageContent", () => {
 	it("handles the end-of-day boundary (23:59:59)", () => {
 		const out = buildChatMessageContent([change1], new Date(2026, 0, 1, 23, 59, 59));
 		expect(out.split("\n")[0]).toMatch(/^\[23:59:59\] /);
+	});
+});
+
+// ---------------------------------------------------------------------------
+// formatTimeSince / buildStartupAnnouncement with last-update phrase (#0009)
+// ---------------------------------------------------------------------------
+
+describe("formatTimeSince", () => {
+	const NOW = new Date(2026, 4, 3, 12, 0, 0); // 12:00:00 local
+
+	it("returns 'never' when no timestamp has been recorded yet", () => {
+		expect(formatTimeSince(NOW, undefined)).toBe("never");
+	});
+
+	it("returns 'just now' for deltas < 10s", () => {
+		expect(formatTimeSince(NOW, NOW.getTime())).toBe("just now");
+		expect(formatTimeSince(NOW, NOW.getTime() - 9_000)).toBe("just now");
+		expect(formatTimeSince(NOW, NOW.getTime() - 9_999)).toBe("just now");
+	});
+
+	it("returns 'Ns ago' for 10s..<60s", () => {
+		expect(formatTimeSince(NOW, NOW.getTime() - 10_000)).toBe("10s ago");
+		expect(formatTimeSince(NOW, NOW.getTime() - 42_000)).toBe("42s ago");
+		expect(formatTimeSince(NOW, NOW.getTime() - 59_999)).toBe("59s ago");
+	});
+
+	it("returns 'Nm ago' for 60s..<60m", () => {
+		expect(formatTimeSince(NOW, NOW.getTime() - 60_000)).toBe("1m ago");
+		expect(formatTimeSince(NOW, NOW.getTime() - 5 * 60_000)).toBe("5m ago");
+		expect(formatTimeSince(NOW, NOW.getTime() - 59 * 60_000)).toBe("59m ago");
+		expect(formatTimeSince(NOW, NOW.getTime() - 60 * 60_000 + 1)).toBe("59m ago");
+	});
+
+	it("returns 'Nh ago' for 60m..<24h", () => {
+		expect(formatTimeSince(NOW, NOW.getTime() - 60 * 60_000)).toBe("1h ago");
+		expect(formatTimeSince(NOW, NOW.getTime() - 23 * 60 * 60_000)).toBe("23h ago");
+		expect(formatTimeSince(NOW, NOW.getTime() - 24 * 60 * 60_000 + 1)).toBe("23h ago");
+	});
+
+	it("returns 'Nd ago' for >= 24h", () => {
+		expect(formatTimeSince(NOW, NOW.getTime() - 24 * 60 * 60_000)).toBe("1d ago");
+		expect(formatTimeSince(NOW, NOW.getTime() - 7 * 24 * 60 * 60_000)).toBe("7d ago");
+		expect(formatTimeSince(NOW, NOW.getTime() - 365 * 24 * 60 * 60_000)).toBe("365d ago");
+	});
+
+	it("treats future timestamps as 'just now' defensively", () => {
+		expect(formatTimeSince(NOW, NOW.getTime() + 5_000)).toBe("just now");
+	});
+});
+
+describe("buildStartupAnnouncement with lastUpdateAt (#0009)", () => {
+	const NOW = new Date(2026, 4, 3, 12, 0, 0);
+
+	it("omits the 'last update' segment when lastUpdateAt is undefined (back-compat)", () => {
+		const msg = buildStartupAnnouncement("active", "/abs/db", 60_000, {});
+		expect(msg).toBe("issue-watcher: active | dbRoot=/abs/db | poll=60s | 0 issues");
+	});
+
+	it("appends 'last update: never' when lastUpdateAt is undefined but a clock is supplied", () => {
+		const msg = buildStartupAnnouncement("active", "/abs/db", 60_000, {}, undefined, NOW);
+		expect(msg).toBe(
+			"issue-watcher: active | dbRoot=/abs/db | poll=60s | 0 issues | last update: never",
+		);
+	});
+
+	it("appends a human-friendly 'last update: Nm ago' when lastUpdateAt is recent", () => {
+		const msg = buildStartupAnnouncement(
+			"active",
+			"/abs/db",
+			60_000,
+			{},
+			NOW.getTime() - 3 * 60_000,
+			NOW,
+		);
+		expect(msg).toContain("| last update: 3m ago");
+	});
+
+	it("works for the 'resumed' state the same way", () => {
+		const msg = buildStartupAnnouncement(
+			"resumed",
+			"/abs/db",
+			60_000,
+			{},
+			NOW.getTime() - 10_000,
+			NOW,
+		);
+		expect(msg.startsWith("issue-watcher: resumed | ")).toBe(true);
+		expect(msg).toContain("| last update: 10s ago");
 	});
 });
