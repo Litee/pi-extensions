@@ -347,20 +347,35 @@ describe("handleSessionStart", () => {
 		expect(issueStatus![1]).toContain(dbRoot);
 	});
 
-	it("missing-dbRoot path does NOT pin an 'active' status line", async () => {
+	it("missing-dbRoot path pins a 'dbRoot missing' status line with the resolved path (issue #0014)", async () => {
 		const pi = makeFakePi();
 		const ctx = makeFakeCtx();
 		const missing = join(dbRoot, "does-not-exist");
 
-		await handleSessionStart({ pi: pi as never, ctx: ctx as never, dbRoot: missing });
+		const out = await handleSessionStart({
+			pi: pi as never,
+			ctx: ctx as never,
+			dbRoot: missing,
+		});
 
+		// Existing warning notify path unchanged.
 		const notifies = ctx.ui.notify.mock.calls.map((c) => String(c[0]));
-		// Existing warning path unchanged.
 		expect(notifies.some((m) => m.includes("not found"))).toBe(true);
 
-		// No status line pinned when the watcher bails out.
+		// The pinned status row now surfaces the misconfiguration so it stays
+		// visible beyond the transient toast (#0014).
 		const statusCalls = ctx.ui.setStatus.mock.calls as Array<[string, string | undefined]>;
-		expect(statusCalls.find(([k]) => k === "issue-watcher")).toBeUndefined();
+		const pinned = statusCalls
+			.filter(([k]) => k === "issue-watcher")
+			.map(([, v]) => v ?? "");
+		expect(pinned).toHaveLength(1);
+		expect(pinned[0]).toContain("dbRoot missing");
+		expect(pinned[0]).toContain(missing);
+
+		// Watcher still short-circuits: no scan, no polling, no chat messages.
+		expect(pi.sendMessage).not.toHaveBeenCalled();
+		expect(pi.appendEntry).not.toHaveBeenCalled();
+		expect(out.started).toBe(false);
 	});
 
 	it("pinned status line is emitted via ctx.ui.setStatus (#0009, #0011)", async () => {

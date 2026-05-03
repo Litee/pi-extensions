@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { buildChatMessageContent, buildStartupAnnouncement, buildStartupChatMessage, formatStatusSummary, formatTimeSince } from "../src/format.js";
+import { buildChatMessageContent, buildMissingDbRootStatus, buildStartupAnnouncement, buildStartupChatMessage, formatStatusSummary, formatTimeSince } from "../src/format.js";
 import type { Change } from "../src/diff.js";
 import type { Snapshot } from "../src/types.js";
 
@@ -291,5 +291,27 @@ describe("buildStartupChatMessage (#0011)", () => {
 	it("returns a sensible line for an empty tracker", () => {
 		const msg = buildStartupChatMessage("/abs/db", {});
 		expect(msg).toBe("issue-watcher: active | dbRoot=/abs/db | 0 open");
+	});
+});
+
+// ---------------------------------------------------------------------------
+// buildMissingDbRootStatus (#0014) — pinned status line when dbRoot is absent
+// ---------------------------------------------------------------------------
+
+describe("buildMissingDbRootStatus (#0014)", () => {
+	it("contains the 'dbRoot missing' state marker and the resolved path", () => {
+		const msg = buildMissingDbRootStatus("/some/missing/path");
+		expect(msg).toContain("issue-watcher: dbRoot missing");
+		expect(msg).toContain("/some/missing/path");
+	});
+
+	it("surfaces a remediation hint (env var or directory creation)", () => {
+		const msg = buildMissingDbRootStatus("/abs/db");
+		expect(msg).toMatch(/LOCAL_ISSUE_TRACKER_DB_ROOT|create the directory/);
+	});
+
+	it("is a single line with no newlines", () => {
+		const msg = buildMissingDbRootStatus("/abs/db");
+		expect(msg).not.toMatch(/\n/);
 	});
 });

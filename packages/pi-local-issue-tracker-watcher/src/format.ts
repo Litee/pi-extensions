@@ -67,6 +67,27 @@ export function formatTimeSince(now: Date, lastUpdateAt: number | undefined): st
 }
 
 /**
+ * Build the pinned status line shown when `dbRoot` does not exist on disk.
+ *
+ * Example:
+ * ```
+ * issue-watcher: dbRoot missing | dbRoot=/Users/x/.claude/...
+ *   | set LOCAL_ISSUE_TRACKER_DB_ROOT or create the directory
+ * ```
+ *
+ * Matches the user-visible shape used by the `active` / `paused` / `resumed`
+ * variants so the footer reads consistently. Meant for `ctx.ui.setStatus` —
+ * see #0014 for the motivation (transient toast alone isn't enough to keep
+ * the misconfiguration visible).
+ */
+export function buildMissingDbRootStatus(dbRoot: string): string {
+	return (
+		`issue-watcher: dbRoot missing | dbRoot=${dbRoot}` +
+		` | set LOCAL_ISSUE_TRACKER_DB_ROOT or create the directory`
+	);
+}
+
+/**
  * Build the single-line, chat-visible startup announcement the watcher
  * posts on each `session_start` so the LLM can see the watcher is active
  * and knows which tracker it is monitoring (#0011).

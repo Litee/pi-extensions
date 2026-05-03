@@ -38,6 +38,7 @@ import type { ExtensionAPI } from "@mariozechner/pi-coding-agent";
 import { changedPaths, diffSnapshots } from "./diff.js";
 import {
 	buildChatMessageContent,
+	buildMissingDbRootStatus,
 	buildStartupAnnouncement,
 	buildStartupChatMessage,
 	formatStatusSummary,
@@ -159,6 +160,13 @@ export async function handleSessionStart(
 		notify?.(
 			`issue-watcher: dbRoot not found (${dbRoot}); not watching.`,
 			"warning",
+		);
+		// Pin a persistent misconfiguration status line so the user can still
+		// see the watcher is loaded and which path it tried to watch after the
+		// transient warning toast disappears (#0014).
+		setStatus?.(
+			STATUS_KEY,
+			colorize(theme, buildMissingDbRootStatus(dbRoot)),
 		);
 		return { started: false, paused: false, snapshot: {}, lastUpdateAt: undefined };
 	}
@@ -530,5 +538,5 @@ export default function issueWatcher(pi: ExtensionAPI): void {
 export { STATE_ENTRY_TYPE, RUNSTATE_ENTRY_TYPE } from "./persistence.js";
 export { scanIssueFiles } from "./scanner.js";
 export { diffSnapshots, changedPaths, formatChange } from "./diff.js";
-export { buildChatMessageContent, buildStartupAnnouncement, buildStartupChatMessage, formatStatusSummary } from "./format.js";
+export { buildChatMessageContent, buildMissingDbRootStatus, buildStartupAnnouncement, buildStartupChatMessage, formatStatusSummary } from "./format.js";
 export { resolveDbRoot };
