@@ -1,7 +1,12 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { __setCmuxSpawnerForTests } from "../src/cmux.js";
-import createExtension, { runRename, shortCwd } from "../src/index.js";
+import createExtension, {
+	__setFetchNamesForTests,
+	RENAMED_ENTRY_TYPE,
+	runRename,
+	shortCwd,
+} from "../src/index.js";
 
 // ---------------------------------------------------------------------------
 // Test doubles — minimal ExtensionAPI / ExtensionContext
@@ -55,12 +60,34 @@ function makeFakePi(): StubPi {
 	};
 }
 
-function makeFakeCtx(opts: { hasModel?: boolean; authOk?: boolean } = {}): {
+interface FakeEntry {
+	type?: string;
+	customType?: string;
+	data?: unknown;
+	message?: { role?: string; content?: unknown };
+}
+
+function makeFakeCtx(
+	opts: {
+		hasModel?: boolean;
+		authOk?: boolean;
+		/** Items returned from `sessionManager.getEntries()` (custom entries). */
+		entries?: FakeEntry[];
+		/** Items returned from `sessionManager.getBranch()` (chat messages). */
+		branch?: FakeEntry[];
+	} = {},
+): {
 	model: unknown;
 	modelRegistry: { getApiKeyAndHeaders: ReturnType<typeof vi.fn> };
 	ui: { notify: ReturnType<typeof vi.fn>; setStatus: ReturnType<typeof vi.fn> };
+	sessionManager: {
+		getEntries: ReturnType<typeof vi.fn>;
+		getBranch: ReturnType<typeof vi.fn>;
+	};
 } {
 	const authOk = opts.authOk ?? true;
+	const entries = opts.entries ?? [];
+	const branch = opts.branch ?? [];
 	return {
 		model: opts.hasModel === false ? undefined : { id: "fake" },
 		modelRegistry: {
@@ -69,6 +96,10 @@ function makeFakeCtx(opts: { hasModel?: boolean; authOk?: boolean } = {}): {
 			),
 		},
 		ui: { notify: vi.fn(), setStatus: vi.fn() },
+		sessionManager: {
+			getEntries: vi.fn(() => entries),
+			getBranch: vi.fn(() => branch),
+		},
 	};
 }
 
@@ -271,26 +302,30 @@ describe("/cmux-rename command", () => {
 		expect(notifies.some(([m, lvl]) => m !== undefined && /not running inside cmux/i.test(m) && lvl === "warning")).toBe(true);
 	});
 
-	it("warns when invoked with no args and no first-prompt captured", async () => {
+	it("warns when invoked with no args and no user messages in the session", async () => {
 		const pi = makeFakePi();
 		createExtension(pi as never);
 		const ctx = makeFakeCtx();
 		await pi.commands.get("cmux-rename")!.handler("", ctx as never);
 		const notifies = ctx.ui.notify.mock.calls.map((c) => String(c[0]));
-		expect(notifies.some((m) => /No prompt yet/i.test(m))).toBe(true);
+		expect(notifies.some((m) => /No user prompts/i.test(m))).toBe(true);
 	});
 
-	it("dispatches a rename when args provide the prompt", async () => {
+	it("dispatches a rename using the current session branch, ignoring args", async () => {
 		const pi = makeFakePi();
 		createExtension(pi as never);
-		const ctx = makeFakeCtx();
+		const ctx = makeFakeCtx({
+			branch: [
+				{ type: "message", message: { role: "user", content: "what I want" } },
+			],
+		});
+		await pi.handlers.get("session_start")!({}, ctx);
 
-		// Swap out runRename's names source by replacing completeSimple indirectly:
-		// the command path calls generateNames → completeSimple, which we can't
-		// easily stub here without module-level mocks. Instead we verify that
-		// a failed model call surfaces the "Rename failed" notify.
+		// Force the model call to fail so we see both "Renaming…" (attempt) and
+		// "Rename failed" (error) notifies — proving the handler proceeded past
+		// the no-prompt guard using the session branch rather than the args.
 		ctx.modelRegistry.getApiKeyAndHeaders = vi.fn(async () => ({ ok: false }));
-		await pi.commands.get("cmux-rename")!.handler("a new prompt", ctx as never);
+		await pi.commands.get("cmux-rename")!.handler("this arg is ignored", ctx as never);
 		const notifies = ctx.ui.notify.mock.calls.map((c) => String(c[0]));
 		expect(notifies.some((m) => /Renaming/i.test(m))).toBe(true);
 		expect(notifies.some((m) => /Rename failed/i.test(m))).toBe(true);
@@ -473,3 +508,338 @@ describe("input handler", () => {
 		);
 	});
 });
+
+// ---------------------------------------------------------------------------
+// session_start rehydrate — persistent once-per-session flag (issue #0001)
+// ---------------------------------------------------------------------------
+
+describe("session_start rehydrate (persistent once-per-session)", () => {
+	let restore: () => void;
+	let spawner: ReturnType<typeof vi.fn>;
+
+	beforeEach(() => {
+		restore = enterCmux();
+		spawner = vi.fn(async () => {});
+		__setCmuxSpawnerForTests(
+			spawner as unknown as (args: string[]) => Promise<void>,
+		);
+	});
+	afterEach(() => {
+		restore();
+		__setCmuxSpawnerForTests(null);
+		__setFetchNamesForTests(null);
+	});
+
+	it("exports RENAMED_ENTRY_TYPE as the session-log custom-type key", () => {
+		expect(RENAMED_ENTRY_TYPE).toBe("cmux-status-renamed");
+	});
+
+	it("skips auto-rename on input when a prior RENAMED entry is in the session log", async () => {
+		const pi = makeFakePi();
+		createExtension(pi as never);
+		const ctx = makeFakeCtx({
+			authOk: false,
+			entries: [
+				{
+					type: "custom",
+					customType: RENAMED_ENTRY_TYPE,
+					data: { savedAt: 1, firstPrompt: "old prompt" },
+				},
+			],
+		});
+		await pi.handlers.get("session_start")!({}, ctx);
+		await pi.handlers.get("input")!(
+			{ source: "interactive", text: "new prompt after reload" },
+			ctx,
+		);
+		// No auto-rename attempt on the post-reload prompt.
+		expect(ctx.modelRegistry.getApiKeyAndHeaders).not.toHaveBeenCalled();
+	});
+
+	it("restores the once-flag so /cmux-rename still works post-reload via session branch", async () => {
+		const pi = makeFakePi();
+		createExtension(pi as never);
+		const ctx = makeFakeCtx({
+			authOk: false,
+			entries: [
+				{
+					type: "custom",
+					customType: RENAMED_ENTRY_TYPE,
+					data: { savedAt: 1 },
+				},
+			],
+			branch: [
+				{
+					type: "message",
+					message: { role: "user", content: "fix this bug" },
+				},
+			],
+		});
+		await pi.handlers.get("session_start")!({}, ctx);
+		await pi.commands.get("cmux-rename")!.handler("", ctx as never);
+		const notifies = ctx.ui.notify.mock.calls.map((c) => String(c[0]));
+		// "No user prompts" warning must NOT appear — branch has a user message.
+		expect(notifies.every((m) => !/No user prompts/i.test(m))).toBe(true);
+		// The "Renaming" notice SHOULD appear — handler progressed past the guard.
+		expect(notifies.some((m) => /Renaming/i.test(m))).toBe(true);
+	});
+
+	it("defaults to unnamed when the session log has no RENAMED entry", async () => {
+		const pi = makeFakePi();
+		createExtension(pi as never);
+		const ctx = makeFakeCtx({ authOk: false, entries: [] });
+		await pi.handlers.get("session_start")!({}, ctx);
+		await pi.handlers.get("input")!(
+			{ source: "interactive", text: "hello" },
+			ctx,
+		);
+		expect(ctx.modelRegistry.getApiKeyAndHeaders).toHaveBeenCalled();
+	});
+
+	it("ignores malformed or foreign entries when rehydrating", async () => {
+		const pi = makeFakePi();
+		createExtension(pi as never);
+		const ctx = makeFakeCtx({
+			authOk: false,
+			entries: [
+				{ type: "custom", customType: RENAMED_ENTRY_TYPE, data: null },
+				{
+					type: "custom",
+					customType: "some-other-type",
+					data: { savedAt: 1 },
+				},
+				{
+					type: "custom",
+					customType: RENAMED_ENTRY_TYPE,
+					data: { savedAt: "not-a-number" },
+				},
+			],
+		});
+		await pi.handlers.get("session_start")!({}, ctx);
+		await pi.handlers.get("input")!(
+			{ source: "interactive", text: "fresh" },
+			ctx,
+		);
+		// Should have tried to auto-rename — no valid rehydrate suppressed it.
+		expect(ctx.modelRegistry.getApiKeyAndHeaders).toHaveBeenCalled();
+	});
+
+	it("picks up the RENAMED flag when a valid marker exists (among invalid ones)", async () => {
+		const pi = makeFakePi();
+		createExtension(pi as never);
+		const ctx = makeFakeCtx({
+			authOk: false,
+			entries: [
+				{ type: "custom", customType: RENAMED_ENTRY_TYPE, data: null },
+				{ type: "custom", customType: RENAMED_ENTRY_TYPE, data: { savedAt: 2 } },
+			],
+		});
+		await pi.handlers.get("session_start")!({}, ctx);
+		await pi.handlers.get("input")!(
+			{ source: "interactive", text: "fresh" },
+			ctx,
+		);
+		// Valid marker found — auto-rename must be suppressed.
+		expect(ctx.modelRegistry.getApiKeyAndHeaders).not.toHaveBeenCalled();
+	});
+
+	it("suppresses auto-rename when a newer valid RENAMED entry exists alongside older ones", async () => {
+		const pi = makeFakePi();
+		createExtension(pi as never);
+		const ctx = makeFakeCtx({
+			authOk: false,
+			entries: [
+				{
+					type: "custom",
+					customType: RENAMED_ENTRY_TYPE,
+					data: { savedAt: 1 },
+				},
+				{
+					type: "custom",
+					customType: RENAMED_ENTRY_TYPE,
+					data: { savedAt: 2 },
+				},
+			],
+		});
+		await pi.handlers.get("session_start")!({}, ctx);
+		await pi.handlers.get("input")!(
+			{ source: "interactive", text: "fresh" },
+			ctx,
+		);
+		expect(ctx.modelRegistry.getApiKeyAndHeaders).not.toHaveBeenCalled();
+	});
+});
+
+// ---------------------------------------------------------------------------
+// pi.appendEntry on successful rename (issue #0001)
+// ---------------------------------------------------------------------------
+
+describe("pi.appendEntry on rename", () => {
+	let restore: () => void;
+	let spawner: ReturnType<typeof vi.fn>;
+
+	beforeEach(() => {
+		restore = enterCmux();
+		spawner = vi.fn(async () => {});
+		__setCmuxSpawnerForTests(
+			spawner as unknown as (args: string[]) => Promise<void>,
+		);
+	});
+	afterEach(() => {
+		restore();
+		__setCmuxSpawnerForTests(null);
+		__setFetchNamesForTests(null);
+	});
+
+	it("auto-rename path persists the RENAMED marker on success", async () => {
+		__setFetchNamesForTests(async () => ({ tab: "T", workspace: "W" }));
+		const pi = makeFakePi();
+		createExtension(pi as never);
+		const ctx = makeFakeCtx();
+		await pi.handlers.get("session_start")!({}, ctx);
+		await pi.handlers.get("input")!(
+			{ source: "interactive", text: "first prompt" },
+			ctx,
+		);
+		// `input` handler is fire-and-forget; runRename is awaited inside, so
+		// a microtask flush is enough.
+		await new Promise((r) => setImmediate(r));
+		expect(pi.appendEntry).toHaveBeenCalledWith(
+			RENAMED_ENTRY_TYPE,
+			expect.objectContaining({ savedAt: expect.any(Number) }),
+		);
+		// Payload is marker-only — no firstPrompt field.
+		const [, payload] = pi.appendEntry.mock.calls[0]!;
+		expect((payload as { firstPrompt?: unknown }).firstPrompt).toBeUndefined();
+	});
+
+	it("auto-rename failure path does NOT persist the RENAMED entry", async () => {
+		__setFetchNamesForTests(async () => undefined);
+		const pi = makeFakePi();
+		createExtension(pi as never);
+		const ctx = makeFakeCtx();
+		await pi.handlers.get("session_start")!({}, ctx);
+		await pi.handlers.get("input")!(
+			{ source: "interactive", text: "first prompt" },
+			ctx,
+		);
+		await new Promise((r) => setImmediate(r));
+		expect(pi.appendEntry).not.toHaveBeenCalled();
+	});
+
+	it("/cmux-rename success path persists the RENAMED marker (uses session branch)", async () => {
+		__setFetchNamesForTests(async (_ctx, prompt) => {
+			// Capture what was actually passed so we can assert the branch
+			// content is used, not any stored first-prompt.
+			capturedPrompt = prompt;
+			return { tab: "T", workspace: "W" };
+		});
+		let capturedPrompt = "";
+		const pi = makeFakePi();
+		createExtension(pi as never);
+		const ctx = makeFakeCtx({
+			branch: [
+				{
+					type: "message",
+					message: { role: "user", content: "the current thing" },
+				},
+			],
+		});
+		await pi.handlers.get("session_start")!({}, ctx);
+		await pi.commands.get("cmux-rename")!.handler("", ctx as never);
+		expect(capturedPrompt).toContain("the current thing");
+		expect(pi.appendEntry).toHaveBeenCalledWith(
+			RENAMED_ENTRY_TYPE,
+			expect.objectContaining({ savedAt: expect.any(Number) }),
+		);
+	});
+
+	it("/cmux-rename uses the *current* session branch, not the auto-rename first prompt", async () => {
+		let capturedPrompt = "";
+		__setFetchNamesForTests(async (_ctx, prompt) => {
+			capturedPrompt = prompt;
+			return { tab: "T", workspace: "W" };
+		});
+		const pi = makeFakePi();
+		createExtension(pi as never);
+		const ctx = makeFakeCtx({
+			branch: [
+				{
+					type: "message",
+					message: { role: "user", content: "initial auto-named topic" },
+				},
+				{
+					type: "message",
+					message: { role: "assistant", content: "..." },
+				},
+				{
+					type: "message",
+					message: {
+						role: "user",
+						content: "now the session is about this other thing",
+					},
+				},
+			],
+		});
+		await pi.handlers.get("session_start")!({}, ctx);
+		await pi.commands.get("cmux-rename")!.handler("", ctx as never);
+		expect(capturedPrompt).toContain("initial auto-named topic");
+		expect(capturedPrompt).toContain("now the session is about this other thing");
+	});
+
+	it("/cmux-rename ignores trailing text arguments", async () => {
+		let capturedPrompt = "";
+		__setFetchNamesForTests(async (_ctx, prompt) => {
+			capturedPrompt = prompt;
+			return { tab: "T", workspace: "W" };
+		});
+		const pi = makeFakePi();
+		createExtension(pi as never);
+		const ctx = makeFakeCtx({
+			branch: [
+				{
+					type: "message",
+					message: { role: "user", content: "branch prompt" },
+				},
+			],
+		});
+		await pi.handlers.get("session_start")!({}, ctx);
+		await pi.commands.get("cmux-rename")!.handler(
+			"should be ignored",
+			ctx as never,
+		);
+		expect(capturedPrompt).toBe("branch prompt");
+		expect(capturedPrompt).not.toContain("should be ignored");
+	});
+
+	it("/cmux-rename warns and does not call appendEntry when no user prompts exist", async () => {
+		__setFetchNamesForTests(async () => ({ tab: "T", workspace: "W" }));
+		const pi = makeFakePi();
+		createExtension(pi as never);
+		const ctx = makeFakeCtx({ branch: [] });
+		await pi.handlers.get("session_start")!({}, ctx);
+		await pi.commands.get("cmux-rename")!.handler("", ctx as never);
+		expect(pi.appendEntry).not.toHaveBeenCalled();
+		const notifies = ctx.ui.notify.mock.calls.map((c) => String(c[0]));
+		expect(notifies.some((m) => /No user prompts/i.test(m))).toBe(true);
+	});
+
+	it("/cmux-rename failure path does NOT persist the RENAMED marker", async () => {
+		__setFetchNamesForTests(async () => undefined);
+		const pi = makeFakePi();
+		createExtension(pi as never);
+		const ctx = makeFakeCtx({
+			branch: [
+				{
+					type: "message",
+					message: { role: "user", content: "something to rename from" },
+				},
+			],
+		});
+		await pi.handlers.get("session_start")!({}, ctx);
+		pi.appendEntry.mockClear();
+		await pi.commands.get("cmux-rename")!.handler("", ctx as never);
+		expect(pi.appendEntry).not.toHaveBeenCalled();
+	});
+});
+

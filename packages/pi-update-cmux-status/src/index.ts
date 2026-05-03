@@ -36,6 +36,86 @@ import {
 } from "./cmux.js";
 import { resolveRenameWorkspace, resolveStatusKey } from "./config.js";
 import { generateNames, type NamesContext } from "./names.js";
+import { buildSessionRenamePrompt, getBranchSafely } from "./sessionPrompt.js";
+
+/**
+ * Session-log custom-entry type used to persist the "we already
+ * auto-named this pi session" flag. Rehydrated on every `session_start`
+ * so a `/reload` inside the same pi session does not silently re-rename
+ * a workspace the user has manually renamed after the first auto-name.
+ *
+ * Payload: `{ savedAt: number }`. A marker-only entry — `/cmux-rename`
+ * rebuilds its prompt from the live session branch, so the first prompt
+ * is not stored.
+ */
+export const RENAMED_ENTRY_TYPE = "cmux-status-renamed";
+
+/**
+ * Test-only hook. When set, `input` and `/cmux-rename` call sites use this
+ * instead of `generateNames` so tests can inject canned names and assert
+ * side effects (e.g. `pi.appendEntry`) without spinning up a real model.
+ * Cleared by passing `null`.
+ */
+let fetchNamesOverride:
+	| ((
+			ctx: NamesContext,
+			prompt: string,
+	  ) => Promise<Awaited<ReturnType<typeof generateNames>>>)
+	| null = null;
+
+export function __setFetchNamesForTests(
+	fn:
+		| ((
+				ctx: NamesContext,
+				prompt: string,
+		  ) => Promise<Awaited<ReturnType<typeof generateNames>>>)
+		| null,
+): void {
+	fetchNamesOverride = fn;
+}
+
+/**
+ * Return `true` when a prior valid `cmux-status-renamed` marker is
+ * present in the session entry log. A valid marker has `data.savedAt`
+ * as a finite number; malformed or foreign entries are skipped.
+ */
+function wasAlreadyRenamedThisSession(entries: {
+	getEntries?: () => Array<{ type?: string; customType?: string; data?: unknown }>;
+}): boolean {
+	if (typeof entries.getEntries !== "function") return false;
+	const list = entries.getEntries();
+	for (let i = list.length - 1; i >= 0; i--) {
+		const e = list[i];
+		if (!e || e.type !== "custom" || e.customType !== RENAMED_ENTRY_TYPE) {
+			continue;
+		}
+		const data = e.data as { savedAt?: unknown } | undefined | null;
+		if (!data || typeof data !== "object") continue;
+		if (typeof data.savedAt !== "number" || !Number.isFinite(data.savedAt)) {
+			continue;
+		}
+		return true;
+	}
+	return false;
+}
+
+/**
+ * Safe wrapper around `pi.appendEntry` so persistence failures never break
+ * the rename flow.
+ */
+function persistRenamed(
+	pi: Pick<ExtensionAPI, "appendEntry">,
+): void {
+	try {
+		pi.appendEntry(RENAMED_ENTRY_TYPE, {
+			savedAt: Date.now(),
+		});
+	} catch (err) {
+		// eslint-disable-next-line no-console
+		console.warn("[cmux-status] appendEntry failed:", err);
+	}
+}
+
 
 /**
  * Dispatches a rename: calls the LLM, then (when the call succeeds) pipes
@@ -55,7 +135,7 @@ export async function runRename(
 	},
 ): Promise<boolean> {
 	if (!cmuxAvailable()) return false;
-	const fetch = opts.fetchNames ?? generateNames;
+	const fetch = opts.fetchNames ?? fetchNamesOverride ?? generateNames;
 	const names = await fetch(ctx, prompt);
 	if (!names) return false;
 	renameTab(names.tab);
@@ -79,8 +159,6 @@ export interface Runtime {
 	renameWorkspace: boolean;
 	/** Has the one-shot auto-rename fired this session yet? */
 	namedThisSession: boolean;
-	/** Text of the first user prompt, if any — reused by /cmux-rename. */
-	lastFirstPrompt: string | null;
 	/** Tool currently in flight (for debugging, matches the .ts original). */
 	currentTool: string | null;
 }
@@ -90,7 +168,6 @@ function makeRuntime(env: NodeJS.ProcessEnv = process.env): Runtime {
 		statusKey: resolveStatusKey(env),
 		renameWorkspace: resolveRenameWorkspace(env),
 		namedThisSession: false,
-		lastFirstPrompt: null,
 		currentTool: null,
 	};
 }
@@ -105,10 +182,28 @@ export default function cmuxStatus(pi: ExtensionAPI): void {
 	const rt = makeRuntime();
 
 	// ── Session lifecycle ──────────────────────────────────────────────
-	pi.on("session_start", async () => {
+	pi.on("session_start", async (_event, ctx) => {
 		rt.namedThisSession = false;
-		rt.lastFirstPrompt = null;
 		rt.currentTool = null;
+		// Rehydrate persistent once-per-session flag from the session log so
+		// a `/reload` does not re-trigger auto-rename. See RENAMED_ENTRY_TYPE.
+		try {
+			const sm = (ctx as ExtensionContext | undefined)?.sessionManager;
+			if (sm) {
+				rt.namedThisSession = wasAlreadyRenamedThisSession(
+					sm as unknown as {
+						getEntries?: () => Array<{
+							type?: string;
+							customType?: string;
+							data?: unknown;
+						}>;
+					},
+				);
+			}
+		} catch (err) {
+			// eslint-disable-next-line no-console
+			console.warn("[cmux-status] session-start rehydrate failed:", err);
+		}
 		if (!cmuxAvailable()) return;
 		setStatus(rt.statusKey, "idle", "checkmark", "#30d158");
 		logLine(rt.statusKey, "info", `[${hhmm()}] pi session started`);
@@ -120,7 +215,7 @@ export default function cmuxStatus(pi: ExtensionAPI): void {
 		clearStatus(rt.statusKey);
 	});
 
-	// ── User input → capture first prompt for rename ───────────────────
+	// ── User input → auto-rename once per pi session ───────────────────
 	pi.on("input", async (event, ctx) => {
 		if (!cmuxAvailable()) return;
 		if (rt.namedThisSession) return;
@@ -129,12 +224,14 @@ export default function cmuxStatus(pi: ExtensionAPI): void {
 		if (!text) return;
 		if (text.startsWith("/")) return; // slash commands
 		rt.namedThisSession = true;
-		rt.lastFirstPrompt = text;
 		// Fire-and-forget — don't block input processing on the LLM call.
-		void runRename(ctx as unknown as NamesContext, text, {
-			statusKey: rt.statusKey,
-			renameWorkspace: rt.renameWorkspace,
-		});
+		void (async () => {
+			const ok = await runRename(ctx as unknown as NamesContext, text, {
+				statusKey: rt.statusKey,
+				renameWorkspace: rt.renameWorkspace,
+			});
+			if (ok) persistRenamed(pi);
+		})();
 	});
 
 	// ── Agent run lifecycle ────────────────────────────────────────────
@@ -182,25 +279,26 @@ export default function cmuxStatus(pi: ExtensionAPI): void {
 	// ── Manual rename command ──────────────────────────────────────────
 	pi.registerCommand("cmux-rename", {
 		description:
-			"Regenerate cmux tab + workspace names from the last first-prompt (or provided text)",
-		handler: async (args, ctx) => {
+			"Regenerate cmux tab + workspace names from the current session log",
+		handler: async (_args, ctx) => {
 			const ui = (ctx as ExtensionContext).ui;
 			if (!cmuxAvailable()) {
 				ui.notify("Not running inside cmux (no CMUX_WORKSPACE_ID).", "warning");
 				return;
 			}
-			const override = args?.trim();
-			const prompt = override || rt.lastFirstPrompt;
+			const entries = getBranchSafely(
+				(ctx as ExtensionContext | undefined)?.sessionManager,
+			);
+			const prompt = buildSessionRenamePrompt(entries);
 			if (!prompt) {
 				ui.notify(
-					"No prompt yet — send a message first, or run '/cmux-rename <text>'.",
+					"No user prompts in the session log yet — send a message first, then run '/cmux-rename'.",
 					"warning",
 				);
 				return;
 			}
 			ui.notify("Renaming cmux tab/workspace…", "info");
 			rt.namedThisSession = true;
-			if (override) rt.lastFirstPrompt = override;
 			const ok = await runRename(ctx as unknown as NamesContext, prompt, {
 				statusKey: rt.statusKey,
 				renameWorkspace: rt.renameWorkspace,
@@ -208,6 +306,7 @@ export default function cmuxStatus(pi: ExtensionAPI): void {
 			if (!ok) {
 				ui.notify("Rename failed (model call errored).", "error");
 			} else {
+				persistRenamed(pi);
 				ui.notify("Renamed cmux tab/workspace.", "info");
 			}
 		},

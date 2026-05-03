@@ -20,16 +20,25 @@ export interface Names {
 	workspace: string;
 }
 
+/** Maximum character length of the tab title we pass to cmux. */
+export const MAX_TAB_CHARS = 50;
+
+/** Maximum character length of the workspace title we pass to cmux. */
+export const MAX_WORKSPACE_CHARS = 60;
+
 /** System prompt — exported so tests can snapshot it. */
 export const SUMMARY_SYSTEM_PROMPT =
-	"You name cmux terminal tabs and workspaces based on the first user request in a coding-agent session.\n" +
+	"You name cmux terminal tabs and workspaces based on a short summary of a coding-agent session.\n" +
+	"The input is one or more recent user messages from the session, joined with blank lines (newest last when truncated).\n" +
 	"Output a single JSON object exactly of the form {\"tab\":\"...\",\"workspace\":\"...\"} and nothing else.\n" +
 	"Rules:\n" +
-	'- "tab": 2-5 words, Title Case, specific enough that the user can distinguish tabs (e.g. "Add CMux Status Extension").\n' +
-	'- "workspace": 1-3 words, Title Case, broader theme (e.g. "Pi Extensions", "Backend API", "Mobile App").\n' +
+	`- "tab": up to ${MAX_TAB_CHARS} characters, Title Case, specific enough that the user can distinguish tabs (e.g. "Add CMux Status Extension").\n` +
+	`- "workspace": up to ${MAX_WORKSPACE_CHARS} characters, Title Case, broader theme (e.g. "Pi Extensions", "Debug OAuth Token Refresh Flow").\n` +
+	"- Be concise but concrete — aim shorter than the cap when the session has an obvious short label, longer when extra context helps disambiguate.\n" +
+	"- Favour the most recent user messages when they disagree with earlier ones — the session has evolved.\n" +
 	"- No quotes, no emojis, no trailing punctuation.\n" +
 	"- No leading verbs like \"Help with\" or \"Fix\" — just the thing itself.\n" +
-	"- If the request is a single word like \"hi\", still produce something reasonable (e.g. tab: \"Chat\", workspace: \"Chat\").";
+	"- If the input is a single word like \"hi\", still produce something reasonable (e.g. tab: \"Chat\", workspace: \"Chat\").";
 
 /** Cap prompt length we ship to the summariser — a gist is enough. */
 export const MAX_PROMPT_CHARS = 2000;
@@ -46,19 +55,49 @@ export const SUMMARY_MAX_TOKENS = 120;
  *
  * Returns `undefined` when no usable object could be parsed.
  */
+/**
+ * Clip a candidate tab/workspace string to `max` characters. Prefers
+ * word-boundary truncation when one is available in the final ~40% of
+ * the budget (i.e. we never drop more than ~60% of the allowed content
+ * just to land on a space).
+ */
+export function clipToLimit(s: string, max: number): string {
+	const trimmed = s.trim();
+	if (trimmed.length <= max) return trimmed;
+	const cut = trimmed.slice(0, max);
+	const lastSpace = cut.lastIndexOf(" ");
+	if (lastSpace > Math.floor(max * 0.6)) {
+		return cut.slice(0, lastSpace).trimEnd();
+	}
+	return cut.trimEnd();
+}
+
+/**
+ * Extract a `{tab, workspace}` pair from arbitrary model output. Finds the
+ * first `{...}` JSON object in the text and validates its shape; tolerates
+ * surrounding prose, stray trailing text, or a missing field (as long as
+ * at least one of `tab` / `workspace` is non-empty, the other is filled in
+ * from the present one). Both fields are clipped to their respective
+ * character budgets ({@link MAX_TAB_CHARS}, {@link MAX_WORKSPACE_CHARS}).
+ *
+ * Returns `undefined` when no usable object could be parsed.
+ */
 export function parseNames(raw: string | undefined | null): Names | undefined {
 	if (!raw) return undefined;
 	const match = raw.match(/\{[\s\S]*\}/);
 	if (!match) return undefined;
 	try {
 		const obj = JSON.parse(match[0]) as Record<string, unknown>;
-		const tab = typeof obj["tab"] === "string" ? (obj["tab"] as string).trim() : "";
-		const workspace =
-			typeof obj["workspace"] === "string"
-				? (obj["workspace"] as string).trim()
-				: "";
+		const rawTab = typeof obj["tab"] === "string" ? (obj["tab"] as string) : "";
+		const rawWorkspace =
+			typeof obj["workspace"] === "string" ? (obj["workspace"] as string) : "";
+		const tab = clipToLimit(rawTab, MAX_TAB_CHARS);
+		const workspace = clipToLimit(rawWorkspace, MAX_WORKSPACE_CHARS);
 		if (!tab && !workspace) return undefined;
-		return { tab: tab || workspace, workspace: workspace || tab };
+		return {
+			tab: tab || clipToLimit(workspace, MAX_TAB_CHARS),
+			workspace: workspace || clipToLimit(tab, MAX_WORKSPACE_CHARS),
+		};
 	} catch {
 		return undefined;
 	}
@@ -124,9 +163,12 @@ export async function generateNames(
 	}
 	if (!auth.ok) return undefined;
 
+	// Keep the *tail* — when the caller passed a joined transcript of
+	// recent user messages, the most recent turns sit at the end and should
+	// survive truncation.
 	const trimmed =
 		firstPrompt.length > MAX_PROMPT_CHARS
-			? firstPrompt.slice(0, MAX_PROMPT_CHARS)
+			? firstPrompt.slice(firstPrompt.length - MAX_PROMPT_CHARS)
 			: firstPrompt;
 
 	const text = await completion(

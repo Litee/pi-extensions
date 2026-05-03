@@ -22,7 +22,7 @@ unit-tested.
 | `agent_end`            | pill → `idle`, clear-progress, log, desktop `notify`  |
 | `session_shutdown`     | clear progress, clear status pill                     |
 
-### Auto-rename (once per session, on first user prompt)
+### Auto-rename (once per pi session, on first user prompt)
 
 Calls the current session's model (or the `PI_CMUX_SUMMARY_MODEL`
 override) with a short prompt, gets `{tab, workspace}` back, and runs:
@@ -32,10 +32,31 @@ cmux rename-tab -- <tab>
 cmux workspace-action --action rename --title <workspace>
 ```
 
-### `/cmux-rename [text]`
+Name sizes are capped in **characters** (words vary too much in length):
+tab titles up to **50 chars**, workspace titles up to **60 chars** —
+enough for descriptive labels like `Check SVC-API Video Search Results
+Limit`. The model is told to aim shorter when the session has an obvious
+short label. Anything the model returns over the cap is clipped to the
+nearest word boundary before being handed to cmux.
 
-Regenerates names from the last first-prompt, or from the supplied
-`[text]` argument. Warns if not running inside cmux.
+The "already auto-renamed" flag is persisted to the pi session log via
+`pi.appendEntry("cmux-status-renamed", { savedAt })` (marker-only, no
+payload body), so `/reload` rehydrates it from the log and does **not**
+re-rename a workspace the user has manually renamed after the initial
+auto-name. A fresh pi session (new session log) starts with a clean flag
+and will auto-rename once again.
+
+### `/cmux-rename`
+
+Regenerates names from the **current session log**, not the initial
+first-prompt. The command walks the active session branch
+(`sessionManager.getBranch()`), collects the most recent user messages
+(skipping slash commands), joins them, and hands that summary to the
+naming model. Running `/cmux-rename` later in a long session therefore
+produces names that reflect what the session has become, not what it
+started as. Any trailing text passed to the command is ignored. Warns
+when the session log has no user prompts yet, or when not running inside
+cmux.
 
 ## Environment variables
 
@@ -66,6 +87,7 @@ is fully testable without a live cmux or live model:
 | `cmuxSpawner.ts`   | Thin `spawn("cmux", …)` shim with a swappable `CmuxSpawner` for tests.          |
 | `names.ts`         | `parseNames` (pure), `generateNames` orchestration with an injectable completion hook. |
 | `namesCompletion.ts` | Thin `completeSimple(…)` shim — the only live-LLM call path.                  |
+| `sessionPrompt.ts` | Pure helper: walk the session branch, collect recent user messages, build the summariser prompt for `/cmux-rename`. |
 | `index.ts`         | Extension wiring: event subscriptions, `/cmux-rename`, per-session state.      |
 
 Tests cover every pure module plus the event-wiring and dispatch layers
