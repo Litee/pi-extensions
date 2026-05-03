@@ -214,3 +214,52 @@ describe("buildStartupAnnouncement with lastUpdateAt (#0009)", () => {
 		expect(msg).toContain("| last update: 10s ago");
 	});
 });
+
+describe("buildStartupAnnouncement when paused (#0010)", () => {
+	const NOW = new Date(2026, 4, 3, 12, 0, 0);
+
+	it("drops the per-status counts segment for the paused state", () => {
+		const snap: Snapshot = {
+			"/a": issue("open"),
+			"/b": issue("in_progress"),
+			"/c": issue("done"),
+		};
+		const msg = buildStartupAnnouncement("paused", "/abs/db", 60_000, snap);
+		expect(msg).toBe("issue-watcher: paused | dbRoot=/abs/db | poll=60s");
+		expect(msg).not.toMatch(/open|in_progress|done/);
+	});
+
+	it("keeps the last-update segment on the paused line (issue #0010, per user decision)", () => {
+		const msg = buildStartupAnnouncement(
+			"paused",
+			"/abs/db",
+			60_000,
+			{ "/a": issue("open") },
+			NOW.getTime() - 5 * 60_000,
+			NOW,
+		);
+		expect(msg).toBe(
+			"issue-watcher: paused | dbRoot=/abs/db | poll=60s | last update: 5m ago",
+		);
+		expect(msg).not.toMatch(/\d\s+(open|in_progress|done)/);
+	});
+
+	it("paused line with no lastUpdateAt and no clock omits both counts and last-update", () => {
+		const msg = buildStartupAnnouncement("paused", "/abs/db", 60_000, {
+			"/a": issue("open"),
+		});
+		expect(msg).toBe("issue-watcher: paused | dbRoot=/abs/db | poll=60s");
+	});
+
+	it("paused line shows 'last update: never' when clock is supplied but no lastUpdateAt", () => {
+		const msg = buildStartupAnnouncement("paused", "/abs/db", 60_000, {}, undefined, NOW);
+		expect(msg).toBe("issue-watcher: paused | dbRoot=/abs/db | poll=60s | last update: never");
+	});
+
+	it("'active' still includes counts", () => {
+		const msg = buildStartupAnnouncement("active", "/abs/db", 60_000, {
+			"/a": issue("open"),
+		});
+		expect(msg).toContain("1 open");
+	});
+});

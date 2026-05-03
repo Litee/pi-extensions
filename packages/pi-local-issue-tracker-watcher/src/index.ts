@@ -447,8 +447,10 @@ export default function issueWatcher(pi: ExtensionAPI): void {
 					rt.paused = true;
 					stopPolling(rt);
 					persistRunState(pi, true);
-					const snap = existsSync(rt.dbRoot) ? scanIssueFiles(rt.dbRoot) : {};
-					refreshStatusLine(ui ?? null, rt, "paused", snap);
+					// No disk scan: paused status line renders no per-status counts
+					// (#0010), so an empty snapshot is all buildStartupAnnouncement
+					// needs. Saves a readdir under dbRoot that the user wouldn't see.
+					refreshStatusLine(ui ?? null, rt, "paused", {});
 					ui?.notify?.(`issue-watcher: paused (dbRoot=${rt.dbRoot})`, "info");
 					return;
 				}

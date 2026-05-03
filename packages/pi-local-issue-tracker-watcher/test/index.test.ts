@@ -515,6 +515,38 @@ describe("/issue-watcher command", () => {
 		expect(pausedStatus!).toContain(dbRoot);
 	});
 
+	// -- issue #0010: paused status line drops per-status counts --
+	it("'pause' pinned line contains no per-status counts (issue #0010)", async () => {
+		// Seed some issue files so a scan would actually produce a non-empty
+		// count; the test proves the counts are still excluded.
+		mkdirSync(join(dbRoot, "skill-a"), { recursive: true });
+		writeFileSync(
+			join(dbRoot, "skill-a", "0001-a.json"),
+			JSON.stringify({ id: "0001", status: "open", skill: "skill-a" }),
+		);
+		writeFileSync(
+			join(dbRoot, "skill-a", "0002-b.json"),
+			JSON.stringify({ id: "0002", status: "done", skill: "skill-a" }),
+		);
+
+		const pi = makeFakePi();
+		extensionWithDbRoot(pi, dbRoot);
+		const cmd = pi.commands.get("issue-watcher");
+		const ctx = makeFakeCtx();
+		await cmd!.handler("pause", ctx);
+
+		const statusCalls = ctx.ui.setStatus.mock.calls as Array<[string, string | undefined]>;
+		const pausedStatus = statusCalls
+			.filter(([k]) => k === "issue-watcher")
+			.map(([, v]) => v ?? "")
+			.find((v) => /paused/i.test(v));
+		expect(pausedStatus).toBeDefined();
+		// No '1 open' / '1 done' / any other count-shape segment.
+		expect(pausedStatus!).not.toMatch(/\d+ open/);
+		expect(pausedStatus!).not.toMatch(/\d+ done/);
+		expect(pausedStatus!).not.toMatch(/\d+ in_progress/);
+	});
+
 	it("with no args prints a status line that mentions the dbRoot", async () => {
 		const pi = makeFakePi();
 		extensionWithDbRoot(pi, dbRoot);

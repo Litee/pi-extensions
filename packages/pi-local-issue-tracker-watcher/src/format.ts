@@ -18,6 +18,12 @@ const WELL_KNOWN_STATUSES = ["open", "in_progress", "done", "wont_fix"] as const
  * appended (see {@link formatTimeSince}); omitting both preserves the
  * original format for back-compat.
  *
+ * **Paused state (#0010)**: when `state === "paused"` the per-status count
+ * summary is dropped entirely — a paused watcher is not producing a live
+ * readout, and freezing a count into the status bar is misleading. The
+ * last-update phrase (if provided) is still rendered because it is
+ * historical information, not a live count.
+ *
  * The message is meant for `ctx.ui.setStatus` (pinned status-row text) and
  * must NOT trigger an agent turn — it is purely a user-visible status line.
  */
@@ -30,7 +36,8 @@ export function buildStartupAnnouncement(
 	now?: Date,
 ): string {
 	const pollSeconds = Math.round(pollIntervalMs / 1000);
-	const base = `issue-watcher: ${state} | dbRoot=${dbRoot} | poll=${pollSeconds}s | ${formatStatusSummary(snapshot)}`;
+	const prefix = `issue-watcher: ${state} | dbRoot=${dbRoot} | poll=${pollSeconds}s`;
+	const base = state === "paused" ? prefix : `${prefix} | ${formatStatusSummary(snapshot)}`;
 	if (lastUpdateAt === undefined && now === undefined) return base;
 	return `${base} | last update: ${formatTimeSince(now ?? new Date(), lastUpdateAt)}`;
 }
