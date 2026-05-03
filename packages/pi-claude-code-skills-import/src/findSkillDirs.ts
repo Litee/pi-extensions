@@ -1,4 +1,4 @@
-import { existsSync, readdirSync, statSync } from "node:fs";
+import { existsSync, readdirSync, realpathSync, statSync } from "node:fs";
 import { join } from "node:path";
 
 /**
@@ -13,10 +13,29 @@ import { join } from "node:path";
  * SKILL.md, so a skill dir is reported once (not twice along with any
  * SKILL.md files nested inside it). Returns [] if `root` does not exist or
  * is unreadable.
+ *
+ * Symlink loops are broken by tracking the realpath of every directory we
+ * recurse into. A directory whose realpath has already been visited is
+ * skipped silently — this prevents infinite recursion / stack overflows
+ * when `~/.claude/skills/` contains cycles (see issue #0001).
  */
 export function findSkillDirs(root: string): string[] {
+	const visited = new Set<string>();
+	return findSkillDirsInner(root, visited);
+}
+
+function findSkillDirsInner(root: string, visited: Set<string>): string[] {
 	const out: string[] = [];
 	if (!existsSync(root)) return out;
+	let rootReal: string;
+	try {
+		rootReal = realpathSync(root);
+	} catch {
+		return out;
+	}
+	if (visited.has(rootReal)) return out;
+	visited.add(rootReal);
+
 	let entries;
 	try {
 		entries = readdirSync(root, { withFileTypes: true });
@@ -30,7 +49,7 @@ export function findSkillDirs(root: string): string[] {
 		if (existsSync(skillFile)) {
 			out.push(dir);
 		} else {
-			out.push(...findSkillDirs(dir));
+			out.push(...findSkillDirsInner(dir, visited));
 		}
 	}
 	return out;

@@ -101,4 +101,38 @@ describe("findSkillDirs", () => {
 		symlinkSync(real, link, "dir");
 		expect(findSkillDirs(root)).toEqual([join(link, "nested-skill")]);
 	});
+
+	// -- issue #0001 (H4): symlink cycle must not recurse unbounded --
+	it("terminates on a self-referential symlink cycle (issue #0001)", () => {
+		const root = join(tmpRoot, "r");
+		mkdirSync(root, { recursive: true });
+		// Create a self-loop: r/loop -> r  (symlink to ancestor).
+		symlinkSync(root, join(root, "loop"), "dir");
+		// And a legitimate skill alongside to make sure we still find it.
+		writeSkill(join(root, "real"));
+
+		// If the cycle guard is missing, this call would recurse forever or
+		// stack-overflow. Vitest's default timeout (5s) backstops an infinite
+		// loop; we additionally assert the expected output.
+		const dirs = findSkillDirs(root);
+		expect(dirs).toContain(join(root, "real"));
+		// No path from the loop should leak back into the results.
+		for (const d of dirs) {
+			expect(d.split("/loop/").length).toBeLessThanOrEqual(2);
+		}
+	});
+
+	it("terminates on mutual symlink cycles between two dirs (issue #0001)", () => {
+		const root = join(tmpRoot, "r");
+		mkdirSync(join(root, "a"), { recursive: true });
+		mkdirSync(join(root, "b"), { recursive: true });
+		// a/x -> b, b/y -> a — loops back and forth.
+		symlinkSync(join(root, "b"), join(root, "a", "x"), "dir");
+		symlinkSync(join(root, "a"), join(root, "b", "y"), "dir");
+
+		const dirs = findSkillDirs(root);
+		// No crash, no hang — and since there's no SKILL.md anywhere in the
+		// graph, the result is [].
+		expect(dirs).toEqual([]);
+	});
 });
