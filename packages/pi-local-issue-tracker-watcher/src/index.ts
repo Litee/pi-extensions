@@ -168,9 +168,11 @@ export async function handleSessionStart(
 	let lastUpdateAt = baseline?.lastUpdateAt;
 
 	// Rehydrate the user's last explicit pause / resume preference. Absent
-	// entry → default to running so fresh installs auto-start polling.
+	// entry → default to **paused** (#0012). A brand-new pi session stays
+	// quiet until the user opts in with `/issue-watcher resume`, matching
+	// the intent that background chat messages require explicit consent.
 	const runState = rehydrateRunStateFromSession(ctx);
-	const paused = runState?.paused === true;
+	const paused = runState?.paused !== false;
 
 	// Emit a single, informational startup announcement so the user can see
 	// the watcher is running and which dbRoot is in effect — without having

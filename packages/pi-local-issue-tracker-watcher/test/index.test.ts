@@ -95,6 +95,20 @@ function makeFakeCtx(entries: Array<{ type?: string; customType?: string; data?:
 	};
 }
 
+/**
+ * Build a `{ paused: false }` runstate entry for tests that need the watcher
+ * in its explicit 'running' state. Since #0012, a fresh session with no
+ * runstate entry defaults to PAUSED, so most tests that exercise active
+ * behaviour (diff emit, startup chat, polling) need to seed this.
+ */
+function runningRunstate(): { type: string; customType: string; data: { savedAt: number; paused: boolean } } {
+	return {
+		type: "custom",
+		customType: "issue-watcher-runstate",
+		data: { savedAt: Date.now(), paused: false },
+	};
+}
+
 // ---------------------------------------------------------------------------
 // Registration — what the default export wires up on `pi`
 // ---------------------------------------------------------------------------
@@ -195,7 +209,7 @@ describe("handleSessionStart", () => {
 		writeIssue("skill-a", "0001-a.json", { id: "0001", status: "open", title: "t", skill: "skill-a" });
 
 		const pi = makeFakePi();
-		const ctx = makeFakeCtx([]); // no prior state entries
+		const ctx = makeFakeCtx([runningRunstate()]); // no baseline; explicit running
 
 		const out = await handleSessionStart({ pi: pi as never, ctx: ctx as never, dbRoot });
 
@@ -257,6 +271,7 @@ describe("handleSessionStart", () => {
 
 		const pi = makeFakePi();
 		const ctx = makeFakeCtx([
+			runningRunstate(),
 			{
 				type: "custom",
 				customType: STATE_ENTRY_TYPE,
@@ -300,6 +315,7 @@ describe("handleSessionStart", () => {
 
 		const pi = makeFakePi();
 		const ctx = makeFakeCtx([
+			runningRunstate(),
 			{
 				type: "custom",
 				customType: STATE_ENTRY_TYPE,
@@ -350,7 +366,7 @@ describe("handleSessionStart", () => {
 	it("pinned status line is emitted via ctx.ui.setStatus (#0009, #0011)", async () => {
 		writeIssue("skill-a", "0001-a.json", { id: "0001", status: "open", skill: "skill-a" });
 		const pi = makeFakePi();
-		const ctx = makeFakeCtx([]);
+		const ctx = makeFakeCtx([runningRunstate()]);
 
 		await handleSessionStart({ pi: pi as never, ctx: ctx as never, dbRoot });
 
@@ -430,7 +446,7 @@ describe("handleSessionStart", () => {
 	it("uses ctx.ui.theme.fg('accent', ...) for the pinned status line; no hard-coded ANSI (issue #0005)", async () => {
 		writeIssue("skill-a", "0001-a.json", { id: "0001", status: "open", skill: "skill-a" });
 		const pi = makeFakePi();
-		const ctx = makeFakeCtx([]);
+		const ctx = makeFakeCtx([runningRunstate()]);
 
 		await handleSessionStart({ pi: pi as never, ctx: ctx as never, dbRoot });
 
@@ -641,7 +657,7 @@ describe("polling lifecycle", () => {
 		}
 
 		const handler = pi.sessionStartHandler!;
-		const ctx = makeFakeCtx([]); // first session: saves baseline, no diff
+		const ctx = makeFakeCtx([runningRunstate()]); // first session: saves baseline, no diff
 		await handler({}, ctx);
 
 		// Fresh session emits the #0011 startup summary (with triggerTurn:false)
@@ -742,7 +758,7 @@ describe("polling lifecycle", () => {
 		}
 
 		const handler = pi.sessionStartHandler!;
-		const ctx = makeFakeCtx([]);
+		const ctx = makeFakeCtx([runningRunstate()]);
 		await handler({}, ctx);
 		const diffsAfterStartup = pi.sendMessage.mock.calls.filter(
 			(c) => (c[0] as { content: string }).content.includes("issue update"),
@@ -823,12 +839,42 @@ describe("run-state persistence", () => {
 
 	// -- handleSessionStart returns the rehydrated paused flag ---------------
 
-	it("handleSessionStart defaults paused=false when no run-state entry exists", async () => {
+	it("handleSessionStart defaults paused=true when no run-state entry exists (issue #0012)", async () => {
 		writeIssue("skill-a", "0001-a.json", { id: "0001", status: "open", skill: "skill-a" });
 		const pi = makeFakePi();
 		const ctx = makeFakeCtx([]);
 		const res = await handleSessionStart({ pi: pi as never, ctx: ctx as never, dbRoot });
 		expect(res.started).toBe(true);
+		expect(res.paused).toBe(true);
+	});
+
+	it("fresh session (no runstate, no baseline) pins 'paused' and emits no startup chat message (issue #0012)", async () => {
+		writeIssue("skill-a", "0001-a.json", { id: "0001", status: "open", skill: "skill-a" });
+		const pi = makeFakePi();
+		const ctx = makeFakeCtx([]);
+		await handleSessionStart({ pi: pi as never, ctx: ctx as never, dbRoot });
+
+		// No chat message of any kind — paused watcher must stay silent.
+		expect(pi.sendMessage).not.toHaveBeenCalled();
+
+		// Pinned status line says 'paused', not 'active'.
+		const statusCalls = ctx.ui.setStatus.mock.calls as Array<[string, string | undefined]>;
+		const pinned = statusCalls.find(([k]) => k === "issue-watcher")?.[1] ?? "";
+		expect(pinned).toContain("paused");
+		expect(pinned).not.toMatch(/\bactive\b/);
+	});
+
+	it("handleSessionStart returns paused=false when the newest run-state entry is explicitly running (issue #0012)", async () => {
+		writeIssue("skill-a", "0001-a.json", { id: "0001", status: "open", skill: "skill-a" });
+		const pi = makeFakePi();
+		const ctx = makeFakeCtx([
+			{
+				type: "custom",
+				customType: RUNSTATE_ENTRY_TYPE,
+				data: { savedAt: Date.now(), paused: false },
+			},
+		]);
+		const res = await handleSessionStart({ pi: pi as never, ctx: ctx as never, dbRoot });
 		expect(res.paused).toBe(false);
 	});
 
@@ -1088,7 +1134,7 @@ describe("last-update timestamp (#0009)", () => {
 	it("handleSessionStart: first session (no baseline) does NOT set lastUpdateAt", async () => {
 		writeIssue("skill-a", "0001-a.json", { id: "0001", status: "open", skill: "skill-a" });
 		const pi = makeFakePi();
-		const ctx = makeFakeCtx([]);
+		const ctx = makeFakeCtx([runningRunstate()]);
 		await handleSessionStart({ pi: pi as never, ctx: ctx as never, dbRoot });
 
 		const [, payload] = pi.appendEntry.mock.calls[0] as [
@@ -1131,6 +1177,7 @@ describe("last-update timestamp (#0009)", () => {
 		const pi = makeFakePi();
 		const oldStamp = Date.now() - 10 * 60_000;
 		const ctx = makeFakeCtx([
+			runningRunstate(),
 			{
 				type: "custom",
 				customType: STATE_ENTRY_TYPE,
@@ -1200,7 +1247,7 @@ describe("last-update timestamp (#0009)", () => {
 			}
 
 			const handler = pi.sessionStartHandler!;
-			const ctx = makeFakeCtx([]);
+			const ctx = makeFakeCtx([runningRunstate()]);
 			await handler({}, ctx);
 
 			const statusAtStart = ctx.ui.setStatus.mock.calls.filter(
@@ -1251,7 +1298,7 @@ describe("startup chat message (#0011)", () => {
 	it("emits one chat-visible startup message with customType='issue-watcher' and triggerTurn=false on fresh session", async () => {
 		writeIssue("skill-a", "0001-a.json", { id: "0001", status: "open", skill: "skill-a" });
 		const pi = makeFakePi();
-		const ctx = makeFakeCtx([]);
+		const ctx = makeFakeCtx([runningRunstate()]);
 
 		await handleSessionStart({ pi: pi as never, ctx: ctx as never, dbRoot });
 
@@ -1319,6 +1366,7 @@ describe("startup chat message (#0011)", () => {
 
 		const pi = makeFakePi();
 		const ctx = makeFakeCtx([
+			runningRunstate(),
 			{
 				type: "custom",
 				customType: STATE_ENTRY_TYPE,

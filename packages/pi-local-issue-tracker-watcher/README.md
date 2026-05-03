@@ -53,12 +53,14 @@ On every `session_start`:
    clears it.
 5. Rehydrate any baseline snapshot from the session log (< 24 h old).
 6. Rehydrate the user's last explicit **run state** (paused / running)
-   from the session log. Absent entry → default **running**. If the
-   rehydrated state is **paused**, the extension skips the diff, pins
-   `paused` in the status entry, and does NOT start the poll loop — an
-   explicit `/issue-watcher resume` is required to restart it. This is
-   what makes pause/resume survive plugin reload and `session_start`
-   with `reason: "resume"`.
+   from the session log. Absent entry → default **paused** (#0012). A
+   fresh pi session stays quiet until the user opts in with
+   `/issue-watcher resume`; the pinned status line reads `paused`, no
+   startup chat message is emitted, and no poll loop starts. Only an
+   explicit `paused=false` run-state entry (from a prior
+   `/issue-watcher resume` in the same session log) flips this to
+   **running**. This is what makes pause/resume survive plugin reload
+   and `session_start` with `reason: "resume"`.
 7. If a baseline exists **and** the watcher is not paused **and** the
    current on-disk state differs, emit **one** chat message summarising
    every change (status, title/description update, comment added/removed,
