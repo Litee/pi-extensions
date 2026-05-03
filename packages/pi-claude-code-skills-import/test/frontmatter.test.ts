@@ -67,4 +67,17 @@ describe("extractSkillName", () => {
 		const p = writeFile("---\nname: first\nname: second\n---\n");
 		expect(extractSkillName(p)).toBe("first");
 	});
+
+	// -- issue #0003 (N3): CRLF frontmatter must not leak \r --
+	it("handles CRLF line endings without trailing \\r in the returned name (issue #0003)", () => {
+		const p = writeFile("---\r\nname: crlf-skill\r\ndescription: x\r\n---\r\n\r\n# body\r\n");
+		const got = extractSkillName(p);
+		expect(got).toBe("crlf-skill");
+		expect(got).not.toMatch(/\r/);
+	});
+
+	it("handles CRLF frontmatter with quoted name (issue #0003)", () => {
+		const p = writeFile(`---\r\nname: "crlf-quoted"\r\ndescription: x\r\n---\r\n`);
+		expect(extractSkillName(p)).toBe("crlf-quoted");
+	});
 });
