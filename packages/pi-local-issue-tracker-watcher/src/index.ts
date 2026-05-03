@@ -39,6 +39,7 @@ import { changedPaths, diffSnapshots } from "./diff.js";
 import {
 	buildChatMessageContent,
 	buildStartupAnnouncement,
+	buildStartupChatMessage,
 	formatStatusSummary,
 } from "./format.js";
 import {
@@ -197,6 +198,20 @@ export async function handleSessionStart(
 			savedAt: Date.now(),
 			snapshot: serialisableSnapshot(currentSnapshot),
 		});
+		// Fresh-session startup summary (#0011) — only when not paused. A
+		// paused watcher stays silent; the pinned status line already shows
+		// 'paused' and that is sufficient signal. Matches the no-diff path
+		// below: informational, no agent turn.
+		if (!paused) {
+			pi.sendMessage(
+				{
+					customType: CUSTOM_MESSAGE_TYPE,
+					content: buildStartupChatMessage(dbRoot, currentSnapshot),
+					display: true,
+				},
+				{ deliverAs: "followUp", triggerTurn: false },
+			);
+		}
 		return { started: true, paused, snapshot: currentSnapshot, lastUpdateAt };
 	}
 
@@ -231,6 +246,20 @@ export async function handleSessionStart(
 			snapshot: serialisableSnapshot(currentSnapshot),
 			lastUpdateAt,
 		});
+	} else {
+		// No diff to deliver — emit a short, chat-visible startup summary so the
+		// LLM can see the watcher is active and knows which tracker it is
+		// monitoring (#0011). Never fired when a diff message already landed
+		// on this session_start (avoid two chat messages in rapid succession).
+		// `triggerTurn: false` keeps the message informational.
+		pi.sendMessage(
+			{
+				customType: CUSTOM_MESSAGE_TYPE,
+				content: buildStartupChatMessage(dbRoot, currentSnapshot),
+				display: true,
+			},
+			{ deliverAs: "followUp", triggerTurn: false },
+		);
 	}
 
 	return { started: true, paused, snapshot: currentSnapshot, lastUpdateAt };
@@ -496,5 +525,5 @@ export default function issueWatcher(pi: ExtensionAPI): void {
 export { STATE_ENTRY_TYPE, RUNSTATE_ENTRY_TYPE } from "./persistence.js";
 export { scanIssueFiles } from "./scanner.js";
 export { diffSnapshots, changedPaths, formatChange } from "./diff.js";
-export { buildChatMessageContent, buildStartupAnnouncement, formatStatusSummary } from "./format.js";
+export { buildChatMessageContent, buildStartupAnnouncement, buildStartupChatMessage, formatStatusSummary } from "./format.js";
 export { resolveDbRoot };

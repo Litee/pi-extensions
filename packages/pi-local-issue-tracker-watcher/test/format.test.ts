@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { buildChatMessageContent, buildStartupAnnouncement, formatStatusSummary, formatTimeSince } from "../src/format.js";
+import { buildChatMessageContent, buildStartupAnnouncement, buildStartupChatMessage, formatStatusSummary, formatTimeSince } from "../src/format.js";
 import type { Change } from "../src/diff.js";
 import type { Snapshot } from "../src/types.js";
 
@@ -261,5 +261,35 @@ describe("buildStartupAnnouncement when paused (#0010)", () => {
 			"/a": issue("open"),
 		});
 		expect(msg).toContain("1 open");
+	});
+});
+
+// ---------------------------------------------------------------------------
+// buildStartupChatMessage (#0011) — chat-visible startup summary
+// ---------------------------------------------------------------------------
+
+describe("buildStartupChatMessage (#0011)", () => {
+	it("contains 'active', the absolute dbRoot, and the status summary", () => {
+		const msg = buildStartupChatMessage("/abs/db", {
+			"/a": issue("open"),
+			"/b": issue("in_progress"),
+			"/c": issue("done"),
+		});
+		expect(msg).toBe(
+			"issue-watcher: active | dbRoot=/abs/db | 1 open, 1 in_progress, 1 done",
+		);
+	});
+
+	it("includes an explicit 'N open' segment even when zero (structured signal for the LLM)", () => {
+		const msg = buildStartupChatMessage("/abs/db", {
+			"/a": issue("done"),
+			"/b": issue("wont_fix"),
+		});
+		expect(msg).toMatch(/0 open/);
+	});
+
+	it("returns a sensible line for an empty tracker", () => {
+		const msg = buildStartupChatMessage("/abs/db", {});
+		expect(msg).toBe("issue-watcher: active | dbRoot=/abs/db | 0 open");
 	});
 });

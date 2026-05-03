@@ -206,8 +206,13 @@ describe("handleSessionStart", () => {
 		expect(Object.keys(payload.snapshot)).toHaveLength(1);
 		expect(typeof payload.savedAt).toBe("number");
 
-		// No chat message delivered — nothing to report yet.
-		expect(pi.sendMessage).not.toHaveBeenCalled();
+		// No diff message delivered — nothing to report yet. (Since #0011, a
+		// chat-visible startup summary is also emitted with triggerTurn:false;
+		// that is tested separately in the 'startup chat message' block.)
+		const diffCalls = pi.sendMessage.mock.calls.filter(
+			(c) => (c[0] as { content: string }).content.includes("issue update"),
+		);
+		expect(diffCalls).toHaveLength(0);
 		expect(out.started).toBe(true);
 
 		// Startup announcement emitted via ui.setStatus (pins to extension-status row),
@@ -308,7 +313,13 @@ describe("handleSessionStart", () => {
 
 		await handleSessionStart({ pi: pi as never, ctx: ctx as never, dbRoot });
 
-		expect(pi.sendMessage).not.toHaveBeenCalled();
+		// Since #0011, the watcher emits a chat-visible startup summary on every
+		// session_start (when not paused and dbRoot exists). The 'no real
+		// changes' assertion is now about the DIFF path not firing.
+		const diffCalls = pi.sendMessage.mock.calls.filter(
+			(c) => (c[0] as { content: string }).content.includes("issue update"),
+		);
+		expect(diffCalls).toHaveLength(0);
 		expect(pi.appendEntry).not.toHaveBeenCalled();
 
 		// Startup announcement still fires even when there are no changes,
@@ -336,19 +347,23 @@ describe("handleSessionStart", () => {
 		expect(statusCalls.find(([k]) => k === "issue-watcher")).toBeUndefined();
 	});
 
-	it("startup announcement is emitted via ctx.ui.setStatus, NOT via pi.sendMessage (no triggerTurn)", async () => {
+	it("pinned status line is emitted via ctx.ui.setStatus (#0009, #0011)", async () => {
 		writeIssue("skill-a", "0001-a.json", { id: "0001", status: "open", skill: "skill-a" });
 		const pi = makeFakePi();
 		const ctx = makeFakeCtx([]);
 
 		await handleSessionStart({ pi: pi as never, ctx: ctx as never, dbRoot });
 
-		// Announcement goes to the extension-status row, never to chat —
-		// guarantees no agent turn is triggered by the startup message.
-		const sendMessageTypes = pi.sendMessage.mock.calls.map(
-			(c) => (c[0] as { customType?: string })?.customType,
-		);
-		expect(sendMessageTypes).not.toContain("issue-watcher");
+		// The pinned status row is always set (#0009). The chat-visible startup
+		// summary added in #0011 goes through pi.sendMessage with
+		// triggerTurn:false — that is asserted separately in the #0011 block.
+		// Here we only verify setStatus fires and, when sendMessage is called,
+		// it never triggers a turn.
+		for (const [, opts] of pi.sendMessage.mock.calls as Array<
+			[unknown, { triggerTurn?: boolean }]
+		>) {
+			expect(opts?.triggerTurn ?? false).toBe(false);
+		}
 
 		const statusCalls = ctx.ui.setStatus.mock.calls as Array<[string, string | undefined]>;
 		expect(statusCalls.some(([k]) => k === "issue-watcher")).toBe(true);
@@ -629,8 +644,12 @@ describe("polling lifecycle", () => {
 		const ctx = makeFakeCtx([]); // first session: saves baseline, no diff
 		await handler({}, ctx);
 
-		// Baseline saved, no chat yet.
-		expect(pi.sendMessage).not.toHaveBeenCalled();
+		// Fresh session emits the #0011 startup summary (with triggerTurn:false)
+		// but no diff message yet.
+		const diffCallsBefore = pi.sendMessage.mock.calls.filter(
+			(c) => (c[0] as { content: string }).content.includes("issue update"),
+		);
+		expect(diffCallsBefore).toHaveLength(0);
 
 		// Mutate the file so the next poll produces a status_changed diff. We
 		// set a later mtime explicitly so the scanner sees the change regardless
@@ -648,8 +667,11 @@ describe("polling lifecycle", () => {
 		// Advance past the poll interval and let the microtask queue drain.
 		await vi.advanceTimersByTimeAsync(POLL_INTERVAL_MS);
 
-		expect(pi.sendMessage).toHaveBeenCalledTimes(1);
-		const [payload, opts] = pi.sendMessage.mock.calls[0] as [
+		const diffCallsAfter = pi.sendMessage.mock.calls.filter(
+			(c) => (c[0] as { content: string }).content.includes("status changed"),
+		);
+		expect(diffCallsAfter).toHaveLength(1);
+		const [payload, opts] = diffCallsAfter[0] as [
 			{ customType: string; content: string },
 			{ triggerTurn?: boolean },
 		];
@@ -682,14 +704,22 @@ describe("polling lifecycle", () => {
 		expect(sessionShutdown).toBeDefined();
 
 		await sessionStart({}, makeFakeCtx([]));
+		const diffsBefore = pi.sendMessage.mock.calls.filter(
+			(c) => (c[0] as { content: string }).content.includes("issue update"),
+		).length;
 		// shutdown should not throw and should leave the runtime in a clean state.
 		await sessionShutdown({}, makeFakeCtx([]));
 
 		// Advance past one poll interval; because shutdown stopped the timer, no
-		// sendMessage fires even if we modify the file.
+		// DIFF message fires even if we modify the file. (The #0011 startup
+		// summary may have been sent during session_start above; we care here
+		// about diffs not firing post-shutdown.)
 		writeIssue("skill-a", "0001-a.json", { id: "0001", status: "done", skill: "skill-a" });
 		await vi.advanceTimersByTimeAsync(POLL_INTERVAL_MS * 2);
-		expect(pi.sendMessage).not.toHaveBeenCalled();
+		const diffsAfter = pi.sendMessage.mock.calls.filter(
+			(c) => (c[0] as { content: string }).content.includes("issue update"),
+		).length;
+		expect(diffsAfter).toBe(diffsBefore);
 	});
 
 	// -- issue #0003 (H3): poll catching a mid-write parse failure emits no diff --
@@ -714,7 +744,10 @@ describe("polling lifecycle", () => {
 		const handler = pi.sessionStartHandler!;
 		const ctx = makeFakeCtx([]);
 		await handler({}, ctx);
-		expect(pi.sendMessage).not.toHaveBeenCalled();
+		const diffsAfterStartup = pi.sendMessage.mock.calls.filter(
+			(c) => (c[0] as { content: string }).content.includes("issue update"),
+		).length;
+		expect(diffsAfterStartup).toBe(0);
 
 		// Simulate a mid-write catch: overwrite the file with invalid JSON.
 		writeFileSync(filePath, "{ incomplete", "utf8");
@@ -727,7 +760,10 @@ describe("polling lifecycle", () => {
 		warn.mockRestore();
 
 		// No spurious `removed` message was sent — carry-forward kept the entry.
-		expect(pi.sendMessage).not.toHaveBeenCalled();
+		const diffsAfterMidwrite = pi.sendMessage.mock.calls.filter(
+			(c) => (c[0] as { content: string }).content.includes("issue update"),
+		).length;
+		expect(diffsAfterMidwrite).toBe(0);
 
 		// Now the writer finishes — legitimate status change lands on disk.
 		writeIssue("skill-a", "0001-a.json", {
@@ -740,10 +776,13 @@ describe("polling lifecycle", () => {
 		utimesSync(filePath, future2, future2);
 		await vi.advanceTimersByTimeAsync(POLL_INTERVAL_MS);
 
-		// Exactly ONE message, with a status_changed diff from the carried-forward
+		// Exactly ONE diff message, with a status_changed diff from the carried-forward
 		// baseline — not a spurious `new` pair.
-		expect(pi.sendMessage).toHaveBeenCalledTimes(1);
-		const [payload] = pi.sendMessage.mock.calls[0] as [
+		const diffCalls = pi.sendMessage.mock.calls.filter(
+			(c) => (c[0] as { content: string }).content.includes("issue update"),
+		);
+		expect(diffCalls).toHaveLength(1);
+		const [payload] = diffCalls[0] as [
 			{ content: string; details?: { changes?: Array<{ kind: string }> } },
 		];
 		expect(payload.content).toMatch(/status changed/);
@@ -907,7 +946,10 @@ describe("run-state persistence", () => {
 			const future = new Date(Date.now() + 60_000);
 			utimesSync(filePath, future, future);
 			await vi.advanceTimersByTimeAsync(POLL_INTERVAL_MS);
-			expect(pi.sendMessage).toHaveBeenCalledTimes(1);
+			const diffCalls = pi.sendMessage.mock.calls.filter(
+				(c) => (c[0] as { content: string }).content.includes("issue update"),
+			);
+			expect(diffCalls).toHaveLength(1);
 		} finally {
 			vi.useRealTimers();
 		}
@@ -1174,9 +1216,125 @@ describe("last-update timestamp (#0009)", () => {
 
 			// Each poll re-pins the status line so the age phrase can tick forward.
 			expect(statusAfter).toBeGreaterThanOrEqual(statusAtStart + 3);
-			expect(pi.sendMessage).not.toHaveBeenCalled();
+			// pollOnce does not emit chat messages when there are no diffs.
+			const pollDiffs = pi.sendMessage.mock.calls.filter(
+				(c) => (c[0] as { content: string }).content.includes("issue update"),
+			);
+			expect(pollDiffs).toHaveLength(0);
 		} finally {
 			vi.useRealTimers();
 		}
+	});
+});
+
+// ---------------------------------------------------------------------------
+// Startup chat message (#0011)
+// ---------------------------------------------------------------------------
+
+describe("startup chat message (#0011)", () => {
+	let dbRoot: string;
+	beforeEach(() => {
+		dbRoot = mkdtempSync(join(tmpdir(), "pi-issue-watcher-start-"));
+	});
+	afterEach(() => {
+		rmSync(dbRoot, { recursive: true, force: true });
+	});
+
+	function writeIssue(skill: string, fname: string, body: Record<string, unknown>): string {
+		const skillDir = join(dbRoot, skill);
+		mkdirSync(skillDir, { recursive: true });
+		const p = join(skillDir, fname);
+		writeFileSync(p, JSON.stringify(body), "utf8");
+		return p;
+	}
+
+	it("emits one chat-visible startup message with customType='issue-watcher' and triggerTurn=false on fresh session", async () => {
+		writeIssue("skill-a", "0001-a.json", { id: "0001", status: "open", skill: "skill-a" });
+		const pi = makeFakePi();
+		const ctx = makeFakeCtx([]);
+
+		await handleSessionStart({ pi: pi as never, ctx: ctx as never, dbRoot });
+
+		const startupCalls = pi.sendMessage.mock.calls.filter(
+			(c) => (c[0] as { customType?: string }).customType === "issue-watcher",
+		);
+		expect(startupCalls).toHaveLength(1);
+		const [payload, opts] = startupCalls[0] as [
+			{ customType: string; content: string; display?: boolean },
+			{ triggerTurn?: boolean; deliverAs?: string },
+		];
+		expect(payload.content).toContain("active");
+		expect(payload.content).toContain(dbRoot);
+		expect(payload.content).toMatch(/\d+ open/);
+		expect(opts.triggerTurn).toBe(false);
+		expect(payload.display).toBe(true);
+	});
+
+	it("does NOT send a startup message when dbRoot is missing", async () => {
+		const pi = makeFakePi();
+		const ctx = makeFakeCtx();
+		const missing = join(dbRoot, "does-not-exist");
+
+		await handleSessionStart({ pi: pi as never, ctx: ctx as never, dbRoot: missing });
+
+		expect(pi.sendMessage).not.toHaveBeenCalled();
+	});
+
+	it("does NOT send a startup message when the rehydrated run-state is paused", async () => {
+		writeIssue("skill-a", "0001-a.json", { id: "0001", status: "open", skill: "skill-a" });
+		const pi = makeFakePi();
+		// Seed the session log with a run-state entry that marks the watcher paused.
+		const ctx = makeFakeCtx([
+			{ type: "custom", customType: RUNSTATE_ENTRY_TYPE, data: { savedAt: Date.now(), paused: true } },
+		]);
+
+		await handleSessionStart({ pi: pi as never, ctx: ctx as never, dbRoot });
+
+		expect(pi.sendMessage).not.toHaveBeenCalled();
+	});
+
+	it("when a diff is emitted, does NOT pile a second startup message on top", async () => {
+		const filePath = writeIssue("skill-a", "0001-a.json", {
+			id: "0001",
+			status: "open",
+			skill: "skill-a",
+		});
+		const baselineSnapshot: Snapshot = {
+			[filePath]: {
+				mtimeNs: 1n,
+				issueId: "0001",
+				status: "open",
+				title: "",
+				description: "",
+				comments: [],
+				skill: "skill-a",
+				skillVersion: "",
+			},
+		};
+		writeIssue("skill-a", "0001-a.json", {
+			id: "0001",
+			status: "done",
+			skill: "skill-a",
+		});
+
+		const pi = makeFakePi();
+		const ctx = makeFakeCtx([
+			{
+				type: "custom",
+				customType: STATE_ENTRY_TYPE,
+				data: { savedAt: Date.now(), snapshot: baselineSnapshot },
+			},
+		]);
+
+		await handleSessionStart({ pi: pi as never, ctx: ctx as never, dbRoot });
+
+		const sent = pi.sendMessage.mock.calls.filter(
+			(c) => (c[0] as { customType?: string }).customType === "issue-watcher",
+		);
+		// Exactly one: the diff message. No second startup-summary message on top.
+		expect(sent).toHaveLength(1);
+		const payload = sent[0]![0] as { content: string };
+		expect(payload.content).toMatch(/issue update/);
+		expect(payload.content).not.toContain("active | dbRoot=");
 	});
 });

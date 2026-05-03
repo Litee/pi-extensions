@@ -66,6 +66,38 @@ export function formatTimeSince(now: Date, lastUpdateAt: number | undefined): st
 	return `${Math.floor(delta / (24 * 60 * 60_000))}d ago`;
 }
 
+/**
+ * Build the single-line, chat-visible startup announcement the watcher
+ * posts on each `session_start` so the LLM can see the watcher is active
+ * and knows which tracker it is monitoring (#0011).
+ *
+ * Format: `issue-watcher: active | dbRoot=<path> | <summary>`
+ *
+ * The summary includes an explicit `0 open` segment when the tracker has
+ * no open issues — downstream agents can key off a stable structured shape.
+ *
+ * Unlike {@link buildStartupAnnouncement} (which goes to the pinned status
+ * row), this string is intended for `pi.sendMessage({ triggerTurn: false })`
+ * so it lands in the conversation but does not cost an agent turn.
+ */
+export function buildStartupChatMessage(dbRoot: string, snapshot: Snapshot): string {
+	const counts: Record<string, number> = {};
+	for (const info of Object.values(snapshot)) {
+		const s = info.status || "unknown";
+		counts[s] = (counts[s] ?? 0) + 1;
+	}
+	const parts: string[] = [`${counts["open"] ?? 0} open`];
+	for (const s of WELL_KNOWN_STATUSES) {
+		if (s === "open") continue;
+		if (s in counts) parts.push(`${counts[s]} ${s}`);
+	}
+	const leftover = Object.keys(counts)
+		.filter((s) => !(WELL_KNOWN_STATUSES as readonly string[]).includes(s))
+		.sort();
+	for (const s of leftover) parts.push(`${counts[s]} ${s}`);
+	return `issue-watcher: active | dbRoot=${dbRoot} | ${parts.join(", ")}`;
+}
+
 /** Render issue counts as "N open, M in_progress, ..." — matches the Python watcher. */
 export function formatStatusSummary(snapshot: Snapshot): string {
 	const counts: Record<string, number> = {};
