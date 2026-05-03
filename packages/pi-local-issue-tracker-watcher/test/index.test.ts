@@ -9,7 +9,7 @@ import createExtension, {
 	handleSessionStart,
 	resolveDbRoot,
 } from "../src/index.js";
-import { STATE_ENTRY_TYPE } from "../src/persistence.js";
+import { RUNSTATE_ENTRY_TYPE, STATE_ENTRY_TYPE } from "../src/persistence.js";
 import type { Snapshot } from "../src/types.js";
 
 // ---------------------------------------------------------------------------
@@ -716,5 +716,276 @@ describe("polling lifecycle", () => {
 		];
 		expect(payload.content).toMatch(/status changed/);
 		expect(payload.content).not.toMatch(/new issue/);
+	});
+});
+
+// ---------------------------------------------------------------------------
+// Run-state persistence (issue "paused/running survives reload")
+// ---------------------------------------------------------------------------
+
+describe("run-state persistence", () => {
+	let dbRoot: string;
+
+	beforeEach(() => {
+		dbRoot = mkdtempSync(join(tmpdir(), "pi-issue-watcher-rs-"));
+	});
+	afterEach(() => {
+		rmSync(dbRoot, { recursive: true, force: true });
+	});
+
+	function writeIssue(skill: string, fname: string, body: Record<string, unknown>): void {
+		const skillDir = join(dbRoot, skill);
+		mkdirSync(skillDir, { recursive: true });
+		writeFileSync(join(skillDir, fname), JSON.stringify(body), "utf8");
+	}
+
+	function extensionWithDbRoot(pi: StubPi, root: string): void {
+		const prev = process.env["LOCAL_ISSUE_TRACKER_DB_ROOT"];
+		process.env["LOCAL_ISSUE_TRACKER_DB_ROOT"] = root;
+		try {
+			createExtension(pi as never);
+		} finally {
+			if (prev === undefined) delete process.env["LOCAL_ISSUE_TRACKER_DB_ROOT"];
+			else process.env["LOCAL_ISSUE_TRACKER_DB_ROOT"] = prev;
+		}
+	}
+
+	// -- handleSessionStart returns the rehydrated paused flag ---------------
+
+	it("handleSessionStart defaults paused=false when no run-state entry exists", async () => {
+		writeIssue("skill-a", "0001-a.json", { id: "0001", status: "open", skill: "skill-a" });
+		const pi = makeFakePi();
+		const ctx = makeFakeCtx([]);
+		const res = await handleSessionStart({ pi: pi as never, ctx: ctx as never, dbRoot });
+		expect(res.started).toBe(true);
+		expect(res.paused).toBe(false);
+	});
+
+	it("handleSessionStart returns paused=true when the newest run-state entry is paused", async () => {
+		writeIssue("skill-a", "0001-a.json", { id: "0001", status: "open", skill: "skill-a" });
+		const pi = makeFakePi();
+		const ctx = makeFakeCtx([
+			{
+				type: "custom",
+				customType: RUNSTATE_ENTRY_TYPE,
+				data: { savedAt: Date.now(), paused: true },
+			},
+		]);
+		const res = await handleSessionStart({ pi: pi as never, ctx: ctx as never, dbRoot });
+		expect(res.started).toBe(true);
+		expect(res.paused).toBe(true);
+	});
+
+	it("handleSessionStart announces 'paused' in the status line when rehydrated as paused", async () => {
+		writeIssue("skill-a", "0001-a.json", { id: "0001", status: "open", skill: "skill-a" });
+		const pi = makeFakePi();
+		const ctx = makeFakeCtx([
+			{
+				type: "custom",
+				customType: RUNSTATE_ENTRY_TYPE,
+				data: { savedAt: Date.now(), paused: true },
+			},
+		]);
+		await handleSessionStart({ pi: pi as never, ctx: ctx as never, dbRoot });
+		const statusCalls = ctx.ui.setStatus.mock.calls as Array<[string, string | undefined]>;
+		const pinned = statusCalls.find(([k]) => k === "issue-watcher")?.[1] ?? "";
+		expect(pinned).toContain("paused");
+		expect(pinned).not.toMatch(/\bactive\b/);
+	});
+
+	it("handleSessionStart does NOT replay diffs when rehydrated as paused", async () => {
+		writeIssue("skill-a", "0001-a.json", { id: "0001", status: "done", skill: "skill-a" });
+		const pi = makeFakePi();
+		const stalePathKey = join(dbRoot, "skill-a", "0001-a.json");
+		const ctx = makeFakeCtx([
+			// A fresh baseline with status=open; disk now has status=done.
+			{
+				type: "custom",
+				customType: STATE_ENTRY_TYPE,
+				data: {
+					savedAt: Date.now(),
+					snapshot: {
+						[stalePathKey]: {
+							mtimeNs: "1",
+							issueId: "0001",
+							status: "open",
+							title: "",
+							description: "",
+							comments: [],
+							skill: "skill-a",
+							skillVersion: "",
+						},
+					},
+				},
+			},
+			{
+				type: "custom",
+				customType: RUNSTATE_ENTRY_TYPE,
+				data: { savedAt: Date.now(), paused: true },
+			},
+		]);
+		await handleSessionStart({ pi: pi as never, ctx: ctx as never, dbRoot });
+		// Paused means: no chat message, no re-persisting the baseline.
+		expect(pi.sendMessage).not.toHaveBeenCalled();
+	});
+
+	// -- session_start wiring honours the paused flag ------------------------
+
+	it("session_start does NOT start polling when the rehydrated run-state is paused", async () => {
+		writeIssue("skill-a", "0001-a.json", { id: "0001", status: "open", skill: "skill-a" });
+		vi.useFakeTimers();
+		try {
+			const pi = makeFakePi();
+			extensionWithDbRoot(pi, dbRoot);
+			const ctx = makeFakeCtx([
+				{
+					type: "custom",
+					customType: RUNSTATE_ENTRY_TYPE,
+					data: { savedAt: Date.now(), paused: true },
+				},
+			]);
+			await pi.sessionStartHandler!({}, ctx);
+			// Mutate disk; a running poll would flag the change.
+			writeIssue("skill-a", "0001-a.json", { id: "0001", status: "done", skill: "skill-a" });
+			await vi.advanceTimersByTimeAsync(POLL_INTERVAL_MS * 3);
+			expect(pi.sendMessage).not.toHaveBeenCalled();
+		} finally {
+			vi.useRealTimers();
+		}
+	});
+
+	it("session_start DOES start polling when the rehydrated run-state is running", async () => {
+		const filePath = join(dbRoot, "skill-a", "0001-a.json");
+		writeIssue("skill-a", "0001-a.json", { id: "0001", status: "open", skill: "skill-a" });
+		vi.useFakeTimers();
+		try {
+			const pi = makeFakePi();
+			extensionWithDbRoot(pi, dbRoot);
+			const ctx = makeFakeCtx([
+				{
+					type: "custom",
+					customType: RUNSTATE_ENTRY_TYPE,
+					data: { savedAt: Date.now(), paused: false },
+				},
+			]);
+			await pi.sessionStartHandler!({}, ctx);
+			// Mutate disk with a bumped mtime so the scanner sees a change.
+			writeIssue("skill-a", "0001-a.json", { id: "0001", status: "done", skill: "skill-a" });
+			const { utimesSync } = await import("node:fs");
+			const future = new Date(Date.now() + 60_000);
+			utimesSync(filePath, future, future);
+			await vi.advanceTimersByTimeAsync(POLL_INTERVAL_MS);
+			expect(pi.sendMessage).toHaveBeenCalledTimes(1);
+		} finally {
+			vi.useRealTimers();
+		}
+	});
+
+	// -- /issue-watcher pause|resume persist run-state -----------------------
+
+	it("'/issue-watcher pause' appends a RUNSTATE_ENTRY_TYPE entry with paused=true", async () => {
+		const pi = makeFakePi();
+		extensionWithDbRoot(pi, dbRoot);
+		await pi.commands.get("issue-watcher")!.handler("pause", makeFakeCtx());
+		const runStateCalls = pi.appendEntry.mock.calls.filter(
+			(c) => c[0] === RUNSTATE_ENTRY_TYPE,
+		);
+		expect(runStateCalls.length).toBeGreaterThanOrEqual(1);
+		const lastPayload = runStateCalls[runStateCalls.length - 1]![1] as {
+			savedAt: number;
+			paused: boolean;
+		};
+		expect(lastPayload.paused).toBe(true);
+		expect(typeof lastPayload.savedAt).toBe("number");
+	});
+
+	it("'/issue-watcher resume' appends a RUNSTATE_ENTRY_TYPE entry with paused=false", async () => {
+		const pi = makeFakePi();
+		extensionWithDbRoot(pi, dbRoot);
+		await pi.commands.get("issue-watcher")!.handler("pause", makeFakeCtx());
+		await pi.commands.get("issue-watcher")!.handler("resume", makeFakeCtx());
+		const runStateCalls = pi.appendEntry.mock.calls.filter(
+			(c) => c[0] === RUNSTATE_ENTRY_TYPE,
+		);
+		expect(runStateCalls.length).toBeGreaterThanOrEqual(2);
+		const lastPayload = runStateCalls[runStateCalls.length - 1]![1] as {
+			savedAt: number;
+			paused: boolean;
+		};
+		expect(lastPayload.paused).toBe(false);
+	});
+
+	it("pause -> simulated reload -> session_start rehydrates as paused and stays quiet", async () => {
+		writeIssue("skill-a", "0001-a.json", { id: "0001", status: "open", skill: "skill-a" });
+
+		// First extension instance — user runs /issue-watcher pause.
+		const pi1 = makeFakePi();
+		extensionWithDbRoot(pi1, dbRoot);
+		await pi1.commands.get("issue-watcher")!.handler("pause", makeFakeCtx());
+		const persistedEntries = pi1.appendEntry.mock.calls
+			.filter((c) => c[0] === RUNSTATE_ENTRY_TYPE)
+			.map(([t, d]) => ({
+				type: "custom",
+				customType: t as string,
+				data: d,
+			}));
+		expect(persistedEntries.length).toBeGreaterThanOrEqual(1);
+
+		// Simulate plugin reload: brand-new extension, brand-new runtime, but
+		// the session log still carries the pause entry from pi1.
+		vi.useFakeTimers();
+		try {
+			const pi2 = makeFakePi();
+			extensionWithDbRoot(pi2, dbRoot);
+			const ctx = makeFakeCtx(persistedEntries);
+			await pi2.sessionStartHandler!({}, ctx);
+
+			// Reloaded extension honours the paused flag: no polling, so disk
+			// mutations do not produce chat messages.
+			writeIssue("skill-a", "0001-a.json", { id: "0001", status: "done", skill: "skill-a" });
+			await vi.advanceTimersByTimeAsync(POLL_INTERVAL_MS * 3);
+			expect(pi2.sendMessage).not.toHaveBeenCalled();
+
+			// The pinned status line on the reloaded instance reflects paused.
+			const statusCalls = ctx.ui.setStatus.mock.calls as Array<[string, string | undefined]>;
+			const pinned = statusCalls.find(([k]) => k === "issue-watcher")?.[1] ?? "";
+			expect(pinned).toContain("paused");
+		} finally {
+			vi.useRealTimers();
+		}
+	});
+});
+
+describe("persistRunState resilience", () => {
+	let dbRoot: string;
+	beforeEach(() => {
+		dbRoot = mkdtempSync(join(tmpdir(), "pi-issue-watcher-resilience-"));
+	});
+	afterEach(() => {
+		rmSync(dbRoot, { recursive: true, force: true });
+	});
+
+	it("'/issue-watcher pause' does not throw when pi.appendEntry itself throws", async () => {
+		const pi = makeFakePi();
+		// Force every appendEntry invocation to throw. The pause handler must
+		// still complete and update the in-memory runtime.
+		pi.appendEntry.mockImplementation(() => {
+			throw new Error("simulated storage failure");
+		});
+		const prev = process.env["LOCAL_ISSUE_TRACKER_DB_ROOT"];
+		process.env["LOCAL_ISSUE_TRACKER_DB_ROOT"] = dbRoot;
+		try {
+			createExtension(pi as never);
+		} finally {
+			if (prev === undefined) delete process.env["LOCAL_ISSUE_TRACKER_DB_ROOT"];
+			else process.env["LOCAL_ISSUE_TRACKER_DB_ROOT"] = prev;
+		}
+		const ctx = makeFakeCtx();
+		await expect(
+			pi.commands.get("issue-watcher")!.handler("pause", ctx),
+		).resolves.toBeUndefined();
+		// User-visible notify still fires even though persistence failed.
+		const notifies = ctx.ui.notify.mock.calls.map((c) => String(c[0]));
+		expect(notifies.some((m) => /paused/i.test(m))).toBe(true);
 	});
 });

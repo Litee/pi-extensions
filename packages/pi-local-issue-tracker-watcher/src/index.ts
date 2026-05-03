@@ -42,8 +42,10 @@ import {
 	formatStatusSummary,
 } from "./format.js";
 import {
+	RUNSTATE_ENTRY_TYPE,
 	STATE_ENTRY_TYPE,
 	rehydrateFromSession,
+	rehydrateRunStateFromSession,
 	type SerialisedSnapshot,
 	type SessionLike,
 } from "./persistence.js";
@@ -115,6 +117,13 @@ export interface HandleSessionStartResult {
 	/** Did polling start? `false` when dbRoot was missing. */
 	started: boolean;
 	/**
+	 * Persisted run-state observed on entry. `paused === true` means the
+	 * caller should honour the user's last explicit pause and NOT start
+	 * the poll loop. `paused === false` (the default when nothing has
+	 * been persisted yet) means it is safe to resume polling.
+	 */
+	paused: boolean;
+	/**
 	 * The on-disk snapshot captured during this call. Callers (the default
 	 * export wrapper) should reuse this exact value as the polling baseline
 	 * instead of re-scanning — re-scanning introduces a TOCTOU window where
@@ -142,11 +151,16 @@ export async function handleSessionStart(
 			`issue-watcher: dbRoot not found (${dbRoot}); not watching.`,
 			"warning",
 		);
-		return { started: false, snapshot: {} };
+		return { started: false, paused: false, snapshot: {} };
 	}
 
 	const baseline = rehydrateFromSession(ctx);
 	const currentSnapshot = scanIssueFiles(dbRoot, baseline?.snapshot);
+
+	// Rehydrate the user's last explicit pause / resume preference. Absent
+	// entry → default to running so fresh installs auto-start polling.
+	const runState = rehydrateRunStateFromSession(ctx);
+	const paused = runState?.paused === true;
 
 	// Emit a single, informational startup announcement so the user can see
 	// the watcher is running and which dbRoot is in effect — without having
@@ -157,7 +171,12 @@ export async function handleSessionStart(
 		STATUS_KEY,
 		colorize(
 			theme,
-			buildStartupAnnouncement("active", dbRoot, POLL_INTERVAL_MS, currentSnapshot),
+			buildStartupAnnouncement(
+				paused ? "paused" : "active",
+				dbRoot,
+				POLL_INTERVAL_MS,
+				currentSnapshot,
+			),
 		),
 	);
 
@@ -167,7 +186,16 @@ export async function handleSessionStart(
 			savedAt: Date.now(),
 			snapshot: serialisableSnapshot(currentSnapshot),
 		});
-		return { started: true, snapshot: currentSnapshot };
+		return { started: true, paused, snapshot: currentSnapshot };
+	}
+
+	// While paused we do NOT diff or emit change messages — the user asked us
+	// to stop watching, so don't resurface changes on resume/reload either.
+	// The snapshot stays rehydrated so a later `/issue-watcher resume` picks
+	// up from the last baseline rather than silently losing the intervening
+	// window.
+	if (paused) {
+		return { started: true, paused, snapshot: currentSnapshot };
 	}
 
 	const changes = diffSnapshots(baseline.snapshot, currentSnapshot);
@@ -191,7 +219,7 @@ export async function handleSessionStart(
 		});
 	}
 
-	return { started: true, snapshot: currentSnapshot };
+	return { started: true, paused, snapshot: currentSnapshot };
 }
 
 /**
@@ -205,6 +233,25 @@ function serialisableSnapshot(snap: Snapshot): SerialisedSnapshot {
 		out[path] = { ...info, mtimeNs: info.mtimeNs.toString() };
 	}
 	return out;
+}
+
+/**
+ * Append a run-state entry (paused / running) to the session log.
+ * Swallows any failure from `appendEntry` — persistence is a nice-to-have,
+ * not worth breaking the pause/resume command over.
+ */
+function persistRunState(
+	pi: Pick<ExtensionAPI, "appendEntry">,
+	paused: boolean,
+): void {
+	try {
+		pi.appendEntry(RUNSTATE_ENTRY_TYPE, {
+			savedAt: Date.now(),
+			paused,
+		});
+	} catch {
+		/* noop — see doc comment */
+	}
 }
 
 // ---------------------------------------------------------------------------
@@ -295,13 +342,16 @@ export default function issueWatcher(pi: ExtensionAPI): void {
 			ctx: ctx as unknown as HandleSessionStartOptions["ctx"],
 			dbRoot,
 		});
-		if (res.started && !rt.paused) {
-			// Reuse the exact snapshot handleSessionStart already scanned. A
-			// second scanIssueFiles() here would open a TOCTOU window where
-			// a file written between the two scans is silently lost (#0001).
-			rt.snapshot = res.snapshot;
-			startPolling(rt);
-		}
+		if (!res.started) return;
+		// Reuse the exact snapshot handleSessionStart already scanned. A
+		// second scanIssueFiles() here would open a TOCTOU window where
+		// a file written between the two scans is silently lost (#0001).
+		rt.snapshot = res.snapshot;
+		rt.paused = res.paused;
+		// If the user explicitly paused in a prior session (or earlier in this
+		// one, before a reload) we honour that and stay quiet until they run
+		// `/issue-watcher resume`. Otherwise start the poll loop.
+		if (!rt.paused) startPolling(rt);
 	});
 
 	pi.on("session_shutdown", async () => {
@@ -334,6 +384,7 @@ export default function issueWatcher(pi: ExtensionAPI): void {
 				case "pause": {
 					rt.paused = true;
 					stopPolling(rt);
+					persistRunState(pi, true);
 					const snap = existsSync(rt.dbRoot) ? scanIssueFiles(rt.dbRoot) : {};
 					ui?.setStatus?.(
 						STATUS_KEY,
@@ -352,6 +403,7 @@ export default function issueWatcher(pi: ExtensionAPI): void {
 				}
 				case "resume": {
 					rt.paused = false;
+					persistRunState(pi, false);
 					const resumedSnap = existsSync(rt.dbRoot)
 						? scanIssueFiles(rt.dbRoot, rt.snapshot)
 						: {};
@@ -399,7 +451,7 @@ export default function issueWatcher(pi: ExtensionAPI): void {
 // Re-exports for convenience
 // ---------------------------------------------------------------------------
 
-export { STATE_ENTRY_TYPE } from "./persistence.js";
+export { STATE_ENTRY_TYPE, RUNSTATE_ENTRY_TYPE } from "./persistence.js";
 export { scanIssueFiles } from "./scanner.js";
 export { diffSnapshots, changedPaths, formatChange } from "./diff.js";
 export { buildChatMessageContent, buildStartupAnnouncement, formatStatusSummary } from "./format.js";

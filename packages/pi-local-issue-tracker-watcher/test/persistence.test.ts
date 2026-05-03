@@ -1,9 +1,11 @@
 import { describe, expect, it, vi } from "vitest";
 
 import {
+	RUNSTATE_ENTRY_TYPE,
 	STATE_ENTRY_TYPE,
 	STATE_MAX_AGE_MS,
 	rehydrateFromSession,
+	rehydrateRunStateFromSession,
 } from "../src/persistence.js";
 import type { Snapshot } from "../src/types.js";
 
@@ -169,5 +171,84 @@ describe("rehydrateFromSession", () => {
 		expect(got).not.toBeNull();
 		expect(Object.keys(got!.snapshot)).toEqual(["/db/skill-a/0001-x.json"]);
 		warn.mockRestore();
+	});
+});
+
+describe("rehydrateRunStateFromSession", () => {
+	it("returns null when there are no entries", () => {
+		expect(rehydrateRunStateFromSession(makeCtx([]) as never)).toBeNull();
+	});
+
+	it("returns null when no entries match the RUNSTATE_ENTRY_TYPE", () => {
+		const ctx = makeCtx([
+			entry("custom", { savedAt: now(), snapshot: FRESH_SNAPSHOT }, STATE_ENTRY_TYPE),
+			entry("message", "hello"),
+		]);
+		expect(rehydrateRunStateFromSession(ctx as never)).toBeNull();
+	});
+
+	it("returns the most recent run-state entry (paused)", () => {
+		const ctx = makeCtx([
+			entry("custom", { savedAt: now() - 1000, paused: false }, RUNSTATE_ENTRY_TYPE),
+			entry("custom", { savedAt: now(), paused: true }, RUNSTATE_ENTRY_TYPE),
+		]);
+		const got = rehydrateRunStateFromSession(ctx as never);
+		expect(got).not.toBeNull();
+		expect(got!.paused).toBe(true);
+	});
+
+	it("returns the most recent run-state entry (running)", () => {
+		const ctx = makeCtx([
+			entry("custom", { savedAt: now() - 2000, paused: true }, RUNSTATE_ENTRY_TYPE),
+			entry("custom", { savedAt: now(), paused: false }, RUNSTATE_ENTRY_TYPE),
+		]);
+		const got = rehydrateRunStateFromSession(ctx as never);
+		expect(got).not.toBeNull();
+		expect(got!.paused).toBe(false);
+	});
+
+	it("has no TTL — honours a paused entry that is older than STATE_MAX_AGE_MS", () => {
+		const ancient = now() - STATE_MAX_AGE_MS - 1_000_000;
+		const ctx = makeCtx([
+			entry("custom", { savedAt: ancient, paused: true }, RUNSTATE_ENTRY_TYPE),
+		]);
+		const got = rehydrateRunStateFromSession(ctx as never);
+		expect(got).not.toBeNull();
+		expect(got!.paused).toBe(true);
+	});
+
+	it("skips malformed entries (missing paused field) and falls through to the next", () => {
+		const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+		const ctx = makeCtx([
+			entry("custom", { savedAt: now() - 1000, paused: true }, RUNSTATE_ENTRY_TYPE),
+			entry("custom", { savedAt: now() /* no paused field */ }, RUNSTATE_ENTRY_TYPE),
+		]);
+		const got = rehydrateRunStateFromSession(ctx as never);
+		expect(got).not.toBeNull();
+		expect(got!.paused).toBe(true);
+		warn.mockRestore();
+	});
+
+	it("skips entries with missing data entirely", () => {
+		const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+		const ctx = makeCtx([entry("custom", undefined, RUNSTATE_ENTRY_TYPE)]);
+		expect(rehydrateRunStateFromSession(ctx as never)).toBeNull();
+		warn.mockRestore();
+	});
+
+	it("skips entries where paused is not a boolean", () => {
+		const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+		const ctx = makeCtx([
+			entry("custom", { savedAt: now(), paused: "yes" as unknown as boolean }, RUNSTATE_ENTRY_TYPE),
+		]);
+		expect(rehydrateRunStateFromSession(ctx as never)).toBeNull();
+		warn.mockRestore();
+	});
+
+	it("ignores unrelated custom-typed entries (e.g. STATE_ENTRY_TYPE)", () => {
+		const ctx = makeCtx([
+			entry("custom", { savedAt: now(), snapshot: FRESH_SNAPSHOT }, STATE_ENTRY_TYPE),
+		]);
+		expect(rehydrateRunStateFromSession(ctx as never)).toBeNull();
 	});
 });

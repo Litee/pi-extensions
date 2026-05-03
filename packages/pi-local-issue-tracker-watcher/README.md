@@ -12,8 +12,11 @@ with three material differences:
 1. **No keystroke bridges.** Changes are delivered exclusively through
    `pi.sendMessage({customType: "issue-watcher", ...}, {triggerTurn: true})`.
 2. **No external state file / PID lock.** The previous snapshot is stored via
-   `pi.appendEntry("issue-watcher-state", ...)` with a 24 h TTL, so it
-   auto-resumes through session restart without a separate state directory.
+   `pi.appendEntry("issue-watcher-state", ...)` with a 24 h TTL, and the
+   user's explicit pause/resume preference via
+   `pi.appendEntry("issue-watcher-runstate", ...)` (no TTL) — so the
+   watcher auto-resumes through session restart or plugin reload
+   without a separate state directory.
 3. **Single fixed dbRoot per process.** Configured via the
    `LOCAL_ISSUE_TRACKER_DB_ROOT` environment variable (default:
    `~/.claude/plugin-data/local-skill-issues-tracker/use-local-skills-issue-tracker/db`).
@@ -49,16 +52,25 @@ On every `session_start`:
    same entry with `state=paused` / `state=resumed`. `session_shutdown`
    clears it.
 5. Rehydrate any baseline snapshot from the session log (< 24 h old).
-6. If a baseline exists **and** the current on-disk state differs, emit **one**
-   chat message summarising every change (status, title/description update,
-   comment added/removed, file added/removed). The message carries:
+6. Rehydrate the user's last explicit **run state** (paused / running)
+   from the session log. Absent entry → default **running**. If the
+   rehydrated state is **paused**, the extension skips the diff, pins
+   `paused` in the status entry, and does NOT start the poll loop — an
+   explicit `/issue-watcher resume` is required to restart it. This is
+   what makes pause/resume survive plugin reload and `session_start`
+   with `reason: "resume"`.
+7. If a baseline exists **and** the watcher is not paused **and** the
+   current on-disk state differs, emit **one** chat message summarising
+   every change (status, title/description update, comment added/removed,
+   file added/removed). The message carries:
    - `customType: "issue-watcher"`
    - `content`: a human-readable summary (`N issue update(s)` + bullet list)
    - `details: { changes, changedPaths }` for programmatic consumers
    - delivery: `{ deliverAs: "followUp", triggerTurn: true }` — the agent is
      prompted to react.
-7. Persist the new snapshot as the baseline.
-8. Start a `setInterval` poll loop at 60 s that repeats steps 3–7.
+8. Persist the new snapshot as the baseline.
+9. Start a `setInterval` poll loop at 60 s that repeats steps 3–8 — but
+   only if the rehydrated run state is running.
 
 ## Slash commands
 
@@ -66,8 +78,8 @@ On every `session_start`:
 |-----------------------------|--------------------------------------------------|
 | `/issue-watcher`            | Print current state (running / paused, dbRoot, issue counts by status). |
 | `/issue-watcher status`     | Alias for the above.                             |
-| `/issue-watcher pause`      | Stop polling (state is kept in memory).          |
-| `/issue-watcher resume`     | Rebuild the baseline from disk and resume polling. |
+| `/issue-watcher pause`      | Stop polling, persist `paused=true` to session state so the extension stays quiet across reload / session resume. |
+| `/issue-watcher resume`     | Rebuild the baseline from disk, persist `paused=false`, and resume polling. |
 
 ## Package layout
 
@@ -77,7 +89,8 @@ src/
   scanner.ts       — scanIssueFiles(dbRoot) : Snapshot
   diff.ts          — diffSnapshots, changedPaths, formatChange
   format.ts        — buildChatMessageContent, formatStatusSummary
-  persistence.ts   — rehydrateFromSession, STATE_ENTRY_TYPE, STATE_MAX_AGE_MS
+  persistence.ts   — rehydrateFromSession, rehydrateRunStateFromSession,
+                     STATE_ENTRY_TYPE, RUNSTATE_ENTRY_TYPE, STATE_MAX_AGE_MS
   index.ts         — default export + handleSessionStart (testable)
 test/
   scanner.test.ts
