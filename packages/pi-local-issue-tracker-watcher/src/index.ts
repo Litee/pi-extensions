@@ -200,10 +200,11 @@ export async function handleSessionStart(
 			savedAt: Date.now(),
 			snapshot: serialisableSnapshot(currentSnapshot),
 		});
-		// Fresh-session startup summary (#0011) — only when not paused. A
-		// paused watcher stays silent; the pinned status line already shows
+		// Fresh-session startup summary (#0011, #0013) — only when not paused.
+		// A paused watcher stays silent; the pinned status line already shows
 		// 'paused' and that is sufficient signal. Matches the no-diff path
-		// below: informational, no agent turn.
+		// below. `triggerTurn: true` so the LLM sees the tracker state at
+		// session start (reversed from the original #0011 decision in #0013).
 		if (!paused) {
 			pi.sendMessage(
 				{
@@ -211,7 +212,7 @@ export async function handleSessionStart(
 					content: buildStartupChatMessage(dbRoot, currentSnapshot),
 					display: true,
 				},
-				{ deliverAs: "followUp", triggerTurn: false },
+				{ deliverAs: "followUp", triggerTurn: true },
 			);
 		}
 		return { started: true, paused, snapshot: currentSnapshot, lastUpdateAt };
@@ -253,14 +254,16 @@ export async function handleSessionStart(
 		// LLM can see the watcher is active and knows which tracker it is
 		// monitoring (#0011). Never fired when a diff message already landed
 		// on this session_start (avoid two chat messages in rapid succession).
-		// `triggerTurn: false` keeps the message informational.
+		// `triggerTurn: true` so the LLM is aware of the tracker state at
+		// session start rather than waiting for the next user input
+		// (reversed from the original #0011 decision in #0013).
 		pi.sendMessage(
 			{
 				customType: CUSTOM_MESSAGE_TYPE,
 				content: buildStartupChatMessage(dbRoot, currentSnapshot),
 				display: true,
 			},
-			{ deliverAs: "followUp", triggerTurn: false },
+			{ deliverAs: "followUp", triggerTurn: true },
 		);
 	}
 

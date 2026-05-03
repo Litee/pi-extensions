@@ -371,16 +371,9 @@ describe("handleSessionStart", () => {
 		await handleSessionStart({ pi: pi as never, ctx: ctx as never, dbRoot });
 
 		// The pinned status row is always set (#0009). The chat-visible startup
-		// summary added in #0011 goes through pi.sendMessage with
-		// triggerTurn:false — that is asserted separately in the #0011 block.
-		// Here we only verify setStatus fires and, when sendMessage is called,
-		// it never triggers a turn.
-		for (const [, opts] of pi.sendMessage.mock.calls as Array<
-			[unknown, { triggerTurn?: boolean }]
-		>) {
-			expect(opts?.triggerTurn ?? false).toBe(false);
-		}
-
+		// summary (#0011, reversed in #0013) goes through pi.sendMessage and
+		// DOES trigger an agent turn so the LLM sees the tracker state at
+		// session start — that is asserted separately in the #0011/#0013 block.
 		const statusCalls = ctx.ui.setStatus.mock.calls as Array<[string, string | undefined]>;
 		expect(statusCalls.some(([k]) => k === "issue-watcher")).toBe(true);
 	});
@@ -1295,7 +1288,7 @@ describe("startup chat message (#0011)", () => {
 		return p;
 	}
 
-	it("emits one chat-visible startup message with customType='issue-watcher' and triggerTurn=false on fresh session", async () => {
+	it("emits one chat-visible startup message with customType='issue-watcher' and triggerTurn=true on fresh session (issue #0013)", async () => {
 		writeIssue("skill-a", "0001-a.json", { id: "0001", status: "open", skill: "skill-a" });
 		const pi = makeFakePi();
 		const ctx = makeFakeCtx([runningRunstate()]);
@@ -1313,7 +1306,10 @@ describe("startup chat message (#0011)", () => {
 		expect(payload.content).toContain("active");
 		expect(payload.content).toContain(dbRoot);
 		expect(payload.content).toMatch(/\d+ open/);
-		expect(opts.triggerTurn).toBe(false);
+		// #0013 reversed the original #0011 decision: the startup summary now
+		// triggers an agent turn so the LLM sees the tracker state at session
+		// start instead of waiting for the next user input.
+		expect(opts.triggerTurn).toBe(true);
 		expect(payload.display).toBe(true);
 	});
 
