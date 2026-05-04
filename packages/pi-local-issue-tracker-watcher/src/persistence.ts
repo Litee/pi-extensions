@@ -33,18 +33,16 @@ export interface SerialisedIssueInfo {
 /** On-disk shape of a full snapshot. */
 export type SerialisedSnapshot = Record<string, SerialisedIssueInfo>;
 
-/** Shape of the `data` payload we store via `pi.appendEntry`. */
+/**
+ * Shape of the `data` payload we store via `pi.appendEntry`.
+ *
+ * Pre-#0016 entries also carried a numeric `lastUpdateAt` field; the read
+ * path silently ignores unknown keys so those old payloads still parse.
+ */
 export interface PersistedState {
 	/** Epoch ms at which the snapshot was captured. */
 	savedAt: number;
 	snapshot: SerialisedSnapshot;
-	/**
-	 * Epoch ms at which the watcher last observed *changes* (i.e. emitted a
-	 * chat message). Distinct from {@link savedAt}, which ticks on every
-	 * baseline adoption including the first-session "no changes" path.
-	 * Absent in state written by pre-#0009 releases.
-	 */
-	lastUpdateAt?: number;
 }
 
 /**
@@ -54,7 +52,6 @@ export interface PersistedState {
 export interface RehydratedState {
 	savedAt: number;
 	snapshot: Snapshot;
-	lastUpdateAt?: number;
 }
 
 /**
@@ -105,16 +102,10 @@ export function rehydrateFromSession(ctx: SessionLike): RehydratedState | null {
 			continue;
 		}
 		if (Date.now() - savedAt > STATE_MAX_AGE_MS) return null;
-		const lastUpdateAt =
-			typeof (data as { lastUpdateAt?: unknown }).lastUpdateAt === "number"
-				? ((data as { lastUpdateAt?: number }).lastUpdateAt as number)
-				: undefined;
-		const rehydrated: RehydratedState = {
+		return {
 			savedAt,
 			snapshot: normaliseSnapshot(snapshotRaw as Record<string, RawIssueInfo>),
 		};
-		if (lastUpdateAt !== undefined) rehydrated.lastUpdateAt = lastUpdateAt;
-		return rehydrated;
 	}
 	return null;
 }

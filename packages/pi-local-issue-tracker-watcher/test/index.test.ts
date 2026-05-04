@@ -1122,7 +1122,7 @@ describe("persistRunState resilience", () => {
 // last-update timestamp in pinned status line (#0009)
 // ---------------------------------------------------------------------------
 
-describe("last-update timestamp (#0009)", () => {
+describe("status line — refresh on every poll (#0016 supersedes #0009)", () => {
 	let dbRoot: string;
 	beforeEach(() => {
 		dbRoot = mkdtempSync(join(tmpdir(), "pi-issue-watcher-lua-"));
@@ -1139,26 +1139,19 @@ describe("last-update timestamp (#0009)", () => {
 		return p;
 	}
 
-	it("handleSessionStart: first session (no baseline) does NOT set lastUpdateAt", async () => {
+	it("handleSessionStart: pinned status line has no 'last update' segment (#0016)", async () => {
 		writeIssue("skill-a", "0001-a.json", { id: "0001", status: "open", skill: "skill-a" });
 		const pi = makeFakePi();
 		const ctx = makeFakeCtx([runningRunstate()]);
 		await handleSessionStart({ pi: pi as never, ctx: ctx as never, dbRoot });
 
-		const [, payload] = pi.appendEntry.mock.calls[0] as [
-			string,
-			{ savedAt: number; lastUpdateAt?: number },
-		];
-		expect(payload.lastUpdateAt).toBeUndefined();
-
-		// The pinned status line shows "last update: never" when the clock
-		// segment is rendered.
 		const statusCalls = ctx.ui.setStatus.mock.calls as Array<[string, string | undefined]>;
 		const pinned = statusCalls.find(([k]) => k === "issue-watcher")?.[1] ?? "";
-		expect(pinned).toContain("last update: never");
+		expect(pinned).not.toMatch(/last update/);
+		expect(pinned).not.toMatch(/\b(never|just now|\ds ago|\dm ago|\dh ago|\dd ago)\b/);
 	});
 
-	it("handleSessionStart: bumps lastUpdateAt to now when a diff is emitted", async () => {
+	it("appendEntry payload does not include lastUpdateAt, even when rehydrating an old entry that had one (#0016)", async () => {
 		const filePath = writeIssue("skill-a", "0001-a.json", {
 			id: "0001",
 			status: "open",
@@ -1176,67 +1169,31 @@ describe("last-update timestamp (#0009)", () => {
 				skillVersion: "",
 			},
 		};
-		writeIssue("skill-a", "0001-a.json", {
-			id: "0001",
-			status: "done",
-			skill: "skill-a",
-		});
+		writeIssue("skill-a", "0001-a.json", { id: "0001", status: "done", skill: "skill-a" });
 
 		const pi = makeFakePi();
-		const oldStamp = Date.now() - 10 * 60_000;
 		const ctx = makeFakeCtx([
 			runningRunstate(),
 			{
 				type: "custom",
 				customType: STATE_ENTRY_TYPE,
-				data: { savedAt: Date.now(), snapshot: baselineSnapshot, lastUpdateAt: oldStamp },
-			},
-		]);
-		const before = Date.now();
-		await handleSessionStart({ pi: pi as never, ctx: ctx as never, dbRoot });
-		const after = Date.now();
-
-		// Last appendEntry call — may be preceded by the baseline-adopt path.
-		const lastCall = pi.appendEntry.mock.calls.at(-1) as [
-			string,
-			{ lastUpdateAt?: number },
-		];
-		expect(lastCall[1].lastUpdateAt).toBeGreaterThanOrEqual(before);
-		expect(lastCall[1].lastUpdateAt).toBeLessThanOrEqual(after);
-	});
-
-	it("handleSessionStart: preserves rehydrated lastUpdateAt when no changes observed", async () => {
-		const filePath = writeIssue("skill-a", "0001-a.json", {
-			id: "0001",
-			status: "open",
-			skill: "skill-a",
-		});
-		const { scanIssueFiles } = await import("../src/scanner.js");
-		const snap = scanIssueFiles(dbRoot);
-		const oldStamp = Date.now() - 2 * 60_000;
-		const ctx = makeFakeCtx([
-			{
-				type: "custom",
-				customType: STATE_ENTRY_TYPE,
+				// Simulate a pre-#0016 payload: `lastUpdateAt` is present on read
+				// but must be dropped from any fresh write.
 				data: {
 					savedAt: Date.now(),
-					snapshot: { [filePath]: { ...snap[filePath]!, mtimeNs: String(snap[filePath]!.mtimeNs) } },
-					lastUpdateAt: oldStamp,
+					snapshot: baselineSnapshot,
+					lastUpdateAt: Date.now() - 10 * 60_000,
 				},
 			},
 		]);
-		const pi = makeFakePi();
 		await handleSessionStart({ pi: pi as never, ctx: ctx as never, dbRoot });
 
-		// No changes observed → no appendEntry call at all.
-		expect(pi.appendEntry).not.toHaveBeenCalled();
-
-		// The pinned status line picks up the rehydrated lastUpdateAt and
-		// renders 'Nm ago' rather than 'never'.
-		const statusCalls = ctx.ui.setStatus.mock.calls as Array<[string, string | undefined]>;
-		const pinned = statusCalls.find(([k]) => k === "issue-watcher")?.[1] ?? "";
-		expect(pinned).toMatch(/last update: \dm ago/);
-		expect(pinned).not.toContain("last update: never");
+		for (const [, payload] of pi.appendEntry.mock.calls as Array<[
+			string,
+			{ lastUpdateAt?: unknown },
+		]>) {
+			expect(payload).not.toHaveProperty("lastUpdateAt");
+		}
 	});
 
 	it("pollOnce refreshes the pinned status line every tick, even with no changes", async () => {
@@ -1269,7 +1226,10 @@ describe("last-update timestamp (#0009)", () => {
 				([k]) => k === "issue-watcher",
 			).length;
 
-			// Each poll re-pins the status line so the age phrase can tick forward.
+			// Each poll re-pins the status line so the counts segment reflects
+			// the latest rescan (#0016: the 'age' phrase that motivated this in
+			// #0009 no longer exists; the repaint still happens so the segment
+			// stays current).
 			expect(statusAfter).toBeGreaterThanOrEqual(statusAtStart + 3);
 			// pollOnce does not emit chat messages when there are no diffs.
 			const pollDiffs = pi.sendMessage.mock.calls.filter(

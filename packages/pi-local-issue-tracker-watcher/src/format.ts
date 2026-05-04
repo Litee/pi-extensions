@@ -13,16 +13,18 @@ const WELL_KNOWN_STATUSES = ["open", "in_progress", "done", "wont_fix"] as const
  * Build the one-line session-start / resume announcement.
  *
  * Format: `issue-watcher: <state> | dbRoot=<path> | poll=<N>s | <summary>`
- * where `<state>` is typically `active` or `resumed`. When `lastUpdateAt`
- * **or** `now` is supplied, a ` | last update: <phrase>` segment is
- * appended (see {@link formatTimeSince}); omitting both preserves the
- * original format for back-compat.
+ * where `<state>` is typically `active` or `resumed`.
  *
  * **Paused state (#0010)**: when `state === "paused"` the per-status count
  * summary is dropped entirely — a paused watcher is not producing a live
- * readout, and freezing a count into the status bar is misleading. The
- * last-update phrase (if provided) is still rendered because it is
- * historical information, not a live count.
+ * readout, and freezing a count into the status bar is misleading.
+ *
+ * **No last-update segment (#0016)**: the `| last update: Nm ago` segment
+ * previously appended here was removed. The rendered age was driven by the
+ * last-diff wallclock and became misleading whenever a fresh session loaded
+ * while the tracker was quiet (would surface `10h ago` etc.). A poll-based
+ * alternative would tick every 60s and carry no information either, so the
+ * segment is simply gone.
  *
  * The message is meant for `ctx.ui.setStatus` (pinned status-row text) and
  * must NOT trigger an agent turn — it is purely a user-visible status line.
@@ -32,38 +34,10 @@ export function buildStartupAnnouncement(
 	dbRoot: string,
 	pollIntervalMs: number,
 	snapshot: Snapshot,
-	lastUpdateAt?: number,
-	now?: Date,
 ): string {
 	const pollSeconds = Math.round(pollIntervalMs / 1000);
 	const prefix = `issue-watcher: ${state} | dbRoot=${dbRoot} | poll=${pollSeconds}s`;
-	const base = state === "paused" ? prefix : `${prefix} | ${formatStatusSummary(snapshot)}`;
-	if (lastUpdateAt === undefined && now === undefined) return base;
-	return `${base} | last update: ${formatTimeSince(now ?? new Date(), lastUpdateAt)}`;
-}
-
-/**
- * Render a human-friendly "time since N" phrase relative to `now`.
- *
- * Bucket rules (#0009):
- *  - `lastUpdateAt` undefined → `"never"`
- *  - delta  < 10s   → `"just now"`
- *  - delta  < 60s   → `"Ns ago"`
- *  - delta  < 60m   → `"Nm ago"`
- *  - delta  < 24h   → `"Nh ago"`
- *  - delta >= 24h   → `"Nd ago"`
- *
- * Future timestamps (clock skew / rehydrated-from-future-state) are treated
- * as `"just now"` — the watcher never surfaces negative ages.
- */
-export function formatTimeSince(now: Date, lastUpdateAt: number | undefined): string {
-	if (lastUpdateAt === undefined) return "never";
-	const delta = now.getTime() - lastUpdateAt;
-	if (delta < 10_000) return "just now";
-	if (delta < 60_000) return `${Math.floor(delta / 1_000)}s ago`;
-	if (delta < 60 * 60_000) return `${Math.floor(delta / 60_000)}m ago`;
-	if (delta < 24 * 60 * 60_000) return `${Math.floor(delta / (60 * 60_000))}h ago`;
-	return `${Math.floor(delta / (24 * 60 * 60_000))}d ago`;
+	return state === "paused" ? prefix : `${prefix} | ${formatStatusSummary(snapshot)}`;
 }
 
 /**

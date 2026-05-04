@@ -130,24 +130,19 @@ describe("rehydrateFromSession", () => {
 		warn.mockRestore();
 	});
 
-	// -- issue #0009: rehydrate lastUpdateAt across sessions --
-	it("rehydrates lastUpdateAt from the persisted entry (issue #0009)", () => {
+	// -- issue #0016: lastUpdateAt no longer exposed on the rehydrated state --
+	it("silently drops a lastUpdateAt field from legacy entries (issue #0016)", () => {
+		// Old pi sessions wrote a `lastUpdateAt` alongside the snapshot. After
+		// #0016 that field has no consumer, so the read path should accept the
+		// entry (no console warn, no null) but the returned shape must not
+		// expose it.
 		const stamp = now() - 120_000;
 		const ctx = makeCtx([
 			entry("custom", { savedAt: now(), snapshot: FRESH_SNAPSHOT, lastUpdateAt: stamp }, STATE_ENTRY_TYPE),
 		]);
 		const got = rehydrateFromSession(ctx as never);
 		expect(got).not.toBeNull();
-		expect(got!.lastUpdateAt).toBe(stamp);
-	});
-
-	it("rehydrates lastUpdateAt as undefined when absent (back-compat, issue #0009)", () => {
-		const ctx = makeCtx([
-			entry("custom", { savedAt: now(), snapshot: FRESH_SNAPSHOT }, STATE_ENTRY_TYPE),
-		]);
-		const got = rehydrateFromSession(ctx as never);
-		expect(got).not.toBeNull();
-		expect(got!.lastUpdateAt).toBeUndefined();
+		expect(got).not.toHaveProperty("lastUpdateAt");
 	});
 
 	it("skips a malformed newest entry and returns the older valid one (issue #0002)", () => {
