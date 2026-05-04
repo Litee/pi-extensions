@@ -53,14 +53,15 @@ describe("buildStartupAnnouncement", () => {
 		};
 		const msg = buildStartupAnnouncement("active", "/abs/db", 60_000, snap);
 		expect(msg).toBe(
-			"local-issue-watcher: active | dbRoot=/abs/db | poll=60s | 1 open, 1 in_progress",
+			"local-issue-watcher: active | /a/db | poll=60s | 1 open, 1 in_progress",
 		);
 	});
 
-	it("renders '0 issues' for an empty tracker", () => {
+	it("renders '0 issues' for an empty tracker with the abbreviated path (#0018)", () => {
 		const msg = buildStartupAnnouncement("active", "/abs/db", 60_000, {});
 		expect(msg).toContain("0 issues");
-		expect(msg).toContain("/abs/db");
+		expect(msg).toContain("/a/db");
+		expect(msg).not.toContain("dbRoot=");
 	});
 
 	it("honours alternate states like 'resumed'", () => {
@@ -139,7 +140,7 @@ describe("buildStartupAnnouncement when paused (#0010)", () => {
 			"/c": issue("done"),
 		};
 		const msg = buildStartupAnnouncement("paused", "/abs/db", 60_000, snap);
-		expect(msg).toBe("local-issue-watcher: paused | dbRoot=/abs/db | poll=60s");
+		expect(msg).toBe("local-issue-watcher: paused | /a/db | poll=60s");
 		expect(msg).not.toMatch(/open|in_progress|done/);
 	});
 
@@ -147,7 +148,7 @@ describe("buildStartupAnnouncement when paused (#0010)", () => {
 		const msg = buildStartupAnnouncement("paused", "/abs/db", 60_000, {
 			"/a": issue("open"),
 		});
-		expect(msg).toBe("local-issue-watcher: paused | dbRoot=/abs/db | poll=60s");
+		expect(msg).toBe("local-issue-watcher: paused | /a/db | poll=60s");
 	});
 
 	it("'active' still includes counts", () => {
@@ -167,14 +168,14 @@ describe("buildStartupAnnouncement has no last-update segment (#0016)", () => {
 		const msg = buildStartupAnnouncement("active", "/abs/db", 60_000, {
 			"/a": issue("open"),
 		});
-		expect(msg).toBe("local-issue-watcher: active | dbRoot=/abs/db | poll=60s | 1 open");
+		expect(msg).toBe("local-issue-watcher: active | /a/db | poll=60s | 1 open");
 		expect(msg).not.toMatch(/last update/);
 		expect(msg).not.toMatch(/\b(never|just now|\dm ago|\dh ago|\dd ago)\b/);
 	});
 
 	it("paused state ends at the poll prefix — no 'last update:' phrase", () => {
 		const msg = buildStartupAnnouncement("paused", "/abs/db", 60_000, {});
-		expect(msg).toBe("local-issue-watcher: paused | dbRoot=/abs/db | poll=60s");
+		expect(msg).toBe("local-issue-watcher: paused | /a/db | poll=60s");
 		expect(msg).not.toMatch(/last update/);
 	});
 });
@@ -214,10 +215,14 @@ describe("buildStartupChatMessage (#0011)", () => {
 // ---------------------------------------------------------------------------
 
 describe("buildMissingDbRootStatus (#0014)", () => {
-	it("contains the 'dbRoot missing' state marker and the resolved path", () => {
+	it("contains the 'dbRoot missing' state marker and the abbreviated path (#0018)", () => {
 		const msg = buildMissingDbRootStatus("/some/missing/path");
 		expect(msg).toContain("local-issue-watcher: dbRoot missing");
-		expect(msg).toContain("/some/missing/path");
+		expect(msg).toContain("/s/m/path");
+		// The raw full path and the `dbRoot=` label must NOT appear — this is a
+		// pinned status line, not a user-triggered notification (#0018).
+		expect(msg).not.toContain("/some/missing/path");
+		expect(msg).not.toContain("dbRoot=");
 	});
 
 	it("surfaces a remediation hint (env var or directory creation)", () => {

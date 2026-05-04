@@ -47,7 +47,12 @@ On every `session_start`:
 3. Scan all `<dbRoot>/<skill>/NNNN-slug.json` files into a `Snapshot`.
 4. Pin a one-line **status entry** to the extension-status row via
    `ctx.ui.setStatus("local-issue-watcher", ...)` — e.g.
-   `local-issue-watcher: active | dbRoot=/… | poll=60s | 3 open, 1 in_progress` —
+   `local-issue-watcher: active | /h/u/p/tracker | poll=60s | 3 open, 1 in_progress` —
+   the `dbRoot` is compacted via `abbreviatePath` (every intermediate
+   segment collapsed to its first grapheme; leading dotfile segments
+   keep their `.`). The inline `/local-issue-watcher status` notify
+   and the pause/resume notifications keep the full absolute path so
+   the user can copy-paste it.
    so the user can see the watcher is running and which `dbRoot` is in
    effect without running a slash command. This line is persistent (lives
    below the main status line, like `slack-watcher`) and never triggers an

@@ -1,5 +1,6 @@
 import type { Change } from "./diff.js";
 import { formatChange } from "./diff.js";
+import { abbreviatePath } from "./path.js";
 import type { Snapshot } from "./types.js";
 
 /**
@@ -12,8 +13,12 @@ const WELL_KNOWN_STATUSES = ["open", "in_progress", "done", "wont_fix"] as const
 /**
  * Build the one-line session-start / resume announcement.
  *
- * Format: `local-issue-watcher: <state> | dbRoot=<path> | poll=<N>s | <summary>`
- * where `<state>` is typically `active` or `resumed`.
+ * Format: `local-issue-watcher: <state> | <abbreviated-dbRoot> | poll=<N>s | <summary>`
+ * where `<state>` is typically `active` or `resumed` and the dbRoot is
+ * compacted via {@link abbreviatePath} — the `dbRoot=` label is also
+ * dropped (#0018) to reclaim horizontal space in narrow terminals where
+ * the per-status summary at the tail is what the user actually reads at
+ * a glance.
  *
  * **Paused state (#0010)**: when `state === "paused"` the per-status count
  * summary is dropped entirely — a paused watcher is not producing a live
@@ -36,7 +41,7 @@ export function buildStartupAnnouncement(
 	snapshot: Snapshot,
 ): string {
 	const pollSeconds = Math.round(pollIntervalMs / 1000);
-	const prefix = `local-issue-watcher: ${state} | dbRoot=${dbRoot} | poll=${pollSeconds}s`;
+	const prefix = `local-issue-watcher: ${state} | ${abbreviatePath(dbRoot)} | poll=${pollSeconds}s`;
 	return state === "paused" ? prefix : `${prefix} | ${formatStatusSummary(snapshot)}`;
 }
 
@@ -45,18 +50,19 @@ export function buildStartupAnnouncement(
  *
  * Example:
  * ```
- * local-issue-watcher: dbRoot missing | dbRoot=/Users/x/.claude/...
- *   | set LOCAL_ISSUE_TRACKER_DB_ROOT or create the directory
+ * local-issue-watcher: dbRoot missing | /U/a/… | set LOCAL_ISSUE_TRACKER_DB_ROOT or create the directory
  * ```
  *
  * Matches the user-visible shape used by the `active` / `paused` / `resumed`
- * variants so the footer reads consistently. Meant for `ctx.ui.setStatus` —
- * see #0014 for the motivation (transient toast alone isn't enough to keep
- * the misconfiguration visible).
+ * variants so the footer reads consistently, including the compact
+ * abbreviated path (#0018) so the remediation hint doesn't get clipped
+ * on narrow terminals. Meant for `ctx.ui.setStatus` — see #0014 for the
+ * motivation (transient toast alone isn't enough to keep the
+ * misconfiguration visible).
  */
 export function buildMissingDbRootStatus(dbRoot: string): string {
 	return (
-		`local-issue-watcher: dbRoot missing | dbRoot=${dbRoot}` +
+		`local-issue-watcher: dbRoot missing | ${abbreviatePath(dbRoot)}` +
 		` | set LOCAL_ISSUE_TRACKER_DB_ROOT or create the directory`
 	);
 }

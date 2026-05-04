@@ -10,6 +10,7 @@ import createExtension, {
 	resolveDbRoot,
 } from "../src/index.js";
 import { RUNSTATE_ENTRY_TYPE, STATE_ENTRY_TYPE } from "../src/persistence.js";
+import { abbreviatePath } from "../src/path.js";
 import type { Snapshot } from "../src/types.js";
 
 // ---------------------------------------------------------------------------
@@ -235,7 +236,7 @@ describe("handleSessionStart", () => {
 		const issueStatus = statusCalls.find(([k]) => k === "local-issue-watcher");
 		expect(issueStatus).toBeDefined();
 		expect(issueStatus![1]).toContain("active");
-		expect(issueStatus![1]).toContain(dbRoot);
+		expect(issueStatus![1]).toContain(abbreviatePath(dbRoot));
 		expect(issueStatus![1]).toContain("1 open");
 	});
 
@@ -344,7 +345,7 @@ describe("handleSessionStart", () => {
 		const issueStatus = statusCalls.find(([k]) => k === "local-issue-watcher");
 		expect(issueStatus).toBeDefined();
 		expect(issueStatus![1]).toContain("active");
-		expect(issueStatus![1]).toContain(dbRoot);
+		expect(issueStatus![1]).toContain(abbreviatePath(dbRoot));
 	});
 
 	it("missing-dbRoot path pins a 'dbRoot missing' status line with the resolved path (issue #0014)", async () => {
@@ -370,7 +371,7 @@ describe("handleSessionStart", () => {
 			.map(([, v]) => v ?? "");
 		expect(pinned).toHaveLength(1);
 		expect(pinned[0]).toContain("dbRoot missing");
-		expect(pinned[0]).toContain(missing);
+		expect(pinned[0]).toContain(abbreviatePath(missing));
 
 		// Watcher still short-circuits: no scan, no polling, no chat messages.
 		expect(pi.sendMessage).not.toHaveBeenCalled();
@@ -463,7 +464,7 @@ describe("handleSessionStart", () => {
 		const accentCall = fgCalls.find(([c]) => c === "accent");
 		expect(accentCall).toBeDefined();
 		expect(accentCall![1]).toContain("active");
-		expect(accentCall![1]).toContain(dbRoot);
+		expect(accentCall![1]).toContain(abbreviatePath(dbRoot));
 
 		// The pinned status text is the theme-wrapped output, not a raw ANSI escape.
 		const statusCalls = ctx.ui.setStatus.mock.calls as Array<[string, string | undefined]>;
@@ -533,7 +534,7 @@ describe("/local-issue-watcher command", () => {
 			.map(([, v]) => v ?? "")
 			.find((v) => /resumed/i.test(v));
 		expect(resumedStatus).toBeDefined();
-		expect(resumedStatus!).toContain(dbRoot);
+		expect(resumedStatus!).toContain(abbreviatePath(dbRoot));
 		expect(resumedStatus!).toContain("poll=");
 	});
 
@@ -551,7 +552,7 @@ describe("/local-issue-watcher command", () => {
 			.map(([, v]) => v ?? "")
 			.find((v) => /paused/i.test(v));
 		expect(pausedStatus).toBeDefined();
-		expect(pausedStatus!).toContain(dbRoot);
+		expect(pausedStatus!).toContain(abbreviatePath(dbRoot));
 	});
 
 	// -- issue #0010: paused status line drops per-status counts --
