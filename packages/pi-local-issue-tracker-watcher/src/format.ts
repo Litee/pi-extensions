@@ -13,36 +13,55 @@ const WELL_KNOWN_STATUSES = ["open", "in_progress", "done", "wont_fix"] as const
 /**
  * Build the one-line session-start / resume announcement.
  *
- * Format: `local-issue-watcher: <state> | <abbreviated-dbRoot> | poll=<N>s | <summary>`
- * where `<state>` is typically `active` or `resumed` and the dbRoot is
- * compacted via {@link abbreviatePath} — the `dbRoot=` label is also
- * dropped (#0018) to reclaim horizontal space in narrow terminals where
- * the per-status summary at the tail is what the user actually reads at
- * a glance.
+ * Format: `local-issue-watcher: <state> | <N> open, <M> total`
+ * where `<state>` is typically `active` or `resumed` and `<M>` is the
+ * full count (open + in_progress + done + wont_fix + any other
+ * statuses the tracker surfaces).
  *
- * **Paused state (#0010)**: when `state === "paused"` the per-status count
- * summary is dropped entirely — a paused watcher is not producing a live
- * readout, and freezing a count into the status bar is misleading.
+ * **Compact status line (#0018, #0022).** Pre-#0018 the line carried
+ * `dbRoot=<path>`; #0018 dropped the label and abbreviated the path.
+ * #0022 drops the dbRoot AND the `poll=<N>s` segments entirely: both
+ * are static config that rarely change and answer 'how is this
+ * configured?', which is a different question than 'is there
+ * anything new?' — the latter is what the pinned status row answers
+ * on every turn. Both live in chat / info surfaces instead.
  *
- * **No last-update segment (#0016)**: the `| last update: Nm ago` segment
- * previously appended here was removed. The rendered age was driven by the
- * last-diff wallclock and became misleading whenever a fresh session loaded
- * while the tracker was quiet (would surface `10h ago` etc.). A poll-based
- * alternative would tick every 60s and carry no information either, so the
- * segment is simply gone.
+ * **Compact count format (#0022).** Pre-#0022 the tail read
+ * `1 open, 455 done, 127 wont_fix` — a full per-status breakdown.
+ * The always-visible line now reads `1 open, 583 total` so the user
+ * can answer 'anything new?' at a glance. The per-status breakdown
+ * lives on in the chat-message surface ({@link buildStartupChatMessage}).
  *
- * The message is meant for `ctx.ui.setStatus` (pinned status-row text) and
- * must NOT trigger an agent turn — it is purely a user-visible status line.
+ * **Paused state (#0010)**: when `state === "paused"` the count
+ * summary is dropped entirely — a paused watcher is not producing a
+ * live readout, and freezing counts into the status bar is
+ * misleading.
+ *
+ * **No last-update segment (#0016)**: the `| last update: Nm ago`
+ * segment previously appended here was removed. The rendered age was
+ * driven by the last-diff wallclock and became misleading whenever a
+ * fresh session loaded while the tracker was quiet (would surface
+ * `10h ago` etc.). A poll-based alternative would tick every 60s and
+ * carry no information either, so the segment is simply gone.
+ *
+ * The message is meant for `ctx.ui.setStatus` (pinned status-row
+ * text) and must NOT trigger an agent turn — it is purely a
+ * user-visible status line.
+ *
+ * The `dbRoot` and `pollIntervalMs` parameters are retained in the
+ * signature because callers still thread them through to the
+ * chat-surface {@link buildStartupChatMessage} and the missing-dbRoot
+ * {@link buildMissingDbRootStatus}; this function simply ignores
+ * them post-#0022.
  */
 export function buildStartupAnnouncement(
 	state: string,
-	dbRoot: string,
-	pollIntervalMs: number,
+	_dbRoot: string,
+	_pollIntervalMs: number,
 	snapshot: Snapshot,
 ): string {
-	const pollSeconds = Math.round(pollIntervalMs / 1000);
-	const prefix = `local-issue-watcher: ${state} | ${abbreviatePath(dbRoot)} | poll=${pollSeconds}s`;
-	return state === "paused" ? prefix : `${prefix} | ${formatStatusSummary(snapshot)}`;
+	const prefix = `local-issue-watcher: ${state}`;
+	return state === "paused" ? prefix : `${prefix} | ${formatCompactStatusSummary(snapshot)}`;
 }
 
 /**
@@ -115,6 +134,24 @@ export function formatStatusSummary(snapshot: Snapshot): string {
 		.sort();
 	for (const s of leftover) parts.push(`${counts[s]} ${s}`);
 	return parts.length === 0 ? "0 issues" : parts.join(", ");
+}
+
+/**
+ * Compact two-number summary for the pinned status row (#0022).
+ *
+ * Format: `<N> open, <M> total` where `M` is the grand total across
+ * every status the tracker surfaces (open + in_progress + done +
+ * wont_fix + any others). A new user coming back to the shell after
+ * a break reads this in a glance: 'is there anything for me to look
+ * at? (<N> open) and how much history exists to dig into? (<M>
+ * total)'. Per-status breakdown goes to the chat surface via
+ * {@link buildStartupChatMessage}.
+ */
+export function formatCompactStatusSummary(snapshot: Snapshot): string {
+	const entries = Object.values(snapshot);
+	let open = 0;
+	for (const info of entries) if ((info.status || "") === "open") open++;
+	return `${open} open, ${entries.length} total`;
 }
 
 /**

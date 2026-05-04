@@ -236,8 +236,13 @@ describe("handleSessionStart", () => {
 		const issueStatus = statusCalls.find(([k]) => k === "pi-local-issue-tracker-watcher");
 		expect(issueStatus).toBeDefined();
 		expect(issueStatus![1]).toContain("active");
-		expect(issueStatus![1]).toContain(abbreviatePath(dbRoot));
+		// #0022: pinned status no longer carries the dbRoot path or the
+		// poll-period segment; the <N> open, <M> total summary is the
+		// signal the user reads on every turn.
+		expect(issueStatus![1]).not.toContain(abbreviatePath(dbRoot));
+		expect(issueStatus![1]).not.toContain("poll=");
 		expect(issueStatus![1]).toContain("1 open");
+		expect(issueStatus![1]).toContain("total");
 	});
 
 	it("with a fresh persisted baseline and new changes: emits sendMessage with triggerTurn and updates baseline", async () => {
@@ -345,7 +350,10 @@ describe("handleSessionStart", () => {
 		const issueStatus = statusCalls.find(([k]) => k === "pi-local-issue-tracker-watcher");
 		expect(issueStatus).toBeDefined();
 		expect(issueStatus![1]).toContain("active");
-		expect(issueStatus![1]).toContain(abbreviatePath(dbRoot));
+		// #0022: path + poll dropped from pinned status.
+		expect(issueStatus![1]).not.toContain(abbreviatePath(dbRoot));
+		expect(issueStatus![1]).not.toContain("poll=");
+		expect(issueStatus![1]).toContain("total");
 	});
 
 	it("missing-dbRoot path pins a 'dbRoot missing' status line with the resolved path (issue #0014)", async () => {
@@ -464,7 +472,10 @@ describe("handleSessionStart", () => {
 		const accentCall = fgCalls.find(([c]) => c === "accent");
 		expect(accentCall).toBeDefined();
 		expect(accentCall![1]).toContain("active");
-		expect(accentCall![1]).toContain(abbreviatePath(dbRoot));
+		// #0022: no path + no poll in the pinned status.
+		expect(accentCall![1]).not.toContain(abbreviatePath(dbRoot));
+		expect(accentCall![1]).not.toContain("poll=");
+		expect(accentCall![1]).toContain("total");
 
 		// The pinned status text is the theme-wrapped output, not a raw ANSI escape.
 		const statusCalls = ctx.ui.setStatus.mock.calls as Array<[string, string | undefined]>;
@@ -534,8 +545,10 @@ describe("/local-issue-watcher command", () => {
 			.map(([, v]) => v ?? "")
 			.find((v) => /resumed/i.test(v));
 		expect(resumedStatus).toBeDefined();
-		expect(resumedStatus!).toContain(abbreviatePath(dbRoot));
-		expect(resumedStatus!).toContain("poll=");
+		// #0022: pinned status is just `<state> | <counts>` — no path,
+		// no poll-period segment.
+		expect(resumedStatus!).not.toContain(abbreviatePath(dbRoot));
+		expect(resumedStatus!).not.toContain("poll=");
 	});
 
 	it("'pause' updates the pinned status line to show paused state", async () => {
@@ -552,7 +565,10 @@ describe("/local-issue-watcher command", () => {
 			.map(([, v]) => v ?? "")
 			.find((v) => /paused/i.test(v));
 		expect(pausedStatus).toBeDefined();
-		expect(pausedStatus!).toContain(abbreviatePath(dbRoot));
+		// #0022: paused line is exactly the prefix — no path, no poll,
+		// no counts.
+		expect(pausedStatus!).not.toContain(abbreviatePath(dbRoot));
+		expect(pausedStatus!).not.toContain("poll=");
 	});
 
 	// -- issue #0010: paused status line drops per-status counts --

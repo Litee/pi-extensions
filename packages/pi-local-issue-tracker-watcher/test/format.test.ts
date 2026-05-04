@@ -45,23 +45,26 @@ describe("formatStatusSummary", () => {
 	});
 });
 
-describe("buildStartupAnnouncement", () => {
-	it("includes the state, absolute dbRoot, poll seconds, and status summary", () => {
+describe("buildStartupAnnouncement (#0022)", () => {
+	it("is a compact two-segment line: '<state> | <open> open, <total> total'", () => {
 		const snap: Snapshot = {
 			"/a": issue("open"),
 			"/b": issue("in_progress"),
 		};
+		// Per #0022 the dbRoot and poll-period segments are both
+		// dropped from the pinned status row — they are static config
+		// that rarely changes and belong to an info / inspection
+		// surface, not the always-visible line.
 		const msg = buildStartupAnnouncement("active", "/abs/db", 60_000, snap);
-		expect(msg).toBe(
-			"local-issue-watcher: active | /a/db | poll=60s | 1 open, 1 in_progress",
-		);
+		expect(msg).toBe("local-issue-watcher: active | 1 open, 2 total");
 	});
 
-	it("renders '0 issues' for an empty tracker with the abbreviated path (#0018)", () => {
+	it("renders '0 open, 0 total' for an empty tracker and no dbRoot segment", () => {
 		const msg = buildStartupAnnouncement("active", "/abs/db", 60_000, {});
-		expect(msg).toContain("0 issues");
-		expect(msg).toContain("/a/db");
-		expect(msg).not.toContain("dbRoot=");
+		expect(msg).toBe("local-issue-watcher: active | 0 open, 0 total");
+		expect(msg).not.toContain("dbRoot");
+		expect(msg).not.toContain("/a/db");
+		expect(msg).not.toContain("/abs");
 	});
 
 	it("honours alternate states like 'resumed'", () => {
@@ -69,9 +72,37 @@ describe("buildStartupAnnouncement", () => {
 		expect(msg.startsWith("local-issue-watcher: resumed | ")).toBe(true);
 	});
 
-	it("rounds the poll interval to whole seconds", () => {
-		const msg = buildStartupAnnouncement("active", "/abs/db", 30_000, {});
-		expect(msg).toContain("poll=30s");
+	it("drops the poll=<N>s segment entirely (#0022)", () => {
+		const msg = buildStartupAnnouncement("active", "/abs/db", 30_000, {
+			"/a": issue("open"),
+		});
+		expect(msg).not.toContain("poll=");
+		expect(msg).not.toContain("30s");
+	});
+
+	it("ignores the dbRoot and pollIntervalMs arguments (retained for signature compatibility with chat surfaces)", () => {
+		// The dbRoot/poll parameters are still threaded through callers
+		// to the chat-surface `buildStartupChatMessage`; this function
+		// silently ignores them.
+		const a = buildStartupAnnouncement("active", "/abs/db", 60_000, {
+			"/a": issue("open"),
+		});
+		const b = buildStartupAnnouncement("active", "/completely/other/path", 999_999, {
+			"/a": issue("open"),
+		});
+		expect(a).toBe(b);
+	});
+
+	it("collapses per-status breakdown into a single 'total' number (#0022)", () => {
+		const snap: Snapshot = {
+			"/a": issue("open"),
+			"/b": issue("done"),
+			"/c": issue("done"),
+			"/d": issue("wont_fix"),
+		};
+		const msg = buildStartupAnnouncement("active", "/abs/db", 60_000, snap);
+		expect(msg).toBe("local-issue-watcher: active | 1 open, 4 total");
+		expect(msg).not.toMatch(/done|wont_fix|in_progress/);
 	});
 });
 
@@ -132,23 +163,23 @@ describe("buildChatMessageContent", () => {
 // buildStartupAnnouncement when paused (#0010)
 // ---------------------------------------------------------------------------
 
-describe("buildStartupAnnouncement when paused (#0010)", () => {
-	it("drops the per-status counts segment for the paused state", () => {
+describe("buildStartupAnnouncement when paused (#0010, #0022)", () => {
+	it("drops the count summary entirely for the paused state", () => {
 		const snap: Snapshot = {
 			"/a": issue("open"),
 			"/b": issue("in_progress"),
 			"/c": issue("done"),
 		};
 		const msg = buildStartupAnnouncement("paused", "/abs/db", 60_000, snap);
-		expect(msg).toBe("local-issue-watcher: paused | /a/db | poll=60s");
-		expect(msg).not.toMatch(/open|in_progress|done/);
+		expect(msg).toBe("local-issue-watcher: paused");
+		expect(msg).not.toMatch(/open|in_progress|done|total/);
 	});
 
-	it("paused line with no counts is exactly the prefix (#0010)", () => {
+	it("paused line is exactly the prefix — no dbRoot, no poll, no counts (#0022)", () => {
 		const msg = buildStartupAnnouncement("paused", "/abs/db", 60_000, {
 			"/a": issue("open"),
 		});
-		expect(msg).toBe("local-issue-watcher: paused | /a/db | poll=60s");
+		expect(msg).toBe("local-issue-watcher: paused");
 	});
 
 	it("'active' still includes counts", () => {
@@ -156,6 +187,7 @@ describe("buildStartupAnnouncement when paused (#0010)", () => {
 			"/a": issue("open"),
 		});
 		expect(msg).toContain("1 open");
+		expect(msg).toContain("1 total");
 	});
 });
 
@@ -163,19 +195,19 @@ describe("buildStartupAnnouncement when paused (#0010)", () => {
 // buildStartupAnnouncement — no last-update segment (#0016)
 // ---------------------------------------------------------------------------
 
-describe("buildStartupAnnouncement has no last-update segment (#0016)", () => {
-	it("active state ends at the counts — no 'last update:' phrase", () => {
+describe("buildStartupAnnouncement has no last-update segment (#0016, #0022)", () => {
+	it("active state ends at the counts — no 'last update:' phrase, no dbRoot, no poll", () => {
 		const msg = buildStartupAnnouncement("active", "/abs/db", 60_000, {
 			"/a": issue("open"),
 		});
-		expect(msg).toBe("local-issue-watcher: active | /a/db | poll=60s | 1 open");
+		expect(msg).toBe("local-issue-watcher: active | 1 open, 1 total");
 		expect(msg).not.toMatch(/last update/);
 		expect(msg).not.toMatch(/\b(never|just now|\dm ago|\dh ago|\dd ago)\b/);
 	});
 
-	it("paused state ends at the poll prefix — no 'last update:' phrase", () => {
+	it("paused state is exactly the prefix — no 'last update:', no dbRoot, no poll", () => {
 		const msg = buildStartupAnnouncement("paused", "/abs/db", 60_000, {});
-		expect(msg).toBe("local-issue-watcher: paused | /a/db | poll=60s");
+		expect(msg).toBe("local-issue-watcher: paused");
 		expect(msg).not.toMatch(/last update/);
 	});
 });

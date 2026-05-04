@@ -53,18 +53,24 @@ On every `session_start`:
    prefixed with the full package name per #0020, though the rendered
    line keeps the shorter `local-issue-watcher:` label to save footer
    width) — e.g.
-   `local-issue-watcher: active | /h/u/p/tracker | poll=60s | 3 open, 1 in_progress` —
-   the `dbRoot` is compacted via `abbreviatePath` (every intermediate
-   segment collapsed to its first grapheme; leading dotfile segments
-   keep their `.`). The inline `/local-issue-watcher status` notify
+   `local-issue-watcher: active | 3 open, 15 total` —
+   the pinned line was simplified in #0022: the `dbRoot` path segment
+   and the `poll=<N>s` segment were both dropped because they answer
+   'how is this configured?' (rarely changes) rather than 'is there
+   anything new?' (what the always-visible line should surface). The
+   count tail is collapsed to `<open>, <total>` — the full per-status
+   breakdown still appears in the chat-surface announcement
+   (`buildStartupChatMessage`) so the LLM has the raw data. The
+   `local-issue-watcher: dbRoot missing | …` variant kept its
+   abbreviated path because the remediation hint is the whole point
+   of that line. The inline `/local-issue-watcher status` notify
    and the pause/resume notifications keep the full absolute path so
    the user can copy-paste it.
-   so the user can see the watcher is running and which `dbRoot` is in
-   effect without running a slash command. This line is persistent (lives
-   below the main status line, like `slack-watcher`) and never triggers an
-   agent turn. `/local-issue-watcher pause` / `/local-issue-watcher resume` update the
-   same entry with `state=paused` / `state=resumed`. `session_shutdown`
-   clears it.
+   This line is persistent (lives below the main status line, like
+   `slack-watcher`) and never triggers an agent turn.
+   `/local-issue-watcher pause` / `/local-issue-watcher resume` update
+   the same entry with `state=paused` / `state=resumed`.
+   `session_shutdown` clears it.
 5. Rehydrate any baseline snapshot from the session log (< 24 h old).
 6. Rehydrate the user's last explicit **run state** (paused / running)
    from the session log. Absent entry → default **paused** (#0012). A
