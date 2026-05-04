@@ -57,20 +57,48 @@ Tab renaming was removed in #0003 — the extension never touches the
 cmux tab title any more.
 
 The "already auto-renamed" flag is persisted to the pi session log via
-`pi.appendEntry("cmux-status-renamed", { savedAt })` (marker-only, no
-payload body), so `/reload` rehydrates it from the log and does **not**
-re-rename a workspace the user has manually renamed after the initial
-auto-name. A fresh pi session (new session log) starts with a clean flag
-and will auto-rename once again.
+`pi.appendEntry("pi-update-cmux-status-state", { savedAt })` (marker-
+only, no payload body), so `/reload` rehydrates it from the log and
+skips both the prefix gate (cmux RPC) and the LLM call on the first
+eligible user message. A fresh pi session (new session log) starts
+with a clean flag and re-checks the live workspace title.
 
-**Prefix gate (#0003).** Before dispatching the rename, the extension
-reads the current title via `cmux rpc workspace.current` and only
-renames when the current title starts with cmux's default `Terminal `
-prefix. A workspace the user has already renamed by hand is left
-alone. If the RPC read fails (cmux unavailable, non-zero exit,
-malformed JSON, 3-second timeout), the gate fails open and the rename
-proceeds. `/cmux-rename` bypasses the gate because the user is
-explicitly asking for a rename.
+The custom-entry key is prefixed with the full package name per the
+convention in tracker issues #0004 (this package), #0020 (`pi-local-
+issue-tracker-watcher`), and #0002 (`pi-session-recap`). Session logs
+produced by pre-#0004 builds still wrote `"cmux-status-renamed"`; the
+read path (`wasAlreadyRenamedThisSession`) accepts both keys via
+`LEGACY_RENAMED_ENTRY_TYPES`, but the write path ALWAYS emits the new
+`pi-update-cmux-status-state` key.
+
+**Prefix gate (#0003 / #0004).** The gate runs BEFORE the LLM call
+(#0004), so a workspace the user has already renamed never pays for a
+completion. Order: `cmuxAvailable()` → in-memory flag early-out →
+`cmux rpc workspace.current` → `fetchNames` → dispatch. The gate
+**fails closed** (#0004): when the RPC read fails (cmux unavailable,
+non-zero exit, malformed JSON, 3-second timeout, empty title), the
+rename is skipped for this turn and retried on the next user message
+— no marker is written, because no decision was reached. Skipping
+costs nothing now that the LLM runs behind the gate. `/cmux-rename`
+bypasses the gate because the user is explicitly asking for a rename.
+
+**Persistence rules (#0004).** The `cmux-status-renamed` marker is
+written on **any gate decision**: a successful rename dispatch, OR
+the gate deciding the title already looks user-set. Both outcomes
+are authoritative — a later `/reload` should skip both the gate and
+the LLM call. The marker is **not** written when the gate read fails
+closed, cmux is unavailable, or the LLM call fails, so the next input
+event re-checks.
+
+**Flag dance (#0004).** The in-memory `namedThisSession` flag is
+reserved synchronously before the fire-and-forget IIFE so two back-
+to-back `input` events cannot race into two parallel LLM calls.
+Inside `runRename` the flag is reset to `false` on every non-success
+path (cmux unavailable, gate read failed closed, LLM call failed) so
+the next user message can retry. The flag stays `true` after a
+successful rename dispatch and after a gate-decided "title looks
+user-set" skip — both outcomes trigger a `persistRenamed` write by
+the caller.
 
 ### `/cmux-rename`
 

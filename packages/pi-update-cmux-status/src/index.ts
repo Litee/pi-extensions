@@ -56,9 +56,79 @@ import { buildSessionRenamePrompt, getBranchSafely } from "./sessionPrompt.js";
  * Payload: `{ savedAt: number }`. A marker-only entry — `/cmux-rename`
  * rebuilds its prompt from the live session branch, so the first prompt
  * is not stored.
+ *
+ * Naming convention (#0004 follow-up): every session-log entry type
+ * owned by this extension is prefixed with the full package name
+ * (`pi-update-cmux-status-`) so the session log stays self-explanatory
+ * and collisions with other extensions are impossible.
  */
-export const RENAMED_ENTRY_TYPE = "cmux-status-renamed";
+export const RENAMED_ENTRY_TYPE = "pi-update-cmux-status-state";
 
+/**
+ * Session-log custom-entry types this extension has written in the
+ * past. Read by `wasAlreadyRenamedThisSession` so a session log that
+ * was populated by an older build still short-circuits on `/reload`.
+ * Write-side ALWAYS uses `RENAMED_ENTRY_TYPE`.
+ */
+export const LEGACY_RENAMED_ENTRY_TYPES: readonly string[] = [
+	"cmux-status-renamed",
+];
+
+/**
+ * Rehydrates the once-per-session rename flag from the pi session log.
+ * Called from `session_start` so `/reload` picks up the persisted
+ * marker and skips both the prefix gate and the LLM call on the first
+ * eligible user message.
+ *
+ * Returns `true` when the session log has at least one
+ * `RENAMED_ENTRY_TYPE` custom entry. Tolerant of missing/unsupported
+ * sessionManager shapes (returns `false` in that case).
+ */
+export function wasAlreadyRenamedThisSession(
+	sessionManager: {
+		getEntries?: () => Array<{
+			type?: string;
+			customType?: string;
+			data?: unknown;
+		}>;
+	} | undefined | null,
+): boolean {
+	if (!sessionManager || typeof sessionManager.getEntries !== "function") return false;
+	try {
+		const entries = sessionManager.getEntries() ?? [];
+		for (const e of entries) {
+			if (e?.type !== "custom") continue;
+			const t = e.customType;
+			if (t === RENAMED_ENTRY_TYPE) return true;
+			if (t !== undefined && LEGACY_RENAMED_ENTRY_TYPES.includes(t)) return true;
+		}
+		return false;
+	} catch {
+		return false;
+	}
+}
+
+/**
+ * Writes the `RENAMED_ENTRY_TYPE` marker to the pi session log. Called
+ * after a decision has been made about the workspace title — either a
+ * rename was dispatched, or the gate confirmed the title already looks
+ * user-set. Future messages (and `/reload`s within the same pi session)
+ * will then short-circuit before the prefix gate. The call is
+ * best-effort — any throw is swallowed so a session-log failure does
+ * not crash the rename dispatch.
+ */
+export function persistRenamed(
+	pi: {
+		appendEntry?: (customType: string, data: unknown) => void;
+	},
+): void {
+	try {
+		pi.appendEntry?.(RENAMED_ENTRY_TYPE, { savedAt: Date.now() });
+	} catch (err) {
+		// eslint-disable-next-line no-console
+		console.warn("[cmux-status] persistRenamed failed:", err);
+	}
+}
 /**
  * Tool names that should flip the pill to `waiting` and fire a desktop
  * notification when invoked by any extension (#0002).
@@ -95,61 +165,23 @@ export function __setFetchNamesForTests(
 	fetchNamesOverride = fn;
 }
 
-/**
- * Return `true` when a prior valid `cmux-status-renamed` marker is
- * present in the session entry log. A valid marker has `data.savedAt`
- * as a finite number; malformed or foreign entries are skipped.
- */
-function wasAlreadyRenamedThisSession(entries: {
-	getEntries?: () => Array<{ type?: string; customType?: string; data?: unknown }>;
-}): boolean {
-	if (typeof entries.getEntries !== "function") return false;
-	const list = entries.getEntries();
-	for (let i = list.length - 1; i >= 0; i--) {
-		const e = list[i];
-		if (!e || e.type !== "custom" || e.customType !== RENAMED_ENTRY_TYPE) {
-			continue;
-		}
-		const data = e.data as { savedAt?: unknown } | undefined | null;
-		if (!data || typeof data !== "object") continue;
-		if (typeof data.savedAt !== "number" || !Number.isFinite(data.savedAt)) {
-			continue;
-		}
-		return true;
-	}
-	return false;
-}
-
-/**
- * Safe wrapper around `pi.appendEntry` so persistence failures never break
- * the rename flow.
- */
-function persistRenamed(
-	pi: Pick<ExtensionAPI, "appendEntry">,
-): void {
-	try {
-		pi.appendEntry(RENAMED_ENTRY_TYPE, {
-			savedAt: Date.now(),
-		});
-	} catch (err) {
-		// eslint-disable-next-line no-console
-		console.warn("[cmux-status] appendEntry failed:", err);
-	}
-}
-
 
 /**
  * Prefix that gates the auto-rename of the cmux workspace. See
- * pi-update-cmux-status#0003.
+ * pi-update-cmux-status#0003 and #0004.
  *
  * The workspace is renamed only when its current title starts with
  * `RENAME_PREFIX_WORKSPACE` — cmux's own default for a fresh workspace
  * (`Terminal <N>`). A workspace the user has already renamed by hand
  * is left alone.
  *
- * The gate fails open: when the current title cannot be determined
- * (cmux unavailable, RPC error, malformed JSON, 3-second timeout), we
- * fall back to renaming unconditionally.
+ * Since #0004 the gate **fails closed**: when the current title cannot
+ * be determined (cmux unavailable, RPC error, malformed JSON, 3-second
+ * timeout, or empty title), the rename is skipped for this turn and
+ * retried on the next user message — the LLM call is now gated BEHIND
+ * the prefix check, so skipping costs nothing. The pre-#0004 fail-open
+ * policy existed because the LLM call had already been paid for before
+ * the gate ran; reordering made fail-open unnecessary.
  *
  * Tab renaming was removed in #0003 per user request — the extension
  * never touches the cmux tab title any more.
@@ -157,14 +189,38 @@ function persistRenamed(
 const RENAME_PREFIX_WORKSPACE = "Terminal ";
 
 /**
- * Dispatches a workspace rename: calls the LLM, then (when the call
- * succeeds) asks cmux to rename the current workspace. The LLM stage
- * is separated out in the source .ts so tests can swap it.
+ * Dispatches a workspace rename with the following order (reversed in
+ * #0004):
+ *
+ *   cmuxAvailable()  →  prefix gate (cmux RPC)  →  fetchNames (LLM)  →  dispatch
+ *
+ * The prefix gate runs BEFORE the LLM call, so a workspace the user has
+ * already renamed (or whose title cannot be read) never pays for a
+ * completion. See pi-update-cmux-status#0004.
+ *
+ * When `opts.runtime` is supplied, `runRename` manages
+ * `runtime.namedThisSession` itself. The flag is a session-scoped
+ * cache; the caller is responsible for persisting the decision via
+ * `persistRenamed(pi)` when `runRename` returns `true` (see the input
+ * handler and the `/cmux-rename` command).
+ *
+ * - Gate returns null (fail-closed): flag reset to `false`, return
+ *   `false` → next message retries (no persist).
+ * - Gate returns a user-set title: flag stays `true`, return `true` →
+ *   caller persists so `/reload` skips the gate entirely next time.
+ * - Gate passes → flag already `true` (reserved synchronously by the
+ *   caller, see input handler); on LLM failure reset to `false`,
+ *   return `false` (no persist).
+ * - Dispatch succeeds → flag stays `true`, return `true` → caller
+ *   persists.
+ *
+ * When `opts.runtime` is not supplied, no flag is touched.
  *
  * Returns `true` once a decision has been made — whether or not a
- * rename was dispatched (the prefix gate may have suppressed it).
- * Returns `false` only when no decision was possible: cmux not
- * available, or the LLM names call failed.
+ * rename was actually dispatched (the prefix gate may have suppressed
+ * it). Returns `false` only when no decision was possible: cmux not
+ * available, the prefix gate read failed (fail-closed), or the LLM
+ * names call failed.
  */
 export async function runRename(
 	ctx: NamesContext,
@@ -185,37 +241,79 @@ export async function runRename(
 		 * explicitly asked for a rename.
 		 */
 		skipPrefixGate?: boolean;
+		/**
+		 * Optional runtime record whose `namedThisSession` flag should be
+		 * managed by this call. See the JSDoc above for the full
+		 * set/reset rules. When omitted (the default for pre-#0004
+		 * tests), no flag is touched.
+		 */
+		runtime?: { namedThisSession: boolean };
 		/** Override the names source — tests pass a stub resolving to canned names. */
 		fetchNames?: (ctx: NamesContext, prompt: string) => Promise<Awaited<ReturnType<typeof generateNames>>>;
 	},
 ): Promise<boolean> {
-	if (!cmuxAvailable()) return false;
-	const fetch = opts.fetchNames ?? fetchNamesOverride ?? generateNames;
-	const names = await fetch(ctx, prompt);
-	if (!names) return false;
+	if (!cmuxAvailable()) {
+		if (opts.runtime) opts.runtime.namedThisSession = false;
+		return false;
+	}
 
-	// Prefix gate (#0003). Only rename when the current workspace title
-	// still starts with cmux's default `Terminal ` prefix — if the user
-	// has already renamed it, leave it alone. Fails open on RPC errors.
-	let doWorkspace = opts.renameWorkspace;
-	if (doWorkspace && !opts.skipPrefixGate) {
+	// Prefix gate (#0003) — now runs BEFORE the LLM call (#0004). Only
+	// rename when the current workspace title still starts with cmux's
+	// default `Terminal ` prefix. Fails CLOSED (#0004): a null read skips
+	// the turn without paying for a completion and retries next message.
+	if (opts.renameWorkspace && !opts.skipPrefixGate) {
 		const wsTitle = await readWorkspaceTitle();
-		if (wsTitle !== null && !wsTitle.startsWith(RENAME_PREFIX_WORKSPACE)) {
-			doWorkspace = false;
+		if (wsTitle === null) {
+			logLine(
+				opts.statusKey,
+				"info",
+				"Skipped workspace rename: could not read current workspace title (#0004); will retry next message",
+			);
+			if (opts.runtime) opts.runtime.namedThisSession = false;
+			return false;
+		}
+		if (!wsTitle.startsWith(RENAME_PREFIX_WORKSPACE)) {
+			logLine(
+				opts.statusKey,
+				"info",
+				"Skipped workspace rename: title looks user-set (#0003)",
+			);
+			// Keep runtime.namedThisSession = true so the caller persists
+			// the marker — /reload should then skip both the gate and the
+			// LLM call for the rest of this pi session (#0004).
+			return true;
 		}
 	}
 
-	if (doWorkspace) {
+	// Gate passed (or was bypassed by `skipPrefixGate`). Reserve the
+	// flag here too (the input handler already reserves it before
+	// firing the IIFE to close the back-to-back race, but callers that
+	// hit runRename directly — /cmux-rename, unit tests — rely on
+	// runRename to do the reservation itself).
+	if (opts.runtime) opts.runtime.namedThisSession = true;
+
+	const fetch = opts.fetchNames ?? fetchNamesOverride ?? generateNames;
+	const names = await fetch(ctx, prompt);
+	if (!names) {
+		// LLM failed — release the slot so the next message retries.
+		if (opts.runtime) opts.runtime.namedThisSession = false;
+		return false;
+	}
+
+	if (opts.renameWorkspace) {
 		renameWorkspace(names.workspace);
 		logLine(opts.statusKey, "info", `Renamed workspace → "${names.workspace}"`);
 	} else {
 		logLine(
 			opts.statusKey,
 			"info",
-			opts.renameWorkspace
-				? "Skipped workspace rename: title looks user-set (#0003)"
-				: "Skipped workspace rename: PI_CMUX_RENAME_WORKSPACE is off",
+			"Skipped workspace rename: PI_CMUX_RENAME_WORKSPACE is off",
 		);
+		// runtime.namedThisSession stays `true` so the caller persists
+		// the marker and subsequent messages (plus `/reload`) short-
+		// circuit without paying for another LLM completion. Flipping
+		// `PI_CMUX_RENAME_WORKSPACE` back on mid-session requires a
+		// fresh pi session today.
 	}
 	return true;
 }
@@ -253,8 +351,13 @@ export default function cmuxStatus(pi: ExtensionAPI): void {
 	// ── Session lifecycle ──────────────────────────────────────────────
 	pi.on("session_start", async (_event, ctx) => {
 		rt.namedThisSession = false;
-		// Rehydrate persistent once-per-session flag from the session log so
-		// a `/reload` does not re-trigger auto-rename. See RENAMED_ENTRY_TYPE.
+		// #0004: rehydrate the once-per-session flag from the pi session
+		// log so `/reload` inside the same pi session skips both the
+		// prefix gate (cmux RPC) and the LLM call on the first eligible
+		// user message. The marker is written after any gate-reached
+		// decision (successful rename OR "title looks user-set, skip"),
+		// so a reloaded session only re-checks when a prior session
+		// never got that far.
 		try {
 			const sm = (ctx as ExtensionContext | undefined)?.sessionManager;
 			if (sm) {
@@ -297,12 +400,20 @@ export default function cmuxStatus(pi: ExtensionAPI): void {
 		// transitions driven by `before_agent_start` + `tool_execution_*`).
 		setStatus(rt.statusKey, "working", "bolt", "#ff9500");
 		if (rt.namedThisSession) return;
+		// Reserve the slot synchronously-before-IIFE so two back-to-back
+		// input events cannot both kick off a rename. runRename also
+		// manages the flag internally — see its JSDoc for the full
+		// set/reset rules under gate-pass / gate-fail / LLM-fail. On any
+		// `true` return (rename dispatched OR gate skipped because title
+		// looks user-set), persist the marker so a later `/reload` skips
+		// both the cmux RPC and the LLM call on its first eligible input.
 		rt.namedThisSession = true;
 		// Fire-and-forget — don't block input processing on the LLM call.
 		void (async () => {
 			const ok = await runRename(ctx as unknown as NamesContext, text, {
 				statusKey: rt.statusKey,
 				renameWorkspace: rt.renameWorkspace,
+				runtime: rt,
 			});
 			if (ok) persistRenamed(pi);
 		})();
@@ -373,6 +484,7 @@ export default function cmuxStatus(pi: ExtensionAPI): void {
 				statusKey: rt.statusKey,
 				renameWorkspace: rt.renameWorkspace,
 				skipPrefixGate: true,
+				runtime: rt,
 			});
 			if (!ok) {
 				ui.notify("Rename failed (model call errored).", "error");
