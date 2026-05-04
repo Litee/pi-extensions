@@ -64,7 +64,7 @@ export function scanIssueFiles(dbRoot: string, previous?: Snapshot): Snapshot {
 				raw = readFileSync(filePath, "utf8");
 			} catch (exc) {
 				// eslint-disable-next-line no-console
-				console.warn(`[issue-watcher] could not read ${filePath}: ${String(exc)}`);
+				console.warn(`[local-issue-watcher] could not read ${filePath}: ${String(exc)}`);
 				const carried = previous?.[filePath];
 				if (carried !== undefined) snapshot[filePath] = carried;
 				continue;
@@ -75,7 +75,7 @@ export function scanIssueFiles(dbRoot: string, previous?: Snapshot): Snapshot {
 				parsed = JSON.parse(raw);
 			} catch (exc) {
 				// eslint-disable-next-line no-console
-				console.warn(`[issue-watcher] could not parse ${filePath}: ${String(exc)}`);
+				console.warn(`[local-issue-watcher] could not parse ${filePath}: ${String(exc)}`);
 				const carried = previous?.[filePath];
 				if (carried !== undefined) snapshot[filePath] = carried;
 				continue;

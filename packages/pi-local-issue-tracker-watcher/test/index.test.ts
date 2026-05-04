@@ -104,7 +104,7 @@ function makeFakeCtx(entries: Array<{ type?: string; customType?: string; data?:
 function runningRunstate(): { type: string; customType: string; data: { savedAt: number; paused: boolean } } {
 	return {
 		type: "custom",
-		customType: "issue-watcher-runstate",
+		customType: "local-issue-watcher-runstate",
 		data: { savedAt: Date.now(), paused: false },
 	};
 }
@@ -120,13 +120,13 @@ describe("POLL_INTERVAL_MS", () => {
 });
 
 describe("default export — wiring", () => {
-	it("subscribes to session_start and registers the /issue-watcher command", () => {
+	it("subscribes to session_start and registers the /local-issue-watcher command", () => {
 		const pi = makeFakePi();
 		createExtension(pi as never);
 
 		expect(pi.on).toHaveBeenCalledWith("session_start", expect.any(Function));
 		expect(pi.registerCommand).toHaveBeenCalledWith(
-			"issue-watcher",
+			"local-issue-watcher",
 			expect.objectContaining({
 				description: expect.any(String),
 				handler: expect.any(Function),
@@ -171,7 +171,7 @@ describe("handleSessionStart", () => {
 	let dbRoot: string;
 
 	beforeEach(() => {
-		dbRoot = mkdtempSync(join(tmpdir(), "pi-issue-watcher-idx-"));
+		dbRoot = mkdtempSync(join(tmpdir(), "pi-local-issue-watcher-idx-"));
 	});
 	afterEach(() => {
 		rmSync(dbRoot, { recursive: true, force: true });
@@ -197,7 +197,7 @@ describe("handleSessionStart", () => {
 		});
 
 		expect(ctx.ui.notify).toHaveBeenCalledWith(
-			expect.stringContaining("issue-watcher"),
+			expect.stringContaining("local-issue-watcher"),
 			expect.any(String),
 		);
 		expect(pi.sendMessage).not.toHaveBeenCalled();
@@ -232,7 +232,7 @@ describe("handleSessionStart", () => {
 		// Startup announcement emitted via ui.setStatus (pins to extension-status row),
 		// not via sendMessage (no agent turn).
 		const statusCalls = ctx.ui.setStatus.mock.calls as Array<[string, string | undefined]>;
-		const issueStatus = statusCalls.find(([k]) => k === "issue-watcher");
+		const issueStatus = statusCalls.find(([k]) => k === "local-issue-watcher");
 		expect(issueStatus).toBeDefined();
 		expect(issueStatus![1]).toContain("active");
 		expect(issueStatus![1]).toContain(dbRoot);
@@ -286,7 +286,7 @@ describe("handleSessionStart", () => {
 			{ customType: string; content: string; display?: boolean; details?: unknown },
 			{ triggerTurn?: boolean; deliverAs?: string },
 		];
-		expect(payload.customType).toBe("issue-watcher");
+		expect(payload.customType).toBe("local-issue-watcher");
 		expect(payload.display).toBe(true);
 		expect(payload.content).toMatch(/issue update/);
 		expect(payload.content).toMatch(/status changed/);
@@ -341,7 +341,7 @@ describe("handleSessionStart", () => {
 		// Startup announcement still fires even when there are no changes,
 		// so the user can see the watcher is active (issue #0001).
 		const statusCalls = ctx.ui.setStatus.mock.calls as Array<[string, string | undefined]>;
-		const issueStatus = statusCalls.find(([k]) => k === "issue-watcher");
+		const issueStatus = statusCalls.find(([k]) => k === "local-issue-watcher");
 		expect(issueStatus).toBeDefined();
 		expect(issueStatus![1]).toContain("active");
 		expect(issueStatus![1]).toContain(dbRoot);
@@ -366,7 +366,7 @@ describe("handleSessionStart", () => {
 		// visible beyond the transient toast (#0014).
 		const statusCalls = ctx.ui.setStatus.mock.calls as Array<[string, string | undefined]>;
 		const pinned = statusCalls
-			.filter(([k]) => k === "issue-watcher")
+			.filter(([k]) => k === "local-issue-watcher")
 			.map(([, v]) => v ?? "");
 		expect(pinned).toHaveLength(1);
 		expect(pinned[0]).toContain("dbRoot missing");
@@ -390,7 +390,7 @@ describe("handleSessionStart", () => {
 		// DOES trigger an agent turn so the LLM sees the tracker state at
 		// session start — that is asserted separately in the #0011/#0013 block.
 		const statusCalls = ctx.ui.setStatus.mock.calls as Array<[string, string | undefined]>;
-		expect(statusCalls.some(([k]) => k === "issue-watcher")).toBe(true);
+		expect(statusCalls.some(([k]) => k === "local-issue-watcher")).toBe(true);
 	});
 
 	// -- issue #0001 (H1): no double-scan on session_start --
@@ -467,20 +467,20 @@ describe("handleSessionStart", () => {
 
 		// The pinned status text is the theme-wrapped output, not a raw ANSI escape.
 		const statusCalls = ctx.ui.setStatus.mock.calls as Array<[string, string | undefined]>;
-		const issueStatus = statusCalls.find(([k]) => k === "issue-watcher");
+		const issueStatus = statusCalls.find(([k]) => k === "local-issue-watcher");
 		expect(issueStatus![1]).not.toMatch(/\x1b\[36m/);
 		expect(issueStatus![1]).toContain("<fg:accent>");
 	});
 });
 
 // ---------------------------------------------------------------------------
-// /issue-watcher command
+// /local-issue-watcher command
 // ---------------------------------------------------------------------------
 
-describe("/issue-watcher command", () => {
+describe("/local-issue-watcher command", () => {
 	let dbRoot: string;
 	beforeEach(() => {
-		dbRoot = mkdtempSync(join(tmpdir(), "pi-issue-watcher-cmd-"));
+		dbRoot = mkdtempSync(join(tmpdir(), "pi-local-issue-watcher-cmd-"));
 	});
 	afterEach(() => {
 		rmSync(dbRoot, { recursive: true, force: true });
@@ -502,7 +502,7 @@ describe("/issue-watcher command", () => {
 		const pi = makeFakePi();
 		extensionWithDbRoot(pi, dbRoot);
 
-		const cmd = pi.commands.get("issue-watcher");
+		const cmd = pi.commands.get("local-issue-watcher");
 		expect(cmd).toBeDefined();
 		const ctx = makeFakeCtx();
 		await cmd!.handler("pause", ctx);
@@ -517,7 +517,7 @@ describe("/issue-watcher command", () => {
 		const pi = makeFakePi();
 		extensionWithDbRoot(pi, dbRoot);
 
-		const cmd = pi.commands.get("issue-watcher");
+		const cmd = pi.commands.get("local-issue-watcher");
 		const ctx = makeFakeCtx();
 		// pause first, then resume
 		await cmd!.handler("pause", ctx);
@@ -529,7 +529,7 @@ describe("/issue-watcher command", () => {
 		// Resume also updates the pinned status line to mirror session_start.
 		const statusCalls = ctx.ui.setStatus.mock.calls as Array<[string, string | undefined]>;
 		const resumedStatus = statusCalls
-			.filter(([k]) => k === "issue-watcher")
+			.filter(([k]) => k === "local-issue-watcher")
 			.map(([, v]) => v ?? "")
 			.find((v) => /resumed/i.test(v));
 		expect(resumedStatus).toBeDefined();
@@ -541,13 +541,13 @@ describe("/issue-watcher command", () => {
 		const pi = makeFakePi();
 		extensionWithDbRoot(pi, dbRoot);
 
-		const cmd = pi.commands.get("issue-watcher");
+		const cmd = pi.commands.get("local-issue-watcher");
 		const ctx = makeFakeCtx();
 		await cmd!.handler("pause", ctx);
 
 		const statusCalls = ctx.ui.setStatus.mock.calls as Array<[string, string | undefined]>;
 		const pausedStatus = statusCalls
-			.filter(([k]) => k === "issue-watcher")
+			.filter(([k]) => k === "local-issue-watcher")
 			.map(([, v]) => v ?? "")
 			.find((v) => /paused/i.test(v));
 		expect(pausedStatus).toBeDefined();
@@ -570,13 +570,13 @@ describe("/issue-watcher command", () => {
 
 		const pi = makeFakePi();
 		extensionWithDbRoot(pi, dbRoot);
-		const cmd = pi.commands.get("issue-watcher");
+		const cmd = pi.commands.get("local-issue-watcher");
 		const ctx = makeFakeCtx();
 		await cmd!.handler("pause", ctx);
 
 		const statusCalls = ctx.ui.setStatus.mock.calls as Array<[string, string | undefined]>;
 		const pausedStatus = statusCalls
-			.filter(([k]) => k === "issue-watcher")
+			.filter(([k]) => k === "local-issue-watcher")
 			.map(([, v]) => v ?? "")
 			.find((v) => /paused/i.test(v));
 		expect(pausedStatus).toBeDefined();
@@ -590,7 +590,7 @@ describe("/issue-watcher command", () => {
 		const pi = makeFakePi();
 		extensionWithDbRoot(pi, dbRoot);
 
-		const cmd = pi.commands.get("issue-watcher");
+		const cmd = pi.commands.get("local-issue-watcher");
 		const ctx = makeFakeCtx();
 		await cmd!.handler("", ctx);
 
@@ -601,7 +601,7 @@ describe("/issue-watcher command", () => {
 	it("warns on an unknown subcommand", async () => {
 		const pi = makeFakePi();
 		extensionWithDbRoot(pi, dbRoot);
-		const cmd = pi.commands.get("issue-watcher");
+		const cmd = pi.commands.get("local-issue-watcher");
 		const ctx = makeFakeCtx();
 		await cmd!.handler("frobnicate", ctx);
 
@@ -613,7 +613,7 @@ describe("/issue-watcher command", () => {
 	it("'status' subcommand behaves like empty args", async () => {
 		const pi = makeFakePi();
 		extensionWithDbRoot(pi, dbRoot);
-		const cmd = pi.commands.get("issue-watcher");
+		const cmd = pi.commands.get("local-issue-watcher");
 		const ctx = makeFakeCtx();
 		await cmd!.handler("status", ctx);
 
@@ -630,7 +630,7 @@ describe("/issue-watcher command", () => {
 describe("polling lifecycle", () => {
 	let dbRoot: string;
 	beforeEach(() => {
-		dbRoot = mkdtempSync(join(tmpdir(), "pi-issue-watcher-poll-"));
+		dbRoot = mkdtempSync(join(tmpdir(), "pi-local-issue-watcher-poll-"));
 		vi.useFakeTimers();
 	});
 	afterEach(() => {
@@ -699,7 +699,7 @@ describe("polling lifecycle", () => {
 			{ customType: string; content: string },
 			{ triggerTurn?: boolean },
 		];
-		expect(payload.customType).toBe("issue-watcher");
+		expect(payload.customType).toBe("local-issue-watcher");
 		expect(payload.content).toMatch(/status changed/);
 		expect(opts.triggerTurn).toBe(true);
 	});
@@ -822,7 +822,7 @@ describe("run-state persistence", () => {
 	let dbRoot: string;
 
 	beforeEach(() => {
-		dbRoot = mkdtempSync(join(tmpdir(), "pi-issue-watcher-rs-"));
+		dbRoot = mkdtempSync(join(tmpdir(), "pi-local-issue-watcher-rs-"));
 	});
 	afterEach(() => {
 		rmSync(dbRoot, { recursive: true, force: true });
@@ -867,7 +867,7 @@ describe("run-state persistence", () => {
 
 		// Pinned status line says 'paused', not 'active'.
 		const statusCalls = ctx.ui.setStatus.mock.calls as Array<[string, string | undefined]>;
-		const pinned = statusCalls.find(([k]) => k === "issue-watcher")?.[1] ?? "";
+		const pinned = statusCalls.find(([k]) => k === "local-issue-watcher")?.[1] ?? "";
 		expect(pinned).toContain("paused");
 		expect(pinned).not.toMatch(/\bactive\b/);
 	});
@@ -913,7 +913,7 @@ describe("run-state persistence", () => {
 		]);
 		await handleSessionStart({ pi: pi as never, ctx: ctx as never, dbRoot });
 		const statusCalls = ctx.ui.setStatus.mock.calls as Array<[string, string | undefined]>;
-		const pinned = statusCalls.find(([k]) => k === "issue-watcher")?.[1] ?? "";
+		const pinned = statusCalls.find(([k]) => k === "local-issue-watcher")?.[1] ?? "";
 		expect(pinned).toContain("paused");
 		expect(pinned).not.toMatch(/\bactive\b/);
 	});
@@ -1009,12 +1009,12 @@ describe("run-state persistence", () => {
 		}
 	});
 
-	// -- /issue-watcher pause|resume persist run-state -----------------------
+	// -- /local-issue-watcher pause|resume persist run-state -----------------------
 
-	it("'/issue-watcher pause' appends a RUNSTATE_ENTRY_TYPE entry with paused=true", async () => {
+	it("'/local-issue-watcher pause' appends a RUNSTATE_ENTRY_TYPE entry with paused=true", async () => {
 		const pi = makeFakePi();
 		extensionWithDbRoot(pi, dbRoot);
-		await pi.commands.get("issue-watcher")!.handler("pause", makeFakeCtx());
+		await pi.commands.get("local-issue-watcher")!.handler("pause", makeFakeCtx());
 		const runStateCalls = pi.appendEntry.mock.calls.filter(
 			(c) => c[0] === RUNSTATE_ENTRY_TYPE,
 		);
@@ -1027,11 +1027,11 @@ describe("run-state persistence", () => {
 		expect(typeof lastPayload.savedAt).toBe("number");
 	});
 
-	it("'/issue-watcher resume' appends a RUNSTATE_ENTRY_TYPE entry with paused=false", async () => {
+	it("'/local-issue-watcher resume' appends a RUNSTATE_ENTRY_TYPE entry with paused=false", async () => {
 		const pi = makeFakePi();
 		extensionWithDbRoot(pi, dbRoot);
-		await pi.commands.get("issue-watcher")!.handler("pause", makeFakeCtx());
-		await pi.commands.get("issue-watcher")!.handler("resume", makeFakeCtx());
+		await pi.commands.get("local-issue-watcher")!.handler("pause", makeFakeCtx());
+		await pi.commands.get("local-issue-watcher")!.handler("resume", makeFakeCtx());
 		const runStateCalls = pi.appendEntry.mock.calls.filter(
 			(c) => c[0] === RUNSTATE_ENTRY_TYPE,
 		);
@@ -1046,10 +1046,10 @@ describe("run-state persistence", () => {
 	it("pause -> simulated reload -> session_start rehydrates as paused and stays quiet", async () => {
 		writeIssue("skill-a", "0001-a.json", { id: "0001", status: "open", skill: "skill-a" });
 
-		// First extension instance — user runs /issue-watcher pause.
+		// First extension instance — user runs /local-issue-watcher pause.
 		const pi1 = makeFakePi();
 		extensionWithDbRoot(pi1, dbRoot);
-		await pi1.commands.get("issue-watcher")!.handler("pause", makeFakeCtx());
+		await pi1.commands.get("local-issue-watcher")!.handler("pause", makeFakeCtx());
 		const persistedEntries = pi1.appendEntry.mock.calls
 			.filter((c) => c[0] === RUNSTATE_ENTRY_TYPE)
 			.map(([t, d]) => ({
@@ -1076,7 +1076,7 @@ describe("run-state persistence", () => {
 
 			// The pinned status line on the reloaded instance reflects paused.
 			const statusCalls = ctx.ui.setStatus.mock.calls as Array<[string, string | undefined]>;
-			const pinned = statusCalls.find(([k]) => k === "issue-watcher")?.[1] ?? "";
+			const pinned = statusCalls.find(([k]) => k === "local-issue-watcher")?.[1] ?? "";
 			expect(pinned).toContain("paused");
 		} finally {
 			vi.useRealTimers();
@@ -1087,13 +1087,13 @@ describe("run-state persistence", () => {
 describe("persistRunState resilience", () => {
 	let dbRoot: string;
 	beforeEach(() => {
-		dbRoot = mkdtempSync(join(tmpdir(), "pi-issue-watcher-resilience-"));
+		dbRoot = mkdtempSync(join(tmpdir(), "pi-local-issue-watcher-resilience-"));
 	});
 	afterEach(() => {
 		rmSync(dbRoot, { recursive: true, force: true });
 	});
 
-	it("'/issue-watcher pause' does not throw when pi.appendEntry itself throws", async () => {
+	it("'/local-issue-watcher pause' does not throw when pi.appendEntry itself throws", async () => {
 		const pi = makeFakePi();
 		// Force every appendEntry invocation to throw. The pause handler must
 		// still complete and update the in-memory runtime.
@@ -1110,7 +1110,7 @@ describe("persistRunState resilience", () => {
 		}
 		const ctx = makeFakeCtx();
 		await expect(
-			pi.commands.get("issue-watcher")!.handler("pause", ctx),
+			pi.commands.get("local-issue-watcher")!.handler("pause", ctx),
 		).resolves.toBeUndefined();
 		// User-visible notify still fires even though persistence failed.
 		const notifies = ctx.ui.notify.mock.calls.map((c) => String(c[0]));
@@ -1125,7 +1125,7 @@ describe("persistRunState resilience", () => {
 describe("status line — refresh on every poll (#0016 supersedes #0009)", () => {
 	let dbRoot: string;
 	beforeEach(() => {
-		dbRoot = mkdtempSync(join(tmpdir(), "pi-issue-watcher-lua-"));
+		dbRoot = mkdtempSync(join(tmpdir(), "pi-local-issue-watcher-lua-"));
 	});
 	afterEach(() => {
 		rmSync(dbRoot, { recursive: true, force: true });
@@ -1146,7 +1146,7 @@ describe("status line — refresh on every poll (#0016 supersedes #0009)", () =>
 		await handleSessionStart({ pi: pi as never, ctx: ctx as never, dbRoot });
 
 		const statusCalls = ctx.ui.setStatus.mock.calls as Array<[string, string | undefined]>;
-		const pinned = statusCalls.find(([k]) => k === "issue-watcher")?.[1] ?? "";
+		const pinned = statusCalls.find(([k]) => k === "local-issue-watcher")?.[1] ?? "";
 		expect(pinned).not.toMatch(/last update/);
 		expect(pinned).not.toMatch(/\b(never|just now|\ds ago|\dm ago|\dh ago|\dd ago)\b/);
 	});
@@ -1216,14 +1216,14 @@ describe("status line — refresh on every poll (#0016 supersedes #0009)", () =>
 			await handler({}, ctx);
 
 			const statusAtStart = ctx.ui.setStatus.mock.calls.filter(
-				([k]) => k === "issue-watcher",
+				([k]) => k === "local-issue-watcher",
 			).length;
 
 			// Advance through 3 poll cycles with no disk changes.
 			await vi.advanceTimersByTimeAsync(POLL_INTERVAL_MS * 3);
 
 			const statusAfter = ctx.ui.setStatus.mock.calls.filter(
-				([k]) => k === "issue-watcher",
+				([k]) => k === "local-issue-watcher",
 			).length;
 
 			// Each poll re-pins the status line so the counts segment reflects
@@ -1249,7 +1249,7 @@ describe("status line — refresh on every poll (#0016 supersedes #0009)", () =>
 describe("startup chat message (#0011)", () => {
 	let dbRoot: string;
 	beforeEach(() => {
-		dbRoot = mkdtempSync(join(tmpdir(), "pi-issue-watcher-start-"));
+		dbRoot = mkdtempSync(join(tmpdir(), "pi-local-issue-watcher-start-"));
 	});
 	afterEach(() => {
 		rmSync(dbRoot, { recursive: true, force: true });
@@ -1263,7 +1263,7 @@ describe("startup chat message (#0011)", () => {
 		return p;
 	}
 
-	it("emits one chat-visible startup message with customType='issue-watcher' and triggerTurn=true on fresh session (issue #0013)", async () => {
+	it("emits one chat-visible startup message with customType='local-issue-watcher' and triggerTurn=true on fresh session (issue #0013)", async () => {
 		writeIssue("skill-a", "0001-a.json", { id: "0001", status: "open", skill: "skill-a" });
 		const pi = makeFakePi();
 		const ctx = makeFakeCtx([runningRunstate()]);
@@ -1271,7 +1271,7 @@ describe("startup chat message (#0011)", () => {
 		await handleSessionStart({ pi: pi as never, ctx: ctx as never, dbRoot });
 
 		const startupCalls = pi.sendMessage.mock.calls.filter(
-			(c) => (c[0] as { customType?: string }).customType === "issue-watcher",
+			(c) => (c[0] as { customType?: string }).customType === "local-issue-watcher",
 		);
 		expect(startupCalls).toHaveLength(1);
 		const [payload, opts] = startupCalls[0] as [
@@ -1348,7 +1348,7 @@ describe("startup chat message (#0011)", () => {
 		await handleSessionStart({ pi: pi as never, ctx: ctx as never, dbRoot });
 
 		const sent = pi.sendMessage.mock.calls.filter(
-			(c) => (c[0] as { customType?: string }).customType === "issue-watcher",
+			(c) => (c[0] as { customType?: string }).customType === "local-issue-watcher",
 		);
 		// Exactly one: the diff message. No second startup-summary message on top.
 		expect(sent).toHaveLength(1);
@@ -1366,7 +1366,7 @@ describe("startup chat message (#0011)", () => {
 describe("handleSessionStart deferMessages (#0015)", () => {
 	let dbRoot: string;
 	beforeEach(() => {
-		dbRoot = mkdtempSync(join(tmpdir(), "pi-issue-watcher-defer-"));
+		dbRoot = mkdtempSync(join(tmpdir(), "pi-local-issue-watcher-defer-"));
 	});
 	afterEach(() => {
 		rmSync(dbRoot, { recursive: true, force: true });
@@ -1408,7 +1408,7 @@ describe("handleSessionStart deferMessages (#0015)", () => {
 			{ customType: string; content: string; display?: boolean },
 			{ triggerTurn?: boolean },
 		];
-		expect(payload.customType).toBe("issue-watcher");
+		expect(payload.customType).toBe("local-issue-watcher");
 		expect(payload.content).toContain("active");
 		expect(opts.triggerTurn).toBe(true);
 	});

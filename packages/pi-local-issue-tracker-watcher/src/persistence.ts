@@ -1,7 +1,13 @@
 import type { IssueInfo, Snapshot } from "./types.js";
 
 /** Key used with `pi.appendEntry(...)` / session custom entries. */
-export const STATE_ENTRY_TYPE = "issue-watcher-state";
+export const STATE_ENTRY_TYPE = "local-issue-watcher-state";
+
+/**
+ * Entry types we still accept on **read** for back-compat with session logs
+ * written before #0017. New entries always use {@link STATE_ENTRY_TYPE}.
+ */
+export const LEGACY_STATE_ENTRY_TYPES = ["issue-watcher-state"] as const;
 
 /**
  * Separate key used to persist the watcher's **run state** (paused /
@@ -9,7 +15,20 @@ export const STATE_ENTRY_TYPE = "issue-watcher-state";
  * {@link STATE_ENTRY_TYPE} so that the snapshot can age out under its
  * 24h TTL while the user's explicit pause preference survives forever.
  */
-export const RUNSTATE_ENTRY_TYPE = "issue-watcher-runstate";
+export const RUNSTATE_ENTRY_TYPE = "local-issue-watcher-runstate";
+
+/** Pre-#0017 run-state entry types still accepted on read. */
+export const LEGACY_RUNSTATE_ENTRY_TYPES = ["issue-watcher-runstate"] as const;
+
+function isStateEntryType(t: string | undefined): boolean {
+	if (t === STATE_ENTRY_TYPE) return true;
+	return (LEGACY_STATE_ENTRY_TYPES as readonly string[]).includes(t ?? "");
+}
+
+function isRunstateEntryType(t: string | undefined): boolean {
+	if (t === RUNSTATE_ENTRY_TYPE) return true;
+	return (LEGACY_RUNSTATE_ENTRY_TYPES as readonly string[]).includes(t ?? "");
+}
 
 /** Maximum age at which a persisted snapshot is still trusted as baseline. */
 export const STATE_MAX_AGE_MS = 24 * 60 * 60 * 1000; // 24h — matches watch_issues.py
@@ -87,18 +106,18 @@ export function rehydrateFromSession(ctx: SessionLike): RehydratedState | null {
 	const entries = ctx.sessionManager.getEntries();
 	for (let i = entries.length - 1; i >= 0; i--) {
 		const e = entries[i];
-		if (!e || e.type !== "custom" || e.customType !== STATE_ENTRY_TYPE) continue;
+		if (!e || e.type !== "custom" || !isStateEntryType(e.customType)) continue;
 		const data = e.data as Partial<PersistedState> | undefined;
 		if (!data || typeof data !== "object") {
 			// eslint-disable-next-line no-console
-			console.warn(`[issue-watcher] persisted entry missing data`);
+			console.warn(`[local-issue-watcher] persisted entry missing data`);
 			continue;
 		}
 		const savedAt = typeof data.savedAt === "number" ? data.savedAt : NaN;
 		const snapshotRaw = data.snapshot;
 		if (!Number.isFinite(savedAt) || typeof snapshotRaw !== "object" || snapshotRaw === null) {
 			// eslint-disable-next-line no-console
-			console.warn(`[issue-watcher] persisted entry malformed; ignoring`);
+			console.warn(`[local-issue-watcher] persisted entry malformed; ignoring`);
 			continue;
 		}
 		if (Date.now() - savedAt > STATE_MAX_AGE_MS) return null;
@@ -155,9 +174,12 @@ export interface RehydratedRunState {
 
 /**
  * Walk the session entry log newest → oldest and return the most recent
- * `issue-watcher-runstate` entry. Unlike {@link rehydrateFromSession}, this
- * has **no TTL** — an explicit pause preference is sticky until the user
- * runs `/issue-watcher resume` (or deletes the session).
+ * `local-issue-watcher-runstate` entry. Unlike {@link rehydrateFromSession},
+ * this has **no TTL** — an explicit pause preference is sticky until the
+ * user runs `/local-issue-watcher resume` (or deletes the session).
+ *
+ * Pre-#0017 `issue-watcher-runstate` entries are still read for back-compat
+ * via {@link LEGACY_RUNSTATE_ENTRY_TYPES}.
  *
  * Returns `null` when no run-state entry has ever been written — callers
  * should treat that as the default (`paused=false`, i.e. running).
@@ -168,17 +190,17 @@ export function rehydrateRunStateFromSession(
 	const entries = ctx.sessionManager.getEntries();
 	for (let i = entries.length - 1; i >= 0; i--) {
 		const e = entries[i];
-		if (!e || e.type !== "custom" || e.customType !== RUNSTATE_ENTRY_TYPE) continue;
+		if (!e || e.type !== "custom" || !isRunstateEntryType(e.customType)) continue;
 		const data = e.data as Partial<PersistedRunState> | undefined;
 		if (!data || typeof data !== "object") {
 			// eslint-disable-next-line no-console
-			console.warn(`[issue-watcher] persisted run-state entry missing data`);
+			console.warn(`[local-issue-watcher] persisted run-state entry missing data`);
 			continue;
 		}
 		const savedAt = typeof data.savedAt === "number" ? data.savedAt : NaN;
 		if (!Number.isFinite(savedAt) || typeof data.paused !== "boolean") {
 			// eslint-disable-next-line no-console
-			console.warn(`[issue-watcher] persisted run-state entry malformed; ignoring`);
+			console.warn(`[local-issue-watcher] persisted run-state entry malformed; ignoring`);
 			continue;
 		}
 		return { savedAt, paused: data.paused };

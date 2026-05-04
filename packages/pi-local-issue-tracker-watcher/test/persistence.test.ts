@@ -267,3 +267,58 @@ describe("rehydrateRunStateFromSession", () => {
 		expect(rehydrateRunStateFromSession(ctx as never)).toBeNull();
 	});
 });
+
+// ---------------------------------------------------------------------------
+// Back-compat with the pre-#0017 entry types.
+//
+// Before #0017 this extension wrote entries under the customTypes
+// `issue-watcher-state` and `issue-watcher-runstate`. Rehydration must
+// still read those so in-flight session logs survive the rename cutover.
+// ---------------------------------------------------------------------------
+
+describe("rehydrateFromSession \u2014 legacy entry type (#0017)", () => {
+	it("rehydrates a legacy 'issue-watcher-state' entry", () => {
+		const ctx = makeCtx([
+			entry("custom", { savedAt: now(), snapshot: FRESH_SNAPSHOT }, "issue-watcher-state"),
+		]);
+		const got = rehydrateFromSession(ctx as never);
+		expect(got).not.toBeNull();
+		expect(Object.keys(got!.snapshot)).toEqual(["/db/skill-a/0001-x.json"]);
+	});
+
+	it("prefers the newest entry regardless of which customType it carries", () => {
+		// Newer legacy entry should win over an older new-name entry.
+		const older: Snapshot = {
+			"/db/old/0001-a.json": { ...FRESH_SNAPSHOT["/db/skill-a/0001-x.json"]! },
+		};
+		const newer: Snapshot = {
+			"/db/new/0002-b.json": { ...FRESH_SNAPSHOT["/db/skill-a/0001-x.json"]! },
+		};
+		const ctx = makeCtx([
+			entry("custom", { savedAt: now() - 1000, snapshot: older }, STATE_ENTRY_TYPE),
+			entry("custom", { savedAt: now(), snapshot: newer }, "issue-watcher-state"),
+		]);
+		const got = rehydrateFromSession(ctx as never);
+		expect(Object.keys(got!.snapshot)).toEqual(["/db/new/0002-b.json"]);
+	});
+});
+
+describe("rehydrateRunStateFromSession \u2014 legacy entry type (#0017)", () => {
+	it("rehydrates a legacy 'issue-watcher-runstate' entry", () => {
+		const ctx = makeCtx([
+			entry("custom", { savedAt: now(), paused: true }, "issue-watcher-runstate"),
+		]);
+		const got = rehydrateRunStateFromSession(ctx as never);
+		expect(got).not.toBeNull();
+		expect(got!.paused).toBe(true);
+	});
+
+	it("prefers the newest run-state entry regardless of customType", () => {
+		const ctx = makeCtx([
+			entry("custom", { savedAt: now() - 1000, paused: true }, RUNSTATE_ENTRY_TYPE),
+			entry("custom", { savedAt: now(), paused: false }, "issue-watcher-runstate"),
+		]);
+		const got = rehydrateRunStateFromSession(ctx as never);
+		expect(got!.paused).toBe(false);
+	});
+});

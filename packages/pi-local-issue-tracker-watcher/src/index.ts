@@ -14,14 +14,14 @@
  *     4. rehydrate prior baseline from session entries (24h TTL)
  *     5a. if no prior baseline → persist `currentSnapshot` and start polling
  *     5b. if baseline present & fresh → `diffSnapshots`, if changes emit one
- *         `pi.sendMessage({customType:"issue-watcher", ...}, {triggerTurn:true})`
+ *         `pi.sendMessage({customType:"local-issue-watcher", ...}, {triggerTurn:true})`
  *         and persist `currentSnapshot`
  *     6. start a setInterval poll loop (disabled when paused)
  *
  *   session_shutdown:
  *     - clear the poll interval
  *
- *   /issue-watcher  (pause|resume|<no args>):
+ *   /local-issue-watcher  (pause|resume|<no args>):
  *     - toggle pause state or print a status summary via `ctx.ui.notify`
  *
  * Scope: one dbRoot per process. No tool is registered — this extension is
@@ -74,14 +74,14 @@ const DEFAULT_DB_ROOT_REL = join(
 export const POLL_INTERVAL_MS = 60_000;
 
 /** customType used on every chat message this extension injects. */
-const CUSTOM_MESSAGE_TYPE = "issue-watcher";
+const CUSTOM_MESSAGE_TYPE = "local-issue-watcher";
 
 /**
  * Key used with `ctx.ui.setStatus(...)` to install / update / clear the
  * persistent status-row line for this watcher. Matches the slack-watcher
  * convention of one key per extension.
  */
-const STATUS_KEY = "issue-watcher";
+const STATUS_KEY = "local-issue-watcher";
 
 /** Apply the pi theme's accent color via `ctx.ui.theme.fg`. */
 function colorize(
@@ -175,7 +175,7 @@ export async function handleSessionStart(
 
 	if (!existsSync(dbRoot)) {
 		notify?.(
-			`issue-watcher: dbRoot not found (${dbRoot}); not watching.`,
+			`local-issue-watcher: dbRoot not found (${dbRoot}); not watching.`,
 			"warning",
 		);
 		// Pin a persistent misconfiguration status line so the user can still
@@ -193,14 +193,14 @@ export async function handleSessionStart(
 
 	// Rehydrate the user's last explicit pause / resume preference. Absent
 	// entry → default to **paused** (#0012). A brand-new pi session stays
-	// quiet until the user opts in with `/issue-watcher resume`, matching
+	// quiet until the user opts in with `/local-issue-watcher resume`, matching
 	// the intent that background chat messages require explicit consent.
 	const runState = rehydrateRunStateFromSession(ctx);
 	const paused = runState?.paused !== false;
 
 	// Emit a single, informational startup announcement so the user can see
 	// the watcher is running and which dbRoot is in effect — without having
-	// to run `/issue-watcher status`. Uses `ctx.ui.setStatus` so it pins to
+	// to run `/local-issue-watcher status`. Uses `ctx.ui.setStatus` so it pins to
 	// the extension-status row (below the main status line) and cannot
 	// trigger an agent turn (see issue #0001).
 	setStatus?.(
@@ -242,7 +242,7 @@ export async function handleSessionStart(
 
 	// While paused we do NOT diff or emit change messages — the user asked us
 	// to stop watching, so don't resurface changes on resume/reload either.
-	// The snapshot stays rehydrated so a later `/issue-watcher resume` picks
+	// The snapshot stays rehydrated so a later `/local-issue-watcher resume` picks
 	// up from the last baseline rather than silently losing the intervening
 	// window.
 	if (paused) {
@@ -452,7 +452,7 @@ export default function issueWatcher(pi: ExtensionAPI): void {
 		rt.paused = res.paused;
 		// If the user explicitly paused in a prior session (or earlier in this
 		// one, before a reload) we honour that and stay quiet until they run
-		// `/issue-watcher resume`. Otherwise start the poll loop.
+		// `/local-issue-watcher resume`. Otherwise start the poll loop.
 		if (!rt.paused) startPolling(rt);
 	});
 
@@ -466,7 +466,7 @@ export default function issueWatcher(pi: ExtensionAPI): void {
 		rt.ui = null;
 	});
 
-	pi.registerCommand("issue-watcher", {
+	pi.registerCommand("local-issue-watcher", {
 		description: "Control the local-skill-issues-tracker watcher (pause/resume/status)",
 		handler: async (args, ctx) => {
 			const anyCtx = ctx as unknown as {
@@ -490,7 +490,7 @@ export default function issueWatcher(pi: ExtensionAPI): void {
 					// (#0010), so an empty snapshot is all buildStartupAnnouncement
 					// needs. Saves a readdir under dbRoot that the user wouldn't see.
 					refreshStatusLine(ui ?? null, rt, "paused", {});
-					ui?.notify?.(`issue-watcher: paused (dbRoot=${rt.dbRoot})`, "info");
+					ui?.notify?.(`local-issue-watcher: paused (dbRoot=${rt.dbRoot})`, "info");
 					return;
 				}
 				case "resume": {
@@ -504,7 +504,7 @@ export default function issueWatcher(pi: ExtensionAPI): void {
 						startPolling(rt);
 					}
 					refreshStatusLine(ui ?? null, rt, "resumed", resumedSnap);
-					ui?.notify?.(`issue-watcher: resumed (dbRoot=${rt.dbRoot})`, "info");
+					ui?.notify?.(`local-issue-watcher: resumed (dbRoot=${rt.dbRoot})`, "info");
 					return;
 				}
 				case "":
@@ -513,14 +513,14 @@ export default function issueWatcher(pi: ExtensionAPI): void {
 					const summary = formatStatusSummary(snap);
 					const state = rt.paused ? "paused" : "running";
 					ui?.notify?.(
-						`issue-watcher: ${state} | dbRoot=${rt.dbRoot} | ${summary}`,
+						`local-issue-watcher: ${state} | dbRoot=${rt.dbRoot} | ${summary}`,
 						"info",
 					);
 					return;
 				}
 				default:
 					ui?.notify?.(
-						`issue-watcher: unknown subcommand '${sub}'. Use: pause | resume | status`,
+						`local-issue-watcher: unknown subcommand '${sub}'. Use: pause | resume | status`,
 						"warning",
 					);
 			}

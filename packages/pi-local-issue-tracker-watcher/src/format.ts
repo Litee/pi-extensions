@@ -12,7 +12,7 @@ const WELL_KNOWN_STATUSES = ["open", "in_progress", "done", "wont_fix"] as const
 /**
  * Build the one-line session-start / resume announcement.
  *
- * Format: `issue-watcher: <state> | dbRoot=<path> | poll=<N>s | <summary>`
+ * Format: `local-issue-watcher: <state> | dbRoot=<path> | poll=<N>s | <summary>`
  * where `<state>` is typically `active` or `resumed`.
  *
  * **Paused state (#0010)**: when `state === "paused"` the per-status count
@@ -36,7 +36,7 @@ export function buildStartupAnnouncement(
 	snapshot: Snapshot,
 ): string {
 	const pollSeconds = Math.round(pollIntervalMs / 1000);
-	const prefix = `issue-watcher: ${state} | dbRoot=${dbRoot} | poll=${pollSeconds}s`;
+	const prefix = `local-issue-watcher: ${state} | dbRoot=${dbRoot} | poll=${pollSeconds}s`;
 	return state === "paused" ? prefix : `${prefix} | ${formatStatusSummary(snapshot)}`;
 }
 
@@ -45,7 +45,7 @@ export function buildStartupAnnouncement(
  *
  * Example:
  * ```
- * issue-watcher: dbRoot missing | dbRoot=/Users/x/.claude/...
+ * local-issue-watcher: dbRoot missing | dbRoot=/Users/x/.claude/...
  *   | set LOCAL_ISSUE_TRACKER_DB_ROOT or create the directory
  * ```
  *
@@ -56,7 +56,7 @@ export function buildStartupAnnouncement(
  */
 export function buildMissingDbRootStatus(dbRoot: string): string {
 	return (
-		`issue-watcher: dbRoot missing | dbRoot=${dbRoot}` +
+		`local-issue-watcher: dbRoot missing | dbRoot=${dbRoot}` +
 		` | set LOCAL_ISSUE_TRACKER_DB_ROOT or create the directory`
 	);
 }
@@ -66,7 +66,7 @@ export function buildMissingDbRootStatus(dbRoot: string): string {
  * posts on each `session_start` so the LLM can see the watcher is active
  * and knows which tracker it is monitoring (#0011).
  *
- * Format: `issue-watcher: active | dbRoot=<path> | <summary>`
+ * Format: `local-issue-watcher: active | dbRoot=<path> | <summary>`
  *
  * The summary includes an explicit `0 open` segment when the tracker has
  * no open issues — downstream agents can key off a stable structured shape.
@@ -90,7 +90,7 @@ export function buildStartupChatMessage(dbRoot: string, snapshot: Snapshot): str
 		.filter((s) => !(WELL_KNOWN_STATUSES as readonly string[]).includes(s))
 		.sort();
 	for (const s of leftover) parts.push(`${counts[s]} ${s}`);
-	return `issue-watcher: active | dbRoot=${dbRoot} | ${parts.join(", ")}`;
+	return `local-issue-watcher: active | dbRoot=${dbRoot} | ${parts.join(", ")}`;
 }
 
 /** Render issue counts as "N open, M in_progress, ..." — matches the Python watcher. */
