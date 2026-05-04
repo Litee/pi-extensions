@@ -1,6 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { __setCmuxSpawnerForTests } from "../src/cmux.js";
+import { __setCmuxReaderForTests } from "../src/cmuxReader.js";
 import createExtension, {
 	__setFetchNamesForTests,
 	RENAMED_ENTRY_TYPE,
@@ -110,13 +111,26 @@ function makeFakeCtx(
 function enterCmux(): () => void {
 	const prevWs = process.env["CMUX_WORKSPACE_ID"];
 	const prevTab = process.env["CMUX_TAB_ID"];
+	const prevSurface = process.env["CMUX_SURFACE_ID"];
 	process.env["CMUX_WORKSPACE_ID"] = "ws-test";
 	process.env["CMUX_TAB_ID"] = "tab-test";
+	// Tests must not inherit the real-shell CMUX_SURFACE_ID — `readTabTitle`
+	// uses that env var as a fast path and would short-circuit the stubbed
+	// reader if we left the host value in place.
+	delete process.env["CMUX_SURFACE_ID"];
+	// Install a fail-open reader stub so tests that don't care about the
+	// prefix gate (all of the pre-#0003 tests) keep getting the 'rename
+	// unconditionally' behaviour. Individual tests can override by calling
+	// `__setCmuxReaderForTests` themselves.
+	__setCmuxReaderForTests(async () => { throw new Error("reader disabled in tests"); });
 	return () => {
 		if (prevWs === undefined) delete process.env["CMUX_WORKSPACE_ID"];
 		else process.env["CMUX_WORKSPACE_ID"] = prevWs;
 		if (prevTab === undefined) delete process.env["CMUX_TAB_ID"];
 		else process.env["CMUX_TAB_ID"] = prevTab;
+		if (prevSurface === undefined) delete process.env["CMUX_SURFACE_ID"];
+		else process.env["CMUX_SURFACE_ID"] = prevSurface;
+		__setCmuxReaderForTests(null);
 	};
 }
 
@@ -207,7 +221,7 @@ describe("runRename", () => {
 			{
 				statusKey: "pi",
 				renameWorkspace: true,
-				fetchNames: async () => ({ tab: "T", workspace: "W" }),
+				fetchNames: async () => ({ workspace: "W" }),
 			},
 		);
 		expect(ok).toBe(false);
@@ -225,27 +239,21 @@ describe("runRename", () => {
 			},
 		);
 		expect(ok).toBe(false);
-		// Only the fetch, not any cmux call.
 		expect(spawner).not.toHaveBeenCalled();
 	});
 
-	it("dispatches rename-tab and rename-workspace when fetchNames succeeds", async () => {
+	it("dispatches rename-workspace when fetchNames succeeds", async () => {
 		const ok = await runRename(
 			makeFakeCtx() as never,
 			"prompt",
 			{
 				statusKey: "pi",
 				renameWorkspace: true,
-				fetchNames: async () => ({ tab: "Add CMux Status", workspace: "Pi Extensions" }),
+				fetchNames: async () => ({ workspace: "Pi Extensions" }),
 			},
 		);
 		expect(ok).toBe(true);
 		const argvs = spawner.mock.calls.map((c) => c[0] as string[]);
-		expect(argvs).toContainEqual([
-			"rename-tab",
-			"--",
-			"Add CMux Status",
-		]);
 		expect(argvs).toContainEqual([
 			"workspace-action",
 			"--action",
@@ -253,30 +261,169 @@ describe("runRename", () => {
 			"--title",
 			"Pi Extensions",
 		]);
-		// A log line also goes through.
+		// Tab rename was removed in #0003 — no rename-tab call must ever go out.
+		expect(argvs.some((a) => a[0] === "rename-tab")).toBe(false);
 		expect(argvs.some((a) => a[0] === "log")).toBe(true);
 	});
 
-	it("skips the workspace rename when renameWorkspace=false", async () => {
+	it("is a no-op when renameWorkspace=false", async () => {
+		// With tab rename gone, `renameWorkspace=false` means there is
+		// nothing left for the extension to rename. runRename still reaches
+		// a decision (log + persist-marker), so it returns true.
 		const ok = await runRename(
 			makeFakeCtx() as never,
 			"prompt",
 			{
 				statusKey: "pi",
 				renameWorkspace: false,
-				fetchNames: async () => ({ tab: "T", workspace: "W" }),
+				fetchNames: async () => ({ workspace: "W" }),
 			},
 		);
 		expect(ok).toBe(true);
 		const argvs = spawner.mock.calls.map((c) => c[0] as string[]);
-		expect(argvs).toContainEqual(["rename-tab", "--", "T"]);
 		expect(argvs.some((a) => a[0] === "workspace-action")).toBe(false);
+		expect(argvs.some((a) => a[0] === "rename-tab")).toBe(false);
 	});
 });
 
 // ---------------------------------------------------------------------------
-// /cmux-rename command
+// runRename — prefix gate (#0003)
 // ---------------------------------------------------------------------------
+
+describe("runRename — prefix gate (#0003)", () => {
+	let spawner: ReturnType<typeof vi.fn>;
+	let restore: () => void;
+
+	beforeEach(() => {
+		restore = enterCmux();
+		spawner = vi.fn(async () => {});
+		__setCmuxSpawnerForTests(
+			spawner as unknown as (args: string[]) => Promise<void>,
+		);
+	});
+	afterEach(() => {
+		restore();
+		__setCmuxSpawnerForTests(null);
+		__setCmuxReaderForTests(null);
+	});
+
+	/** Install a read-side stub that returns a preset workspace title. */
+	function stubWorkspaceTitle(title: string): void {
+		__setCmuxReaderForTests(async (args) => {
+			if (args.join(" ") === "rpc workspace.current") {
+				return JSON.stringify({ workspace: { title } });
+			}
+			return "";
+		});
+	}
+
+	it("renames when the current workspace title starts with 'Terminal '", async () => {
+		stubWorkspaceTitle("Terminal 12");
+		const ok = await runRename(
+			makeFakeCtx() as never,
+			"prompt",
+			{
+				statusKey: "pi",
+				renameWorkspace: true,
+				fetchNames: async () => ({ workspace: "Fresh WS" }),
+			},
+		);
+		expect(ok).toBe(true);
+		const argvs = spawner.mock.calls.map((c) => c[0] as string[]);
+		expect(argvs).toContainEqual([
+			"workspace-action",
+			"--action",
+			"rename",
+			"--title",
+			"Fresh WS",
+		]);
+	});
+
+	it("skips the rename when the workspace title looks user-set", async () => {
+		stubWorkspaceTitle("My Important Workspace");
+		const ok = await runRename(
+			makeFakeCtx() as never,
+			"prompt",
+			{
+				statusKey: "pi",
+				renameWorkspace: true,
+				fetchNames: async () => ({ workspace: "Fresh WS" }),
+			},
+		);
+		expect(ok).toBe(true); // decision made → caller persists the once-per-session marker
+		const argvs = spawner.mock.calls.map((c) => c[0] as string[]);
+		expect(argvs.some((a) => a[0] === "workspace-action")).toBe(false);
+	});
+
+	it("fails open when the read path throws — renames unconditionally", async () => {
+		__setCmuxReaderForTests(async () => { throw new Error("rpc failed"); });
+		const ok = await runRename(
+			makeFakeCtx() as never,
+			"prompt",
+			{
+				statusKey: "pi",
+				renameWorkspace: true,
+				fetchNames: async () => ({ workspace: "Fresh WS" }),
+			},
+		);
+		expect(ok).toBe(true);
+		const argvs = spawner.mock.calls.map((c) => c[0] as string[]);
+		expect(argvs).toContainEqual([
+			"workspace-action",
+			"--action",
+			"rename",
+			"--title",
+			"Fresh WS",
+		]);
+	});
+
+	it("skipPrefixGate bypasses the check (used by /cmux-rename)", async () => {
+		stubWorkspaceTitle("User-Set Workspace");
+		const ok = await runRename(
+			makeFakeCtx() as never,
+			"prompt",
+			{
+				statusKey: "pi",
+				renameWorkspace: true,
+				skipPrefixGate: true,
+				fetchNames: async () => ({ workspace: "Fresh WS" }),
+			},
+		);
+		expect(ok).toBe(true);
+		const argvs = spawner.mock.calls.map((c) => c[0] as string[]);
+		expect(argvs).toContainEqual([
+			"workspace-action",
+			"--action",
+			"rename",
+			"--title",
+			"Fresh WS",
+		]);
+	});
+
+	it("never dispatches a rename-tab call, regardless of the gate outcome (tab rename removed in #0003)", async () => {
+		for (const [title, bypass] of [
+			["Terminal 3", false],
+			["User Set", false],
+			["Terminal 3", true],
+			["User Set", true],
+		] as Array<[string, boolean]>) {
+			stubWorkspaceTitle(title);
+			spawner.mockClear();
+			await runRename(
+				makeFakeCtx() as never,
+				"prompt",
+				{
+					statusKey: "pi",
+					renameWorkspace: true,
+					skipPrefixGate: bypass,
+					fetchNames: async () => ({ workspace: "Fresh WS" }),
+				},
+			);
+			const argvs = spawner.mock.calls.map((c) => c[0] as string[]);
+			expect(argvs.some((a) => a[0] === "rename-tab")).toBe(false);
+		}
+	});
+});
 
 describe("/cmux-rename command", () => {
 	let restore: () => void;
@@ -758,7 +905,7 @@ describe("pi.appendEntry on rename", () => {
 	});
 
 	it("auto-rename path persists the RENAMED marker on success", async () => {
-		__setFetchNamesForTests(async () => ({ tab: "T", workspace: "W" }));
+		__setFetchNamesForTests(async () => ({ workspace: "W" }));
 		const pi = makeFakePi();
 		createExtension(pi as never);
 		const ctx = makeFakeCtx();
@@ -798,7 +945,7 @@ describe("pi.appendEntry on rename", () => {
 			// Capture what was actually passed so we can assert the branch
 			// content is used, not any stored first-prompt.
 			capturedPrompt = prompt;
-			return { tab: "T", workspace: "W" };
+			return { workspace: "W" };
 		});
 		let capturedPrompt = "";
 		const pi = makeFakePi();
@@ -824,7 +971,7 @@ describe("pi.appendEntry on rename", () => {
 		let capturedPrompt = "";
 		__setFetchNamesForTests(async (_ctx, prompt) => {
 			capturedPrompt = prompt;
-			return { tab: "T", workspace: "W" };
+			return { workspace: "W" };
 		});
 		const pi = makeFakePi();
 		createExtension(pi as never);
@@ -857,7 +1004,7 @@ describe("pi.appendEntry on rename", () => {
 		let capturedPrompt = "";
 		__setFetchNamesForTests(async (_ctx, prompt) => {
 			capturedPrompt = prompt;
-			return { tab: "T", workspace: "W" };
+			return { workspace: "W" };
 		});
 		const pi = makeFakePi();
 		createExtension(pi as never);
@@ -879,7 +1026,7 @@ describe("pi.appendEntry on rename", () => {
 	});
 
 	it("/cmux-rename warns and does not call appendEntry when no user prompts exist", async () => {
-		__setFetchNamesForTests(async () => ({ tab: "T", workspace: "W" }));
+		__setFetchNamesForTests(async () => ({ workspace: "W" }));
 		const pi = makeFakePi();
 		createExtension(pi as never);
 		const ctx = makeFakeCtx({ branch: [] });

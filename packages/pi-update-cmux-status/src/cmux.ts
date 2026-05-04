@@ -49,12 +49,6 @@ export function buildNotifyArgs(title: string, subtitle: string, body: string): 
 	return ["notify", "--title", title, "--subtitle", subtitle, "--body", body];
 }
 
-/** Build argv for `cmux rename-tab`. Returns `null` when the title is blank. */
-export function buildRenameTabArgs(title: string): string[] | null {
-	if (!title.trim()) return null;
-	return ["rename-tab", "--", title];
-}
-
 /** Build argv for `cmux workspace-action --action rename`. */
 export function buildRenameWorkspaceArgs(title: string): string[] | null {
 	if (!title.trim()) return null;
@@ -88,11 +82,6 @@ export function notifyCmux(title: string, subtitle: string, body: string): void 
 
 export function clearProgress(): void {
 	void runCmux(["clear-progress"]);
-}
-
-export function renameTab(title: string): void {
-	const args = buildRenameTabArgs(title);
-	if (args) void runCmux(args);
 }
 
 export function renameWorkspace(title: string): void {

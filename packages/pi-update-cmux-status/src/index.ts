@@ -2,8 +2,8 @@
  * pi-update-cmux-status — pi extension.
  *
  * Mirrors pi lifecycle events into cmux (sidebar status pill, desktop
- * notifications) and auto-renames the cmux tab + workspace based on an
- * LLM summary of the first user prompt.
+ * notifications) and auto-renames the cmux workspace based on an LLM
+ * summary of the first user prompt. Tab renaming was removed in #0003.
  *
  * Simplified two-state status model (#0002): the pill is either
  * `working` (pi is processing a user request) or `idle` (pi is waiting
@@ -13,8 +13,9 @@
  *
  *   session_start          → status "idle" + log "Session started"
  *   input (any eligible)   → status "working" (every turn);
- *                             fire-and-forget rename on the first
- *                             eligible prompt of the pi session.
+ *                             fire-and-forget workspace rename on the
+ *                             first eligible prompt of the pi session
+ *                             (gated on the `Terminal ` prefix, #0003).
  *   tool_execution_start   → if toolName is in ATTENTION_TOOLS
  *                             (hardcoded), status "waiting" + notify.
  *   tool_execution_end     → if toolName is in ATTENTION_TOOLS,
@@ -22,7 +23,8 @@
  *   agent_end              → status "idle" + clear-progress + log + notify
  *   session_shutdown       → clear status pill + clear progress
  *
- * Plus a `/cmux-rename` slash command to regenerate names on demand.
+ * Plus a `/cmux-rename` slash command to regenerate the workspace name
+ * on demand (bypasses the prefix gate).
  *
  * All cmux calls are no-ops when not running inside cmux (see
  * `cmuxAvailable`), so loading this extension in a plain terminal is safe.
@@ -37,10 +39,10 @@ import {
 	hhmm,
 	logLine,
 	notifyCmux,
-	renameTab,
 	renameWorkspace,
 	setStatus,
 } from "./cmux.js";
+import { readWorkspaceTitle } from "./cmuxReader.js";
 import { resolveRenameWorkspace, resolveStatusKey } from "./config.js";
 import { generateNames, type NamesContext } from "./names.js";
 import { buildSessionRenamePrompt, getBranchSafely } from "./sessionPrompt.js";
@@ -137,18 +139,52 @@ function persistRenamed(
 
 
 /**
- * Dispatches a rename: calls the LLM, then (when the call succeeds) pipes
- * the result to cmux. Separated from `runRename` in the source .ts so the
- * LLM stage can be swapped out in tests.
+ * Prefix that gates the auto-rename of the cmux workspace. See
+ * pi-update-cmux-status#0003.
  *
- * Returns `true` iff cmux rename calls were dispatched.
+ * The workspace is renamed only when its current title starts with
+ * `RENAME_PREFIX_WORKSPACE` — cmux's own default for a fresh workspace
+ * (`Terminal <N>`). A workspace the user has already renamed by hand
+ * is left alone.
+ *
+ * The gate fails open: when the current title cannot be determined
+ * (cmux unavailable, RPC error, malformed JSON, 3-second timeout), we
+ * fall back to renaming unconditionally.
+ *
+ * Tab renaming was removed in #0003 per user request — the extension
+ * never touches the cmux tab title any more.
+ */
+const RENAME_PREFIX_WORKSPACE = "Terminal ";
+
+/**
+ * Dispatches a workspace rename: calls the LLM, then (when the call
+ * succeeds) asks cmux to rename the current workspace. The LLM stage
+ * is separated out in the source .ts so tests can swap it.
+ *
+ * Returns `true` once a decision has been made — whether or not a
+ * rename was dispatched (the prefix gate may have suppressed it).
+ * Returns `false` only when no decision was possible: cmux not
+ * available, or the LLM names call failed.
  */
 export async function runRename(
 	ctx: NamesContext,
 	prompt: string,
 	opts: {
 		statusKey: string;
+		/**
+		 * Caller-supplied toggle mirroring the `PI_CMUX_RENAME_WORKSPACE`
+		 * env var. When false, `runRename` returns a decision of "do
+		 * nothing" without asking cmux or the LLM to rename anything.
+		 * Kept for symmetry with the pre-#0003 runtime config; today's
+		 * extension only has one rename target.
+		 */
 		renameWorkspace: boolean;
+		/**
+		 * When true, bypass the prefix gate and rename unconditionally.
+		 * Used by the manual `/cmux-rename` command, where the user has
+		 * explicitly asked for a rename.
+		 */
+		skipPrefixGate?: boolean;
 		/** Override the names source — tests pass a stub resolving to canned names. */
 		fetchNames?: (ctx: NamesContext, prompt: string) => Promise<Awaited<ReturnType<typeof generateNames>>>;
 	},
@@ -157,13 +193,30 @@ export async function runRename(
 	const fetch = opts.fetchNames ?? fetchNamesOverride ?? generateNames;
 	const names = await fetch(ctx, prompt);
 	if (!names) return false;
-	renameTab(names.tab);
-	if (opts.renameWorkspace) renameWorkspace(names.workspace);
-	logLine(
-		opts.statusKey,
-		"info",
-		`Renamed tab → "${names.tab}"${opts.renameWorkspace ? ` · workspace → "${names.workspace}"` : ""}`,
-	);
+
+	// Prefix gate (#0003). Only rename when the current workspace title
+	// still starts with cmux's default `Terminal ` prefix — if the user
+	// has already renamed it, leave it alone. Fails open on RPC errors.
+	let doWorkspace = opts.renameWorkspace;
+	if (doWorkspace && !opts.skipPrefixGate) {
+		const wsTitle = await readWorkspaceTitle();
+		if (wsTitle !== null && !wsTitle.startsWith(RENAME_PREFIX_WORKSPACE)) {
+			doWorkspace = false;
+		}
+	}
+
+	if (doWorkspace) {
+		renameWorkspace(names.workspace);
+		logLine(opts.statusKey, "info", `Renamed workspace → "${names.workspace}"`);
+	} else {
+		logLine(
+			opts.statusKey,
+			"info",
+			opts.renameWorkspace
+				? "Skipped workspace rename: title looks user-set (#0003)"
+				: "Skipped workspace rename: PI_CMUX_RENAME_WORKSPACE is off",
+		);
+	}
 	return true;
 }
 
@@ -174,7 +227,7 @@ export async function runRename(
 export interface Runtime {
 	/** Sidebar status pill key (usually "pi"). */
 	statusKey: string;
-	/** Whether /rename also renames the workspace. */
+	/** Whether the extension renames the workspace at all (`PI_CMUX_RENAME_WORKSPACE`). */
 	renameWorkspace: boolean;
 	/** Has the one-shot auto-rename fired this session yet? */
 	namedThisSession: boolean;
@@ -296,7 +349,7 @@ export default function cmuxStatus(pi: ExtensionAPI): void {
 	// ── Manual rename command ──────────────────────────────────────────
 	pi.registerCommand("cmux-rename", {
 		description:
-			"Regenerate cmux tab + workspace names from the current session log",
+			"Regenerate the cmux workspace name from the current session log",
 		handler: async (_args, ctx) => {
 			const ui = (ctx as ExtensionContext).ui;
 			if (!cmuxAvailable()) {
@@ -314,17 +367,18 @@ export default function cmuxStatus(pi: ExtensionAPI): void {
 				);
 				return;
 			}
-			ui.notify("Renaming cmux tab/workspace…", "info");
+			ui.notify("Renaming cmux workspace…", "info");
 			rt.namedThisSession = true;
 			const ok = await runRename(ctx as unknown as NamesContext, prompt, {
 				statusKey: rt.statusKey,
 				renameWorkspace: rt.renameWorkspace,
+				skipPrefixGate: true,
 			});
 			if (!ok) {
 				ui.notify("Rename failed (model call errored).", "error");
 			} else {
 				persistRenamed(pi);
-				ui.notify("Renamed cmux tab/workspace.", "info");
+				ui.notify("Renamed cmux workspace.", "info");
 			}
 		},
 	});
@@ -343,7 +397,6 @@ export {
 export {
 	buildLogArgs,
 	buildNotifyArgs,
-	buildRenameTabArgs,
 	buildRenameWorkspaceArgs,
 	buildSetStatusArgs,
 	cmuxAvailable,

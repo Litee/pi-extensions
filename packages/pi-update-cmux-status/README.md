@@ -2,9 +2,9 @@
 
 Pi extension that mirrors pi lifecycle events into
 [cmux](https://github.com/user/cmux) — sidebar status pill, log lines,
-progress, desktop notifications — and auto-renames the cmux tab + workspace
-based on an LLM summary of the first user prompt. This is a monorepo port
-of the single-file `cmux-status.ts` that ships in
+progress, desktop notifications — and auto-renames the cmux workspace
+based on an LLM summary of the first user prompt. This is a monorepo
+port of the single-file `cmux-status.ts` that ships in
 `~/.pi/agent/extensions/`, refactored so every piece of behaviour is
 unit-tested.
 
@@ -21,7 +21,7 @@ carrying any signal the user could act on.
 | Pi event               | Effect inside cmux                                    |
 |------------------------|-------------------------------------------------------|
 | `session_start`        | pill → `idle`, log `pi session started`               |
-| `input` (eligible)     | pill → `working` every turn; on the first eligible prompt of the pi session also fires the once-per-session LLM tab + workspace rename |
+| `input` (eligible)     | pill → `working` every turn; on the first eligible prompt of the pi session also fires the once-per-session LLM workspace rename |
 | `tool_execution_start` (attention tool) | pill → `waiting` (bell, cyan `#5ac8fa`), desktop `notify` `Needs your input (<toolName>)` |
 | `tool_execution_end`   (attention tool) | pill → `working` (agent is processing again)           |
 | `agent_end`            | pill → `idle`, clear-progress, log, desktop `notify`  |
@@ -40,19 +40,21 @@ notification.
 ### Auto-rename (once per pi session, on first user prompt)
 
 Calls the current session's model (or the `PI_CMUX_SUMMARY_MODEL`
-override) with a short prompt, gets `{tab, workspace}` back, and runs:
+override) with a short prompt, gets `{workspace}` back, and runs:
 
 ```
-cmux rename-tab -- <tab>
 cmux workspace-action --action rename --title <workspace>
 ```
 
-Name sizes are capped in **characters** (words vary too much in length):
-tab titles up to **50 chars**, workspace titles up to **60 chars** —
-enough for descriptive labels like `Check SVC-API Video Search Results
-Limit`. The model is told to aim shorter when the session has an obvious
-short label. Anything the model returns over the cap is clipped to the
-nearest word boundary before being handed to cmux.
+Workspace titles are capped at **60 characters** (words vary too much in
+length to use word counts) — enough for descriptive labels like `Check
+SVC-API Video Search Results Limit`. The model is told to aim shorter
+when the session has an obvious short label. Anything the model returns
+over the cap is clipped to the nearest word boundary before being
+handed to cmux.
+
+Tab renaming was removed in #0003 — the extension never touches the
+cmux tab title any more.
 
 The "already auto-renamed" flag is persisted to the pi session log via
 `pi.appendEntry("cmux-status-renamed", { savedAt })` (marker-only, no
@@ -61,17 +63,26 @@ re-rename a workspace the user has manually renamed after the initial
 auto-name. A fresh pi session (new session log) starts with a clean flag
 and will auto-rename once again.
 
+**Prefix gate (#0003).** Before dispatching the rename, the extension
+reads the current title via `cmux rpc workspace.current` and only
+renames when the current title starts with cmux's default `Terminal `
+prefix. A workspace the user has already renamed by hand is left
+alone. If the RPC read fails (cmux unavailable, non-zero exit,
+malformed JSON, 3-second timeout), the gate fails open and the rename
+proceeds. `/cmux-rename` bypasses the gate because the user is
+explicitly asking for a rename.
+
 ### `/cmux-rename`
 
-Regenerates names from the **current session log**, not the initial
-first-prompt. The command walks the active session branch
+Regenerates the workspace name from the **current session log**, not
+the initial first-prompt. The command walks the active session branch
 (`sessionManager.getBranch()`), collects the most recent user messages
 (skipping slash commands), joins them, and hands that summary to the
 naming model. Running `/cmux-rename` later in a long session therefore
-produces names that reflect what the session has become, not what it
+produces a name that reflects what the session has become, not what it
 started as. Any trailing text passed to the command is ignored. Warns
-when the session log has no user prompts yet, or when not running inside
-cmux.
+when the session log has no user prompts yet, or when not running
+inside cmux.
 
 ## Environment variables
 
@@ -100,6 +111,7 @@ is fully testable without a live cmux or live model:
 | `cmux.ts`          | Pure argv builders + fire-and-forget dispatch helpers.                         |
 | `cmuxEnv.ts`       | `cmuxAvailable()` env-var gate.                                                |
 | `cmuxSpawner.ts`   | Thin `spawn("cmux", …)` shim with a swappable `CmuxSpawner` for tests.          |
+| `cmuxReader.ts`    | Read-side `cmux rpc workspace.current` wrapper (`readWorkspaceTitle`) with a swappable `CmuxReader`; fail-closed to `null` on any error (#0003). |
 | `names.ts`         | `parseNames` (pure), `generateNames` orchestration with an injectable completion hook. |
 | `namesCompletion.ts` | Thin `completeSimple(…)` shim — the only live-LLM call path.                  |
 | `sessionPrompt.ts` | Pure helper: walk the session branch, collect recent user messages, build the summariser prompt for `/cmux-rename`. |

@@ -4,7 +4,6 @@ import {
 	__setCmuxSpawnerForTests,
 	buildLogArgs,
 	buildNotifyArgs,
-	buildRenameTabArgs,
 	buildRenameWorkspaceArgs,
 	buildSetStatusArgs,
 	clearProgress,
@@ -13,7 +12,6 @@ import {
 	hhmm,
 	logLine,
 	notifyCmux,
-	renameTab,
 	renameWorkspace,
 	runCmux,
 	setStatus,
@@ -65,16 +63,6 @@ describe("argv builders", () => {
 			"cwd",
 			"--body",
 			"msg",
-		]);
-	});
-
-	it("buildRenameTabArgs rejects blank titles", () => {
-		expect(buildRenameTabArgs("")).toBeNull();
-		expect(buildRenameTabArgs("   ")).toBeNull();
-		expect(buildRenameTabArgs("Add CMux Status")).toEqual([
-			"rename-tab",
-			"--",
-			"Add CMux Status",
 		]);
 	});
 
@@ -207,17 +195,6 @@ describe("dispatch layer (with injected spawner)", () => {
 	it("clearProgress emits `cmux clear-progress`", () => {
 		clearProgress();
 		expect(spawner).toHaveBeenCalledWith(["clear-progress"]);
-	});
-
-	it("renameTab is a no-op for blank titles", () => {
-		renameTab("");
-		renameTab("   ");
-		expect(spawner).not.toHaveBeenCalled();
-	});
-
-	it("renameTab dispatches non-blank titles", () => {
-		renameTab("Add CMux Status");
-		expect(spawner).toHaveBeenCalledWith(["rename-tab", "--", "Add CMux Status"]);
 	});
 
 	it("renameWorkspace dispatches non-blank titles", () => {

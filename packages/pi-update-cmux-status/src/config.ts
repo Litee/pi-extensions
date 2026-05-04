@@ -18,9 +18,11 @@ export function resolveStatusKey(env: NodeJS.ProcessEnv = process.env): string {
 }
 
 /**
- * Whether the extension should rename the cmux *workspace* (not just the
- * tab). Disabled when `$PI_CMUX_RENAME_WORKSPACE` is set to any of
- * `0`, `false`, `no` (case-insensitive). Default: enabled.
+ * Whether the extension should rename the cmux workspace on the first
+ * user prompt. Disabled when `$PI_CMUX_RENAME_WORKSPACE` is set to any
+ * of `0`, `false`, `no` (case-insensitive). Default: enabled.
+ *
+ * Tab renaming was removed in #0003 and has no config flag.
  */
 export function resolveRenameWorkspace(env: NodeJS.ProcessEnv = process.env): boolean {
 	const raw = env["PI_CMUX_RENAME_WORKSPACE"];
@@ -30,10 +32,10 @@ export function resolveRenameWorkspace(env: NodeJS.ProcessEnv = process.env): bo
 }
 
 /**
- * Optional override for the model used to summarise the first user prompt
- * into tab + workspace names. Expected format: `"provider:modelId"`.
- * Returns `undefined` when unset or malformed (i.e. missing colon) so the
- * caller falls back to `ctx.model`.
+ * Optional override for the model used to summarise the first user
+ * prompt into a workspace name. Expected format: `"provider:modelId"`.
+ * Returns `undefined` when unset or malformed (i.e. missing colon) so
+ * the caller falls back to `ctx.model`.
  */
 export function resolveSummaryModelOverride(
 	env: NodeJS.ProcessEnv = process.env,

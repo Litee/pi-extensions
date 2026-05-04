@@ -3,7 +3,6 @@ import { describe, expect, it, vi } from "vitest";
 import {
 	clipToLimit,
 	generateNames,
-	MAX_TAB_CHARS,
 	MAX_WORKSPACE_CHARS,
 	parseNames,
 	resolveSummaryModel,
@@ -26,49 +25,40 @@ describe("parseNames", () => {
 	});
 
 	it("parses a clean JSON object", () => {
-		expect(parseNames('{"tab":"Add Skill","workspace":"Pi Extensions"}')).toEqual({
-			tab: "Add Skill",
+		expect(parseNames('{"workspace":"Pi Extensions"}')).toEqual({
 			workspace: "Pi Extensions",
 		});
 	});
 
-	it("trims whitespace in tab / workspace fields", () => {
-		expect(parseNames('{"tab":"  A  ","workspace":"  B  "}')).toEqual({
-			tab: "A",
-			workspace: "B",
-		});
+	it("trims whitespace in the workspace field", () => {
+		expect(parseNames('{"workspace":"  B  "}')).toEqual({ workspace: "B" });
 	});
 
 	it("tolerates surrounding prose around the JSON", () => {
-		const raw = 'Sure! Here is the JSON:\n{"tab":"Debug Flaky Test","workspace":"QA"}\nLet me know if you need anything else.';
-		expect(parseNames(raw)).toEqual({
-			tab: "Debug Flaky Test",
-			workspace: "QA",
+		const raw = 'Sure! Here is the JSON:\n{"workspace":"QA"}\nLet me know if you need anything else.';
+		expect(parseNames(raw)).toEqual({ workspace: "QA" });
+	});
+
+	it("ignores extra fields (e.g. a legacy `tab` from an older prompt)", () => {
+		// Tab was removed in #0003; if some model still emits it we just
+		// drop the extra field without failing the parse.
+		expect(parseNames('{"tab":"Old Tab Name","workspace":"W"}')).toEqual({
+			workspace: "W",
 		});
 	});
 
-	it("fills workspace from tab when workspace is missing", () => {
-		expect(parseNames('{"tab":"Chat"}')).toEqual({ tab: "Chat", workspace: "Chat" });
-	});
-
-	it("fills tab from workspace when tab is missing", () => {
-		expect(parseNames('{"workspace":"Chat"}')).toEqual({
-			tab: "Chat",
-			workspace: "Chat",
-		});
-	});
-
-	it("returns undefined when both fields are empty / missing", () => {
+	it("returns undefined when the workspace field is empty / missing", () => {
 		expect(parseNames("{}")).toBeUndefined();
-		expect(parseNames('{"tab":"","workspace":""}')).toBeUndefined();
+		expect(parseNames('{"workspace":""}')).toBeUndefined();
 	});
 
 	it("returns undefined when JSON is malformed", () => {
-		expect(parseNames('{"tab":"a",}')).toBeUndefined();
+		expect(parseNames('{"workspace":"a",}')).toBeUndefined();
 	});
 
-	it("ignores non-string tab / workspace values", () => {
-		expect(parseNames('{"tab":123,"workspace":null}')).toBeUndefined();
+	it("ignores non-string workspace values", () => {
+		expect(parseNames('{"workspace":null}')).toBeUndefined();
+		expect(parseNames('{"workspace":42}')).toBeUndefined();
 	});
 });
 
@@ -78,13 +68,17 @@ describe("parseNames", () => {
 
 describe("SUMMARY_SYSTEM_PROMPT", () => {
 	it("demands the exact output shape in its first paragraph", () => {
-		expect(SUMMARY_SYSTEM_PROMPT).toMatch(/\{"tab":"\.\.\.","workspace":"\.\.\."\}/);
+		expect(SUMMARY_SYSTEM_PROMPT).toMatch(/\{"workspace":"\.\.\."\}/);
 	});
 
-	it("documents the tab and workspace constraints", () => {
-		expect(SUMMARY_SYSTEM_PROMPT).toMatch(/"tab"/);
+	it("documents the workspace constraint in Title Case", () => {
 		expect(SUMMARY_SYSTEM_PROMPT).toMatch(/"workspace"/);
 		expect(SUMMARY_SYSTEM_PROMPT).toMatch(/Title Case/);
+	});
+
+	it("does NOT mention tabs (tab rename was removed in #0003)", () => {
+		expect(SUMMARY_SYSTEM_PROMPT).not.toMatch(/\btabs?\b/i);
+		expect(SUMMARY_SYSTEM_PROMPT).not.toMatch(/"tab"/);
 	});
 
 	it("describes the input as a session summary, not the first user request", () => {
@@ -97,8 +91,7 @@ describe("SUMMARY_SYSTEM_PROMPT", () => {
 		expect(SUMMARY_SYSTEM_PROMPT).toMatch(/most recent/i);
 	});
 
-	it("specifies character limits (not word counts) for both fields", () => {
-		expect(SUMMARY_SYSTEM_PROMPT).toContain(`up to ${MAX_TAB_CHARS} characters`);
+	it("specifies a character limit (not a word count) for the workspace field", () => {
 		expect(SUMMARY_SYSTEM_PROMPT).toContain(`up to ${MAX_WORKSPACE_CHARS} characters`);
 		// The old word-count rules are gone.
 		expect(SUMMARY_SYSTEM_PROMPT).not.toMatch(/\d+-\d+\s+words/);
@@ -131,18 +124,10 @@ describe("clipToLimit", () => {
 });
 
 describe("parseNames character-cap enforcement", () => {
-	it("clips an over-long tab to MAX_TAB_CHARS", () => {
-		const longTab = "Super Duper Ultra Mega Very Long Tab Title That Exceeds The Cap";
-		const out = parseNames(`{"tab":"${longTab}","workspace":"Short"}`);
-		expect(out).toBeDefined();
-		expect(out!.tab.length).toBeLessThanOrEqual(MAX_TAB_CHARS);
-		expect(longTab.startsWith(out!.tab)).toBe(true);
-	});
-
 	it("clips an over-long workspace to MAX_WORKSPACE_CHARS", () => {
 		const longWs =
 			"Super Duper Ultra Mega Very Long Workspace Title That Exceeds The Cap";
-		const out = parseNames(`{"tab":"Short","workspace":"${longWs}"}`);
+		const out = parseNames(`{"workspace":"${longWs}"}`);
 		expect(out).toBeDefined();
 		expect(out!.workspace.length).toBeLessThanOrEqual(MAX_WORKSPACE_CHARS);
 		expect(longWs.startsWith(out!.workspace)).toBe(true);
@@ -150,22 +135,11 @@ describe("parseNames character-cap enforcement", () => {
 
 	it("accepts realistic longer workspace names within the cap", () => {
 		const out = parseNames(
-			`{"tab":"Check SVC-API Video Search","workspace":"Debug OAuth Token Refresh Flow"}`,
+			`{"workspace":"Debug OAuth Token Refresh Flow"}`,
 		);
 		expect(out).toEqual({
-			tab: "Check SVC-API Video Search",
 			workspace: "Debug OAuth Token Refresh Flow",
 		});
-	});
-
-	it("fills missing field from the other, with the other's char cap applied", () => {
-		const longWs =
-			"Workspace-Only Name That Is Also Quite Long And Extends Past The Tab Cap";
-		const out = parseNames(`{"workspace":"${longWs}"}`);
-		expect(out).toBeDefined();
-		expect(out!.workspace.length).toBeLessThanOrEqual(MAX_WORKSPACE_CHARS);
-		expect(out!.tab.length).toBeLessThanOrEqual(MAX_TAB_CHARS);
-		expect(longWs.startsWith(out!.tab)).toBe(true);
 	});
 });
 
@@ -235,7 +209,7 @@ describe("generateNames (short-circuit paths)", () => {
 	});
 
 	it("invokes the injected completion hook with the correct prompt + auth + system prompt", async () => {
-		const completion = vi.fn(async () => '{"tab":"T","workspace":"W"}');
+		const completion = vi.fn(async () => '{"workspace":"W"}');
 		const ctx = {
 			model: { id: "fake" },
 			modelRegistry: {
@@ -248,7 +222,7 @@ describe("generateNames (short-circuit paths)", () => {
 		} as never;
 
 		const out = await generateNames(ctx, "first prompt", {}, completion as never);
-		expect(out).toEqual({ tab: "T", workspace: "W" });
+		expect(out).toEqual({ workspace: "W" });
 		expect(completion).toHaveBeenCalledTimes(1);
 		const [model, prompt, auth, opts] = completion.mock.calls[0] as unknown as [
 			unknown,
@@ -259,7 +233,7 @@ describe("generateNames (short-circuit paths)", () => {
 		expect(model).toEqual({ id: "fake" });
 		expect(prompt).toBe("first prompt");
 		expect(auth).toEqual({ apiKey: "api-key-123", headers: { "x-test": "1" } });
-		expect(opts.systemPrompt).toMatch(/cmux terminal tabs/);
+		expect(opts.systemPrompt).toMatch(/cmux workspaces/);
 		expect(opts.maxTokens).toBeGreaterThan(0);
 	});
 
