@@ -19,6 +19,10 @@ export default defineConfig({
 				// TUI pickers are integration code that needs a live pi-tui runtime;
 				// logic that can be unit-tested lives in index.ts (handleCcSkills).
 				"**/tuiPicker.ts",
+				// TUI-backed `/local-issue-watcher-info` picker — integration
+				// code that needs a live pi-tui runtime. Pure orchestration
+				// lives in infoHandler.ts and is fully covered there.
+				"**/infoTui.ts",
 				// TUI dialog is integration glue for pi-tui; the state machine that
 				// drives it lives in controller.ts and is fully covered there.
 				"**/dialog.ts",

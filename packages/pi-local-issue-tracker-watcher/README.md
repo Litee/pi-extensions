@@ -102,6 +102,27 @@ On every `session_start`:
 | `/local-issue-watcher status`     | Alias for the above.                             |
 | `/local-issue-watcher pause`      | Stop polling, persist `paused=true` to session state so the extension stays quiet across reload / session resume. |
 | `/local-issue-watcher resume`     | Rebuild the baseline from disk, persist `paused=false`, and resume polling. |
+| `/local-issue-watcher-info`       | Open a searchable TUI browser over the tracker backlog (see below). |
+
+### `/local-issue-watcher-info`
+
+New slash command (added in #0023, *not* a replacement for any
+`/local-issue-watcher` subcommand). Opens a two-pane TUI:
+
+- **List** of `<skill> #<id>  <title>` rows on top, defaulting to the
+  `status === "open"` subset of the backlog. Sorted primary by skill,
+  secondary by issue id.
+- **Live preview pane** below the list showing the selected issue's
+  full description and every comment, re-rendered every time you move
+  the arrow selection.
+- **Search-as-you-type** filter on skill + id + title
+  (case-insensitive substring).
+- `Esc` (or `Ctrl-C`) exits.
+
+Filter toggles for `in_progress` / `done` / `wont_fix`, a
+copy-to-clipboard shortcut, and a `K matching "…"` segment in the
+header were called out in the issue as *optional but nice* and are
+deferred — they can land as follow-up issues if wanted.
 
 ## Package layout
 
@@ -113,12 +134,16 @@ src/
   format.ts        — buildChatMessageContent, formatStatusSummary
   persistence.ts   — rehydrateFromSession, rehydrateRunStateFromSession,
                      STATE_ENTRY_TYPE, RUNSTATE_ENTRY_TYPE, STATE_MAX_AGE_MS
+  infoHandler.ts   — buildOpenIssueRows, formatRowLabel, formatPreview,
+                     handleInfo (pure; drives /local-issue-watcher-info)
+  infoTui.ts       — makeInfoTuiPicker (pi-tui integration; coverage-excluded)
   index.ts         — default export + handleSessionStart (testable)
 test/
   scanner.test.ts
   diff.test.ts
   format.test.ts
   persistence.test.ts
+  infoHandler.test.ts
   index.test.ts
 ```
 

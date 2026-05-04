@@ -6,9 +6,11 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import createExtension, {
 	POLL_INTERVAL_MS,
+	__setInfoPickerForTests,
 	handleSessionStart,
 	resolveDbRoot,
 } from "../src/index.js";
+import type { InfoPicker, InfoRow } from "../src/infoHandler.js";
 import { RUNSTATE_ENTRY_TYPE, STATE_ENTRY_TYPE } from "../src/persistence.js";
 import { abbreviatePath } from "../src/path.js";
 import type { Snapshot } from "../src/types.js";
@@ -1428,5 +1430,98 @@ describe("handleSessionStart deferMessages (#0015)", () => {
 		expect(payload.customType).toBe("pi-local-issue-tracker-watcher");
 		expect(payload.content).toContain("active");
 		expect(opts.triggerTurn).toBe(true);
+	});
+});
+
+// ---------------------------------------------------------------------------
+// /local-issue-watcher-info command (#0023)
+// ---------------------------------------------------------------------------
+
+describe("/local-issue-watcher-info command (#0023)", () => {
+	let dbRoot: string;
+
+	beforeEach(() => {
+		dbRoot = mkdtempSync(join(tmpdir(), "pi-local-issue-watcher-info-"));
+	});
+	afterEach(() => {
+		rmSync(dbRoot, { recursive: true, force: true });
+		__setInfoPickerForTests(null);
+	});
+
+	function extensionWithDbRoot(pi: StubPi, root: string): void {
+		const prev = process.env["LOCAL_ISSUE_TRACKER_DB_ROOT"];
+		process.env["LOCAL_ISSUE_TRACKER_DB_ROOT"] = root;
+		try {
+			createExtension(pi as never);
+		} finally {
+			if (prev === undefined) delete process.env["LOCAL_ISSUE_TRACKER_DB_ROOT"];
+			else process.env["LOCAL_ISSUE_TRACKER_DB_ROOT"] = prev;
+		}
+	}
+
+	it("registers the new command with a description and handler", () => {
+		const pi = makeFakePi();
+		extensionWithDbRoot(pi, dbRoot);
+		expect(pi.registerCommand).toHaveBeenCalledWith(
+			"local-issue-watcher-info",
+			expect.objectContaining({
+				description: expect.any(String),
+				handler: expect.any(Function),
+			}),
+		);
+		expect(pi.commands.get("local-issue-watcher-info")).toBeDefined();
+	});
+
+	it("invokes handleInfo with the resolved dbRoot, live scanner, and an InfoPicker that receives open rows + summary", async () => {
+		// Seed the dbRoot with one open + one done issue so the picker gets a
+		// non-trivial payload.
+		mkdirSync(join(dbRoot, "skill-a"), { recursive: true });
+		writeFileSync(
+			join(dbRoot, "skill-a", "0001-a.json"),
+			JSON.stringify({ id: "0001", status: "open", title: "open one", skill: "skill-a" }),
+		);
+		writeFileSync(
+			join(dbRoot, "skill-a", "0002-b.json"),
+			JSON.stringify({ id: "0002", status: "done", title: "done one", skill: "skill-a" }),
+		);
+
+		const received: Array<{ rows: InfoRow[]; summary: string }> = [];
+		const fakePicker: InfoPicker = async (args) => {
+			received.push(args);
+		};
+		__setInfoPickerForTests(fakePicker);
+
+		const pi = makeFakePi();
+		extensionWithDbRoot(pi, dbRoot);
+		const ctx = makeFakeCtx();
+		await pi.commands.get("local-issue-watcher-info")!.handler("", ctx);
+
+		expect(received).toHaveLength(1);
+		// Only the open issue lands in the rows; summary reports both counts.
+		expect(received[0]!.rows).toHaveLength(1);
+		expect(received[0]!.rows[0]!.info.issueId).toBe("0001");
+		expect(received[0]!.summary).toBe("1 open, 2 total");
+		// And no notify fires on the happy path.
+		expect(ctx.ui.notify).not.toHaveBeenCalled();
+	});
+
+	it("emits a warning notify (and does NOT invoke the picker) when dbRoot is not configured", async () => {
+		const pickerCalls: number[] = [];
+		__setInfoPickerForTests(async () => {
+			pickerCalls.push(1);
+		});
+
+		const missing = join(dbRoot, "does-not-exist");
+		const pi = makeFakePi();
+		extensionWithDbRoot(pi, missing);
+		const ctx = makeFakeCtx();
+		await pi.commands.get("local-issue-watcher-info")!.handler("", ctx);
+
+		expect(pickerCalls).toHaveLength(0);
+		const calls = ctx.ui.notify.mock.calls as Array<[string, string]>;
+		expect(calls).toHaveLength(1);
+		expect(calls[0]![0]).toMatch(/local-issue-watcher-info/);
+		expect(calls[0]![0]).toContain(missing);
+		expect(calls[0]![1]).toBe("warning");
 	});
 });
