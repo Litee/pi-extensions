@@ -12,14 +12,17 @@ with three material differences:
 1. **No keystroke bridges.** Changes are delivered exclusively through
    `pi.sendMessage({customType: "local-issue-watcher", ...}, {triggerTurn: true})`.
 2. **No external state file / PID lock.** The previous snapshot is stored via
-   `pi.appendEntry("local-issue-watcher-state", ...)` with a 24 h TTL, and the
-   user's explicit pause/resume preference via
-   `pi.appendEntry("local-issue-watcher-runstate", ...)` (no TTL) — so the
-   watcher auto-resumes through session restart or plugin reload
-   without a separate state directory. Legacy entries from before the
-   #0017 rename (`issue-watcher-state` / `issue-watcher-runstate`) are
-   still read on rehydrate so in-flight session logs survive the
-   cutover; new entries are always written under the new names.
+   `pi.appendEntry("pi-local-issue-tracker-watcher-state", ...)` with a 24 h
+   TTL, and the user's explicit pause/resume preference via
+   `pi.appendEntry("pi-local-issue-tracker-watcher-runstate", ...)` (no TTL)
+   — so the watcher auto-resumes through session restart or plugin
+   reload without a separate state directory. All session-log keys
+   carry the full package-name prefix (#0020) to keep the shared pi
+   session-log namespace collision-free; legacy entries from the
+   pre-#0017 rename (`issue-watcher-state` / `-runstate`) and from
+   #0017…#0019 (`local-issue-watcher-state` / `-runstate`) are still
+   read on rehydrate so in-flight session logs survive the cutover;
+   new entries are always written under the new names.
 3. **Single fixed dbRoot per process.** Configured via the
    `LOCAL_ISSUE_TRACKER_DB_ROOT` environment variable (default:
    `~/.claude/plugin-data/local-skill-issues-tracker/use-local-skills-issue-tracker/db`).
@@ -46,7 +49,10 @@ On every `session_start`:
 2. If the directory does not exist → `ctx.ui.notify(...)` and bail out.
 3. Scan all `<dbRoot>/<skill>/NNNN-slug.json` files into a `Snapshot`.
 4. Pin a one-line **status entry** to the extension-status row via
-   `ctx.ui.setStatus("local-issue-watcher", ...)` — e.g.
+   `ctx.ui.setStatus("pi-local-issue-tracker-watcher", ...)` (the key is
+   prefixed with the full package name per #0020, though the rendered
+   line keeps the shorter `local-issue-watcher:` label to save footer
+   width) — e.g.
    `local-issue-watcher: active | /h/u/p/tracker | poll=60s | 3 open, 1 in_progress` —
    the `dbRoot` is compacted via `abbreviatePath` (every intermediate
    segment collapsed to its first grapheme; leading dotfile segments

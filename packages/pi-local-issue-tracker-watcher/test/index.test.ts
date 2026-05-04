@@ -233,7 +233,7 @@ describe("handleSessionStart", () => {
 		// Startup announcement emitted via ui.setStatus (pins to extension-status row),
 		// not via sendMessage (no agent turn).
 		const statusCalls = ctx.ui.setStatus.mock.calls as Array<[string, string | undefined]>;
-		const issueStatus = statusCalls.find(([k]) => k === "local-issue-watcher");
+		const issueStatus = statusCalls.find(([k]) => k === "pi-local-issue-tracker-watcher");
 		expect(issueStatus).toBeDefined();
 		expect(issueStatus![1]).toContain("active");
 		expect(issueStatus![1]).toContain(abbreviatePath(dbRoot));
@@ -342,7 +342,7 @@ describe("handleSessionStart", () => {
 		// Startup announcement still fires even when there are no changes,
 		// so the user can see the watcher is active (issue #0001).
 		const statusCalls = ctx.ui.setStatus.mock.calls as Array<[string, string | undefined]>;
-		const issueStatus = statusCalls.find(([k]) => k === "local-issue-watcher");
+		const issueStatus = statusCalls.find(([k]) => k === "pi-local-issue-tracker-watcher");
 		expect(issueStatus).toBeDefined();
 		expect(issueStatus![1]).toContain("active");
 		expect(issueStatus![1]).toContain(abbreviatePath(dbRoot));
@@ -367,7 +367,7 @@ describe("handleSessionStart", () => {
 		// visible beyond the transient toast (#0014).
 		const statusCalls = ctx.ui.setStatus.mock.calls as Array<[string, string | undefined]>;
 		const pinned = statusCalls
-			.filter(([k]) => k === "local-issue-watcher")
+			.filter(([k]) => k === "pi-local-issue-tracker-watcher")
 			.map(([, v]) => v ?? "");
 		expect(pinned).toHaveLength(1);
 		expect(pinned[0]).toContain("dbRoot missing");
@@ -391,7 +391,7 @@ describe("handleSessionStart", () => {
 		// DOES trigger an agent turn so the LLM sees the tracker state at
 		// session start — that is asserted separately in the #0011/#0013 block.
 		const statusCalls = ctx.ui.setStatus.mock.calls as Array<[string, string | undefined]>;
-		expect(statusCalls.some(([k]) => k === "local-issue-watcher")).toBe(true);
+		expect(statusCalls.some(([k]) => k === "pi-local-issue-tracker-watcher")).toBe(true);
 	});
 
 	// -- issue #0001 (H1): no double-scan on session_start --
@@ -468,7 +468,7 @@ describe("handleSessionStart", () => {
 
 		// The pinned status text is the theme-wrapped output, not a raw ANSI escape.
 		const statusCalls = ctx.ui.setStatus.mock.calls as Array<[string, string | undefined]>;
-		const issueStatus = statusCalls.find(([k]) => k === "local-issue-watcher");
+		const issueStatus = statusCalls.find(([k]) => k === "pi-local-issue-tracker-watcher");
 		expect(issueStatus![1]).not.toMatch(/\x1b\[36m/);
 		expect(issueStatus![1]).toContain("<fg:accent>");
 	});
@@ -530,7 +530,7 @@ describe("/local-issue-watcher command", () => {
 		// Resume also updates the pinned status line to mirror session_start.
 		const statusCalls = ctx.ui.setStatus.mock.calls as Array<[string, string | undefined]>;
 		const resumedStatus = statusCalls
-			.filter(([k]) => k === "local-issue-watcher")
+			.filter(([k]) => k === "pi-local-issue-tracker-watcher")
 			.map(([, v]) => v ?? "")
 			.find((v) => /resumed/i.test(v));
 		expect(resumedStatus).toBeDefined();
@@ -548,7 +548,7 @@ describe("/local-issue-watcher command", () => {
 
 		const statusCalls = ctx.ui.setStatus.mock.calls as Array<[string, string | undefined]>;
 		const pausedStatus = statusCalls
-			.filter(([k]) => k === "local-issue-watcher")
+			.filter(([k]) => k === "pi-local-issue-tracker-watcher")
 			.map(([, v]) => v ?? "")
 			.find((v) => /paused/i.test(v));
 		expect(pausedStatus).toBeDefined();
@@ -577,7 +577,7 @@ describe("/local-issue-watcher command", () => {
 
 		const statusCalls = ctx.ui.setStatus.mock.calls as Array<[string, string | undefined]>;
 		const pausedStatus = statusCalls
-			.filter(([k]) => k === "local-issue-watcher")
+			.filter(([k]) => k === "pi-local-issue-tracker-watcher")
 			.map(([, v]) => v ?? "")
 			.find((v) => /paused/i.test(v));
 		expect(pausedStatus).toBeDefined();
@@ -868,7 +868,7 @@ describe("run-state persistence", () => {
 
 		// Pinned status line says 'paused', not 'active'.
 		const statusCalls = ctx.ui.setStatus.mock.calls as Array<[string, string | undefined]>;
-		const pinned = statusCalls.find(([k]) => k === "local-issue-watcher")?.[1] ?? "";
+		const pinned = statusCalls.find(([k]) => k === "pi-local-issue-tracker-watcher")?.[1] ?? "";
 		expect(pinned).toContain("paused");
 		expect(pinned).not.toMatch(/\bactive\b/);
 	});
@@ -914,7 +914,7 @@ describe("run-state persistence", () => {
 		]);
 		await handleSessionStart({ pi: pi as never, ctx: ctx as never, dbRoot });
 		const statusCalls = ctx.ui.setStatus.mock.calls as Array<[string, string | undefined]>;
-		const pinned = statusCalls.find(([k]) => k === "local-issue-watcher")?.[1] ?? "";
+		const pinned = statusCalls.find(([k]) => k === "pi-local-issue-tracker-watcher")?.[1] ?? "";
 		expect(pinned).toContain("paused");
 		expect(pinned).not.toMatch(/\bactive\b/);
 	});
@@ -1077,7 +1077,7 @@ describe("run-state persistence", () => {
 
 			// The pinned status line on the reloaded instance reflects paused.
 			const statusCalls = ctx.ui.setStatus.mock.calls as Array<[string, string | undefined]>;
-			const pinned = statusCalls.find(([k]) => k === "local-issue-watcher")?.[1] ?? "";
+			const pinned = statusCalls.find(([k]) => k === "pi-local-issue-tracker-watcher")?.[1] ?? "";
 			expect(pinned).toContain("paused");
 		} finally {
 			vi.useRealTimers();
@@ -1147,7 +1147,7 @@ describe("status line — refresh on every poll (#0016 supersedes #0009)", () =>
 		await handleSessionStart({ pi: pi as never, ctx: ctx as never, dbRoot });
 
 		const statusCalls = ctx.ui.setStatus.mock.calls as Array<[string, string | undefined]>;
-		const pinned = statusCalls.find(([k]) => k === "local-issue-watcher")?.[1] ?? "";
+		const pinned = statusCalls.find(([k]) => k === "pi-local-issue-tracker-watcher")?.[1] ?? "";
 		expect(pinned).not.toMatch(/last update/);
 		expect(pinned).not.toMatch(/\b(never|just now|\ds ago|\dm ago|\dh ago|\dd ago)\b/);
 	});
@@ -1217,14 +1217,14 @@ describe("status line — refresh on every poll (#0016 supersedes #0009)", () =>
 			await handler({}, ctx);
 
 			const statusAtStart = ctx.ui.setStatus.mock.calls.filter(
-				([k]) => k === "local-issue-watcher",
+				([k]) => k === "pi-local-issue-tracker-watcher",
 			).length;
 
 			// Advance through 3 poll cycles with no disk changes.
 			await vi.advanceTimersByTimeAsync(POLL_INTERVAL_MS * 3);
 
 			const statusAfter = ctx.ui.setStatus.mock.calls.filter(
-				([k]) => k === "local-issue-watcher",
+				([k]) => k === "pi-local-issue-tracker-watcher",
 			).length;
 
 			// Each poll re-pins the status line so the counts segment reflects

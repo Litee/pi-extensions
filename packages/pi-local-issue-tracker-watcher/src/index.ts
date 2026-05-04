@@ -78,10 +78,14 @@ const CUSTOM_MESSAGE_TYPE = "local-issue-watcher";
 
 /**
  * Key used with `ctx.ui.setStatus(...)` to install / update / clear the
- * persistent status-row line for this watcher. Matches the slack-watcher
- * convention of one key per extension.
+ * persistent status-row line for this watcher. Prefixed with the full
+ * package name so keys in the shared pi status-row namespace are
+ * unambiguously attributable to their owning package (see tracker
+ * issue #0020). The rendered human-facing label in `format.ts` keeps
+ * the shorter `local-issue-watcher:` prefix to save footer width —
+ * this key is a machine namespace, not display text.
  */
-const STATUS_KEY = "local-issue-watcher";
+const STATUS_KEY = "pi-local-issue-tracker-watcher";
 
 /** Apply the pi theme's accent color via `ctx.ui.theme.fg`. */
 function colorize(

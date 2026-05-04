@@ -1,13 +1,25 @@
 import type { IssueInfo, Snapshot } from "./types.js";
 
 /** Key used with `pi.appendEntry(...)` / session custom entries. */
-export const STATE_ENTRY_TYPE = "local-issue-watcher-state";
+export const STATE_ENTRY_TYPE = "pi-local-issue-tracker-watcher-state";
 
 /**
- * Entry types we still accept on **read** for back-compat with session logs
- * written before #0017. New entries always use {@link STATE_ENTRY_TYPE}.
+ * Entry types we still accept on **read** for back-compat with session
+ * logs written by earlier versions. New entries always use
+ * {@link STATE_ENTRY_TYPE}.
+ *
+ * - `"issue-watcher-state"` — pre-#0017
+ * - `"local-issue-watcher-state"` — #0017…#0019 (bare, package-agnostic
+ *   prefix)
+ *
+ * #0020 renamed the active key to the package-prefixed form
+ * `pi-local-issue-tracker-watcher-state`; both prior variants remain
+ * readable.
  */
-export const LEGACY_STATE_ENTRY_TYPES = ["issue-watcher-state"] as const;
+export const LEGACY_STATE_ENTRY_TYPES = [
+	"issue-watcher-state",
+	"local-issue-watcher-state",
+] as const;
 
 /**
  * Separate key used to persist the watcher's **run state** (paused /
@@ -15,10 +27,16 @@ export const LEGACY_STATE_ENTRY_TYPES = ["issue-watcher-state"] as const;
  * {@link STATE_ENTRY_TYPE} so that the snapshot can age out under its
  * 24h TTL while the user's explicit pause preference survives forever.
  */
-export const RUNSTATE_ENTRY_TYPE = "local-issue-watcher-runstate";
+export const RUNSTATE_ENTRY_TYPE = "pi-local-issue-tracker-watcher-runstate";
 
-/** Pre-#0017 run-state entry types still accepted on read. */
-export const LEGACY_RUNSTATE_ENTRY_TYPES = ["issue-watcher-runstate"] as const;
+/**
+ * Run-state entry types still accepted on read. Same layering as
+ * {@link LEGACY_STATE_ENTRY_TYPES} — pre-#0017 then #0017…#0019.
+ */
+export const LEGACY_RUNSTATE_ENTRY_TYPES = [
+	"issue-watcher-runstate",
+	"local-issue-watcher-runstate",
+] as const;
 
 function isStateEntryType(t: string | undefined): boolean {
 	if (t === STATE_ENTRY_TYPE) return true;
@@ -174,12 +192,13 @@ export interface RehydratedRunState {
 
 /**
  * Walk the session entry log newest → oldest and return the most recent
- * `local-issue-watcher-runstate` entry. Unlike {@link rehydrateFromSession},
- * this has **no TTL** — an explicit pause preference is sticky until the
- * user runs `/local-issue-watcher resume` (or deletes the session).
+ * run-state entry. Unlike {@link rehydrateFromSession}, this has **no
+ * TTL** — an explicit pause preference is sticky until the user runs
+ * `/local-issue-watcher resume` (or deletes the session).
  *
- * Pre-#0017 `issue-watcher-runstate` entries are still read for back-compat
- * via {@link LEGACY_RUNSTATE_ENTRY_TYPES}.
+ * Pre-#0017 `issue-watcher-runstate` entries and #0017…#0019
+ * `local-issue-watcher-runstate` entries are still read for back-compat
+ * via {@link LEGACY_RUNSTATE_ENTRY_TYPES} (#0020).
  *
  * Returns `null` when no run-state entry has ever been written — callers
  * should treat that as the default (`paused=false`, i.e. running).

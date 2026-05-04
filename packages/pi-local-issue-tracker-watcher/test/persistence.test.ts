@@ -322,3 +322,102 @@ describe("rehydrateRunStateFromSession \u2014 legacy entry type (#0017)", () => 
 		expect(got!.paused).toBe(false);
 	});
 });
+
+// ---------------------------------------------------------------------------
+// #0020 — state keys now carry the full package-name prefix
+// (`pi-local-issue-tracker-watcher-state` / `-runstate`). Entries written by
+// pre-#0017 builds (`issue-watcher-*`) and #0017…#0019 builds
+// (`local-issue-watcher-*`) both remain readable via the LEGACY_ arrays.
+// ---------------------------------------------------------------------------
+
+describe("rehydrateFromSession — #0020 package-name-prefixed keys", () => {
+	it("STATE_ENTRY_TYPE is prefixed with the full package name", () => {
+		expect(STATE_ENTRY_TYPE).toBe("pi-local-issue-tracker-watcher-state");
+	});
+
+	it("RUNSTATE_ENTRY_TYPE is prefixed with the full package name", () => {
+		expect(RUNSTATE_ENTRY_TYPE).toBe("pi-local-issue-tracker-watcher-runstate");
+	});
+
+	it("rehydrates from a mixed log containing all three legacy variants; newest wins", () => {
+		// Interleave the three generations in arbitrary order; the
+		// per-entry `savedAt` decides the winner, not the customType.
+		const a: Snapshot = {
+			"/db/a/0001-aaa.json": { ...FRESH_SNAPSHOT["/db/skill-a/0001-x.json"]! },
+		};
+		const b: Snapshot = {
+			"/db/b/0002-bbb.json": { ...FRESH_SNAPSHOT["/db/skill-a/0001-x.json"]! },
+		};
+		const c: Snapshot = {
+			"/db/c/0003-ccc.json": { ...FRESH_SNAPSHOT["/db/skill-a/0001-x.json"]! },
+		};
+		const ctx = makeCtx([
+			entry(
+				"custom",
+				{ savedAt: now() - 3000, snapshot: a },
+				"issue-watcher-state",
+			),
+			entry(
+				"custom",
+				{ savedAt: now() - 1000, snapshot: b },
+				"local-issue-watcher-state",
+			),
+			entry(
+				"custom",
+				{ savedAt: now(), snapshot: c },
+				STATE_ENTRY_TYPE,
+			),
+		]);
+		const got = rehydrateFromSession(ctx as never);
+		expect(Object.keys(got!.snapshot)).toEqual(["/db/c/0003-ccc.json"]);
+	});
+
+	it("rehydrates from a `local-issue-watcher-state` entry alone (#0017…#0019 legacy)", () => {
+		const ctx = makeCtx([
+			entry(
+				"custom",
+				{ savedAt: now(), snapshot: FRESH_SNAPSHOT },
+				"local-issue-watcher-state",
+			),
+		]);
+		const got = rehydrateFromSession(ctx as never);
+		expect(got).not.toBeNull();
+		expect(Object.keys(got!.snapshot)).toEqual(["/db/skill-a/0001-x.json"]);
+	});
+});
+
+describe("rehydrateRunStateFromSession — #0020 package-name-prefixed keys", () => {
+	it("rehydrates from a mixed run-state log containing all three legacy variants; newest wins", () => {
+		const ctx = makeCtx([
+			entry(
+				"custom",
+				{ savedAt: now() - 3000, paused: true },
+				"issue-watcher-runstate",
+			),
+			entry(
+				"custom",
+				{ savedAt: now() - 1000, paused: false },
+				"local-issue-watcher-runstate",
+			),
+			entry(
+				"custom",
+				{ savedAt: now(), paused: true },
+				RUNSTATE_ENTRY_TYPE,
+			),
+		]);
+		const got = rehydrateRunStateFromSession(ctx as never);
+		expect(got!.paused).toBe(true);
+	});
+
+	it("rehydrates from a `local-issue-watcher-runstate` entry alone", () => {
+		const ctx = makeCtx([
+			entry(
+				"custom",
+				{ savedAt: now(), paused: true },
+				"local-issue-watcher-runstate",
+			),
+		]);
+		const got = rehydrateRunStateFromSession(ctx as never);
+		expect(got!.paused).toBe(true);
+	});
+});
