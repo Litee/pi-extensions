@@ -32,6 +32,11 @@ export default defineConfig({
 				// + a raw stdin focus-event listener. All logic worth testing is
 				// factored into helpers.ts and covered there.
 				"**/pi-session-recap/src/index.ts",
+				// pi-tool-info/index.ts is pure TUI glue: a /tool-info command
+				// handler that calls ctx.ui.select, ctx.ui.custom, and renders a
+				// Markdown modal. All logic worth testing (truncate, formatTokens,
+				// estimateToolTokens, sourceLabel) lives in helpers.ts.
+				"**/pi-tool-info/src/index.ts",
 			],
 			reporter: ["text", "html"],
 			// Fail the suite (non-zero exit) when any threshold is not met.

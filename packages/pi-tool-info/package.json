@@ -1,0 +1,15 @@
+{
+  "name": "pi-tool-info",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Pi extension that registers a /tool-info command for reviewing every tool available in a pi session (name, source, description, parameter schema, active state, and a compact token estimate).",
+  "type": "module",
+  "keywords": ["pi-package"],
+  "pi": {
+    "extensions": ["./src/index.ts"]
+  },
+  "peerDependencies": {
+    "@mariozechner/pi-coding-agent": "*",
+    "@mariozechner/pi-tui": "*"
+  }
+}
