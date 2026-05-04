@@ -10,7 +10,7 @@ This is a greatly simplified TypeScript port of
 with three material differences:
 
 1. **No keystroke bridges.** Changes are delivered exclusively through
-   `pi.sendMessage({customType: "local-issue-watcher", ...}, {triggerTurn: true})`.
+   `pi.sendMessage({customType: "pi-local-issue-tracker-watcher", ...}, {triggerTurn: true})`.
 2. **No external state file / PID lock.** The previous snapshot is stored via
    `pi.appendEntry("pi-local-issue-tracker-watcher-state", ...)` with a 24 h
    TTL, and the user's explicit pause/resume preference via
@@ -79,7 +79,7 @@ On every `session_start`:
    current on-disk state differs, emit **one** chat message summarising
    every change (status, title/description update, comment added/removed,
    file added/removed). The message carries:
-   - `customType: "local-issue-watcher"`
+   - `customType: "pi-local-issue-tracker-watcher"`
    - `content`: a human-readable summary (`N issue update(s)` + bullet list)
    - `details: { changes, changedPaths }` for programmatic consumers
    - delivery: `{ deliverAs: "followUp", triggerTurn: true }` — the agent is

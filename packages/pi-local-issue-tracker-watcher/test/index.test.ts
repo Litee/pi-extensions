@@ -287,7 +287,7 @@ describe("handleSessionStart", () => {
 			{ customType: string; content: string; display?: boolean; details?: unknown },
 			{ triggerTurn?: boolean; deliverAs?: string },
 		];
-		expect(payload.customType).toBe("local-issue-watcher");
+		expect(payload.customType).toBe("pi-local-issue-tracker-watcher");
 		expect(payload.display).toBe(true);
 		expect(payload.content).toMatch(/issue update/);
 		expect(payload.content).toMatch(/status changed/);
@@ -700,7 +700,7 @@ describe("polling lifecycle", () => {
 			{ customType: string; content: string },
 			{ triggerTurn?: boolean },
 		];
-		expect(payload.customType).toBe("local-issue-watcher");
+		expect(payload.customType).toBe("pi-local-issue-tracker-watcher");
 		expect(payload.content).toMatch(/status changed/);
 		expect(opts.triggerTurn).toBe(true);
 	});
@@ -1272,7 +1272,7 @@ describe("startup chat message (#0011)", () => {
 		await handleSessionStart({ pi: pi as never, ctx: ctx as never, dbRoot });
 
 		const startupCalls = pi.sendMessage.mock.calls.filter(
-			(c) => (c[0] as { customType?: string }).customType === "local-issue-watcher",
+			(c) => (c[0] as { customType?: string }).customType === "pi-local-issue-tracker-watcher",
 		);
 		expect(startupCalls).toHaveLength(1);
 		const [payload, opts] = startupCalls[0] as [
@@ -1349,7 +1349,7 @@ describe("startup chat message (#0011)", () => {
 		await handleSessionStart({ pi: pi as never, ctx: ctx as never, dbRoot });
 
 		const sent = pi.sendMessage.mock.calls.filter(
-			(c) => (c[0] as { customType?: string }).customType === "local-issue-watcher",
+			(c) => (c[0] as { customType?: string }).customType === "pi-local-issue-tracker-watcher",
 		);
 		// Exactly one: the diff message. No second startup-summary message on top.
 		expect(sent).toHaveLength(1);
@@ -1409,7 +1409,7 @@ describe("handleSessionStart deferMessages (#0015)", () => {
 			{ customType: string; content: string; display?: boolean },
 			{ triggerTurn?: boolean },
 		];
-		expect(payload.customType).toBe("local-issue-watcher");
+		expect(payload.customType).toBe("pi-local-issue-tracker-watcher");
 		expect(payload.content).toContain("active");
 		expect(opts.triggerTurn).toBe(true);
 	});

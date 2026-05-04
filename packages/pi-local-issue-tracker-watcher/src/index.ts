@@ -14,7 +14,7 @@
  *     4. rehydrate prior baseline from session entries (24h TTL)
  *     5a. if no prior baseline → persist `currentSnapshot` and start polling
  *     5b. if baseline present & fresh → `diffSnapshots`, if changes emit one
- *         `pi.sendMessage({customType:"local-issue-watcher", ...}, {triggerTurn:true})`
+ *         `pi.sendMessage({customType:"pi-local-issue-tracker-watcher", ...}, {triggerTurn:true})`
  *         and persist `currentSnapshot`
  *     6. start a setInterval poll loop (disabled when paused)
  *
@@ -73,8 +73,20 @@ const DEFAULT_DB_ROOT_REL = join(
 /** Poll interval — 60 s. Long enough not to churn, short enough to feel responsive. */
 export const POLL_INTERVAL_MS = 60_000;
 
-/** customType used on every chat message this extension injects. */
-const CUSTOM_MESSAGE_TYPE = "local-issue-watcher";
+/**
+ * customType used on every chat message this extension injects.
+ *
+ * Prefixed with the full package name per tracker issue #0021 so
+ * messages in the shared pi chat-message namespace are unambiguously
+ * attributable to their owning package. Pre-#0021 builds emitted the
+ * bare literal `"local-issue-watcher"`. Write-only constant: this
+ * extension never reads or matches on the customType, so no read-
+ * side back-compat shim is needed. Downstream consumers (renderers,
+ * debug tooling) that match on the literal must update their own
+ * matchers; past messages in existing session logs keep their old
+ * customType — that is fine, they are immutable history.
+ */
+const CUSTOM_MESSAGE_TYPE = "pi-local-issue-tracker-watcher";
 
 /**
  * Key used with `ctx.ui.setStatus(...)` to install / update / clear the
