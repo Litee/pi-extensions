@@ -34,3 +34,4 @@ Follow this sequence; do not skip or reorder:
 5. Rebase onto `main` from inside the worktree: `git rebase origin/main`.
 6. Merge fast-forward only from the main repo: `git merge --ff-only`. Never create merge commits.
 7. Ask for explicit confirmation before merging any worktree branch into `main`.
+8. **Never push.** All pushes to `origin` for this repo are done manually by the user. Do not run `git push`, do not offer to push after a merge, and do not treat `main` being "ahead of `origin/main`" as something to resolve — the user decides when publishing happens. If a rebase step needs the remote tip, `git fetch origin main` is fine; push is not.
