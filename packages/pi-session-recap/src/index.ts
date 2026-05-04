@@ -60,7 +60,15 @@ type Model = Parameters<typeof completeSimple>[0];
 type RecapReason = "idle" | "manual" | "resume" | "focus";
 
 const WIDGET_KEY = "session-recap";
-const STATUS_KEY = "session-recap";
+/**
+ * Status-row namespace key for this extension. Prefixed with the full
+ * package name so keys in the shared pi status-row namespace are
+ * unambiguously attributable to their owning package (see tracker
+ * issue #0002). `WIDGET_KEY` deliberately keeps its shorter form for
+ * now — a separate follow-up would apply the same convention to the
+ * `setWidget` namespace if desired.
+ */
+export const STATUS_KEY = "pi-session-recap";
 
 const DEFAULT_IDLE_SECONDS = 120;
 const DEFAULT_FOCUS_MIN_SECONDS = 3;
