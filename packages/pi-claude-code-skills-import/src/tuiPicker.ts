@@ -3,7 +3,48 @@ import type { ExtensionAPI } from "@mariozechner/pi-coding-agent";
 import type { CcSkillsPicker } from "./index.js";
 
 /**
- * TUI-backed picker for `/cc-skills`. Lazily imports `@mariozechner/pi-tui` so
+ * Minimal theme surface used by {@link decoratePickerValue}. A subset of the
+ * pi theme API — declared locally so the helper and its tests don't need
+ * to import the full `Theme` class.
+ */
+export interface PickerValueTheme {
+	fg: (color: "success" | "error", text: string) => string;
+	bold: (text: string) => string;
+}
+
+/**
+ * Decide how a value cell (`"enabled"` / `"disabled"` / other) should be
+ * rendered in the picker TUI. Pure — no IO, no TUI imports — so the
+ * colour-decision logic is unit-testable without spinning up a live TUI.
+ *
+ * - `"enabled"` → theme `success` (green).
+ * - `"disabled"` → theme `error` (red).
+ * - Any other text (future values) delegates to `fallback`, preserving the
+ *   default SettingsList value renderer (accent / muted) behaviour.
+ * - Selection highlight: when `selected` is true and we are colouring
+ *   enabled/disabled ourselves, wrap the coloured text in `theme.bold`. The
+ *   row cursor (`"→ "`) and the label-accent behaviour come from the
+ *   untouched parts of `getSettingsListTheme()`.
+ */
+export function decoratePickerValue(
+	text: string,
+	selected: boolean,
+	t: PickerValueTheme,
+	fallback: (text: string, selected: boolean) => string,
+): string {
+	if (text === "enabled") {
+		const coloured = t.fg("success", text);
+		return selected ? t.bold(coloured) : coloured;
+	}
+	if (text === "disabled") {
+		const coloured = t.fg("error", text);
+		return selected ? t.bold(coloured) : coloured;
+	}
+	return fallback(text, selected);
+}
+
+/**
+ * TUI-backed picker for `/cc-skills-info`. Lazily imports `@mariozechner/pi-tui` so
  * the rest of the package is loadable in unit tests without a live TUI
  * runtime.
  *
@@ -21,6 +62,12 @@ export function makeTuiPicker(
 
 		await ctx.ui.custom((tui, _theme, _kb, done) => {
 			const theme = ctx.ui.theme;
+			const defaultSettingsListTheme = getSettingsListTheme();
+			const settingsListTheme = {
+				...defaultSettingsListTheme,
+				value: (text: string, selected: boolean) =>
+					decoratePickerValue(text, selected, theme, defaultSettingsListTheme.value),
+			};
 			const container = new Container();
 			const headerLines = [
 				theme.fg("accent", theme.bold("Claude Code Skills")),
@@ -64,7 +111,7 @@ export function makeTuiPicker(
 			const settingsList = new SettingsList(
 				decorated,
 				Math.min(decorated.length + 2, 20),
-				getSettingsListTheme(),
+				settingsListTheme,
 				(id, newValue) => {
 					onToggle(id, newValue as "enabled" | "disabled");
 				},

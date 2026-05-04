@@ -14,7 +14,7 @@ Only directories that actually exist on disk are returned, so the extension is a
 
 ## Persistence
 
-The `/cc-skills` toggle state is stored at:
+The `/cc-skills-info` toggle state is stored at:
 
 ```
 ~/.pi/agent/extensions-data/pi-claude-code-skills-import.json

@@ -1,5 +1,5 @@
 /**
- * Pure reducer for the `/cc-skills` toggle UI.
+ * Pure reducer for the `/cc-skills-info` toggle UI.
  *
  * Mutates `disabled` in place so the TUI callback can persist the same
  * reference. Returns `{ changed }` so the caller can decide whether a reload

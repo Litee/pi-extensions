@@ -1,6 +1,6 @@
 import type { DiscoveredSkill } from "./types.js";
 
-/** Data-only shape for the `/cc-skills` toggle UI — free of TUI-specific types. */
+/** Data-only shape for the `/cc-skills-info` toggle UI — free of TUI-specific types. */
 export interface ToggleSettingItem {
 	id: string;
 	skillName: string;
@@ -11,7 +11,7 @@ export interface ToggleSettingItem {
 }
 
 /**
- * Build the list of toggle items rendered by `/cc-skills`.
+ * Build the list of toggle items rendered by `/cc-skills-info`.
  *
  * Pure: does no IO and produces no styling. Callers (the TUI wiring) decorate
  * labels as needed. Input ordering is preserved so the caller's sort order

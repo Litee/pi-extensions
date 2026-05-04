@@ -100,12 +100,12 @@ describe("extension default export", () => {
 		rmSync(tmpRoot, { recursive: true, force: true });
 	});
 
-	it("subscribes to resources_discover and registers /cc-skills", () => {
+	it("subscribes to resources_discover and registers /cc-skills-info", () => {
 		const pi = makeFakePi();
 		// eslint-disable-next-line @typescript-eslint/no-explicit-any -- fake shape
 		createExtension(pi as any);
 		expect(pi.handlers.has("resources_discover")).toBe(true);
-		expect(pi.commands.has("cc-skills")).toBe(true);
+		expect(pi.commands.has("cc-skills-info")).toBe(true);
 	});
 
 	it("resources_discover returns all discovered paths when nothing is disabled", async () => {

@@ -12,7 +12,7 @@ import { applyToggle } from "./toggle.js";
 import { makeTuiPicker } from "./tuiPicker.js";
 import type { DiscoveredSkill } from "./types.js";
 
-/** Arguments handed to a `/cc-skills` picker strategy. */
+/** Arguments handed to a `/cc-skills-info` picker strategy. */
 export interface CcSkillsPickerArgs {
 	skills: DiscoveredSkill[];
 	disabled: Set<string>;
@@ -41,7 +41,7 @@ export interface HandleCcSkillsOptions {
 }
 
 /**
- * Core `/cc-skills` flow. Factored out of the TUI wiring so the control flow
+ * Core `/cc-skills-info` flow. Factored out of the TUI wiring so the control flow
  * (discover → present → toggle → persist-on-close → reload-if-dirty) is
  * unit-testable without a live TUI runtime.
  *
@@ -123,7 +123,7 @@ export default function (pi: ExtensionAPI): void {
 		return { skillPaths };
 	});
 
-	pi.registerCommand("cc-skills", {
+	pi.registerCommand("cc-skills-info", {
 		description: "List & toggle Claude Code skills (global, persistent)",
 		handler: async (_args, ctx) => {
 			const claudeDir = resolveClaudeDir(process.env, homedir());
