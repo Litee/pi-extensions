@@ -5,7 +5,7 @@
 
 import { describe, expect, it } from "vitest";
 
-import { STATUS_KEY } from "../src/index.js";
+import { STATUS_KEY, WIDGET_KEY } from "../src/index.js";
 
 describe("STATUS_KEY (#0002)", () => {
 	it("is prefixed with the package name", () => {
@@ -16,5 +16,15 @@ describe("STATUS_KEY (#0002)", () => {
 		// Guardrail so a future refactor cannot silently re-introduce a
 		// package-agnostic key.
 		expect(STATUS_KEY).not.toBe("session-recap");
+	});
+});
+
+describe("WIDGET_KEY (#0003)", () => {
+	it("is prefixed with the package name", () => {
+		expect(WIDGET_KEY).toBe("pi-session-recap");
+	});
+
+	it("is not the pre-#0003 bare value", () => {
+		expect(WIDGET_KEY).not.toBe("session-recap");
 	});
 });

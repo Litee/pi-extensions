@@ -59,7 +59,13 @@ type Model = Parameters<typeof completeSimple>[0];
 
 type RecapReason = "idle" | "manual" | "resume" | "focus";
 
-const WIDGET_KEY = "session-recap";
+/**
+ * Namespace key for this extension's above-editor widget (`ctx.ui.setWidget`).
+ * Prefixed with the full package name per tracker issue #0003 so keys in
+ * the shared pi widget namespace are unambiguously attributable to their
+ * owning package. Pre-#0003 builds used the bare literal `"session-recap"`.
+ */
+export const WIDGET_KEY = "pi-session-recap";
 /**
  * Status-row namespace key for this extension. Prefixed with the full
  * package name so keys in the shared pi status-row namespace are
