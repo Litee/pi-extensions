@@ -120,6 +120,25 @@ export default function (pi: ExtensionAPI): void {
 			ctx.ui.notify(lines.join("\n"), "warning");
 		}
 
+		// #0005: surface disabled-id drift. The state file is
+		// append-only from the user's perspective — entries are never
+		// pruned when a plugin is uninstalled / renamed. Walk the
+		// disabled set and flag any qualifiedName that no longer
+		// matches a discovered skill. Pure `ctx.ui.notify(warning)`;
+		// does NOT call pi.sendMessage, does NOT trigger an agent
+		// turn — same delivery pattern as the collision warning
+		// directly above.
+		const presentIds = new Set(all.map((s) => s.qualifiedName));
+		const stale = [...disabled].filter((id) => !presentIds.has(id)).sort();
+		if (stale.length > 0) {
+			const lines: string[] = [
+				`Claude Code skills: ${stale.length} disabled id(s) in state file no longer resolve to any installed skill:`,
+				...stale.map((id) => `  • ${id}`),
+				`Run /cc-skills-info to review, or edit ${stateFile}.`,
+			];
+			ctx.ui.notify(lines.join("\n"), "warning");
+		}
+
 		return { skillPaths };
 	});
 

@@ -179,6 +179,116 @@ describe("extension default export", () => {
 		await handler({ cwd: ctx.cwd, reason: "startup" }, ctx);
 		expect(ctx._notify.mock.calls.filter((c) => c[1] === "warning")).toHaveLength(0);
 	});
+
+	// -- issue #0005 --------------------------------------------------------
+
+	it("resources_discover warns when a disabled id no longer resolves to any installed skill (#0005)", async () => {
+		writeSkill(join(claudeDir, "skills", "alpha"), "alpha");
+		// State file references a skill that has since been uninstalled /
+		// renamed — its qualified name lingers in `disabled` but does not
+		// match any discovered skill.
+		writeFileSync(
+			stateFile,
+			JSON.stringify({
+				disabled: [
+					"litee-claude-code-plugins/writing/1.0.5/old-skill",
+					"some-plugin/removed-skill",
+				],
+			}),
+		);
+		const pi = makeFakePi();
+		// eslint-disable-next-line @typescript-eslint/no-explicit-any -- fake shape
+		createExtension(pi as any);
+		const ctx = makeCtx(mkdir(tmpRoot, "project"));
+		const handler = pi.handlers.get("resources_discover")!;
+		await handler({ cwd: ctx.cwd, reason: "startup" }, ctx);
+		const staleWarning = ctx._notify.mock.calls.find(
+			(c) => c[1] === "warning" && String(c[0]).includes("no longer resolve"),
+		);
+		expect(staleWarning).toBeDefined();
+		const body = String(staleWarning![0]);
+		expect(body).toContain("2 disabled id");
+		expect(body).toContain("litee-claude-code-plugins/writing/1.0.5/old-skill");
+		expect(body).toContain("some-plugin/removed-skill");
+		// Deterministic sort — alphabetical.
+		const litIdx = body.indexOf("litee-claude-code-plugins");
+		const someIdx = body.indexOf("some-plugin");
+		expect(litIdx).toBeGreaterThan(-1);
+		expect(someIdx).toBeGreaterThan(litIdx);
+		// Delivery is via `ctx.ui.notify` (a toast) — the makeFakePi
+		// stub does not expose `sendMessage`, which by itself means no
+		// turn-triggering RPC is reachable. If we ever migrate to a
+		// fuller fake, this test should gain a `sendMessage not
+		// called` assertion.
+	});
+
+	it("resources_discover does NOT warn when every disabled id still resolves (#0005)", async () => {
+		writeSkill(join(claudeDir, "skills", "alpha"), "alpha");
+		writeSkill(join(claudeDir, "skills", "beta"), "beta");
+		writeFileSync(
+			stateFile,
+			JSON.stringify({ disabled: ["@user/alpha"] }),
+		);
+		const pi = makeFakePi();
+		// eslint-disable-next-line @typescript-eslint/no-explicit-any -- fake shape
+		createExtension(pi as any);
+		const ctx = makeCtx(mkdir(tmpRoot, "project"));
+		const handler = pi.handlers.get("resources_discover")!;
+		await handler({ cwd: ctx.cwd, reason: "startup" }, ctx);
+		const staleWarning = ctx._notify.mock.calls.find(
+			(c) => c[1] === "warning" && String(c[0]).includes("no longer resolve"),
+		);
+		expect(staleWarning).toBeUndefined();
+	});
+
+	it("resources_discover does NOT warn when the disabled list is empty (#0005)", async () => {
+		writeSkill(join(claudeDir, "skills", "alpha"), "alpha");
+		writeFileSync(stateFile, JSON.stringify({ disabled: [] }));
+		const pi = makeFakePi();
+		// eslint-disable-next-line @typescript-eslint/no-explicit-any -- fake shape
+		createExtension(pi as any);
+		const ctx = makeCtx(mkdir(tmpRoot, "project"));
+		const handler = pi.handlers.get("resources_discover")!;
+		await handler({ cwd: ctx.cwd, reason: "startup" }, ctx);
+		const staleWarning = ctx._notify.mock.calls.find(
+			(c) => c[1] === "warning" && String(c[0]).includes("no longer resolve"),
+		);
+		expect(staleWarning).toBeUndefined();
+	});
+
+	it("resources_discover combines stale warning with collision warning without emitting an agent turn (#0005)", async () => {
+		// Both a collision and a stale disabled id. Two warnings should
+		// be emitted; neither path should call pi.sendMessage.
+		writeSkill(join(claudeDir, "skills", "dup"), "dup");
+		const installPath = mkdir(tmpRoot, "claude/plugins/cache/owner/p/1.0.0");
+		writeSkill(join(installPath, "skills", "dup"), "dup");
+		writeFileSync(
+			join(claudeDir, "plugins", "installed_plugins.json"),
+			JSON.stringify({
+				plugins: {
+					"p@owner": [{ scope: "user", installPath, lastUpdated: "2025-01-01T00:00:00Z" }],
+				},
+			}),
+		);
+		writeFileSync(
+			stateFile,
+			JSON.stringify({ disabled: ["never-installed/skill"] }),
+		);
+		const pi = makeFakePi();
+		// eslint-disable-next-line @typescript-eslint/no-explicit-any -- fake shape
+		createExtension(pi as any);
+		const ctx = makeCtx(mkdir(tmpRoot, "project"));
+		const handler = pi.handlers.get("resources_discover")!;
+		await handler({ cwd: ctx.cwd, reason: "startup" }, ctx);
+		const warnings = ctx._notify.mock.calls.filter((c) => c[1] === "warning");
+		expect(warnings.length).toBe(2);
+		expect(warnings.some((w) => String(w[0]).includes("collision"))).toBe(true);
+		expect(warnings.some((w) => String(w[0]).includes("no longer resolve"))).toBe(true);
+		// Delivery is via `ctx.ui.notify` (a toast). See the sibling
+		// test above for the rationale — `sendMessage` is not on the
+		// fake so a positive assertion is not possible without
+		// extending makeFakePi.
+	});
 });
 
 describe("handleCcSkills (injectable picker)", () => {

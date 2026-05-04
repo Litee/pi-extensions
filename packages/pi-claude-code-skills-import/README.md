@@ -22,6 +22,8 @@ The `/cc-skills-info` toggle state is stored at:
 
 This lives in a shared `extensions-data/` directory (sibling of `~/.pi/agent/extensions/`) so multiple extensions can coexist without file-name collisions. The directory is created lazily on first write. Override with `$PI_CLAUDE_SKILLS_STATE` for testing or relocation.
 
+Entries in the `disabled` set are never auto-pruned — users can audit the file directly. If the state file references a qualified name that no longer resolves to any installed skill (uninstalled plugin, renamed version, etc.) the extension emits a one-shot `warning` toast on session start listing the stale ids, so drift is visible without the user having to inspect the file by hand (#0005). The warning is informational — the state file is not modified, and no agent turn is triggered. Edit the file by hand or run `/cc-skills-info` to re-enable / clean up.
+
 ## Configuration
 
 - `CLAUDE_CONFIG_DIR` — honored if set to a non-empty string, matching Claude Code's own convention. Otherwise `~/.claude` is used.
