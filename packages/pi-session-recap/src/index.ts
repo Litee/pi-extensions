@@ -45,6 +45,7 @@
 
 import { completeSimple, getModel } from "@mariozechner/pi-ai";
 import { getAgentDir, type ExtensionAPI, type ExtensionContext } from "@mariozechner/pi-coding-agent";
+import { Text } from "@mariozechner/pi-tui";
 
 import {
 	buildRecentTranscript,
@@ -549,6 +550,27 @@ export default function (pi: ExtensionAPI) {
 	 * this extension might grow without forking a fresh renderer per sub.
 	 */
 	const SUBCOMMAND_MESSAGE_TYPE = "pi-session-recap:subcommand";
+
+	// #0008: chromeless renderer for /recap status and /recap help so pi's
+	// default custom-message display doesn't stamp the literal
+	// `[pi-session-recap:subcommand]` routing-key label into the user's
+	// transcript. The customType is kept on the message itself for future
+	// filtering / persistence; we just stop letting pi paint its name on
+	// the user's screen. Padding is 0/0 to match how pi's own plain info
+	// messages render — no border, no header, no decoration.
+	pi.registerMessageRenderer(SUBCOMMAND_MESSAGE_TYPE, (message) => {
+		// `CustomMessage.content` is typed as `string | (TextContent | ImageContent)[]`;
+		// this extension only ever sends string content via `pi.sendMessage`, but
+		// narrow defensively so a stray array form can't crash the renderer.
+		const text =
+			typeof message.content === "string"
+				? message.content
+				: message.content
+						.filter((c): c is { type: "text"; text: string } => c.type === "text")
+						.map((c) => c.text)
+						.join("\n");
+		return new Text(text, 0, 0);
+	});
 
 	// Manual command.
 	pi.registerCommand("recap", {

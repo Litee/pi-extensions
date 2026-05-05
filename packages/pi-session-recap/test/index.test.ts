@@ -18,14 +18,17 @@ import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
+import { Text } from "@mariozechner/pi-tui";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
+import { buildStatusLine } from "../src/helpers.js";
 import createExtension from "../src/index.js";
 
 interface StubPi {
 	on: ReturnType<typeof vi.fn>;
 	registerCommand: ReturnType<typeof vi.fn>;
 	registerFlag: ReturnType<typeof vi.fn>;
+	registerMessageRenderer: ReturnType<typeof vi.fn>;
 	sendMessage: ReturnType<typeof vi.fn>;
 	getFlag: ReturnType<typeof vi.fn>;
 	readonly commands: Map<
@@ -33,6 +36,10 @@ interface StubPi {
 		{ description: string; handler: (args: string, ctx: unknown) => unknown | Promise<unknown> }
 	>;
 	readonly handlers: Map<string, (event: unknown, ctx: unknown) => unknown | Promise<unknown>>;
+	readonly renderers: Map<
+		string,
+		(message: { customType: string; content: string; details?: unknown }, options: { expanded: boolean }, theme: unknown) => unknown
+	>;
 }
 
 function makeFakePi(
@@ -49,10 +56,26 @@ function makeFakePi(
 		string,
 		(event: unknown, ctx: unknown) => unknown | Promise<unknown>
 	>();
+	const renderers = new Map<
+		string,
+		(message: { customType: string; content: string; details?: unknown }, options: { expanded: boolean }, theme: unknown) => unknown
+	>();
 	const on = vi.fn((event: string, fn: (event: unknown, ctx: unknown) => unknown | Promise<unknown>) => {
 		handlers.set(event, fn);
 	});
 	const registerFlag = vi.fn();
+	const registerMessageRenderer = vi.fn(
+		(
+			customType: string,
+			renderer: (
+				message: { customType: string; content: string; details?: unknown },
+				options: { expanded: boolean },
+				theme: unknown,
+			) => unknown,
+		) => {
+			renderers.set(customType, renderer);
+		},
+	);
 	const registerCommand = vi.fn(
 		(
 			name: string,
@@ -72,10 +95,12 @@ function makeFakePi(
 		on,
 		registerCommand,
 		registerFlag,
+		registerMessageRenderer,
 		sendMessage,
 		getFlag,
 		commands,
 		handlers,
+		renderers,
 	};
 }
 
@@ -361,5 +386,142 @@ describe("flag-key wiring — pi.getFlag must match pi.registerFlag names (no `-
 		await handler("help", makeFakeCtx());
 
 		expect(offenders).toEqual([]);
+	});
+});
+
+// ---------------------------------------------------------------------------
+// Chromeless renderer for `/recap status` and `/recap help` (#0008)
+// ---------------------------------------------------------------------------
+//
+// Without a registered renderer, pi's default custom-message display stamps
+// the literal `[pi-session-recap:subcommand]` routing key onto the
+// transcript. These tests pin that:
+//   1) a renderer IS registered for the subcommand customType,
+//   2) that renderer's output never surfaces the customType string,
+//   3) all content lines are preserved verbatim (no decoration / no reorder),
+//   4) a round-trip from `/recap status` → sendMessage → renderer produces
+//      output that starts with the `buildStatusLine` first line, not the
+//      machine-readable routing key.
+
+describe("/recap subcommand renderer (#0008)", () => {
+	let agentDir: string;
+	let prevAgentDir: string | undefined;
+
+	beforeEach(() => {
+		agentDir = mkdtempSync(join(tmpdir(), "pi-session-recap-renderer-"));
+		prevAgentDir = process.env["PI_CODING_AGENT_DIR"];
+		process.env["PI_CODING_AGENT_DIR"] = agentDir;
+	});
+
+	afterEach(() => {
+		if (prevAgentDir === undefined) delete process.env["PI_CODING_AGENT_DIR"];
+		else process.env["PI_CODING_AGENT_DIR"] = prevAgentDir;
+		rmSync(agentDir, { recursive: true, force: true });
+	});
+
+	const fakeTheme = {
+		fg: (_c: string, t: string) => t,
+		bold: (t: string) => t,
+	};
+
+	// Wide enough that a single status/help line never wraps, so `render()`
+	// returns one string per original newline-delimited line.
+	const RENDER_WIDTH = 400;
+
+	it("registers a message renderer for the `pi-session-recap:subcommand` customType", () => {
+		const pi = makeFakePi();
+		createExtension(pi as never);
+
+		expect(pi.registerMessageRenderer).toHaveBeenCalled();
+		const calls = pi.registerMessageRenderer.mock.calls as Array<[string, unknown]>;
+		const subcommandCalls = calls.filter(([type]) => type === "pi-session-recap:subcommand");
+		expect(subcommandCalls).toHaveLength(1);
+		expect(pi.renderers.get("pi-session-recap:subcommand")).toBeTypeOf("function");
+	});
+
+	it("renderer output does not include the `pi-session-recap:subcommand` customType string", () => {
+		const pi = makeFakePi();
+		createExtension(pi as never);
+		const renderer = pi.renderers.get("pi-session-recap:subcommand");
+		expect(renderer).toBeDefined();
+
+		const result = renderer!(
+			{ customType: "pi-session-recap:subcommand", content: "line 1\nline 2" },
+			{ expanded: false },
+			fakeTheme,
+		);
+
+		// The returned component is the chromeless Text container.
+		expect(result).toBeInstanceOf(Text);
+
+		// Render at a wide enough width that nothing wraps, then join and
+		// assert the routing key is nowhere in the output.
+		const rendered = (result as Text).render(RENDER_WIDTH).join("\n");
+		expect(rendered.includes("pi-session-recap:subcommand")).toBe(false);
+		expect(rendered.includes("[pi-session-recap:subcommand]")).toBe(false);
+	});
+
+	it("renderer preserves every content line verbatim and in order", () => {
+		const pi = makeFakePi();
+		createExtension(pi as never);
+		const renderer = pi.renderers.get("pi-session-recap:subcommand");
+		expect(renderer).toBeDefined();
+
+		const result = renderer!(
+			{ customType: "pi-session-recap:subcommand", content: "a\nb\nc" },
+			{ expanded: false },
+			fakeTheme,
+		);
+
+		// Chromeless Text (paddingX=0, paddingY=0) at a wide width returns
+		// exactly one output line per input line, with no header / footer.
+		// `Text.render` right-pads each line to the full render width, so
+		// trim trailing whitespace before comparing against the raw content.
+		const lines = (result as Text).render(RENDER_WIDTH).map((l) => l.trimEnd());
+		expect(lines).toEqual(["a", "b", "c"]);
+	});
+
+	it("round-trip: `/recap status` payload fed through the renderer starts with `recap status`, not the routing key", async () => {
+		const pi = makeFakePi();
+		createExtension(pi as never);
+
+		// Exercise the status subcommand to capture the sendMessage payload.
+		const ctx = makeFakeCtx();
+		await pi.commands.get("recap")!.handler("status", ctx);
+
+		expect(pi.sendMessage).toHaveBeenCalledTimes(1);
+		const [payload] = pi.sendMessage.mock.calls[0] as [
+			{ customType: string; content: string; display?: boolean },
+			unknown,
+		];
+		expect(payload.customType).toBe("pi-session-recap:subcommand");
+
+		// Feed the captured payload through the registered renderer.
+		const renderer = pi.renderers.get("pi-session-recap:subcommand");
+		expect(renderer).toBeDefined();
+		const result = renderer!(payload, { expanded: false }, fakeTheme);
+
+		const rawLines = (result as Text).render(RENDER_WIDTH);
+		const lines = rawLines.map((l) => l.trimEnd());
+		const rendered = lines.join("\n");
+
+		// Routing-key label must not appear anywhere in the rendered output.
+		expect(rendered.includes("[pi-session-recap:subcommand]")).toBe(false);
+		expect(rendered.includes("pi-session-recap:subcommand")).toBe(false);
+
+		// Structure must match `buildStatusLine` for the seeded options:
+		// first line is the human-readable header, model line is present.
+		const expectedFirst = buildStatusLine({
+			override: null,
+			activeModelSpec: "anthropic/claude-sonnet-4-6",
+			autoRecapEnabled: true,
+			idleSeconds: 120,
+			focusMinSeconds: 3,
+			disabledFlags: [],
+		}).split("\n")[0];
+		expect(lines[0]).toBe(expectedFirst);
+		expect(lines[0]).toBe("recap status");
+		expect(rendered).toContain("Model:");
+		expect(rendered).toContain("anthropic/claude-sonnet-4-6");
 	});
 });
