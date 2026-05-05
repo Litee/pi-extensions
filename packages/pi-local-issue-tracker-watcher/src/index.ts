@@ -42,7 +42,6 @@ import {
 	buildMissingDbRootStatus,
 	buildStartupAnnouncement,
 	buildStartupChatMessage,
-	formatStatusSummary,
 } from "./format.js";
 import { handleInfo, type InfoPicker } from "./infoHandler.js";
 import { makeInfoTuiPicker } from "./infoTui.js";
@@ -566,12 +565,25 @@ export default function issueWatcher(pi: ExtensionAPI): void {
 				}
 				case "":
 				case "status": {
-					const snap = existsSync(rt.dbRoot) ? scanIssueFiles(rt.dbRoot) : {};
-					const summary = formatStatusSummary(snap);
-					const state = rt.paused ? "paused" : "running";
-					ui?.notify?.(
-						`local-issue-watcher: ${state} | dbRoot=${rt.dbRoot} | ${summary}`,
-						"info",
+					// Missing-dbRoot stays as a toast — the chat-message format
+					// assumes a valid dbRoot with a scannable snapshot (#0027).
+					if (!existsSync(rt.dbRoot)) {
+						ui?.notify?.(buildMissingDbRootStatus(rt.dbRoot), "warning");
+						return;
+					}
+					const snap = scanIssueFiles(rt.dbRoot);
+					pi.sendMessage(
+						{
+							customType: CUSTOM_MESSAGE_TYPE,
+							content: buildStartupChatMessage(rt.dbRoot, snap),
+							display: true,
+						},
+						{
+							// "nextTurn" queues the message into the transcript
+							// without triggering an agent turn. Running /status
+							// ten times must not cost a single LLM call (#0027).
+							deliverAs: "nextTurn",
+						},
 					);
 					return;
 				}

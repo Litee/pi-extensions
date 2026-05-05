@@ -7,8 +7,11 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import createExtension, {
 	POLL_INTERVAL_MS,
 	__setInfoPickerForTests,
+	buildMissingDbRootStatus,
+	buildStartupChatMessage,
 	handleSessionStart,
 	resolveDbRoot,
+	scanIssueFiles,
 } from "../src/index.js";
 import type { InfoPicker, InfoRow } from "../src/infoHandler.js";
 import { RUNSTATE_ENTRY_TYPE, STATE_ENTRY_TYPE } from "../src/persistence.js";
@@ -622,16 +625,30 @@ describe("/local-issue-watcher command", () => {
 		expect(pinnedStrings).toHaveLength(0);
 	});
 
-	it("with no args prints a status line that mentions the dbRoot", async () => {
+	it("'/local-issue-watcher' (empty args) sends the chat-message payload, not a toast (#0027)", async () => {
+		// Seed one open issue so the snapshot payload is non-trivial.
+		mkdirSync(join(dbRoot, "skill-a"), { recursive: true });
+		writeFileSync(
+			join(dbRoot, "skill-a", "0001-a.json"),
+			JSON.stringify({ id: "0001", status: "open", title: "t", skill: "skill-a" }),
+		);
+
 		const pi = makeFakePi();
 		extensionWithDbRoot(pi, dbRoot);
-
 		const cmd = pi.commands.get("local-issue-watcher");
 		const ctx = makeFakeCtx();
 		await cmd!.handler("", ctx);
 
-		const lastMessage = ctx.ui.notify.mock.calls.map((c) => String(c[0])).join("\n");
-		expect(lastMessage).toContain(dbRoot);
+		// Regression guard for the `case "":` fallthrough into `case "status":`:
+		// empty args must route through the same chat-message payload.
+		expect(pi.sendMessage).toHaveBeenCalledTimes(1);
+		const [payload] = pi.sendMessage.mock.calls[0] as [
+			{ customType: string; content: string; display?: boolean },
+		];
+		expect(payload.customType).toBe("pi-local-issue-tracker-watcher");
+		expect(payload.content).toBe(buildStartupChatMessage(dbRoot, scanIssueFiles(dbRoot)));
+		expect(payload.display).toBe(true);
+		expect(ctx.ui.notify).not.toHaveBeenCalled();
 	});
 
 	it("warns on an unknown subcommand (mentions `browse` in the hint)", async () => {
@@ -647,16 +664,111 @@ describe("/local-issue-watcher command", () => {
 		expect(level).toBe("warning");
 	});
 
-	it("'status' subcommand behaves like empty args", async () => {
+	it("'status' subcommand sends a chat message, not a toast (#0027)", async () => {
+		// Seed one open issue so the chat-message payload is non-trivial and
+		// we can byte-compare it against buildStartupChatMessage(dbRoot, snap).
+		mkdirSync(join(dbRoot, "skill-a"), { recursive: true });
+		writeFileSync(
+			join(dbRoot, "skill-a", "0001-a.json"),
+			JSON.stringify({ id: "0001", status: "open", title: "t", skill: "skill-a" }),
+		);
+
 		const pi = makeFakePi();
 		extensionWithDbRoot(pi, dbRoot);
 		const cmd = pi.commands.get("local-issue-watcher");
 		const ctx = makeFakeCtx();
 		await cmd!.handler("status", ctx);
 
-		expect(ctx.ui.notify).toHaveBeenCalled();
-		const msg = String(ctx.ui.notify.mock.calls[0]?.[0] ?? "");
-		expect(msg).toContain(dbRoot);
+		expect(pi.sendMessage).toHaveBeenCalledTimes(1);
+		const [payload] = pi.sendMessage.mock.calls[0] as [
+			{ customType: string; content: string; display?: boolean },
+		];
+		expect(payload.customType).toBe("pi-local-issue-tracker-watcher");
+		expect(payload.content).toBe(buildStartupChatMessage(dbRoot, scanIssueFiles(dbRoot)));
+		expect(payload.display).toBe(true);
+		expect(ctx.ui.notify).not.toHaveBeenCalled();
+	});
+
+	it("'status' subcommand uses a non-turn-triggering delivery mode (#0027)", async () => {
+		mkdirSync(join(dbRoot, "skill-a"), { recursive: true });
+		writeFileSync(
+			join(dbRoot, "skill-a", "0001-a.json"),
+			JSON.stringify({ id: "0001", status: "open", title: "t", skill: "skill-a" }),
+		);
+
+		const pi = makeFakePi();
+		extensionWithDbRoot(pi, dbRoot);
+		const cmd = pi.commands.get("local-issue-watcher");
+		const ctx = makeFakeCtx();
+		await cmd!.handler("status", ctx);
+
+		expect(pi.sendMessage).toHaveBeenCalledTimes(1);
+		const [, opts] = pi.sendMessage.mock.calls[0] as [
+			unknown,
+			{ deliverAs?: string; triggerTurn?: boolean },
+		];
+		// `nextTurn` queues the message without triggering an agent turn so
+		// running /status ten times never costs an LLM call (#0027).
+		expect(opts.deliverAs).toBe("nextTurn");
+		expect(opts.triggerTurn).not.toBe(true);
+	});
+
+	it("'status' with missing dbRoot falls back to ui.notify warning and does NOT send a chat message (#0027)", async () => {
+		const missing = join(
+			tmpdir(),
+			`pi-local-issue-watcher-missing-${Date.now()}-${Math.floor(Math.random() * 1e9)}`,
+		);
+		const pi = makeFakePi();
+		extensionWithDbRoot(pi, missing);
+		const cmd = pi.commands.get("local-issue-watcher");
+		const ctx = makeFakeCtx();
+		await cmd!.handler("status", ctx);
+
+		expect(pi.sendMessage).not.toHaveBeenCalled();
+		expect(ctx.ui.notify).toHaveBeenCalledTimes(1);
+		const [body, level] = ctx.ui.notify.mock.calls[0] as [string, string];
+		expect(level).toBe("warning");
+		expect(body).toBe(buildMissingDbRootStatus(missing));
+	});
+
+	it("'status' on a paused watcher still scans and emits the chat message (#0027)", async () => {
+		// #0019 constrains paused watchers to zero-IO on the AUTOMATIC
+		// session_start scan path. An explicit user-invoked `/status` is a
+		// different contract: the user is asking for a fresh snapshot, so
+		// scanning + emitting the chat message is the expected behaviour here.
+		mkdirSync(join(dbRoot, "skill-a"), { recursive: true });
+		writeFileSync(
+			join(dbRoot, "skill-a", "0001-a.json"),
+			JSON.stringify({ id: "0001", status: "open", title: "t", skill: "skill-a" }),
+		);
+
+		const pi = makeFakePi();
+		extensionWithDbRoot(pi, dbRoot);
+		const cmd = pi.commands.get("local-issue-watcher");
+		const ctx = makeFakeCtx();
+		// Toggle the runtime into paused state via the public command.
+		await cmd!.handler("pause", ctx);
+		const notifyBefore = ctx.ui.notify.mock.calls.length;
+		const runstateAppendsBefore = pi.appendEntry.mock.calls.filter(
+			(c) => c[0] === RUNSTATE_ENTRY_TYPE,
+		).length;
+
+		await cmd!.handler("status", ctx);
+
+		expect(pi.sendMessage).toHaveBeenCalledTimes(1);
+		const [payload] = pi.sendMessage.mock.calls[0] as [
+			{ customType: string; content: string },
+		];
+		expect(payload.customType).toBe("pi-local-issue-tracker-watcher");
+		expect(payload.content).toBe(buildStartupChatMessage(dbRoot, scanIssueFiles(dbRoot)));
+
+		// `/status` must not toggle pause state or produce any additional
+		// notify toasts beyond what pause/resume already emitted.
+		expect(ctx.ui.notify.mock.calls.length).toBe(notifyBefore);
+		const runstateAppendsAfter = pi.appendEntry.mock.calls.filter(
+			(c) => c[0] === RUNSTATE_ENTRY_TYPE,
+		).length;
+		expect(runstateAppendsAfter).toBe(runstateAppendsBefore);
 	});
 });
 
