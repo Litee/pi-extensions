@@ -58,9 +58,9 @@ function writeSkill(dir: string, name: string): void {
 }
 
 describe("defaultStateFile", () => {
-	it("returns <home>/.pi/agent/extensions-data/pi-claude-code-skills-import.json when no env override", () => {
+	it("returns <home>/.pi/agent/pi-claude-code-skills-import.json when no env override", () => {
 		expect(defaultStateFile({}, "/home/user")).toBe(
-			"/home/user/.pi/agent/extensions-data/pi-claude-code-skills-import.json",
+			"/home/user/.pi/agent/pi-claude-code-skills-import.json",
 		);
 	});
 
@@ -72,7 +72,7 @@ describe("defaultStateFile", () => {
 
 	it("falls back to the default when the env override is the empty string", () => {
 		expect(defaultStateFile({ PI_CLAUDE_SKILLS_STATE: "" }, "/home/user")).toBe(
-			"/home/user/.pi/agent/extensions-data/pi-claude-code-skills-import.json",
+			"/home/user/.pi/agent/pi-claude-code-skills-import.json",
 		);
 	});
 });

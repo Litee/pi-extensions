@@ -80,15 +80,14 @@ export async function handleCcSkills(opts: HandleCcSkillsOptions): Promise<void>
 
 /** Default location for the persisted disabled-skills state file.
  *
- * Stored in a shared per-user `extensions-data/` directory, sibling to
- * `~/.pi/agent/extensions/`, named after the extension package so multiple
- * extensions can coexist without collisions. The `$PI_CLAUDE_SKILLS_STATE`
- * env var is honored as an override (used by tests and as an escape hatch).
+ * Stored directly under `~/.pi/agent/`, next to `settings.json` and other
+ * pi-level config. `$PI_CLAUDE_SKILLS_STATE` env var is honored as an override
+ * (used by tests and as an escape hatch).
  */
 export function defaultStateFile(env: NodeJS.ProcessEnv, home: string): string {
 	const override = env["PI_CLAUDE_SKILLS_STATE"];
 	if (override !== undefined && override !== "") return override;
-	return join(home, ".pi", "agent", "extensions-data", "pi-claude-code-skills-import.json");
+	return join(home, ".pi", "agent", "pi-claude-code-skills-import.json");
 }
 
 /** Pi extension default export. */
