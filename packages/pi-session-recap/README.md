@@ -56,8 +56,8 @@ so there are no login surprises.
 - No active model or missing API key → the recap is skipped silently.
 
 Override with `--recap-model "<provider>/<id>"` if you want a specific model
-regardless of the session's active one, or set a persistent preference via
-**user-level settings.json** (see below).
+regardless of the session's active one, or set a persistent preference in the
+extension's own config file (see below).
 
 ## Flags
 
@@ -69,22 +69,45 @@ regardless of the session's active one, or set a persistent preference via
 | `--recap-disable` | `false` | Disable the automatic recap entirely. `/recap` still works. |
 | `--recap-model "<p/id>"` | (active model) | Override the default, e.g. `anthropic/claude-sonnet-4-6`. |
 
-## User-level settings
+## User-level config
 
-Set a persistent recap-model preference in `~/.pi/agent/settings.json` (honoured
-by `getAgentDir()` / the `$PI_CODING_AGENT_DIR` env override):
+Set a persistent recap-model preference in `~/.pi/agent/pi-session-recap.json`
+(honoured by pi's `getAgentDir()` / the `$PI_CODING_AGENT_DIR` env override).
+The whole default path can also be replaced outright by setting
+`$PI_SESSION_RECAP_CONFIG` to an absolute path.
 
 ```json
 {
-  "sessionRecap": {
-    "model": "anthropic/claude-haiku-4-5"
-  }
+  "model": "anthropic/claude-haiku-4-5"
 }
 ```
 
-Precedence: `--recap-model` CLI flag › `sessionRecap.model` in settings › the
-active model. An invalid / unknown `provider/id` falls through to the active
-model silently (same as the CLI flag).
+Top-level keys mirror what used to live under `sessionRecap.*` in pi's
+`settings.json` — just without the `sessionRecap.` wrapper. Starts with
+`model`; the file shape leaves room for future knobs (`idleSeconds`,
+`disableFocus`, …) without schema migration.
+
+Precedence: `--recap-model` CLI flag › `model` in `pi-session-recap.json` ›
+the active model. An invalid / unknown `provider/id` falls through to the
+active model silently (same as the CLI flag).
+
+### Migration from earlier versions
+
+On first `session_start` after upgrade, the extension migrates any pre-existing
+configuration to `~/.pi/agent/pi-session-recap.json` once, silently. Order of
+checks:
+
+1. New flat path exists → done. No migration.
+2. Else `~/.pi/agent/extensions-data/pi-session-recap.json` exists (pre-release
+   layout / manual placement) → moved to the new flat path.
+3. Else `sessionRecap.model` is present in `~/.pi/agent/settings.json` → its
+   value is copied to the new file as `{ "model": "<value>" }`. The legacy key
+   in `settings.json` is left in place; the extension simply stops reading it.
+4. Else → nothing is written.
+
+Migration is best-effort: any I/O error is swallowed and the extension falls
+back to the active pi model. When both the new flat path and a legacy source
+exist, the new path wins; legacy sources are left untouched.
 
 ## Command
 

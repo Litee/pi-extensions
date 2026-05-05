@@ -164,14 +164,14 @@ export type DisabledFlag = "--recap-disable" | "--recap-disable-focus";
 export interface StatusLineOptions {
 	/**
 	 * Non-null when a recap-model override is configured, either via the
-	 * `--recap-model` CLI flag or via `sessionRecap.model` in settings.json.
+	 * `--recap-model` CLI flag or via `<agentDir>/pi-session-recap.json`.
 	 * `resolved` mirrors whether `getModel()` returned a `Model` for the
 	 * override's `spec` — `false` surfaces the otherwise-silent fallback
 	 * `readUserRecapModel`/`generateAndShow` do today when the configured
 	 * spec doesn't match the model registry.
 	 */
 	override: {
-		source: "--recap-model" | "settings.json";
+		source: "--recap-model" | "pi-session-recap.json";
 		spec: string;
 		resolved: boolean;
 	} | null;

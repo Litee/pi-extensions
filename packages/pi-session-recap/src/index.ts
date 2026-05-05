@@ -44,7 +44,7 @@
  */
 
 import { completeSimple, getModel } from "@mariozechner/pi-ai";
-import type { ExtensionAPI, ExtensionContext } from "@mariozechner/pi-coding-agent";
+import { getAgentDir, type ExtensionAPI, type ExtensionContext } from "@mariozechner/pi-coding-agent";
 
 import {
 	buildRecentTranscript,
@@ -56,7 +56,7 @@ import {
 	splitModel,
 	type StatusLineOptions,
 } from "./helpers.js";
-import { readUserRecapModel } from "./settings.js";
+import { migrateLegacyConfig, readUserRecapModel } from "./settings.js";
 
 type Model = Parameters<typeof completeSimple>[0];
 
@@ -236,15 +236,15 @@ export default function (pi: ExtensionAPI) {
 	const focusMinMs = (): number => focusMinSeconds() * 1000;
 	const isDisabled = (): boolean => Boolean(pi.getFlag("recap-disable"));
 	const isFocusDisabled = (): boolean => Boolean(pi.getFlag("recap-disable-focus"));
-	/** Configured override spec — CLI flag wins over settings.json; `null` when neither is set. */
-	const configuredOverride = (): { source: "--recap-model" | "settings.json"; spec: string } | null => {
+	/** Configured override spec — CLI flag wins over the config file; `null` when neither is set. */
+	const configuredOverride = (): { source: "--recap-model" | "pi-session-recap.json"; spec: string } | null => {
 		// `pi.registerFlag` stores keys without the `--` prefix; `pi.getFlag`
 		// must use the same bare name. The user-facing label (`--recap-model`)
 		// below stays prefixed because that IS how the user types it on the CLI.
 		const cli = String(pi.getFlag("recap-model") ?? "").trim();
 		if (cli.length > 0) return { source: "--recap-model", spec: cli };
-		const settings = readUserRecapModel();
-		if (settings) return { source: "settings.json", spec: settings };
+		const fromFile = readUserRecapModel();
+		if (fromFile) return { source: "pi-session-recap.json", spec: fromFile };
 		return null;
 	};
 	const modelOverride = (): string | undefined => configuredOverride()?.spec;
@@ -482,6 +482,15 @@ export default function (pi: ExtensionAPI) {
 
 	// Session start: wire up focus reporting; on resume, show a recap.
 	pi.on("session_start", async (event, ctx) => {
+		// One-shot, silent migration to `<agentDir>/pi-session-recap.json`
+		// (tracker issues #0005 + #0006). Must run before any read path so
+		// `configuredOverride` sees the migrated file on first session after
+		// upgrade. Never raises; legacy sources are ignored from here on.
+		try {
+			migrateLegacyConfig(getAgentDir(), process.env);
+		} catch {
+			/* defensive — migrateLegacyConfig swallows internally, but belt-and-braces */
+		}
 		attachFocusReporting(ctx);
 		if (isDisabled()) return;
 		if (event.reason === "resume" || event.reason === "fork") {

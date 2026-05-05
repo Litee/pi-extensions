@@ -433,12 +433,12 @@ describe("buildStatusLine", () => {
 		);
 	});
 
-	it("shows `(from settings.json)` when the settings.json override resolves", () => {
+	it("shows `(from pi-session-recap.json)` when the config-file override resolves", () => {
 		expect(
 			buildStatusLine({
 				...base,
 				override: {
-					source: "settings.json",
+					source: "pi-session-recap.json",
 					spec: "anthropic/claude-haiku-4-5",
 					resolved: true,
 				},
@@ -446,7 +446,7 @@ describe("buildStatusLine", () => {
 		).toBe(
 			[
 				"recap status",
-				"  Model:          anthropic/claude-haiku-4-5  (from settings.json)",
+				"  Model:          anthropic/claude-haiku-4-5  (from pi-session-recap.json)",
 				"  Auto-recap:     enabled",
 				"  Idle trigger:   120s after turn_end",
 				"  Focus trigger:  enabled (min 3s away)",
