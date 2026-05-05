@@ -225,20 +225,23 @@ export default function (pi: ExtensionAPI) {
 	let lastDraftedLeafId: string | undefined;
 
 	const idleSeconds = (): number => {
-		const n = Number(pi.getFlag("--recap-idle-seconds") ?? DEFAULT_IDLE_SECONDS);
+		const n = Number(pi.getFlag("recap-idle-seconds") ?? DEFAULT_IDLE_SECONDS);
 		return Math.max(5, Number.isFinite(n) ? n : DEFAULT_IDLE_SECONDS);
 	};
 	const focusMinSeconds = (): number => {
-		const n = Number(pi.getFlag("--recap-focus-min-seconds") ?? DEFAULT_FOCUS_MIN_SECONDS);
+		const n = Number(pi.getFlag("recap-focus-min-seconds") ?? DEFAULT_FOCUS_MIN_SECONDS);
 		return Math.max(0, Number.isFinite(n) ? n : DEFAULT_FOCUS_MIN_SECONDS);
 	};
 	const idleMs = (): number => idleSeconds() * 1000;
 	const focusMinMs = (): number => focusMinSeconds() * 1000;
-	const isDisabled = (): boolean => Boolean(pi.getFlag("--recap-disable"));
-	const isFocusDisabled = (): boolean => Boolean(pi.getFlag("--recap-disable-focus"));
+	const isDisabled = (): boolean => Boolean(pi.getFlag("recap-disable"));
+	const isFocusDisabled = (): boolean => Boolean(pi.getFlag("recap-disable-focus"));
 	/** Configured override spec — CLI flag wins over settings.json; `null` when neither is set. */
 	const configuredOverride = (): { source: "--recap-model" | "settings.json"; spec: string } | null => {
-		const cli = String(pi.getFlag("--recap-model") ?? "").trim();
+		// `pi.registerFlag` stores keys without the `--` prefix; `pi.getFlag`
+		// must use the same bare name. The user-facing label (`--recap-model`)
+		// below stays prefixed because that IS how the user types it on the CLI.
+		const cli = String(pi.getFlag("recap-model") ?? "").trim();
 		if (cli.length > 0) return { source: "--recap-model", spec: cli };
 		const settings = readUserRecapModel();
 		if (settings) return { source: "settings.json", spec: settings };
