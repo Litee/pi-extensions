@@ -206,6 +206,27 @@ export async function handleSessionStart(
 		}
 	}) as typeof pi.sendMessage;
 
+	// #0019: paused = silent + zero-IO. Rehydrate the user's explicit
+	// pause / resume preference BEFORE touching the filesystem so that a
+	// paused watcher performs no existsSync / scanIssueFiles calls and
+	// pins no status row. Absent entry → default to **paused** (#0012).
+	// Side-effect (#0019): a paused watcher is invisible, so we cannot
+	// surface a 'dbRoot missing' warning while paused either — the user
+	// has explicitly asked us to stop watching.
+	const runState = rehydrateRunStateFromSession(ctx);
+	const paused = runState?.paused !== false;
+
+	if (paused) {
+		// Clear any stale status row pinned by a prior non-paused session
+		// (e.g. the user paused mid-session and the process later reloaded).
+		// If the row was never written, `setStatus?.(KEY, undefined)` is a
+		// harmless no-op. Intentionally: no notify, no pinned row, no chat
+		// startup summary.
+		setStatus?.(STATUS_KEY, undefined);
+		const baselineSnapshot = rehydrateFromSession(ctx)?.snapshot ?? {};
+		return { started: true, paused: true, snapshot: baselineSnapshot };
+	}
+
 	if (!existsSync(dbRoot)) {
 		notify?.(
 			`local-issue-watcher: dbRoot not found (${dbRoot}); not watching.`,
@@ -224,24 +245,18 @@ export async function handleSessionStart(
 	const baseline = rehydrateFromSession(ctx);
 	const currentSnapshot = scanIssueFiles(dbRoot, baseline?.snapshot);
 
-	// Rehydrate the user's last explicit pause / resume preference. Absent
-	// entry → default to **paused** (#0012). A brand-new pi session stays
-	// quiet until the user opts in with `/local-issue-watcher resume`, matching
-	// the intent that background chat messages require explicit consent.
-	const runState = rehydrateRunStateFromSession(ctx);
-	const paused = runState?.paused !== false;
-
 	// Emit a single, informational startup announcement so the user can see
 	// the watcher is running and which dbRoot is in effect — without having
 	// to run `/local-issue-watcher status`. Uses `ctx.ui.setStatus` so it pins to
 	// the extension-status row (below the main status line) and cannot
-	// trigger an agent turn (see issue #0001).
+	// trigger an agent turn (see issue #0001). #0019: this point is only
+	// reached on the non-paused path, so the state is always 'active'.
 	setStatus?.(
 		STATUS_KEY,
 		colorize(
 			theme,
 			buildStartupAnnouncement(
-				paused ? "paused" : "active",
+				"active",
 				dbRoot,
 				POLL_INTERVAL_MS,
 				currentSnapshot,
@@ -255,31 +270,19 @@ export async function handleSessionStart(
 			savedAt: Date.now(),
 			snapshot: serialisableSnapshot(currentSnapshot),
 		});
-		// Fresh-session startup summary (#0011, #0013) — only when not paused.
-		// A paused watcher stays silent; the pinned status line already shows
-		// 'paused' and that is sufficient signal. Matches the no-diff path
-		// below. `triggerTurn: true` so the LLM sees the tracker state at
-		// session start (reversed from the original #0011 decision in #0013).
-		if (!paused) {
-			emit(
-				{
-					customType: CUSTOM_MESSAGE_TYPE,
-					content: buildStartupChatMessage(dbRoot, currentSnapshot),
-					display: true,
-				},
-				{ deliverAs: "followUp", triggerTurn: true },
-			);
-		}
-		return { started: true, paused, snapshot: currentSnapshot };
-	}
-
-	// While paused we do NOT diff or emit change messages — the user asked us
-	// to stop watching, so don't resurface changes on resume/reload either.
-	// The snapshot stays rehydrated so a later `/local-issue-watcher resume` picks
-	// up from the last baseline rather than silently losing the intervening
-	// window.
-	if (paused) {
-		return { started: true, paused, snapshot: currentSnapshot };
+		// Fresh-session startup summary (#0011, #0013). `triggerTurn: true`
+		// so the LLM sees the tracker state at session start (reversed from
+		// the original #0011 decision in #0013). Only reachable when not
+		// paused (#0019).
+		emit(
+			{
+				customType: CUSTOM_MESSAGE_TYPE,
+				content: buildStartupChatMessage(dbRoot, currentSnapshot),
+				display: true,
+			},
+			{ deliverAs: "followUp", triggerTurn: true },
+		);
+		return { started: true, paused: false, snapshot: currentSnapshot };
 	}
 
 	const changes = diffSnapshots(baseline.snapshot, currentSnapshot);
@@ -320,7 +323,7 @@ export async function handleSessionStart(
 		);
 	}
 
-	return { started: true, paused, snapshot: currentSnapshot };
+	return { started: true, paused: false, snapshot: currentSnapshot };
 }
 
 /**
@@ -537,10 +540,13 @@ export default function issueWatcher(pi: ExtensionAPI): void {
 					rt.paused = true;
 					stopPolling(rt);
 					persistRunState(pi, true);
-					// No disk scan: paused status line renders no per-status counts
-					// (#0010), so an empty snapshot is all buildStartupAnnouncement
-					// needs. Saves a readdir under dbRoot that the user wouldn't see.
-					refreshStatusLine(ui ?? null, rt, "paused", {});
+					// #0019: paused = silent + zero-IO. Clear the pinned status
+					// row instead of replacing it with a 'paused' string — the
+					// user asked the watcher to disappear, so it should leave no
+					// footer row behind. The one-shot `notify` toast below is the
+					// user-invoked acknowledgement of the action itself; that is
+					// not a pinned row and stays.
+					ui?.setStatus?.(STATUS_KEY, undefined);
 					ui?.notify?.(`local-issue-watcher: paused (dbRoot=${rt.dbRoot})`, "info");
 					return;
 				}

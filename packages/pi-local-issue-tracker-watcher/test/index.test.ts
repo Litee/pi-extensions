@@ -190,7 +190,9 @@ describe("handleSessionStart", () => {
 
 	it("notifies 'db root not found' and does not poll when dbRoot does not exist", async () => {
 		const pi = makeFakePi();
-		const ctx = makeFakeCtx();
+		// #0019: paused = silent + zero-IO, so the missing-dbRoot notify only
+		// fires on the non-paused path. Seed a running runstate so we exercise it.
+		const ctx = makeFakeCtx([runningRunstate()]);
 		const missing = join(dbRoot, "does-not-exist");
 
 		const out = await handleSessionStart({
@@ -360,7 +362,9 @@ describe("handleSessionStart", () => {
 
 	it("missing-dbRoot path pins a 'dbRoot missing' status line with the resolved path (issue #0014)", async () => {
 		const pi = makeFakePi();
-		const ctx = makeFakeCtx();
+		// #0019: paused path skips existsSync/setStatus entirely, so the
+		// 'dbRoot missing' pin is a non-paused-only behaviour. Seed running.
+		const ctx = makeFakeCtx([runningRunstate()]);
 		const missing = join(dbRoot, "does-not-exist");
 
 		const out = await handleSessionStart({
@@ -408,7 +412,10 @@ describe("handleSessionStart", () => {
 	it("returns the snapshot it scanned so the caller can reuse it without rescanning (issue #0001)", async () => {
 		writeIssue("skill-a", "0001-a.json", { id: "0001", status: "open", skill: "skill-a" });
 		const pi = makeFakePi();
-		const ctx = makeFakeCtx([]);
+		// #0019: paused branch returns baseline?.snapshot ?? {} without scanning.
+		// This test proves the scan path populates the returned snapshot, so we
+		// must exercise the running path.
+		const ctx = makeFakeCtx([runningRunstate()]);
 
 		const out = await handleSessionStart({ pi: pi as never, ctx: ctx as never, dbRoot });
 
@@ -422,7 +429,8 @@ describe("handleSessionStart", () => {
 
 	it("returns an empty snapshot when dbRoot is missing (issue #0001)", async () => {
 		const pi = makeFakePi();
-		const ctx = makeFakeCtx();
+		// #0019: missing-dbRoot branch is non-paused-only. Seed running.
+		const ctx = makeFakeCtx([runningRunstate()]);
 		const missing = join(dbRoot, "does-not-exist");
 		const out = await handleSessionStart({
 			pi: pi as never,
@@ -440,7 +448,17 @@ describe("handleSessionStart", () => {
 		const ctx: unknown = {
 			// No `ui`. This mirrors pi's print/RPC mode where ctx.hasUI === false.
 			hasUI: false,
-			sessionManager: { getEntries: () => [] },
+			// #0019: paused branch skips the scan + appendEntry entirely. This
+			// test covers the headless running path, so seed a running runstate.
+			sessionManager: {
+				getEntries: () => [
+					{
+						type: "custom",
+						customType: "local-issue-watcher-runstate",
+						data: { savedAt: Date.now(), paused: false },
+					},
+				],
+			},
 		};
 		const out = await handleSessionStart({ pi: pi as never, ctx: ctx as never, dbRoot });
 
@@ -553,7 +571,7 @@ describe("/local-issue-watcher command", () => {
 		expect(resumedStatus!).not.toContain("poll=");
 	});
 
-	it("'pause' updates the pinned status line to show paused state", async () => {
+	it("'pause' clears the pinned status row (#0019: paused = silent, no pinned row)", async () => {
 		const pi = makeFakePi();
 		extensionWithDbRoot(pi, dbRoot);
 
@@ -562,21 +580,23 @@ describe("/local-issue-watcher command", () => {
 		await cmd!.handler("pause", ctx);
 
 		const statusCalls = ctx.ui.setStatus.mock.calls as Array<[string, string | undefined]>;
-		const pausedStatus = statusCalls
-			.filter(([k]) => k === "pi-local-issue-tracker-watcher")
-			.map(([, v]) => v ?? "")
-			.find((v) => /paused/i.test(v));
-		expect(pausedStatus).toBeDefined();
-		// #0022: paused line is exactly the prefix — no path, no poll,
-		// no counts.
-		expect(pausedStatus!).not.toContain(abbreviatePath(dbRoot));
-		expect(pausedStatus!).not.toContain("poll=");
+		const ourCalls = statusCalls.filter(([k]) => k === "pi-local-issue-tracker-watcher");
+		// #0019: paused = no pinned row. Every setStatus call for our key
+		// must be a clear (undefined) — no 'paused' string should be pinned.
+		expect(ourCalls.length).toBeGreaterThanOrEqual(1);
+		for (const [, v] of ourCalls) {
+			expect(v).toBeUndefined();
+		}
+		// In particular the last setStatus for our key must be a clear.
+		expect(ourCalls[ourCalls.length - 1]![1]).toBeUndefined();
 	});
 
-	// -- issue #0010: paused status line drops per-status counts --
-	it("'pause' pinned line contains no per-status counts (issue #0010)", async () => {
+	// -- issue #0010 subsumed by #0019: paused line has no counts because
+	// the row itself is cleared. Test kept so the #0010 guarantee is
+	// explicitly preserved under the new behaviour.
+	it("'pause' pinned line contains no per-status counts (issue #0010, reinforced by #0019)", async () => {
 		// Seed some issue files so a scan would actually produce a non-empty
-		// count; the test proves the counts are still excluded.
+		// count; the test proves no count string is pinned.
 		mkdirSync(join(dbRoot, "skill-a"), { recursive: true });
 		writeFileSync(
 			join(dbRoot, "skill-a", "0001-a.json"),
@@ -594,15 +614,12 @@ describe("/local-issue-watcher command", () => {
 		await cmd!.handler("pause", ctx);
 
 		const statusCalls = ctx.ui.setStatus.mock.calls as Array<[string, string | undefined]>;
-		const pausedStatus = statusCalls
+		// #0019: paused = cleared row. No pinned string means no counts.
+		const pinnedStrings = statusCalls
 			.filter(([k]) => k === "pi-local-issue-tracker-watcher")
-			.map(([, v]) => v ?? "")
-			.find((v) => /paused/i.test(v));
-		expect(pausedStatus).toBeDefined();
-		// No '1 open' / '1 done' / any other count-shape segment.
-		expect(pausedStatus!).not.toMatch(/\d+ open/);
-		expect(pausedStatus!).not.toMatch(/\d+ done/);
-		expect(pausedStatus!).not.toMatch(/\d+ in_progress/);
+			.map(([, v]) => v)
+			.filter((v): v is string => typeof v === "string");
+		expect(pinnedStrings).toHaveLength(0);
 	});
 
 	it("with no args prints a status line that mentions the dbRoot", async () => {
@@ -876,7 +893,7 @@ describe("run-state persistence", () => {
 		expect(res.paused).toBe(true);
 	});
 
-	it("fresh session (no runstate, no baseline) pins 'paused' and emits no startup chat message (issue #0012)", async () => {
+	it("fresh session (no runstate, no baseline) pins no status row and emits no startup chat (issue #0012, #0019)", async () => {
 		writeIssue("skill-a", "0001-a.json", { id: "0001", status: "open", skill: "skill-a" });
 		const pi = makeFakePi();
 		const ctx = makeFakeCtx([]);
@@ -885,11 +902,13 @@ describe("run-state persistence", () => {
 		// No chat message of any kind — paused watcher must stay silent.
 		expect(pi.sendMessage).not.toHaveBeenCalled();
 
-		// Pinned status line says 'paused', not 'active'.
+		// #0019: paused = no pinned row. Any setStatus call on our key must
+		// be a clear (undefined), never a 'paused' string.
 		const statusCalls = ctx.ui.setStatus.mock.calls as Array<[string, string | undefined]>;
-		const pinned = statusCalls.find(([k]) => k === "pi-local-issue-tracker-watcher")?.[1] ?? "";
-		expect(pinned).toContain("paused");
-		expect(pinned).not.toMatch(/\bactive\b/);
+		const ourCalls = statusCalls.filter(([k]) => k === "pi-local-issue-tracker-watcher");
+		for (const [, v] of ourCalls) {
+			expect(v).toBeUndefined();
+		}
 	});
 
 	it("handleSessionStart returns paused=false when the newest run-state entry is explicitly running (issue #0012)", async () => {
@@ -921,7 +940,7 @@ describe("run-state persistence", () => {
 		expect(res.paused).toBe(true);
 	});
 
-	it("handleSessionStart announces 'paused' in the status line when rehydrated as paused", async () => {
+	it("handleSessionStart pins no status row when rehydrated as paused (#0019)", async () => {
 		writeIssue("skill-a", "0001-a.json", { id: "0001", status: "open", skill: "skill-a" });
 		const pi = makeFakePi();
 		const ctx = makeFakeCtx([
@@ -933,9 +952,12 @@ describe("run-state persistence", () => {
 		]);
 		await handleSessionStart({ pi: pi as never, ctx: ctx as never, dbRoot });
 		const statusCalls = ctx.ui.setStatus.mock.calls as Array<[string, string | undefined]>;
-		const pinned = statusCalls.find(([k]) => k === "pi-local-issue-tracker-watcher")?.[1] ?? "";
-		expect(pinned).toContain("paused");
-		expect(pinned).not.toMatch(/\bactive\b/);
+		const ourCalls = statusCalls.filter(([k]) => k === "pi-local-issue-tracker-watcher");
+		// #0019: paused = no pinned row. Every setStatus call on our key must
+		// be a clear — never an 'active' or 'paused' string.
+		for (const [, v] of ourCalls) {
+			expect(v).toBeUndefined();
+		}
 	});
 
 	it("handleSessionStart does NOT replay diffs when rehydrated as paused", async () => {
@@ -1094,10 +1116,14 @@ describe("run-state persistence", () => {
 			await vi.advanceTimersByTimeAsync(POLL_INTERVAL_MS * 3);
 			expect(pi2.sendMessage).not.toHaveBeenCalled();
 
-			// The pinned status line on the reloaded instance reflects paused.
+			// The reloaded extension pins no status row because paused =
+			// silent under #0019. Every setStatus call for our key must be
+			// a clear, not a 'paused' string.
 			const statusCalls = ctx.ui.setStatus.mock.calls as Array<[string, string | undefined]>;
-			const pinned = statusCalls.find(([k]) => k === "pi-local-issue-tracker-watcher")?.[1] ?? "";
-			expect(pinned).toContain("paused");
+			const ourCalls = statusCalls.filter(([k]) => k === "pi-local-issue-tracker-watcher");
+			for (const [, v] of ourCalls) {
+				expect(v).toBeUndefined();
+			}
 		} finally {
 			vi.useRealTimers();
 		}
@@ -1431,6 +1457,154 @@ describe("handleSessionStart deferMessages (#0015)", () => {
 		expect(payload.customType).toBe("pi-local-issue-tracker-watcher");
 		expect(payload.content).toContain("active");
 		expect(opts.triggerTurn).toBe(true);
+	});
+});
+
+// ---------------------------------------------------------------------------
+// #0019: paused watcher = silent (no pinned row) + zero-IO (no fs calls)
+// ---------------------------------------------------------------------------
+
+describe("paused watcher = silent + zero-IO (#0019)", () => {
+	let dbRoot: string;
+
+	beforeEach(() => {
+		dbRoot = mkdtempSync(join(tmpdir(), "pi-local-issue-watcher-0019-"));
+	});
+	afterEach(() => {
+		rmSync(dbRoot, { recursive: true, force: true });
+		vi.restoreAllMocks();
+	});
+
+	it("session_start with paused runstate: no scanIssueFiles, no missing-dbRoot notify, no pinned row, no chat startup", async () => {
+		// Proof strategy for zero-IO:
+		//   * `scanIssueFiles` is spied on the scanner module namespace — if the
+		//     paused branch called it we'd see a recorded invocation.
+		//   * `existsSync` cannot be spied (node:fs exports are frozen), so we
+		//     prove it was NOT called by pointing `dbRoot` at a path that does
+		//     NOT exist: if the non-paused `existsSync(dbRoot)` branch ran, it
+		//     would emit a 'dbRoot not found' notify and pin a misconfig row.
+		//     Absence of both is the external symptom we assert against.
+		const scannerModule = await import("../src/scanner.js");
+		const scanSpy = vi.spyOn(scannerModule, "scanIssueFiles");
+
+		const missing = join(dbRoot, "does-not-exist");
+
+		const pi = makeFakePi();
+		const ctx = makeFakeCtx([
+			{
+				type: "custom",
+				customType: RUNSTATE_ENTRY_TYPE,
+				data: { savedAt: Date.now(), paused: true },
+			},
+		]);
+
+		const res = await handleSessionStart({
+			pi: pi as never,
+			ctx: ctx as never,
+			dbRoot: missing,
+		});
+
+		// Zero-IO: the scanner was never called.
+		expect(scanSpy).not.toHaveBeenCalled();
+
+		// Zero-IO, part 2: if existsSync had run on a non-existent path we'd
+		// hit the missing-dbRoot branch and emit a warning notify. Neither
+		// happened, so existsSync was skipped.
+		expect(ctx.ui.notify).not.toHaveBeenCalled();
+
+		// No chat-visible startup summary, no diff message.
+		expect(pi.sendMessage).not.toHaveBeenCalled();
+
+		// No pinned row. Any setStatus call for our key must be a clear
+		// (undefined); a fresh paused session with a UI attached clears the
+		// row defensively so stale content from a prior non-paused session
+		// does not linger.
+		const statusCalls = ctx.ui.setStatus.mock.calls as Array<[string, string | undefined]>;
+		const ourCalls = statusCalls.filter(([k]) => k === "pi-local-issue-tracker-watcher");
+		for (const [, v] of ourCalls) {
+			expect(v).toBeUndefined();
+		}
+
+		// Return shape: the caller can still rely on a snapshot baseline so
+		// a later /local-issue-watcher resume diffs from the last known-good
+		// state. With no baseline entry rehydrated the snapshot is {}.
+		expect(res.paused).toBe(true);
+		expect(res.started).toBe(true);
+		expect(res.snapshot).toEqual({});
+	});
+
+	it("'/local-issue-watcher pause' clears the pinned status line but keeps the one-shot notify toast", async () => {
+		const pi = makeFakePi();
+		const prev = process.env["LOCAL_ISSUE_TRACKER_DB_ROOT"];
+		process.env["LOCAL_ISSUE_TRACKER_DB_ROOT"] = dbRoot;
+		try {
+			createExtension(pi as never);
+		} finally {
+			if (prev === undefined) delete process.env["LOCAL_ISSUE_TRACKER_DB_ROOT"];
+			else process.env["LOCAL_ISSUE_TRACKER_DB_ROOT"] = prev;
+		}
+
+		const ctx = makeFakeCtx([runningRunstate()]);
+		// Kick off an active session so the running path pins a row first.
+		await pi.sessionStartHandler!({}, ctx);
+		const activePinCount = (ctx.ui.setStatus.mock.calls as Array<[string, string | undefined]>)
+			.filter(([k, v]) => k === "pi-local-issue-tracker-watcher" && typeof v === "string")
+			.length;
+		expect(activePinCount).toBeGreaterThanOrEqual(1);
+
+		const notifyCallsBefore = ctx.ui.notify.mock.calls.length;
+
+		// Now invoke pause.
+		await pi.commands.get("local-issue-watcher")!.handler("pause", ctx);
+
+		// Last setStatus for our key must be a clear (undefined).
+		const statusCalls = ctx.ui.setStatus.mock.calls as Array<[string, string | undefined]>;
+		const ourCalls = statusCalls.filter(([k]) => k === "pi-local-issue-tracker-watcher");
+		expect(ourCalls[ourCalls.length - 1]![1]).toBeUndefined();
+
+		// One-shot notify still fires so the user knows the command worked.
+		const notifyCallsAfter = ctx.ui.notify.mock.calls.length;
+		expect(notifyCallsAfter).toBe(notifyCallsBefore + 1);
+		const lastNotify = ctx.ui.notify.mock.calls[notifyCallsAfter - 1] as [string, string];
+		expect(lastNotify[0]).toMatch(/paused/i);
+		expect(lastNotify[0]).toContain(dbRoot);
+	});
+
+	it("'/local-issue-watcher resume' re-pins the status row (non-empty string, state 'resumed')", async () => {
+		const pi = makeFakePi();
+		const prev = process.env["LOCAL_ISSUE_TRACKER_DB_ROOT"];
+		process.env["LOCAL_ISSUE_TRACKER_DB_ROOT"] = dbRoot;
+		try {
+			createExtension(pi as never);
+		} finally {
+			if (prev === undefined) delete process.env["LOCAL_ISSUE_TRACKER_DB_ROOT"];
+			else process.env["LOCAL_ISSUE_TRACKER_DB_ROOT"] = prev;
+		}
+
+		// Start from a paused session: no pinned row.
+		const ctx = makeFakeCtx([
+			{
+				type: "custom",
+				customType: RUNSTATE_ENTRY_TYPE,
+				data: { savedAt: Date.now(), paused: true },
+			},
+		]);
+		await pi.sessionStartHandler!({}, ctx);
+		const pausedPinStrings = (ctx.ui.setStatus.mock.calls as Array<[string, string | undefined]>)
+			.filter(([k, v]) => k === "pi-local-issue-tracker-watcher" && typeof v === "string");
+		expect(pausedPinStrings).toHaveLength(0);
+
+		// Resume — the first setStatus write afterwards must repopulate the row.
+		await pi.commands.get("local-issue-watcher")!.handler("resume", ctx);
+
+		const afterResume = (ctx.ui.setStatus.mock.calls as Array<[string, string | undefined]>)
+			.filter(([k]) => k === "pi-local-issue-tracker-watcher");
+		const resumedPin = afterResume
+			.map(([, v]) => v)
+			.find((v) => typeof v === "string" && /resumed/i.test(v));
+		expect(resumedPin).toBeDefined();
+		expect(typeof resumedPin).toBe("string");
+		expect((resumedPin as string).length).toBeGreaterThan(0);
 	});
 });
 
