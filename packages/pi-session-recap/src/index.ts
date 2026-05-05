@@ -48,10 +48,13 @@ import type { ExtensionAPI, ExtensionContext } from "@mariozechner/pi-coding-age
 
 import {
 	buildRecentTranscript,
+	buildStatusLine,
+	type DisabledFlag,
 	type Entry,
 	firstLine,
 	hasMeaningfulActivity,
 	splitModel,
+	type StatusLineOptions,
 } from "./helpers.js";
 import { readUserRecapModel } from "./settings.js";
 
@@ -221,22 +224,27 @@ export default function (pi: ExtensionAPI) {
 	// refocus churn when nothing has happened in the session.
 	let lastDraftedLeafId: string | undefined;
 
-	const idleMs = (): number => {
+	const idleSeconds = (): number => {
 		const n = Number(pi.getFlag("--recap-idle-seconds") ?? DEFAULT_IDLE_SECONDS);
-		return Math.max(5, Number.isFinite(n) ? n : DEFAULT_IDLE_SECONDS) * 1000;
+		return Math.max(5, Number.isFinite(n) ? n : DEFAULT_IDLE_SECONDS);
 	};
-	const focusMinMs = (): number => {
+	const focusMinSeconds = (): number => {
 		const n = Number(pi.getFlag("--recap-focus-min-seconds") ?? DEFAULT_FOCUS_MIN_SECONDS);
-		return Math.max(0, Number.isFinite(n) ? n : DEFAULT_FOCUS_MIN_SECONDS) * 1000;
+		return Math.max(0, Number.isFinite(n) ? n : DEFAULT_FOCUS_MIN_SECONDS);
 	};
+	const idleMs = (): number => idleSeconds() * 1000;
+	const focusMinMs = (): number => focusMinSeconds() * 1000;
 	const isDisabled = (): boolean => Boolean(pi.getFlag("--recap-disable"));
 	const isFocusDisabled = (): boolean => Boolean(pi.getFlag("--recap-disable-focus"));
-	const modelOverride = (): string | undefined => {
-		// Precedence: CLI flag > user-level settings.json > active-model default.
+	/** Configured override spec — CLI flag wins over settings.json; `null` when neither is set. */
+	const configuredOverride = (): { source: "--recap-model" | "settings.json"; spec: string } | null => {
 		const cli = String(pi.getFlag("--recap-model") ?? "").trim();
-		if (cli.length > 0) return cli;
-		return readUserRecapModel();
+		if (cli.length > 0) return { source: "--recap-model", spec: cli };
+		const settings = readUserRecapModel();
+		if (settings) return { source: "settings.json", spec: settings };
+		return null;
 	};
+	const modelOverride = (): string | undefined => configuredOverride()?.spec;
 
 	const clearTimer = () => {
 		if (idleTimer) {
@@ -480,11 +488,98 @@ export default function (pi: ExtensionAPI) {
 		}
 	});
 
+	// Resolve the active model's display spec for the status line. Falls back
+	// to a sentinel when pi hasn't bound a model yet (e.g. headless/no-auth
+	// dry runs) so the status output stays informative.
+	const activeModelSpec = (ctx: ExtensionContext): string => {
+		const m = ctx.model;
+		return m ? `${m.provider}/${m.id}` : "(no active model)";
+	};
+
+	const resolveStatusOptions = (ctx: ExtensionContext): StatusLineOptions => {
+		const configured = configuredOverride();
+		let override: StatusLineOptions["override"] = null;
+		if (configured) {
+			const parsed = splitModel(configured.spec);
+			const resolved = Boolean(
+				parsed &&
+					(getModel as (provider: string, id: string) => Model | undefined)(
+						parsed.provider,
+						parsed.id,
+					),
+			);
+			override = { source: configured.source, spec: configured.spec, resolved };
+		}
+		const focusOff = isFocusDisabled();
+		const disabledFlags: DisabledFlag[] = [];
+		if (isDisabled()) disabledFlags.push("--recap-disable");
+		if (focusOff) disabledFlags.push("--recap-disable-focus");
+		return {
+			override,
+			activeModelSpec: activeModelSpec(ctx),
+			autoRecapEnabled: !isDisabled(),
+			idleSeconds: idleSeconds(),
+			focusMinSeconds: focusOff ? null : focusMinSeconds(),
+			disabledFlags,
+		};
+	};
+
+	const VALID_SUBCOMMANDS = ["status", "help"] as const;
+	const SUBCOMMAND_HELP =
+		"/recap subcommands:\n" +
+		"  (no args)       Generate a recap of recent session activity.\n" +
+		"  status          Show the current recap configuration (model, triggers, flags).\n" +
+		"  help            Show this help text.";
+	/**
+	 * customType for both `/recap status` and `/recap help` chat-scroll output.
+	 * These are informational replies, not a recap emission — the "subcommand"
+	 * suffix keeps them distinguishable from any future recap-message payloads
+	 * this extension might grow without forking a fresh renderer per sub.
+	 */
+	const SUBCOMMAND_MESSAGE_TYPE = "pi-session-recap:subcommand";
+
 	// Manual command.
 	pi.registerCommand("recap", {
-		description: "Generate a one-line recap of recent session activity",
-		handler: async (_args, ctx) => {
-			await generateAndShow(ctx, { reason: "manual" });
+		description: "Generate a one-line recap, or show status (/recap status)",
+		handler: async (args, ctx) => {
+			const sub = args.trim().toLowerCase();
+			if (sub === "") {
+				await generateAndShow(ctx, { reason: "manual" });
+				return;
+			}
+			if (sub === "status") {
+				// Chat-scroll message (not a toast) so the configuration sticks
+				// around for the user to scroll back to. `triggerTurn: false`
+				// because this is informational — it must never cause an agent
+				// turn to fire.
+				pi.sendMessage(
+					{
+						customType: SUBCOMMAND_MESSAGE_TYPE,
+						content: buildStatusLine(resolveStatusOptions(ctx)),
+						display: true,
+					},
+					{ deliverAs: "followUp", triggerTurn: false },
+				);
+				return;
+			}
+			if (sub === "help") {
+				pi.sendMessage(
+					{
+						customType: SUBCOMMAND_MESSAGE_TYPE,
+						content: SUBCOMMAND_HELP,
+						display: true,
+					},
+					{ deliverAs: "followUp", triggerTurn: false },
+				);
+				return;
+			}
+			// Unknown subcommand: user-input error, keep as a transient toast so
+			// typos don't pollute the chat scroll.
+			if (ctx.hasUI)
+				ctx.ui.notify(
+					`Unknown /recap subcommand: "${sub}". Valid subcommands: ${VALID_SUBCOMMANDS.join(", ")}.`,
+					"warning",
+				);
 		},
 	});
 }

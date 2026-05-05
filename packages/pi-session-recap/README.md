@@ -91,6 +91,8 @@ model silently (same as the CLI flag).
 | Command | Description |
 |---|---|
 | `/recap` | Force-generate a recap right now, bypassing the activity gate. |
+| `/recap status` | Print the current effective recap configuration (model + source, auto-recap state, idle / focus triggers, active disabled flags). No LLM call, no turn triggered. |
+| `/recap help` | List the available `/recap` subcommands. |
 
 ## Attribution
 

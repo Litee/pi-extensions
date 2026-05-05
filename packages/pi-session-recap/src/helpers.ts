@@ -147,3 +147,87 @@ export function firstLine(text: string): string | undefined {
 	if (!text) return undefined;
 	return text.split(/\r?\n/, 1)[0]?.trim();
 }
+
+// ---------------------------------------------------------------------------
+// /recap status line composition (tracker issue #0004)
+// ---------------------------------------------------------------------------
+
+/** Flags listed in the `Disabled flags:` row when active. */
+export type DisabledFlag = "--recap-disable" | "--recap-disable-focus";
+
+/**
+ * Fully-resolved inputs for `buildStatusLine`. Keeping this struct of plain
+ * values (no model-registry lookups, no pi-tui, no fs reads) is what lets the
+ * helper be unit-tested without mocks — the caller in `index.ts` does the
+ * impure resolution once and hands the result in.
+ */
+export interface StatusLineOptions {
+	/**
+	 * Non-null when a recap-model override is configured, either via the
+	 * `--recap-model` CLI flag or via `sessionRecap.model` in settings.json.
+	 * `resolved` mirrors whether `getModel()` returned a `Model` for the
+	 * override's `spec` — `false` surfaces the otherwise-silent fallback
+	 * `readUserRecapModel`/`generateAndShow` do today when the configured
+	 * spec doesn't match the model registry.
+	 */
+	override: {
+		source: "--recap-model" | "settings.json";
+		spec: string;
+		resolved: boolean;
+	} | null;
+	/**
+	 * Display string for the currently active model (e.g.
+	 * `anthropic/claude-sonnet-4-6`). Used both as the sole Model line when
+	 * there is no override, and as the fallback line when an override is
+	 * configured but fails to resolve.
+	 */
+	activeModelSpec: string;
+	/** `false` iff `--recap-disable` is set — auto-recap is wired up otherwise. */
+	autoRecapEnabled: boolean;
+	/** Whole seconds for the idle fallback after turn_end. */
+	idleSeconds: number;
+	/**
+	 * Min focus-out seconds before a refocus shows a recap. `null` when
+	 * `--recap-disable-focus` is set — focus reporting is off entirely.
+	 */
+	focusMinSeconds: number | null;
+	/** Active disabled-flags, in presentation order. */
+	disabledFlags: ReadonlyArray<DisabledFlag>;
+}
+
+/**
+ * Compose the multi-line body rendered by `/recap status`. Pure so the layout
+ * is covered without standing up a pi runtime; see `/recap status` in
+ * `src/index.ts` for the impure wiring that feeds it.
+ */
+export function buildStatusLine(opts: StatusLineOptions): string {
+	const lines: string[] = ["recap status"];
+
+	if (opts.override) {
+		if (opts.override.resolved) {
+			lines.push(`  Model:          ${opts.override.spec}  (from ${opts.override.source})`);
+		} else {
+			// Surface the silent fallback that `readUserRecapModel` / the
+			// CLI-flag path does today when the configured spec isn't in the
+			// model registry. The user has no other signal their spec is bad.
+			lines.push(
+				`  Model:          ${opts.override.spec}  (override failed to resolve, falling back to active)`,
+			);
+			lines.push(`                  ${opts.activeModelSpec}  (active model)`);
+		}
+	} else {
+		lines.push(`  Model:          ${opts.activeModelSpec}  (active model)`);
+	}
+
+	lines.push(`  Auto-recap:     ${opts.autoRecapEnabled ? "enabled" : "disabled"}`);
+	lines.push(`  Idle trigger:   ${opts.idleSeconds}s after turn_end`);
+	if (opts.focusMinSeconds === null) {
+		lines.push(`  Focus trigger:  disabled`);
+	} else {
+		lines.push(`  Focus trigger:  enabled (min ${opts.focusMinSeconds}s away)`);
+	}
+	const flags = opts.disabledFlags.length > 0 ? opts.disabledFlags.join(", ") : "(none)";
+	lines.push(`  Disabled flags: ${flags}`);
+
+	return lines.join("\n");
+}

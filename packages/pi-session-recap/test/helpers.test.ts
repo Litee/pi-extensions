@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 
 import {
 	buildRecentTranscript,
+	buildStatusLine,
 	extractText,
 	extractToolCalls,
 	firstLine,
@@ -394,5 +395,151 @@ describe("firstLine", () => {
 
 	it("returns an empty string when the first line is whitespace only", () => {
 		expect(firstLine("   \n\nreal")).toBe("");
+	});
+});
+
+// ---------------------------------------------------------------------------
+// buildStatusLine (tracker issue #0004)
+// ---------------------------------------------------------------------------
+
+describe("buildStatusLine", () => {
+	const base = {
+		activeModelSpec: "anthropic/claude-sonnet-4-6",
+		autoRecapEnabled: true,
+		idleSeconds: 120,
+		focusMinSeconds: 3 as number | null,
+		disabledFlags: [] as ReadonlyArray<"--recap-disable" | "--recap-disable-focus">,
+	};
+
+	it("shows `(from --recap-model)` when the CLI override resolves", () => {
+		expect(
+			buildStatusLine({
+				...base,
+				override: {
+					source: "--recap-model",
+					spec: "amazon-bedrock/global.anthropic.claude-haiku-4-5",
+					resolved: true,
+				},
+			}),
+		).toBe(
+			[
+				"recap status",
+				"  Model:          amazon-bedrock/global.anthropic.claude-haiku-4-5  (from --recap-model)",
+				"  Auto-recap:     enabled",
+				"  Idle trigger:   120s after turn_end",
+				"  Focus trigger:  enabled (min 3s away)",
+				"  Disabled flags: (none)",
+			].join("\n"),
+		);
+	});
+
+	it("shows `(from settings.json)` when the settings.json override resolves", () => {
+		expect(
+			buildStatusLine({
+				...base,
+				override: {
+					source: "settings.json",
+					spec: "anthropic/claude-haiku-4-5",
+					resolved: true,
+				},
+			}),
+		).toBe(
+			[
+				"recap status",
+				"  Model:          anthropic/claude-haiku-4-5  (from settings.json)",
+				"  Auto-recap:     enabled",
+				"  Idle trigger:   120s after turn_end",
+				"  Focus trigger:  enabled (min 3s away)",
+				"  Disabled flags: (none)",
+			].join("\n"),
+		);
+	});
+
+	it("shows the active model with `(active model)` when there is no override", () => {
+		expect(buildStatusLine({ ...base, override: null })).toBe(
+			[
+				"recap status",
+				"  Model:          anthropic/claude-sonnet-4-6  (active model)",
+				"  Auto-recap:     enabled",
+				"  Idle trigger:   120s after turn_end",
+				"  Focus trigger:  enabled (min 3s away)",
+				"  Disabled flags: (none)",
+			].join("\n"),
+		);
+	});
+
+	it("surfaces the unresolved override and a fallback active-model line when the override does not resolve", () => {
+		expect(
+			buildStatusLine({
+				...base,
+				override: {
+					source: "--recap-model",
+					spec: "bogus-provider/does-not-exist",
+					resolved: false,
+				},
+			}),
+		).toBe(
+			[
+				"recap status",
+				"  Model:          bogus-provider/does-not-exist  (override failed to resolve, falling back to active)",
+				"                  anthropic/claude-sonnet-4-6  (active model)",
+				"  Auto-recap:     enabled",
+				"  Idle trigger:   120s after turn_end",
+				"  Focus trigger:  enabled (min 3s away)",
+				"  Disabled flags: (none)",
+			].join("\n"),
+		);
+	});
+
+	it("renders `Auto-recap: disabled` and lists `--recap-disable` under Disabled flags", () => {
+		const out = buildStatusLine({
+			...base,
+			override: null,
+			autoRecapEnabled: false,
+			disabledFlags: ["--recap-disable"],
+		});
+		expect(out).toContain("Auto-recap:     disabled");
+		expect(out).toContain("Disabled flags: --recap-disable");
+	});
+
+	it("renders `Focus trigger: disabled` and lists `--recap-disable-focus` under Disabled flags", () => {
+		const out = buildStatusLine({
+			...base,
+			override: null,
+			focusMinSeconds: null,
+			disabledFlags: ["--recap-disable-focus"],
+		});
+		expect(out).toContain("Focus trigger:  disabled");
+		expect(out).toContain("Disabled flags: --recap-disable-focus");
+	});
+
+	it("surfaces custom idle and focus-min seconds verbatim", () => {
+		const out = buildStatusLine({
+			...base,
+			override: null,
+			idleSeconds: 45,
+			focusMinSeconds: 7,
+		});
+		expect(out).toContain("Idle trigger:   45s after turn_end");
+		expect(out).toContain("Focus trigger:  enabled (min 7s away)");
+	});
+
+	it("renders `(none)` in Disabled flags when nothing is disabled", () => {
+		const out = buildStatusLine({ ...base, override: null });
+		expect(out).toContain("Disabled flags: (none)");
+	});
+
+	it("joins multiple disabled flags with a comma in presentation order", () => {
+		// Both flags active — they appear in registration order
+		// (--recap-disable, then --recap-disable-focus) so a future refactor
+		// can't re-order them silently.
+		const out = buildStatusLine({
+			...base,
+			override: null,
+			autoRecapEnabled: false,
+			focusMinSeconds: null,
+			disabledFlags: ["--recap-disable", "--recap-disable-focus"],
+		});
+		expect(out).toContain("Disabled flags: --recap-disable, --recap-disable-focus");
 	});
 });
