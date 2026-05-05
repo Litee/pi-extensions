@@ -14,7 +14,7 @@ Use **npm** (workspaces): `npm install`, `npm test`, `npm run check`.
 
 ## Key Conventions
 
-- Strict TDD for new extensions and changes to existing ones.
+- TDD: write a failing vitest test before the code that makes it pass. Applies to new extensions and behaviour changes to existing ones. Bug fixes need a regression test that fails on `main` first.
 - Keep the extensions table in `README.md` alphabetically sorted.
 
 ## Issue Fixing Workflow
@@ -25,14 +25,17 @@ Use **npm** (workspaces): `npm install`, `npm test`, `npm run check`.
 
 ## Git Workflow
 
-Follow this sequence; do not skip or reorder:
+Per-issue sequence; do not skip or reorder:
 
 1. Create a worktree: `git worktree add .worktrees/<branch-name> -b <branch-name>`. Make all changes inside it; keep the main repo clean.
 2. Implement and test inside the worktree.
 3. Present changes to the user for review. Do not commit yet.
 4. Commit only after the user reviews the worktree diff and explicitly confirms. No speculative or "save progress" commits.
-5. Rebase onto `main` from inside the worktree: `git rebase origin/main`.
-6. Merge fast-forward only from the main repo: `git merge --ff-only`. Never create merge commits.
-7. Ask for explicit confirmation before merging any worktree branch into `main`.
-8. **Never push.** All pushes to `origin` for this repo are done manually by the user. Do not run `git push`, do not offer to push after a merge, and do not treat `main` being "ahead of `origin/main`" as something to resolve — the user decides when publishing happens. If a rebase step needs the remote tip, `git fetch origin main` is fine; push is not.
-9. **Do not announce "main is N commits ahead of origin/main"** in status summaries, post-merge reports, or anywhere else. The user already knows. It is not actionable information for them.
+5. Rebase onto `main` from inside the worktree: `git fetch origin main && git rebase origin/main`.
+6. Ask for explicit confirmation before merging the worktree branch into `main`.
+7. Merge fast-forward only from the main repo: `git merge --ff-only <branch-name>`. Never create merge commits.
+
+### Standing rules (apply at all times)
+
+- **Never push.** All pushes to `origin` for this repo are done manually by the user. Do not run `git push`, do not offer to push after a merge, and do not treat `main` being "ahead of `origin/main`" as something to resolve — the user decides when publishing happens. If a rebase step needs the remote tip, `git fetch origin main` is fine; push is not.
+- **Do not announce "main is N commits ahead of origin/main"** in status summaries, post-merge reports, or anywhere else. The user already knows. It is not actionable information for them.
