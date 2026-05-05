@@ -12,6 +12,8 @@ On every `resources_discover` event (startup and `/reload`), the extension contr
 
 Only directories that actually exist on disk are returned, so the extension is a safe no-op when Claude Code is not installed.
 
+Skills whose real path lies under a `.agents/skills/` directory are excluded — pi core already auto-loads those via its own scan of `~/.agents/skills/` (and any project-ancestor `<dir>/.agents/skills/`), so surfacing them here would produce a duplicate entry with a different qualified name. The most common trigger is a symlink from `~/.claude/skills/<name>` into `~/.agents/skills/<name>`: the real skill stays available as `agents/<name>` via pi core; cc-skills-import silently skips its `@user/<name>` view.
+
 ## Persistence
 
 The `/cc-skills-info` toggle state is stored at:
