@@ -1,21 +1,35 @@
 /**
- * pi-tui integration for the `/local-issue-watcher-info` slash command
- * (tracker issue #0023).
+ * pi-tui integration for the `/local-issue-watcher browse` slash command
+ * (tracker issue #0025).
  *
  * This module is intentionally excluded from test coverage (see
  * `vitest.config.ts` → `**\/infoTui.ts`), mirroring the sibling
  * `pi-claude-code-skills-import/src/tuiPicker.ts` which we model this
- * layer on. The pure row/preview logic that makes `/local-issue-watcher-info`
- * behave correctly lives in `infoHandler.ts` and is fully unit-tested;
- * what remains here is glue that only surfaces meaningfully under a live
- * pi session.
+ * layer on. The pure row/preview logic that makes `/local-issue-watcher
+ * list` behave correctly lives in `infoHandler.ts` and is fully
+ * unit-tested; what remains here is glue that only surfaces
+ * meaningfully under a live pi session.
  *
- * Why a dual-pane layout instead of embedding the preview in each list
- * row: `SettingsList` supports a per-item `description` but spends most
- * of its screen width on the list column. `SelectList.onSelectionChange`
- * lets us maintain a separate, full-width `Text` component for the
- * selected issue's description + comments, which is the whole point of
- * the issue — the user wants to skim bodies, not just titles.
+ * Layout (post-#0025): a single-pane list that fills the panel height.
+ * No always-on preview pane; per-issue detail is shown on demand via
+ * Enter and dismissed via Esc.
+ *
+ * Why a mode-state machine inside ONE `ctx.ui.custom` factory (as
+ * opposed to stacking two sequential custom screens or using
+ * `showOverlay` for the detail view):
+ *
+ *   - `ctx.ui.custom` returns `Promise<T>` and only one is active at
+ *     a time; calling it a second time from `onSelect` would close
+ *     the list before opening the detail and then re-open a fresh
+ *     list on dismiss, blowing away the search-as-you-type filter and
+ *     the highlighted row. Overlays are possible but layer on their
+ *     own positioning/sizing concerns.
+ *   - A single factory keeps the `selectList` and `searchInput`
+ *     instances alive in closure scope across mode flips. The
+ *     issue's "Esc returns to the list with state preserved"
+ *     acceptance criterion falls out for free — there is no state
+ *     to save/restore, just a flag switching which subtree `render`
+ *     and `handleInput` dispatch to.
  *
  * Q-key handling: we do NOT bind a bare `q` quit shortcut. The task
  * brief calls out that `q` conflicts with a valid search-box character
@@ -36,22 +50,34 @@ type CommandCtx = Parameters<
 
 /**
  * Build the production `InfoPicker` used by the registered
- * `/local-issue-watcher-info` slash command. Lazily imports
+ * `/local-issue-watcher browse` slash command. Lazily imports
  * `@mariozechner/pi-tui` + `@mariozechner/pi-coding-agent` so this
  * module stays importable in unit tests that never spin up a TUI.
  *
- * Implementation shape:
- *   - Header `Text`       — "local-issue-watcher-info: <N> open, <M> total"
- *   - Search `Input`      — search-as-you-type; prefixed with a "search: " label Text
- *   - `SelectList`        — one row per open issue, `label = "<skill> #<id>  <title>"`
- *   - Preview `Text`      — mutable; re-populated from `formatPreview(row.info)`
- *                           on every `onSelectionChange` event
+ * Two-mode rendering:
+ *
+ *   mode === "list"
+ *     Header `Text`     — "local-issue-watcher browse: <N> open, <M> total"
+ *     Search `Input`    — search-as-you-type; prefixed with a "search: " label
+ *     `SelectList`      — one row per open issue, `label = "<skill> #<id>  <title>"`
+ *     Hint line         — `Enter: view details · Esc: close · type to filter`
+ *
+ *   mode === "detail"
+ *     Preview `Text`    — `formatPreview(detailInfo)` for the selected row
+ *     Hint line         — `Esc: back to list`
  *
  * Input routing (Container-level `handleInput`):
- *   - Up/Down/PageUp/PageDown/Home/End/Enter → SelectList
- *   - Esc / Ctrl-C                           → cancel (done(undefined))
- *   - Anything else (printable chars, backspace, Ctrl-W, Ctrl-U, …)
- *       → Input, then `setFilter(input.getValue())` + `tui.requestRender()`
+ *
+ *   list:
+ *     - Up/Down/PageUp/PageDown/Home/End   → SelectList
+ *     - Enter                              → SelectList.onSelect → flip to detail mode
+ *     - Esc / Ctrl-C                       → cancel (done(undefined))
+ *     - Anything else (printable chars, backspace, Ctrl-W, Ctrl-U, …)
+ *         → Input, then `setFilter(input.getValue())` + `tui.requestRender()`
+ *
+ *   detail:
+ *     - Esc / Left-Arrow / Ctrl-C          → flip back to list mode (read-only view)
+ *     - Everything else                    → ignored
  */
 export function makeInfoTuiPicker(ctx: CommandCtx): InfoPicker {
 	return async ({ rows, summary }) => {
@@ -65,39 +91,36 @@ export function makeInfoTuiPicker(ctx: CommandCtx): InfoPicker {
 			const theme = ctx.ui.theme;
 			const selectListTheme = getSelectListTheme();
 
-			const container = new Container();
-
 			// ---------------------------------------------------------
-			// Header — static summary line
+			// Header — static summary line (shared by both modes, but
+			// only rendered in list mode so the detail view can use the
+			// full panel height for the issue body).
 			// ---------------------------------------------------------
-			const headerLines = [
-				theme.fg("accent", theme.bold("local-issue-watcher-info")),
+			const listHeader = [
+				theme.fg("accent", theme.bold("local-issue-watcher browse")),
 				theme.fg("dim", summary),
-				theme.fg(
-					"dim",
-					"↑/↓ select · type to filter (skill / id / title) · Esc to exit",
-				),
 				"",
 			];
-			container.addChild({
-				render: () => headerLines,
-				invalidate: () => {},
-				// eslint-disable-next-line @typescript-eslint/no-explicit-any -- tui child shape
-			} as any);
 
 			// ---------------------------------------------------------
 			// Empty-state short-circuit
 			// ---------------------------------------------------------
 			if (rows.length === 0) {
-				container.addChild(
+				const emptyContainer = new Container();
+				emptyContainer.addChild({
+					render: () => listHeader,
+					invalidate: () => {},
+					// eslint-disable-next-line @typescript-eslint/no-explicit-any -- tui child shape
+				} as any);
+				emptyContainer.addChild(
 					new Text(theme.fg("dim", "(no open issues)"), 1, 1),
 				);
 				return {
-					render: (w: number) => container.render(w),
-					invalidate: () => container.invalidate(),
+					render: (w: number) => emptyContainer.render(w),
+					invalidate: () => emptyContainer.invalidate(),
 					handleInput: (data: string) => {
-						// Any input closes the empty-state panel; Esc/Ctrl-C are
-						// the documented shortcuts but Enter also reads naturally.
+						// Any of the documented close keys exits. Enter also
+						// reads naturally here — there is nothing to drill into.
 						if (
 							data === "\u001b" ||
 							data === "\u0003" ||
@@ -111,26 +134,41 @@ export function makeInfoTuiPicker(ctx: CommandCtx): InfoPicker {
 			}
 
 			// ---------------------------------------------------------
-			// Search input — single-line, label rendered in a preceding Text
+			// Mode-state machine. `mode` flips between "list" and
+			// "detail"; `detailInfo` is the row the user hit Enter on
+			// and is null-ish in list mode.
 			// ---------------------------------------------------------
+			let mode: "list" | "detail" = "list";
+			let detailInfo: InfoRow["info"] | undefined;
+
+			// ---------------------------------------------------------
+			// List subtree — header + search input + hint + SelectList
+			// ---------------------------------------------------------
+			const listContainer = new Container();
+
+			listContainer.addChild({
+				render: () => listHeader,
+				invalidate: () => {},
+				// eslint-disable-next-line @typescript-eslint/no-explicit-any -- tui child shape
+			} as any);
+
+			// Search input with a preceding "search:" label Text.
 			const searchInput = new Input();
-			container.addChild({
+			listContainer.addChild({
 				render: () => [theme.fg("dim", "search:")],
 				invalidate: () => {},
 				// eslint-disable-next-line @typescript-eslint/no-explicit-any -- tui child shape
 			} as any);
-			container.addChild(searchInput);
+			listContainer.addChild(searchInput);
 
-			// ---------------------------------------------------------
-			// List — one row per InfoRow
-			// ---------------------------------------------------------
+			// List — one row per InfoRow.
 			const rowByValue = new Map<string, InfoRow>();
 			for (const r of rows) rowByValue.set(r.value, r);
 
 			const items = rows.map((r) => ({ value: r.value, label: r.label }));
 			const selectList = new SelectList(
 				items,
-				Math.min(items.length + 2, 15),
+				Math.min(items.length + 2, 20),
 				selectListTheme,
 			);
 			// Override SelectList.setFilter: the stock implementation matches
@@ -150,40 +188,57 @@ export function makeInfoTuiPicker(ctx: CommandCtx): InfoPicker {
 				);
 				slInternal.selectedIndex = 0;
 			};
-			container.addChild(selectList);
+			listContainer.addChild(selectList);
 
-			// ---------------------------------------------------------
-			// Preview pane — mutable Text re-populated on selection change
-			// ---------------------------------------------------------
-			const previewSeparator = "";
-			const previewHeader = theme.fg("dim", "─ preview ─");
-			const previewText = new Text("", 0, 0);
-			const initial = rows[0];
-			if (initial) previewText.setText(formatPreview(initial.info));
-			container.addChild({
-				render: () => [previewSeparator, previewHeader],
+			// Status-bar hint at the bottom of the list view. Hardcoded
+			// key names — pi-tui / pi-coding-agent do not currently
+			// export a `keyHint(...)` helper that resolves the actual
+			// bindings for `tui.select.confirm` / `app.cancel`, and the
+			// issue explicitly allows hardcoded strings as a fallback.
+			const listHint = theme.fg(
+				"dim",
+				"Enter: view details · Esc: close · type to filter",
+			);
+			listContainer.addChild({
+				render: () => ["", listHint],
 				invalidate: () => {},
 				// eslint-disable-next-line @typescript-eslint/no-explicit-any -- tui child shape
 			} as any);
-			container.addChild(previewText);
+
+			// ---------------------------------------------------------
+			// Detail subtree — preview text + back hint. The Text
+			// component is mutable; we re-populate it from
+			// `detailInfo` on every mode flip so the user always sees
+			// the latest row content (relevant if the underlying file
+			// were to change mid-session, though we do not currently
+			// re-scan on Enter).
+			// ---------------------------------------------------------
+			const detailContainer = new Container();
+			const previewText = new Text("", 0, 0);
+			detailContainer.addChild(previewText);
+			const detailHint = theme.fg("dim", "Esc: back to list");
+			detailContainer.addChild({
+				render: () => ["", detailHint],
+				invalidate: () => {},
+				// eslint-disable-next-line @typescript-eslint/no-explicit-any -- tui child shape
+			} as any);
 
 			// ---------------------------------------------------------
 			// SelectList callbacks
 			// ---------------------------------------------------------
 			selectList.onCancel = () => done(undefined);
-			// Enter is intentionally a no-op: the preview is always visible
-			// and the user can keep browsing. Closing is via Esc/Ctrl-C.
-			selectList.onSelect = () => {};
-			selectList.onSelectionChange = (item) => {
+			// Enter → drill into detail view for the highlighted row.
+			selectList.onSelect = (item) => {
 				const row = rowByValue.get(item.value);
-				previewText.setText(row ? formatPreview(row.info) : "");
+				if (!row) return;
+				detailInfo = row.info;
+				previewText.setText(formatPreview(detailInfo));
+				mode = "detail";
 				tui.requestRender();
 			};
 
 			// ---------------------------------------------------------
-			// Input routing — forward list-navigation keys to SelectList
-			// and everything else (printable chars + editing keys) to
-			// Input, then re-apply the filter.
+			// Input routing
 			// ---------------------------------------------------------
 			const isListNavKey = (data: string): boolean => {
 				// CSI sequences: arrow keys, Home, End, PageUp, PageDown.
@@ -194,19 +249,37 @@ export function makeInfoTuiPicker(ctx: CommandCtx): InfoPicker {
 			};
 
 			return {
-				render: (w: number) => container.render(w),
-				invalidate: () => container.invalidate(),
+				render: (w: number) =>
+					mode === "list"
+						? listContainer.render(w)
+						: detailContainer.render(w),
+				invalidate: () => {
+					// Invalidate both subtrees so the next frame after a mode
+					// flip starts from a clean slate regardless of which
+					// direction we came from.
+					listContainer.invalidate();
+					detailContainer.invalidate();
+				},
 				handleInput: (data: string) => {
-					// Bare Esc → cancel. CSI sequences start with "\u001b[" and
-					// are handled as nav keys below.
-					if (data === "\u001b") {
-						done(undefined);
+					if (mode === "detail") {
+						// Esc, Ctrl-C, or Left-Arrow → back to list.
+						// Left-Arrow is a CSI `\u001b[D`; we match it
+						// explicitly so Up/Down don't also trigger a back.
+						if (
+							data === "\u001b" ||
+							data === "\u0003" ||
+							data === "\u001b[D"
+						) {
+							mode = "list";
+							tui.requestRender();
+						}
+						// All other input in detail mode is swallowed — the
+						// preview is read-only.
 						return;
 					}
-					// Ctrl-C → cancel (the TUI host usually intercepts this, but
-					// we handle it defensively so the slash command always exits
-					// cleanly).
-					if (data === "\u0003") {
+
+					// mode === "list" — unchanged routing from pre-#0025.
+					if (data === "\u001b" || data === "\u0003") {
 						done(undefined);
 						return;
 					}
@@ -219,13 +292,6 @@ export function makeInfoTuiPicker(ctx: CommandCtx): InfoPicker {
 					// paste bursts — goes to the search box, then re-filter.
 					searchInput.handleInput(data);
 					selectList.setFilter(searchInput.getValue());
-					const selected = selectList.getSelectedItem();
-					if (selected) {
-						const row = rowByValue.get(selected.value);
-						previewText.setText(row ? formatPreview(row.info) : "");
-					} else {
-						previewText.setText(theme.fg("dim", "(no matches)"));
-					}
 					tui.requestRender();
 				},
 			};

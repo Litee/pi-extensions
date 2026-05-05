@@ -617,7 +617,7 @@ describe("/local-issue-watcher command", () => {
 		expect(lastMessage).toContain(dbRoot);
 	});
 
-	it("warns on an unknown subcommand", async () => {
+	it("warns on an unknown subcommand (mentions `browse` in the hint)", async () => {
 		const pi = makeFakePi();
 		extensionWithDbRoot(pi, dbRoot);
 		const cmd = pi.commands.get("local-issue-watcher");
@@ -626,6 +626,7 @@ describe("/local-issue-watcher command", () => {
 
 		const [msg, level] = ctx.ui.notify.mock.calls[0] as [string, string];
 		expect(msg).toMatch(/unknown subcommand/i);
+		expect(msg).toMatch(/\bbrowse\b/);
 		expect(level).toBe("warning");
 	});
 
@@ -1434,14 +1435,14 @@ describe("handleSessionStart deferMessages (#0015)", () => {
 });
 
 // ---------------------------------------------------------------------------
-// /local-issue-watcher-info command (#0023)
+// /local-issue-watcher browse subcommand (#0023 / renamed under #0025)
 // ---------------------------------------------------------------------------
 
-describe("/local-issue-watcher-info command (#0023)", () => {
+describe("/local-issue-watcher browse subcommand (#0025)", () => {
 	let dbRoot: string;
 
 	beforeEach(() => {
-		dbRoot = mkdtempSync(join(tmpdir(), "pi-local-issue-watcher-info-"));
+		dbRoot = mkdtempSync(join(tmpdir(), "pi-local-issue-watcher-browse-"));
 	});
 	afterEach(() => {
 		rmSync(dbRoot, { recursive: true, force: true });
@@ -1459,20 +1460,15 @@ describe("/local-issue-watcher-info command (#0023)", () => {
 		}
 	}
 
-	it("registers the new command with a description and handler", () => {
+	it("does NOT register the legacy /local-issue-watcher-info command (#0025)", () => {
 		const pi = makeFakePi();
 		extensionWithDbRoot(pi, dbRoot);
-		expect(pi.registerCommand).toHaveBeenCalledWith(
-			"local-issue-watcher-info",
-			expect.objectContaining({
-				description: expect.any(String),
-				handler: expect.any(Function),
-			}),
-		);
-		expect(pi.commands.get("local-issue-watcher-info")).toBeDefined();
+		expect(pi.commands.has("local-issue-watcher-info")).toBe(false);
+		const registeredNames = pi.registerCommand.mock.calls.map((c) => c[0] as string);
+		expect(registeredNames).not.toContain("local-issue-watcher-info");
 	});
 
-	it("invokes handleInfo with the resolved dbRoot, live scanner, and an InfoPicker that receives open rows + summary", async () => {
+	it("dispatches 'browse' to handleInfo with the resolved dbRoot, live scanner, and an InfoPicker that receives open rows + summary", async () => {
 		// Seed the dbRoot with one open + one done issue so the picker gets a
 		// non-trivial payload.
 		mkdirSync(join(dbRoot, "skill-a"), { recursive: true });
@@ -1494,18 +1490,17 @@ describe("/local-issue-watcher-info command (#0023)", () => {
 		const pi = makeFakePi();
 		extensionWithDbRoot(pi, dbRoot);
 		const ctx = makeFakeCtx();
-		await pi.commands.get("local-issue-watcher-info")!.handler("", ctx);
+		await pi.commands.get("local-issue-watcher")!.handler("browse", ctx);
 
 		expect(received).toHaveLength(1);
-		// Only the open issue lands in the rows; summary reports both counts.
 		expect(received[0]!.rows).toHaveLength(1);
 		expect(received[0]!.rows[0]!.info.issueId).toBe("0001");
 		expect(received[0]!.summary).toBe("1 open, 2 total");
-		// And no notify fires on the happy path.
+		// Happy path fires no notify — the TUI owns the UX from here.
 		expect(ctx.ui.notify).not.toHaveBeenCalled();
 	});
 
-	it("emits a warning notify (and does NOT invoke the picker) when dbRoot is not configured", async () => {
+	it("'browse' emits a warning notify (and does NOT invoke the picker) when dbRoot is not configured", async () => {
 		const pickerCalls: number[] = [];
 		__setInfoPickerForTests(async () => {
 			pickerCalls.push(1);
@@ -1515,12 +1510,12 @@ describe("/local-issue-watcher-info command (#0023)", () => {
 		const pi = makeFakePi();
 		extensionWithDbRoot(pi, missing);
 		const ctx = makeFakeCtx();
-		await pi.commands.get("local-issue-watcher-info")!.handler("", ctx);
+		await pi.commands.get("local-issue-watcher")!.handler("browse", ctx);
 
 		expect(pickerCalls).toHaveLength(0);
 		const calls = ctx.ui.notify.mock.calls as Array<[string, string]>;
 		expect(calls).toHaveLength(1);
-		expect(calls[0]![0]).toMatch(/local-issue-watcher-info/);
+		expect(calls[0]![0]).toMatch(/local-issue-watcher browse/);
 		expect(calls[0]![0]).toContain(missing);
 		expect(calls[0]![1]).toBe("warning");
 	});

@@ -1,6 +1,6 @@
 /**
- * Orchestration for the `/local-issue-watcher-info` slash command
- * (tracker issue #0023).
+ * Orchestration for the `/local-issue-watcher browse` slash command
+ * (tracker issues #0023, #0025).
  *
  * Keeps the pure logic — scan the tracker → shape rows → delegate to
  * a picker — separate from the pi-tui integration code that lives in
@@ -8,13 +8,11 @@
  * picker, so the data-shaping contract is fully covered without needing
  * a live TUI runtime.
  *
- * Why a separate module: `/local-issue-watcher-info` is a NEW slash
- * command (alongside the existing `/local-issue-watcher pause | resume
- * | status`, not replacing any of its subcommands — see #0023's own
- * description and the follow-up clarifying question answered by the
- * user). Mixing the new handler into the existing omnibus command
- * registration would inflate `src/index.ts`; splitting it off keeps
- * each command's wiring small and focused.
+ * Why a separate module: `browse` is a subcommand on the existing
+ * `/local-issue-watcher` root and sits alongside `pause` / `resume` /
+ * `status`. Splitting the orchestration off keeps each subcommand's
+ * wiring small and focused and lets us test the row shaping without
+ * pulling in pi-tui.
  */
 
 import type { IssueInfo, Snapshot } from "./types.js";
@@ -24,14 +22,14 @@ import type { IssueInfo, Snapshot } from "./types.js";
  *
  * `value` is the absolute on-disk path of the issue JSON file, used as
  * the SelectList item value so the picker can look up the full
- * {@link IssueInfo} for the preview pane.
+ * {@link IssueInfo} when the user drills into the detail view.
  */
 export interface InfoRow {
 	/** Absolute path of the backing issue JSON file. */
 	value: string;
 	/** One-line row label: `<skill> #<issueId> — <title>`. */
 	label: string;
-	/** Backing issue info — carried through so the picker's preview pane can render it without a second scan. */
+	/** Backing issue info — carried through so the picker's detail view can render it without a second scan. */
 	info: IssueInfo;
 }
 
@@ -44,7 +42,7 @@ export interface InfoRow {
  * The picker is called once per command invocation. It owns the TUI
  * lifecycle — open panel, accept user input, close on Esc/q — and is
  * not expected to return a value: interaction is entirely side-effecting
- * (preview pane text updates, eventual exit). The returned promise
+ * (detail-view drill-in on Enter, eventual exit). The returned promise
  * resolves when the user closes the picker.
  */
 export type InfoPicker = (args: {
@@ -106,7 +104,8 @@ export function formatRowLabel(info: IssueInfo): string {
 }
 
 /**
- * Render the content shown in the preview pane when a row is selected.
+ * Render the content shown in the detail view when a row is opened
+ * via Enter.
  *
  * Includes the issue's description and a compact rendering of each
  * comment (timestamp + body). Returned as a plain string with `\n`
@@ -115,7 +114,7 @@ export function formatRowLabel(info: IssueInfo): string {
  *
  * Empty description and empty comments are both tolerated — the
  * corresponding sections are rendered as a single "(none)" placeholder
- * so the preview pane is never empty.
+ * so the detail view is never empty.
  */
 export function formatPreview(info: IssueInfo): string {
 	const lines: string[] = [];

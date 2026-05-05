@@ -21,8 +21,9 @@
  *   session_shutdown:
  *     - clear the poll interval
  *
- *   /local-issue-watcher  (pause|resume|<no args>):
- *     - toggle pause state or print a status summary via `ctx.ui.notify`
+ *   /local-issue-watcher  (pause|resume|browse|<no args>):
+ *     - toggle pause state, open the searchable backlog browser, or
+ *       print a status summary via `ctx.ui.notify`
  *
  * Scope: one dbRoot per process. No tool is registered — this extension is
  * meant to be enabled per-project (via the workspace `pi.extensions`
@@ -58,7 +59,7 @@ import type { Snapshot } from "./types.js";
 
 // ---------------------------------------------------------------------------
 // Test-only hook: swap the real `makeInfoTuiPicker` for a fake picker so the
-// `/local-issue-watcher-info` wiring can be exercised without spinning up a
+// `/local-issue-watcher browse` wiring can be exercised without spinning up a
 // live pi-tui runtime. Mirrors the `__setFetchNamesForTests` pattern from
 // pi-update-cmux-status. Production always sees `null` and falls back to
 // `makeInfoTuiPicker(ctx)`.
@@ -498,34 +499,8 @@ export default function issueWatcher(pi: ExtensionAPI): void {
 		rt.ui = null;
 	});
 
-	pi.registerCommand("local-issue-watcher-info", {
-		description: "Browse the local-skill-issues-tracker backlog in a searchable TUI",
-		handler: async (_args, ctx) => {
-			const anyCtx = ctx as unknown as {
-				hasUI?: boolean;
-				ui?: { notify?: (m: string, l?: string) => void; hasUI?: boolean };
-			};
-			const hasUI = anyCtx.hasUI ?? anyCtx.ui?.hasUI ?? anyCtx.ui !== undefined;
-			const ui = hasUI ? anyCtx.ui : undefined;
-			if (!existsSync(rt.dbRoot)) {
-				ui?.notify?.(
-					`local-issue-watcher-info: dbRoot not found (${rt.dbRoot})`,
-					"warning",
-				);
-				return;
-			}
-			const picker =
-				infoPickerOverride ?? makeInfoTuiPicker(ctx as Parameters<typeof makeInfoTuiPicker>[0]);
-			await handleInfo({
-				dbRoot: rt.dbRoot,
-				scan: (root) => scanIssueFiles(root),
-				picker,
-			});
-		},
-	});
-
 	pi.registerCommand("local-issue-watcher", {
-		description: "Control the local-skill-issues-tracker watcher (pause/resume/status)",
+		description: "Control the local-skill-issues-tracker watcher (pause/resume/status/browse)",
 		handler: async (args, ctx) => {
 			const anyCtx = ctx as unknown as {
 				hasUI?: boolean;
@@ -540,6 +515,24 @@ export default function issueWatcher(pi: ExtensionAPI): void {
 			const ui = hasUI ? anyCtx.ui : undefined;
 			const sub = args.trim().toLowerCase();
 			switch (sub) {
+				case "browse": {
+					if (!existsSync(rt.dbRoot)) {
+						ui?.notify?.(
+							`local-issue-watcher browse: dbRoot not found (${rt.dbRoot})`,
+							"warning",
+						);
+						return;
+					}
+					const picker =
+						infoPickerOverride ??
+						makeInfoTuiPicker(ctx as Parameters<typeof makeInfoTuiPicker>[0]);
+					await handleInfo({
+						dbRoot: rt.dbRoot,
+						scan: (root) => scanIssueFiles(root),
+						picker,
+					});
+					return;
+				}
 				case "pause": {
 					rt.paused = true;
 					stopPolling(rt);
@@ -578,7 +571,7 @@ export default function issueWatcher(pi: ExtensionAPI): void {
 				}
 				default:
 					ui?.notify?.(
-						`local-issue-watcher: unknown subcommand '${sub}'. Use: pause | resume | status`,
+						`local-issue-watcher: unknown subcommand '${sub}'. Use: pause | resume | status | browse`,
 						"warning",
 					);
 			}
