@@ -40,6 +40,7 @@
  */
 
 import type { ExtensionAPI } from "@mariozechner/pi-coding-agent";
+import { matchesKey } from "@mariozechner/pi-tui";
 
 import { formatPreview, type InfoPicker, type InfoRow } from "./infoHandler.js";
 
@@ -71,13 +72,23 @@ type CommandCtx = Parameters<
  *   list:
  *     - Up/Down/PageUp/PageDown/Home/End   → SelectList
  *     - Enter                              → SelectList.onSelect → flip to detail mode
- *     - Esc / Ctrl-C                       → cancel (done(undefined))
+ *     - Esc                                → cancel (done(undefined))
  *     - Anything else (printable chars, backspace, Ctrl-W, Ctrl-U, …)
  *         → Input, then `setFilter(input.getValue())` + `tui.requestRender()`
  *
  *   detail:
- *     - Esc / Left-Arrow / Ctrl-C          → flip back to list mode (read-only view)
+ *     - Esc / Left-Arrow                   → flip back to list mode (read-only view)
  *     - Everything else                    → ignored
+ *
+ *   both modes:
+ *     - Ctrl-C                             → cancel (done(undefined))
+ *
+ * Ctrl-C is matched at the very top of `handleInput` BEFORE the
+ * mode-dispatch so it is always an emergency exit — the #0026 hotfix
+ * that restores the always-closable contract. All key matching uses
+ * `matchesKey(data, keyId)` rather than literal byte comparisons so
+ * Kitty-protocol-encoded sequences (the actual #0026 trigger) are
+ * honoured alongside the legacy forms.
  */
 export function makeInfoTuiPicker(ctx: CommandCtx): InfoPicker {
 	return async ({ rows, summary }) => {
@@ -121,11 +132,12 @@ export function makeInfoTuiPicker(ctx: CommandCtx): InfoPicker {
 					handleInput: (data: string) => {
 						// Any of the documented close keys exits. Enter also
 						// reads naturally here — there is nothing to drill into.
+						// Use matchesKey so Kitty-encoded variants of Esc / Ctrl-C
+						// are honoured as well as the legacy byte forms (see #0026).
 						if (
-							data === "\u001b" ||
-							data === "\u0003" ||
-							data === "\r" ||
-							data === "\n"
+							matchesKey(data, "escape") ||
+							matchesKey(data, "ctrl+c") ||
+							matchesKey(data, "enter")
 						) {
 							done(undefined);
 						}
@@ -261,15 +273,25 @@ export function makeInfoTuiPicker(ctx: CommandCtx): InfoPicker {
 					detailContainer.invalidate();
 				},
 				handleInput: (data: string) => {
+					// #0026: emergency-exit contract — Ctrl-C must ALWAYS
+					// close the widget, regardless of mode. The previous
+					// implementation only flipped mode on Ctrl-C in detail
+					// view (and relied on literal `\u0003` byte matching),
+					// which wedged the TUI when Kitty-encoded Ctrl-C was in
+					// play and the user had no other way out. Widget-level
+					// close is a safety net; the normal detail-mode path is
+					// Esc / Left → back to list.
+					if (matchesKey(data, "ctrl+c")) {
+						done(undefined);
+						return;
+					}
+
 					if (mode === "detail") {
-						// Esc, Ctrl-C, or Left-Arrow → back to list.
-						// Left-Arrow is a CSI `\u001b[D`; we match it
-						// explicitly so Up/Down don't also trigger a back.
-						if (
-							data === "\u001b" ||
-							data === "\u0003" ||
-							data === "\u001b[D"
-						) {
+						// Esc or Left-Arrow → back to list. `matchesKey`
+						// handles both legacy byte forms (`\x1b`, `\x1b[D`)
+						// and the Kitty-encoded CSI variants the prior
+						// literal-equality checks missed (see #0026).
+						if (matchesKey(data, "escape") || matchesKey(data, "left")) {
 							mode = "list";
 							tui.requestRender();
 						}
@@ -279,7 +301,7 @@ export function makeInfoTuiPicker(ctx: CommandCtx): InfoPicker {
 					}
 
 					// mode === "list" — unchanged routing from pre-#0025.
-					if (data === "\u001b" || data === "\u0003") {
+					if (matchesKey(data, "escape")) {
 						done(undefined);
 						return;
 					}
