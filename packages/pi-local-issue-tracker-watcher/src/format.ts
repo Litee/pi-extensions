@@ -93,16 +93,13 @@ export function buildMissingDbRootStatus(dbRoot: string): string {
  *
  * Format (rendered inside the [pi-local-issue-tracker-watcher] box):
  *
- *     active | poll=60s
+ *     active
+ *     poll=60s
  *     dbRoot: <path>
  *     <N> open · <M> done · <K> wont_fix
  *
- *     /local-issue-watcher: status · pause · resume · browse
- *
  * The extension-name prefix is omitted — the box header already identifies
  * the source. The counts line uses `·` as separator for readability.
- * A commands hint is appended so the user can see available subcommands
- * at a glance without searching docs.
  *
  * Unlike {@link buildStartupAnnouncement} (which goes to the pinned status
  * row), this string is intended for `pi.sendMessage({ triggerTurn: false })`
@@ -129,11 +126,10 @@ export function buildStartupChatMessage(
 	for (const s of leftover) parts.push(`${counts[s]} ${s}`);
 	const pollSeconds = Math.max(1, Math.round(pollIntervalMs / 1000));
 	return [
-		`active | poll=${pollSeconds}s`,
+		"active",
+		`poll=${pollSeconds}s`,
 		`dbRoot: ${dbRoot}`,
 		parts.join(" · "),
-		"",
-		"/local-issue-watcher: status · pause · resume · browse",
 	].join("\n");
 }
 
