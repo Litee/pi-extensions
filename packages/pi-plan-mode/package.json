@@ -2,7 +2,7 @@
   "name": "pi-plan-mode",
   "version": "0.1.0",
   "private": true,
-  "description": "Pi extension that adds a read-only 'plan mode' — restricts tools to read/bash/grep/find/ls/questionnaire, allowlists bash to read-only commands, extracts numbered plan steps from a Plan: section, tracks [DONE:n] completion markers, and shows a progress widget during execution.",
+  "description": "Pi extension that adds a read-only 'plan mode' — restricts tools to read/bash/grep/find/ls/ask_user_question and allowlists bash to read-only commands.",
   "type": "module",
   "keywords": ["pi-package"],
   "pi": {
