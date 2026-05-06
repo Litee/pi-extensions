@@ -31,6 +31,7 @@ import type {
 	ExtensionContext,
 } from "@mariozechner/pi-coding-agent";
 import type { AssistantMessage } from "@mariozechner/pi-ai";
+import { Container, Text } from "@mariozechner/pi-tui";
 
 import {
 	buildConversationBreakdown,
@@ -105,6 +106,22 @@ export default function contextWindowAnalysis(pi: ExtensionAPI): void {
 	let lastSystemPrompt = "";
 	let lastOptions: SystemPromptOptions | undefined;
 
+	/**
+	 * Render the widget using the factory-function overload of setWidget so the
+	 * content is not subject to pi's MAX_WIDGET_LINES = 10 line cap that applies
+	 * to the string-array overload.
+	 */
+	function setWidget(ctx: ExtensionContext, systemPrompt: string, options: SystemPromptOptions | undefined): void {
+		ctx.ui.setWidget(WIDGET_KEY, (_tui, widgetTheme) => {
+			const lines = renderWidget(systemPrompt, options, ctx, widgetTheme as unknown as RenderTheme);
+			const container = new Container();
+			for (const line of lines) {
+				container.addChild(new Text(line, 1, 0));
+			}
+			return container;
+		});
+	}
+
 	// Capture system prompt + options from the start of each agent run.
 	pi.on("before_agent_start", async (event: BeforeAgentStartEvent) => {
 		lastSystemPrompt = event.systemPrompt;
@@ -114,8 +131,7 @@ export default function contextWindowAnalysis(pi: ExtensionAPI): void {
 	// Refresh widget after each turn ends (if visible).
 	pi.on("turn_end", async (_event, ctx) => {
 		if (!widgetVisible || !ctx.hasUI) return;
-		const theme = ctx.ui.theme as unknown as RenderTheme;
-		ctx.ui.setWidget(WIDGET_KEY, renderWidget(lastSystemPrompt, lastOptions, ctx, theme));
+		setWidget(ctx, lastSystemPrompt, lastOptions);
 	});
 
 	// Clear on session shutdown.
@@ -161,8 +177,7 @@ export default function contextWindowAnalysis(pi: ExtensionAPI): void {
 				return;
 			}
 
-			const theme = ctx.ui.theme as unknown as RenderTheme;
-			ctx.ui.setWidget(WIDGET_KEY, renderWidget(lastSystemPrompt, lastOptions, ctx, theme));
+			setWidget(ctx, lastSystemPrompt, lastOptions);
 		},
 	});
 }
