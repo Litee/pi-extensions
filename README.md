@@ -14,7 +14,7 @@ Personal collection of extensions for Pi Agent.
 | [`pi-local-issue-tracker-watcher`](packages/pi-local-issue-tracker-watcher) | Watches a `local-skill-issues-tracker` database on disk and injects issue change notifications into pi chat as `local-issue-watcher` custom messages. |
 | [`pi-plan-mode`](packages/pi-plan-mode) | Copy of [`badlogic/pi-mono/examples/plan-mode`](https://github.com/badlogic/pi-mono/tree/main/packages/coding-agent/examples/extensions/plan-mode) (MIT, © Mario Zechner): read-only exploration mode toggled via `/plan` or `Ctrl+Alt+P`, with a bash allowlist, a plan-step extractor, `[DONE:n]` progress tracking, and a completion widget. |
 | [`pi-session-recap`](packages/pi-session-recap) | Copy of [`tmustier/pi-extensions/session-recap`](https://github.com/tmustier/pi-extensions/tree/main/session-recap) (MIT, © Thomas Mustier): one-line recap widget above the editor when you refocus a pi session, with DECSET `?1004` focus reporting and an idle fallback. |
-| [`pi-tool-info`](packages/pi-tool-info) | Registers a `/tool-info` command that lists every tool available in a pi session (builtin / sdk / extension / skill), with per-tool description, parameter schema, active/inactive state, and a compact `chars/4` token estimate. |
+| [`pi-tools`](packages/pi-tools) | Registers a `/tools` command that lists every tool available in a pi session (builtin / sdk / extension / skill), with per-tool description, parameter schema, active/inactive state, and a compact `chars/4` token estimate. |
 
 ## Development
 

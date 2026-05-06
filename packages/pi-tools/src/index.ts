@@ -1,14 +1,14 @@
 /**
  * pi-tool-info
  *
- * Registers a `/tool-info` command that lets you review every tool available
+ * Registers a `/tools` command that lets you review every tool available
  * to pi in the current session: name, source, active/inactive state,
  * description, full JSON parameter schema, and a compact token estimate.
  *
  * Usage:
- *   /tool-info              → pick a tool from a selector, then view details
- *   /tool-info <name>       → jump straight to details for <name>
- *   /tool-info --all        → render details for every tool in one view
+ *   /tools              → pick a tool from a selector, then view details
+ *   /tools <name>       → jump straight to details for <name>
+ *   /tools --all        → render details for every tool in one view
  *
  * From the per-tool detail view:
  *   ← (Left arrow)          → back to the selector (when entered from it)
@@ -111,7 +111,7 @@ async function showMarkdown(
 }
 
 export default function toolInfoExtension(pi: ExtensionAPI) {
-	pi.registerCommand("tool-info", {
+	pi.registerCommand("tools", {
 		description: "Show tools with their descriptions and parameter schemas",
 		getArgumentCompletions: (prefix) => {
 			const tools = pi.getAllTools();
