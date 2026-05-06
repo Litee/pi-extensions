@@ -159,6 +159,14 @@ export interface HandleSessionStartOptions {
 	 * the bottom of this file passes `true`.
 	 */
 	deferMessages?: boolean;
+	/**
+	 * Shared one-shot parse-failure toast state (#0029). Mutated by this
+	 * function and by `pollOnce` / command handlers so the contract
+	 * "one toast per session, period" holds across all scan sites.
+	 * Default `{ hasToasted: false }` when omitted — only the default
+	 * export needs to thread a shared instance; tests can omit it.
+	 */
+	parseFailureToastState?: { hasToasted: boolean };
 }
 
 export interface HandleSessionStartResult {
@@ -188,11 +196,41 @@ export interface HandleSessionStartResult {
 export async function handleSessionStart(
 	opts: HandleSessionStartOptions,
 ): Promise<HandleSessionStartResult> {
-	const { pi, ctx, dbRoot, deferMessages } = opts;
+	const { pi, ctx, dbRoot, deferMessages, parseFailureToastState } = opts;
 	const hasUI = ctx.hasUI ?? ctx.ui?.hasUI ?? ctx.ui !== undefined;
 	const notify = hasUI ? ctx.ui?.notify : undefined;
 	const setStatus = hasUI ? ctx.ui?.setStatus : undefined;
 	const theme = hasUI ? ctx.ui?.theme : undefined;
+	/**
+	 * One-shot parse-failure toast helper (#0029). Returns a scanner-
+	 * compatible `onError` callback that counts failures into a local
+	 * closure, plus a `flush()` to be called after the scan. `flush()`
+	 * fires at most ONE `ui.notify(...)` per session across all
+	 * `makeParseFailureHandler()` call sites, because the `hasToasted`
+	 * bit lives on the shared mutable state object passed in.
+	 *
+	 * UI-absent sessions (`hasUI === false`) are explicitly designed NOT
+	 * to flip `hasToasted`: a later UI-enabled session must still be
+	 * allowed to warn about the same failures. See test coverage for
+	 * #0029 UI-absence case.
+	 */
+	function makeParseFailureHandler() {
+		let count = 0;
+		return {
+			onError: (_path: string, _err: unknown) => {
+				count += 1;
+			},
+			flush: () => {
+				if (count === 0) return;
+				if (!hasUI || notify === undefined) return;
+				if (parseFailureToastState?.hasToasted === true) return;
+				notify(buildParseFailureToast(count), "warning");
+				if (parseFailureToastState !== undefined) {
+					parseFailureToastState.hasToasted = true;
+				}
+			},
+		};
+	}
 	/**
 	 * Route every `sendMessage` through this helper so we can defer to
 	 * `setImmediate` when called from the real extension (#0015). The inline
@@ -243,7 +281,9 @@ export async function handleSessionStart(
 	}
 
 	const baseline = rehydrateFromSession(ctx);
-	const currentSnapshot = scanIssueFiles(dbRoot, baseline?.snapshot);
+	const scanHandler = makeParseFailureHandler();
+	const currentSnapshot = scanIssueFiles(dbRoot, baseline?.snapshot, scanHandler.onError);
+	scanHandler.flush();
 
 	// Emit a single, informational startup announcement so the user can see
 	// the watcher is running and which dbRoot is in effect — without having
@@ -327,6 +367,19 @@ export async function handleSessionStart(
 }
 
 /**
+ * Build the one-shot parse-failure toast body. Count-only by design
+ * (#0029): we must NOT interpolate file paths or skill directory names — a
+ * pathological tracker with thousands of bad files would otherwise produce a
+ * summary string long enough to blow out the TUI notify widget. The user has
+ * the path to the tracker already (pinned status line); the actionable bit
+ * is just "something is broken, go look."
+ */
+function buildParseFailureToast(failureCount: number): string {
+	const noun = failureCount === 1 ? "issue file" : "issue files";
+	return `local-issue-watcher: ${failureCount} ${noun} failed to parse; skipping.`;
+}
+
+/**
  * Convert a `Snapshot` (with `bigint` mtimeNs) into a form safe to pass
  * through `pi.appendEntry`, which round-trips through JSON. We stringify
  * every bigint; `rehydrateFromSession` converts it back.
@@ -378,6 +431,14 @@ interface Runtime {
 				hasUI?: boolean;
 		  }
 		| null;
+	/**
+	 * One-shot parse-failure toast state (#0029). Shared between
+	 * `handleSessionStart`, `pollOnce`, and the status command so exactly
+	 * one toast fires per session regardless of which scan site first
+	 * sees a bad file. Pause/resume must NOT reset this — see test
+	 * coverage for #0029 flapping + pause/resume invariants.
+	 */
+	parseFailureToastState: { hasToasted: boolean };
 }
 
 function makeRuntime(dbRoot: string, pi: Runtime["pi"]): Runtime {
@@ -388,6 +449,7 @@ function makeRuntime(dbRoot: string, pi: Runtime["pi"]): Runtime {
 		timer: null,
 		pi,
 		ui: null,
+		parseFailureToastState: { hasToasted: false },
 	};
 }
 
@@ -429,7 +491,21 @@ async function pollOnce(rt: Runtime): Promise<void> {
 	if (!existsSync(rt.dbRoot)) return;
 	// Carry forward the previous snapshot so transient read/parse failures
 	// (writer mid-flush) don't produce spurious `removed -> new` diffs (#0003).
-	const next = scanIssueFiles(rt.dbRoot, rt.snapshot);
+	// Count per-file failures via `onError` and fire at most one toast per
+	// session across all scan sites (#0029).
+	let failureCount = 0;
+	const next = scanIssueFiles(rt.dbRoot, rt.snapshot, () => {
+		failureCount += 1;
+	});
+	if (
+		failureCount > 0 &&
+		rt.ui?.hasUI !== false &&
+		rt.ui?.notify !== undefined &&
+		!rt.parseFailureToastState.hasToasted
+	) {
+		rt.ui.notify(buildParseFailureToast(failureCount), "warning");
+		rt.parseFailureToastState.hasToasted = true;
+	}
 	const changes = diffSnapshots(rt.snapshot, next);
 	if (changes.length > 0) {
 		rt.pi.sendMessage(
@@ -479,6 +555,10 @@ export default function issueWatcher(pi: ExtensionAPI): void {
 			// the next setImmediate tick so the interactive UI renders the
 			// chat bubble before the LLM turn absorbs the content (#0015).
 			deferMessages: true,
+			// Share the runtime's one-shot toast state so session_start,
+			// pollOnce, and the command handlers all agree on whether we've
+			// already warned about bad files this session (#0029).
+			parseFailureToastState: rt.parseFailureToastState,
 		});
 		if (!res.started) return;
 		// Reuse the exact snapshot handleSessionStart already scanned. A
@@ -574,12 +654,29 @@ export default function issueWatcher(pi: ExtensionAPI): void {
 				case "resume": {
 					rt.paused = false;
 					persistRunState(pi, false);
+					let resumeFailureCount = 0;
 					const resumedSnap = existsSync(rt.dbRoot)
-						? scanIssueFiles(rt.dbRoot, rt.snapshot)
+						? scanIssueFiles(rt.dbRoot, rt.snapshot, () => {
+								resumeFailureCount += 1;
+						  })
 						: {};
 					if (existsSync(rt.dbRoot)) {
 						rt.snapshot = resumedSnap;
 						startPolling(rt);
+					}
+					// #0029: resume counts as a fresh scan site. If we haven't
+					// toasted yet this session AND the resumed scan saw failures,
+					// toast now. Flipping `hasToasted` here means a later poll
+					// with bad files stays silent, per the one-shot contract.
+					if (
+						resumeFailureCount > 0 &&
+						ui !== undefined &&
+						ui.hasUI !== false &&
+						ui.notify !== undefined &&
+						!rt.parseFailureToastState.hasToasted
+					) {
+						ui.notify(buildParseFailureToast(resumeFailureCount), "warning");
+						rt.parseFailureToastState.hasToasted = true;
 					}
 					refreshStatusLine(ui ?? null, rt, "resumed", resumedSnap);
 					ui?.notify?.(`local-issue-watcher: resumed (dbRoot=${rt.dbRoot})`, "info");
@@ -593,7 +690,22 @@ export default function issueWatcher(pi: ExtensionAPI): void {
 						ui?.notify?.(buildMissingDbRootStatus(rt.dbRoot), "warning");
 						return;
 					}
-					const snap = scanIssueFiles(rt.dbRoot);
+					let statusFailureCount = 0;
+					const snap = scanIssueFiles(rt.dbRoot, undefined, () => {
+						statusFailureCount += 1;
+					});
+					// #0029: status is a user-invoked scan site, so it shares
+					// the one-shot toast budget with session_start + pollOnce.
+					if (
+						statusFailureCount > 0 &&
+						ui !== undefined &&
+						ui.hasUI !== false &&
+						ui.notify !== undefined &&
+						!rt.parseFailureToastState.hasToasted
+					) {
+						ui.notify(buildParseFailureToast(statusFailureCount), "warning");
+						rt.parseFailureToastState.hasToasted = true;
+					}
 					pi.sendMessage({
 						customType: CUSTOM_MESSAGE_TYPE,
 						content: buildStartupChatMessage(rt.dbRoot, snap),

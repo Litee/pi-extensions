@@ -2033,3 +2033,267 @@ describe("/local-issue-watcher message renderer (#0028)", () => {
 		}
 	});
 });
+
+// ---------------------------------------------------------------------------
+// #0029 — one-shot parse-failure toast invariants.
+//
+// These tests lock in the contract: across every scan site
+// (`handleSessionStart`, the 60s poll loop, the `/status` command, and
+// `resume`) a session must emit at most ONE `ui.notify(..., "warning")` for
+// parse failures, the toast summary must be count-only (no paths), and
+// UI-absent sessions must NOT burn the one-shot opportunity for a later
+// UI-enabled session.
+// ---------------------------------------------------------------------------
+
+describe("one-shot parse-failure toast (#0029)", () => {
+	let dbRoot: string;
+	beforeEach(() => {
+		dbRoot = mkdtempSync(join(tmpdir(), "pi-local-issue-watcher-0029-"));
+	});
+	afterEach(() => {
+		rmSync(dbRoot, { recursive: true, force: true });
+	});
+
+	function extensionWithDbRoot(pi: StubPi, root: string): void {
+		const prev = process.env["LOCAL_ISSUE_TRACKER_DB_ROOT"];
+		process.env["LOCAL_ISSUE_TRACKER_DB_ROOT"] = root;
+		try {
+			createExtension(pi as never);
+		} finally {
+			if (prev === undefined) delete process.env["LOCAL_ISSUE_TRACKER_DB_ROOT"];
+			else process.env["LOCAL_ISSUE_TRACKER_DB_ROOT"] = prev;
+		}
+	}
+
+	/** Write one malformed JSON file to `dbRoot/<skill>/<name>`. */
+	function writeBadIssue(skill: string, name: string, body = "{ not json"): string {
+		const skillDir = join(dbRoot, skill);
+		mkdirSync(skillDir, { recursive: true });
+		const p = join(skillDir, name);
+		writeFileSync(p, body, "utf8");
+		return p;
+	}
+
+	/**
+	 * Collect every `ui.notify` call whose level argument is exactly
+	 * `"warning"` — the watcher uses `"info"` for many other user-facing
+	 * lines (pause acknowledgement etc.) and those must not count against
+	 * the one-shot toast budget.
+	 */
+	function warningNotifies(
+		ctx: { ui: { notify: ReturnType<typeof vi.fn> } },
+	): string[] {
+		return ctx.ui.notify.mock.calls
+			.filter((c) => c[1] === "warning")
+			.map((c) => String(c[0]));
+	}
+
+	// -- session_start --
+
+	it("session_start toasts exactly once when parse failures exist (#0029)", async () => {
+		writeBadIssue("skill-a", "0001-bad-a.json");
+		writeBadIssue("skill-b", "0002-bad-b.json");
+		writeBadIssue("skill-b", "0003-bad-c.json");
+		const pi = makeFakePi();
+		const ctx = makeFakeCtx([runningRunstate()]);
+		const state = { hasToasted: false };
+		await handleSessionStart({
+			pi: pi as never,
+			ctx: ctx as never,
+			dbRoot,
+			parseFailureToastState: state,
+		});
+
+		const warnings = warningNotifies(ctx);
+		expect(warnings).toHaveLength(1);
+		expect(warnings[0]).toMatch(/3/);
+		expect(state.hasToasted).toBe(true);
+	});
+
+	it("session_start toast summary is count-only and does not leak file or skill paths (#0029)", async () => {
+		writeBadIssue("skill-with-a-very-distinctive-name-xyz", "0042-distinctive-slug-abc.json");
+		const pi = makeFakePi();
+		const ctx = makeFakeCtx([runningRunstate()]);
+		await handleSessionStart({
+			pi: pi as never,
+			ctx: ctx as never,
+			dbRoot,
+			parseFailureToastState: { hasToasted: false },
+		});
+
+		const warnings = warningNotifies(ctx);
+		expect(warnings).toHaveLength(1);
+		const body = warnings[0]!;
+		expect(body).not.toContain("skill-with-a-very-distinctive-name-xyz");
+		expect(body).not.toContain("0042-distinctive-slug-abc");
+		expect(body).not.toContain(dbRoot);
+		expect(body).toMatch(/1/);
+	});
+
+	it("session_start does not toast when there are no parse failures (#0029)", async () => {
+		mkdirSync(join(dbRoot, "skill-a"), { recursive: true });
+		writeFileSync(
+			join(dbRoot, "skill-a", "0001-ok.json"),
+			JSON.stringify({ id: "0001", status: "open", skill: "skill-a" }),
+			"utf8",
+		);
+		const pi = makeFakePi();
+		const ctx = makeFakeCtx([runningRunstate()]);
+		const state = { hasToasted: false };
+		await handleSessionStart({
+			pi: pi as never,
+			ctx: ctx as never,
+			dbRoot,
+			parseFailureToastState: state,
+		});
+
+		expect(warningNotifies(ctx)).toHaveLength(0);
+		expect(state.hasToasted).toBe(false);
+	});
+
+	it("session_start does NOT flip hasToasted when ctx has no UI (#0029)", async () => {
+		// A session without UI (e.g. non-interactive mode) has no toast channel
+		// and therefore must NOT burn the session's one-shot opportunity —
+		// otherwise a later UI-enabled session reading the same dbRoot would
+		// silently fail to warn the user about persistent bad files.
+		writeBadIssue("skill-a", "0001-bad.json");
+		const pi = makeFakePi();
+		const ctx = {
+			ui: undefined,
+			hasUI: false,
+			sessionManager: { getEntries: () => [runningRunstate() as never] },
+			cwd: process.cwd(),
+		} as unknown as StubCtx;
+		const state = { hasToasted: false };
+		await handleSessionStart({
+			pi: pi as never,
+			ctx: ctx as never,
+			dbRoot,
+			parseFailureToastState: state,
+		});
+
+		expect(state.hasToasted).toBe(false);
+	});
+
+	it("session_start with a missing dbRoot does not toast and leaves flag untouched (#0029)", async () => {
+		const missing = join(tmpdir(), `pi-issue-missing-${Date.now()}-${Math.floor(Math.random() * 1e9)}`);
+		const pi = makeFakePi();
+		const ctx = makeFakeCtx([runningRunstate()]);
+		const state = { hasToasted: false };
+		await handleSessionStart({
+			pi: pi as never,
+			ctx: ctx as never,
+			dbRoot: missing,
+			parseFailureToastState: state,
+		});
+
+		expect(warningNotifies(ctx).filter((w) => !w.startsWith("local-issue-watcher: dbRoot not found"))).toHaveLength(0);
+		expect(state.hasToasted).toBe(false);
+	});
+
+	it("repeated handleSessionStart calls sharing state fire at most one toast total (#0029)", async () => {
+		// Stand-in for "session_start + many polls" at the handleSessionStart
+		// layer: with a single shared `parseFailureToastState`, the second
+		// call observing the same bad files must not re-toast.
+		writeBadIssue("skill-a", "0001-bad.json");
+		const pi = makeFakePi();
+		const ctx = makeFakeCtx([runningRunstate()]);
+		const state = { hasToasted: false };
+		await handleSessionStart({
+			pi: pi as never,
+			ctx: ctx as never,
+			dbRoot,
+			parseFailureToastState: state,
+		});
+		await handleSessionStart({
+			pi: pi as never,
+			ctx: ctx as never,
+			dbRoot,
+			parseFailureToastState: state,
+		});
+
+		expect(warningNotifies(ctx)).toHaveLength(1);
+	});
+
+	// -- /local-issue-watcher status --
+
+	it("/status toasts on the FIRST invocation when bad files exist and no prior toast fired (#0029)", async () => {
+		writeBadIssue("skill-a", "0001-bad.json");
+		writeBadIssue("skill-a", "0002-bad.json");
+		const pi = makeFakePi();
+		extensionWithDbRoot(pi, dbRoot);
+		const cmd = pi.commands.get("local-issue-watcher")!;
+		const ctx = makeFakeCtx();
+		await cmd.handler("status", ctx);
+
+		const warnings = warningNotifies(ctx);
+		expect(warnings).toHaveLength(1);
+		expect(warnings[0]).toMatch(/2/);
+	});
+
+	it("/status called twice in a row toasts only the first time (#0029)", async () => {
+		writeBadIssue("skill-a", "0001-bad.json");
+		const pi = makeFakePi();
+		extensionWithDbRoot(pi, dbRoot);
+		const cmd = pi.commands.get("local-issue-watcher")!;
+		const ctx = makeFakeCtx();
+
+		await cmd.handler("status", ctx);
+		await cmd.handler("status", ctx);
+		await cmd.handler("status", ctx);
+
+		expect(warningNotifies(ctx)).toHaveLength(1);
+	});
+
+	it("/status scan uses singular phrasing for a single failing file (#0029)", async () => {
+		writeBadIssue("skill-a", "0001-only.json");
+		const pi = makeFakePi();
+		extensionWithDbRoot(pi, dbRoot);
+		const cmd = pi.commands.get("local-issue-watcher")!;
+		const ctx = makeFakeCtx();
+		await cmd.handler("status", ctx);
+
+		const warnings = warningNotifies(ctx);
+		expect(warnings).toHaveLength(1);
+		expect(warnings[0]).toMatch(/\b1 issue file\b/);
+		expect(warnings[0]).not.toMatch(/\bissue files\b/);
+	});
+
+	// -- pause / resume interaction --
+
+	it("pause does not reset hasToasted and resume does not re-toast the same session (#0029)", async () => {
+		writeBadIssue("skill-a", "0001-bad.json");
+		const pi = makeFakePi();
+		extensionWithDbRoot(pi, dbRoot);
+		const cmd = pi.commands.get("local-issue-watcher")!;
+		const ctx = makeFakeCtx();
+
+		// First scan via /status fires the single allowed toast.
+		await cmd.handler("status", ctx);
+		expect(warningNotifies(ctx)).toHaveLength(1);
+
+		await cmd.handler("pause", ctx);
+		await cmd.handler("resume", ctx); // resume scans again with bad files still present
+
+		// Still exactly one warning — resume must NOT re-toast because the
+		// session has already spent its one-shot budget.
+		expect(warningNotifies(ctx)).toHaveLength(1);
+	});
+
+	// -- message shape, non-negotiable --
+
+	it("toast uses level 'warning' not 'info' or 'error' (#0029)", async () => {
+		writeBadIssue("skill-a", "0001-bad.json");
+		const pi = makeFakePi();
+		extensionWithDbRoot(pi, dbRoot);
+		const cmd = pi.commands.get("local-issue-watcher")!;
+		const ctx = makeFakeCtx();
+		await cmd.handler("status", ctx);
+
+		const parseFailureCalls = ctx.ui.notify.mock.calls.filter((c) =>
+			String(c[0]).includes("failed to parse"),
+		);
+		expect(parseFailureCalls).toHaveLength(1);
+		expect(parseFailureCalls[0]?.[1]).toBe("warning");
+	});
+});

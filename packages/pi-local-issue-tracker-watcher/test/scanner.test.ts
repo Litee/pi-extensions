@@ -81,12 +81,160 @@ describe("scanIssueFiles", () => {
 		writeFileSync(join(skillDir, "0002-bad.json"), "{ not json", "utf8");
 		writeFileSync(join(skillDir, "0003-good.json"), JSON.stringify({ id: "0003" }), "utf8");
 
-		// Silence the expected warn for the malformed file.
+		// Regression guard for #0029: the scanner must NOT leak through
+		// `console.warn` (pi's TUI catches that and splashes it into the
+		// transcript). Silent drop by default; failures are delivered to the
+		// optional `onError` callback, tested separately.
 		const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
 		const snap = scanIssueFiles(dbRoot);
 		expect(Object.keys(snap)).toEqual([join(skillDir, "0003-good.json")]);
-		expect(warn).toHaveBeenCalled();
+		expect(warn).not.toHaveBeenCalled();
 		warn.mockRestore();
+	});
+
+	it("invokes onError(filePath, err) on parse failure (#0029)", () => {
+		const skillDir = join(dbRoot, "skill-parse-err");
+		mkdirSync(skillDir, { recursive: true });
+		const badPath = join(skillDir, "0042-broken.json");
+		writeFileSync(badPath, "{ not json", "utf8");
+
+		const onError = vi.fn();
+		const snap = scanIssueFiles(dbRoot, undefined, onError);
+		expect(Object.keys(snap)).toEqual([]);
+		expect(onError).toHaveBeenCalledTimes(1);
+		const [path, err] = onError.mock.calls[0] as [string, unknown];
+		expect(path).toBe(badPath);
+		expect(err).toBeInstanceOf(Error);
+	});
+
+	it("calls onError in deterministic directory+filename order across multiple failures (#0029)", () => {
+		mkdirSync(join(dbRoot, "skill-z"), { recursive: true });
+		mkdirSync(join(dbRoot, "skill-a"), { recursive: true });
+		writeFileSync(join(dbRoot, "skill-z", "0002-bad.json"), "{ bad", "utf8");
+		writeFileSync(join(dbRoot, "skill-a", "0001-bad.json"), "{ bad", "utf8");
+		writeFileSync(join(dbRoot, "skill-a", "0003-bad.json"), "{ bad", "utf8");
+
+		const onError = vi.fn();
+		scanIssueFiles(dbRoot, undefined, onError);
+
+		const paths = onError.mock.calls.map((c) => c[0]);
+		expect(paths).toEqual([
+			join(dbRoot, "skill-a", "0001-bad.json"),
+			join(dbRoot, "skill-a", "0003-bad.json"),
+			join(dbRoot, "skill-z", "0002-bad.json"),
+		]);
+	});
+
+	it("fires onError on parse failure AND still carries forward previous entry (#0029 × #0003)", () => {
+		const skillDir = join(dbRoot, "skill-carry");
+		mkdirSync(skillDir, { recursive: true });
+		const filePath = join(skillDir, "0001-t.json");
+
+		writeFileSync(
+			filePath,
+			JSON.stringify({ id: "0001", status: "open", title: "carry me", skill: "skill-carry" }),
+			"utf8",
+		);
+		const first = scanIssueFiles(dbRoot);
+		expect(first[filePath]?.title).toBe("carry me");
+
+		writeFileSync(filePath, "{ broken", "utf8");
+		const onError = vi.fn();
+		const second = scanIssueFiles(dbRoot, first, onError);
+
+		expect(onError).toHaveBeenCalledTimes(1);
+		expect(second[filePath]?.title).toBe("carry me");
+	});
+
+	it("treats zero-byte files as parse failures and fires onError (#0029)", () => {
+		const skillDir = join(dbRoot, "skill-empty");
+		mkdirSync(skillDir, { recursive: true });
+		const emptyPath = join(skillDir, "0001-empty.json");
+		writeFileSync(emptyPath, "", "utf8");
+
+		const onError = vi.fn();
+		const snap = scanIssueFiles(dbRoot, undefined, onError);
+
+		expect(snap[emptyPath]).toBeUndefined();
+		expect(onError).toHaveBeenCalledTimes(1);
+		expect(onError.mock.calls[0]?.[0]).toBe(emptyPath);
+	});
+
+	it("does not call onError for filename-gated non-issue files (#0029)", () => {
+		const skillDir = join(dbRoot, "skill-gated");
+		mkdirSync(skillDir, { recursive: true });
+		writeFileSync(join(skillDir, "README.md"), "x", "utf8");
+		writeFileSync(join(skillDir, "0001-UPPER.json"), "not json", "utf8"); // uppercase slug — gated out
+		writeFileSync(join(skillDir, "1-short.json"), "not json", "utf8"); // missing zero-pad — gated out
+
+		const onError = vi.fn();
+		scanIssueFiles(dbRoot, undefined, onError);
+
+		expect(onError).not.toHaveBeenCalled();
+	});
+
+	it("does not call onError when dbRoot is missing (#0029)", () => {
+		const onError = vi.fn();
+		scanIssueFiles(join(dbRoot, "does-not-exist"), undefined, onError);
+		expect(onError).not.toHaveBeenCalled();
+	});
+
+	it("never calls onError when a skill subdir readdir throws (#0029)", () => {
+		// We can simulate a readable top-level but unreadable subdir by
+		// replacing a directory entry with a file at the second level —
+		// `readdirSync(skillPath)` will throw ENOTDIR on macOS/Linux. No
+		// per-file failure here; the whole subdir is just silently skipped,
+		// so we must NOT inflate the toast count.
+		writeFileSync(join(dbRoot, "not-a-dir"), "surprise", "utf8");
+		// And a good sibling so the test doesn't succeed trivially with zero work:
+		const skillDir = join(dbRoot, "good-skill");
+		mkdirSync(skillDir);
+		writeFileSync(
+			join(skillDir, "0001-ok.json"),
+			JSON.stringify({ id: "0001", skill: "good-skill" }),
+			"utf8",
+		);
+
+		const onError = vi.fn();
+		const snap = scanIssueFiles(dbRoot, undefined, onError);
+		expect(Object.keys(snap)).toEqual([join(skillDir, "0001-ok.json")]);
+		expect(onError).not.toHaveBeenCalled();
+	});
+
+	it("continues scanning after onError throws (#0029)", () => {
+		const skillDir = join(dbRoot, "skill-throw");
+		mkdirSync(skillDir, { recursive: true });
+		writeFileSync(join(skillDir, "0001-bad-a.json"), "not json", "utf8");
+		writeFileSync(join(skillDir, "0002-bad-b.json"), "not json", "utf8");
+		writeFileSync(
+			join(skillDir, "0003-good.json"),
+			JSON.stringify({ id: "0003", skill: "skill-throw" }),
+			"utf8",
+		);
+
+		const onError = vi.fn(() => {
+			throw new Error("callback boom");
+		});
+
+		// Scanner's contract under #0029 isn't "swallow every onError throw";
+		// it's "a callback throw must not eat the valid file that comes after
+		// it." We assert the valid file ends up in the returned snapshot,
+		// regardless of whether the scanner bubbles the first throw or
+		// catches it internally. If this ever starts failing, the scanner has
+		// regressed into fail-fast mode and the poll loop would wedge on a
+		// single bad callback.
+		try {
+			const snap = scanIssueFiles(dbRoot, undefined, onError);
+			expect(snap[join(skillDir, "0003-good.json")]).toBeDefined();
+		} catch {
+			// Currently the scanner lets the throw bubble on the first bad file,
+			// which means the valid sibling is never reached. That is a latent
+			// robustness gap — fail the test loudly so whoever fixes it sees
+			// this assertion as the motivating regression.
+			expect.fail(
+				"scanIssueFiles must not propagate onError throws — a buggy callback would otherwise wedge the poll loop.",
+			);
+		}
 	});
 
 	it("ignores non-directory entries at the top level of dbRoot", () => {
@@ -117,6 +265,8 @@ describe("scanIssueFiles", () => {
 		writeFileSync(filePath, "{ incomplete", "utf8");
 		const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
 		const second = scanIssueFiles(dbRoot, first);
+		// #0029: silent by default, no console.warn leak.
+		expect(warn).not.toHaveBeenCalled();
 		warn.mockRestore();
 
 		// We should keep the previous entry — not lose it and emit a spurious
@@ -132,6 +282,8 @@ describe("scanIssueFiles", () => {
 
 		const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
 		const snap = scanIssueFiles(dbRoot); // no previous arg
+		// #0029: silent by default.
+		expect(warn).not.toHaveBeenCalled();
 		warn.mockRestore();
 		expect(snap[join(skillDir, "0011-bad.json")]).toBeUndefined();
 	});

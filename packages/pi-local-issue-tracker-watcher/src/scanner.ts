@@ -18,16 +18,26 @@ const ISSUE_FNAME_RE = /^\d{4}-[a-z0-9-]+\.json$/;
  *   <dbRoot>/<skill-name>/<NNNN>-<slug>.json
  *
  * Returns an empty snapshot if `dbRoot` is missing or not a directory. Files
- * that fail to parse are skipped with a `console.warn` (not thrown) — the
- * watcher must stay alive across transient writer/reader races.
+ * that fail to parse are skipped (never throw) — the watcher must stay alive
+ * across transient writer/reader races.
  *
  * When `previous` is provided, transient per-file read / stat / parse failures
  * fall back to the entry in `previous[filePath]` (if any), instead of
  * dropping the file. This prevents the spurious `removed -> new` churn that
  * otherwise fires when a poll catches the upstream `skill_issues_cli.py`
  * mid-write (see issue #0003).
+ *
+ * When `onError(filePath, err)` is provided, it is invoked for every skipped
+ * file (read failure or parse failure). The callback must not throw. When
+ * absent, failures are dropped silently — the scanner never calls
+ * `console.warn` / `console.error`, because pi's TUI intercepts stdout/stderr
+ * and leaks those lines into the visible transcript (see issue #0029).
  */
-export function scanIssueFiles(dbRoot: string, previous?: Snapshot): Snapshot {
+export function scanIssueFiles(
+	dbRoot: string,
+	previous?: Snapshot,
+	onError?: (filePath: string, err: unknown) => void,
+): Snapshot {
 	const snapshot: Snapshot = {};
 
 	let topEntries;
@@ -63,8 +73,15 @@ export function scanIssueFiles(dbRoot: string, previous?: Snapshot): Snapshot {
 				stat = statSync(filePath, { bigint: true });
 				raw = readFileSync(filePath, "utf8");
 			} catch (exc) {
-				// eslint-disable-next-line no-console
-				console.warn(`[local-issue-watcher] could not read ${filePath}: ${String(exc)}`);
+				// #0029: swallow any throw from the caller's `onError` so one
+				// buggy callback cannot wedge the poll loop on the first bad
+				// file of the session. The scanner's job is to report, not to
+				// be the place where errors in error handlers bubble up.
+				try {
+					onError?.(filePath, exc);
+				} catch {
+					/* noop — see comment */
+				}
 				const carried = previous?.[filePath];
 				if (carried !== undefined) snapshot[filePath] = carried;
 				continue;
@@ -74,8 +91,13 @@ export function scanIssueFiles(dbRoot: string, previous?: Snapshot): Snapshot {
 			try {
 				parsed = JSON.parse(raw);
 			} catch (exc) {
-				// eslint-disable-next-line no-console
-				console.warn(`[local-issue-watcher] could not parse ${filePath}: ${String(exc)}`);
+				// #0029: same rationale as the read-failure branch above —
+				// guard onError against throwing.
+				try {
+					onError?.(filePath, exc);
+				} catch {
+					/* noop — see comment */
+				}
 				const carried = previous?.[filePath];
 				if (carried !== undefined) snapshot[filePath] = carried;
 				continue;
