@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from "vitest";
 
-import createExtension, { __testDescribeBashFailure, __testFormatDuration } from "../src/index.js";
+import createExtension, { __testCountLines, __testDescribeBashFailure, __testFormatDuration } from "../src/index.js";
 
 // ---------------------------------------------------------------------------
 // Smoke test for extension wiring + unit tests for the small bits of logic
@@ -23,21 +23,48 @@ function makeFakePi(): StubPi {
 }
 
 describe("default export", () => {
-	it("re-registers the four built-in tools (read, bash, edit, write)", () => {
+	it("re-registers all seven built-in tools (read, bash, edit, write, grep, ls, find)", () => {
 		const pi = makeFakePi();
 		createExtension(pi as never);
-		expect([...pi.tools.keys()].sort()).toEqual(["bash", "edit", "read", "write"]);
+		expect([...pi.tools.keys()].sort()).toEqual(["bash", "edit", "find", "grep", "ls", "read", "write"]);
 	});
 
 	it("all tools use the default boxed shell (no renderShell override)", () => {
 		const pi = makeFakePi();
 		createExtension(pi as never);
-		// All tools intentionally leave renderShell undefined — the default
-		// ToolExecutionComponent Box provides the bounding box and bg colours.
-		expect(pi.tools.get("read")?.renderShell).toBeUndefined();
-		expect(pi.tools.get("bash")?.renderShell).toBeUndefined();
-		expect(pi.tools.get("edit")?.renderShell).toBeUndefined();
-		expect(pi.tools.get("write")?.renderShell).toBeUndefined();
+		for (const tool of pi.tools.values()) {
+			expect(tool.renderShell).toBeUndefined();
+		}
+	});
+});
+
+describe("countLines", () => {
+	it("returns 0 for the grep no-match sentinel", () => {
+		expect(__testCountLines("No matches found")).toBe(0);
+	});
+
+	it("returns 0 for the find no-match sentinel", () => {
+		expect(__testCountLines("No files found matching pattern")).toBe(0);
+	});
+
+	it("returns 0 for the ls empty sentinel", () => {
+		expect(__testCountLines("(empty directory)")).toBe(0);
+	});
+
+	it("returns 0 for an empty string", () => {
+		expect(__testCountLines("")).toBe(0);
+	});
+
+	it("counts non-empty lines in multi-line output", () => {
+		expect(__testCountLines("a\nb\nc")).toBe(3);
+	});
+
+	it("ignores trailing blank lines", () => {
+		expect(__testCountLines("a\nb\n\n")).toBe(2);
+	});
+
+	it("counts a single result as 1", () => {
+		expect(__testCountLines("src/index.ts:1: foo")).toBe(1);
 	});
 });
 

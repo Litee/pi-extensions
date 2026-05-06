@@ -23,8 +23,8 @@
  *   pi -e ./built-in-tool-renderer.ts
  */
 
-import type { BashToolDetails, EditToolDetails, ExtensionAPI, ReadToolDetails } from "@mariozechner/pi-coding-agent";
-import { createBashTool, createEditTool, createReadTool, createWriteTool } from "@mariozechner/pi-coding-agent";
+import type { BashToolDetails, EditToolDetails, ExtensionAPI, FindToolDetails, GrepToolDetails, LsToolDetails, ReadToolDetails } from "@mariozechner/pi-coding-agent";
+import { createBashTool, createEditTool, createFindTool, createGrepTool, createLsTool, createReadTool, createWriteTool } from "@mariozechner/pi-coding-agent";
 import { Text } from "@mariozechner/pi-tui";
 
 /**
@@ -36,6 +36,26 @@ function formatDuration(ms: number): string {
 }
 
 export { formatDuration as __testFormatDuration };
+
+/**
+ * Count non-empty result lines from grep / ls / find output.
+ *
+ * The three built-in tools emit one of these sentinel strings when there is
+ * nothing to report; everything else is a newline-separated list of results.
+ */
+const EMPTY_SENTINELS = new Set([
+	"No matches found",
+	"No files found matching pattern",
+	"(empty directory)",
+]);
+
+export function countLines(text: string): number {
+	const trimmed = text.trim();
+	if (!trimmed || EMPTY_SENTINELS.has(trimmed)) return 0;
+	return trimmed.split("\n").filter((l) => l.trim() !== "").length;
+}
+
+export { countLines as __testCountLines };
 
 /**
  * Per-invocation render state for the bash tool. `context.state` is typed as
@@ -321,6 +341,148 @@ export default function (pi: ExtensionAPI) {
 			}
 
 			return new Text(theme.fg("success", "Written"), 0, 0);
+		},
+	});
+
+	// --- Grep tool: pattern + match count ---
+	const originalGrep = createGrepTool(cwd);
+	pi.registerTool({
+		name: "grep",
+		label: "grep",
+		description: originalGrep.description,
+		parameters: originalGrep.parameters,
+
+		async execute(toolCallId, params, signal, onUpdate) {
+			return originalGrep.execute(toolCallId, params, signal, onUpdate);
+		},
+
+		renderCall(args, theme, _context) {
+			let text = theme.fg("toolTitle", theme.bold("grep "));
+			text += theme.fg("accent", `/${args.pattern}/`);
+			text += theme.fg("toolOutput", ` in ${args.path ?? "."}`);
+			if (args.glob) text += theme.fg("dim", ` (${args.glob})`);
+			if (args.ignoreCase) text += theme.fg("dim", " (i)");
+			return new Text(text, 0, 0);
+		},
+
+		renderResult(result, { expanded, isPartial }, theme, _context) {
+			if (isPartial) return new Text(theme.fg("warning", "Searching..."), 0, 0);
+
+			const details = result.details as GrepToolDetails | undefined;
+			const content = result.content[0];
+			const output = content?.type === "text" ? content.text : "";
+			const count = countLines(output);
+
+			let text = count === 0
+				? theme.fg("muted", "No matches")
+				: theme.fg("success", `${count} match${count === 1 ? "" : "es"}`);
+
+			if (details?.matchLimitReached) text += theme.fg("warning", " (limit reached)");
+			if (details?.truncation?.truncated) text += theme.fg("warning", " [truncated]");
+			if (details?.linesTruncated) text += theme.fg("warning", " [lines truncated]");
+
+			if (expanded && count > 0) {
+				const lines = output.trim().split("\n").slice(0, 30);
+				for (const line of lines) text += `\n${theme.fg("toolOutput", line)}`;
+				const total = output.trim().split("\n").length;
+				if (total > 30) text += `\n${theme.fg("muted", `... ${total - 30} more lines`)}` ;
+			}
+
+			return new Text(text, 0, 0);
+		},
+	});
+
+	// --- Ls tool: path + entry count ---
+	const originalLs = createLsTool(cwd);
+	pi.registerTool({
+		name: "ls",
+		label: "ls",
+		description: originalLs.description,
+		parameters: originalLs.parameters,
+
+		async execute(toolCallId, params, signal, onUpdate) {
+			return originalLs.execute(toolCallId, params, signal, onUpdate);
+		},
+
+		renderCall(args, theme, _context) {
+			let text = theme.fg("toolTitle", theme.bold("ls "));
+			text += theme.fg("accent", args.path ?? ".");
+			return new Text(text, 0, 0);
+		},
+
+		renderResult(result, { expanded, isPartial }, theme, _context) {
+			if (isPartial) return new Text(theme.fg("warning", "Listing..."), 0, 0);
+
+			const details = result.details as LsToolDetails | undefined;
+			const content = result.content[0];
+			const output = content?.type === "text" ? content.text : "";
+			const count = countLines(output);
+
+			let text = count === 0
+				? theme.fg("muted", "(empty)")
+				: theme.fg("success", `${count} entr${count === 1 ? "y" : "ies"}`);
+
+			if (details?.entryLimitReached) text += theme.fg("warning", " (limit reached)");
+			if (details?.truncation?.truncated) text += theme.fg("warning", " [truncated]");
+
+			if (expanded && count > 0) {
+				const lines = output.trim().split("\n").slice(0, 30);
+				for (const line of lines) {
+					const styled = line.endsWith("/")
+						? theme.fg("accent", line)
+						: theme.fg("toolOutput", line);
+					text += `\n${styled}`;
+				}
+				const total = output.trim().split("\n").length;
+				if (total > 30) text += `\n${theme.fg("muted", `... ${total - 30} more entries`)}`;
+			}
+
+			return new Text(text, 0, 0);
+		},
+	});
+
+	// --- Find tool: glob pattern + file count ---
+	const originalFind = createFindTool(cwd);
+	pi.registerTool({
+		name: "find",
+		label: "find",
+		description: originalFind.description,
+		parameters: originalFind.parameters,
+
+		async execute(toolCallId, params, signal, onUpdate) {
+			return originalFind.execute(toolCallId, params, signal, onUpdate);
+		},
+
+		renderCall(args, theme, _context) {
+			let text = theme.fg("toolTitle", theme.bold("find "));
+			text += theme.fg("accent", args.pattern);
+			text += theme.fg("toolOutput", ` in ${args.path ?? "."}`);
+			return new Text(text, 0, 0);
+		},
+
+		renderResult(result, { expanded, isPartial }, theme, _context) {
+			if (isPartial) return new Text(theme.fg("warning", "Searching..."), 0, 0);
+
+			const details = result.details as FindToolDetails | undefined;
+			const content = result.content[0];
+			const output = content?.type === "text" ? content.text : "";
+			const count = countLines(output);
+
+			let text = count === 0
+				? theme.fg("muted", "No files")
+				: theme.fg("success", `${count} file${count === 1 ? "" : "s"}`);
+
+			if (details?.resultLimitReached) text += theme.fg("warning", " (limit reached)");
+			if (details?.truncation?.truncated) text += theme.fg("warning", " [truncated]");
+
+			if (expanded && count > 0) {
+				const lines = output.trim().split("\n").slice(0, 30);
+				for (const line of lines) text += `\n${theme.fg("toolOutput", line)}`;
+				const total = output.trim().split("\n").length;
+				if (total > 30) text += `\n${theme.fg("muted", `... ${total - 30} more files`)}`;
+			}
+
+			return new Text(text, 0, 0);
 		},
 	});
 }
