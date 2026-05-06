@@ -146,8 +146,7 @@ export function buildWidgetLines(
 		theme.fg("dim", renderRow(`${INDENT}core instructions`, sp.core, sp.total, BAR_WIDTH, LABEL_WIDTH)),
 	);
 
-	// Tools — show count if non-zero
-	const toolsLabel = `${INDENT}tools`;
+	const toolsLabel = sp.toolCount > 0 ? `${INDENT}tools (${sp.toolCount})` : `${INDENT}tools`;
 	lines.push(theme.fg("dim", renderRow(toolsLabel, sp.tools, sp.total, BAR_WIDTH, LABEL_WIDTH)));
 
 	if (sp.guidelines > 0) {
@@ -175,12 +174,9 @@ export function buildWidgetLines(
 	}
 
 	if (sp.skillsCatalog > 0) {
-		lines.push(
-			theme.fg(
-				"dim",
-				renderRow(`${INDENT}skills catalog`, sp.skillsCatalog, sp.total, BAR_WIDTH, LABEL_WIDTH),
-			),
-		);
+		const skillsLabel =
+			sp.skillCount > 0 ? `${INDENT}skills catalog (${sp.skillCount})` : `${INDENT}skills catalog`;
+		lines.push(theme.fg("dim", renderRow(skillsLabel, sp.skillsCatalog, sp.total, BAR_WIDTH, LABEL_WIDTH)));
 	}
 
 	// Conversation row

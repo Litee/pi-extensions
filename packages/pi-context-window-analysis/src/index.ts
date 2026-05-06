@@ -56,17 +56,8 @@ const HELP_TEXT = [
 
 function adaptOptions(raw: BuildSystemPromptOptions): SystemPromptOptions {
 	const result: SystemPromptOptions = {};
-	if (raw.toolSnippets !== undefined) result.toolSnippets = raw.toolSnippets;
-	if (raw.promptGuidelines !== undefined) result.promptGuidelines = raw.promptGuidelines;
 	if (raw.appendSystemPrompt !== undefined) result.appendSystemPrompt = raw.appendSystemPrompt;
 	if (raw.contextFiles !== undefined) result.contextFiles = raw.contextFiles;
-	if (raw.skills !== undefined) {
-		result.skills = raw.skills.map((s) => ({
-			name: s.name,
-			description: s.description,
-			filePath: s.filePath,
-		}));
-	}
 	return result;
 }
 

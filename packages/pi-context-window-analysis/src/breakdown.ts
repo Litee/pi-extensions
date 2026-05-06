@@ -24,11 +24,8 @@ export interface ContextFileEntry {
  * can be loaded by unit tests without the full runtime.
  */
 export interface SystemPromptOptions {
-	toolSnippets?: Record<string, string>;
-	promptGuidelines?: string[];
 	appendSystemPrompt?: string;
 	contextFiles?: ContextFileEntry[];
-	skills?: SkillEntry[];
 }
 
 /** Per-context-file token estimate. */
@@ -41,18 +38,22 @@ export interface ContextFileBreakdown {
 export interface SystemPromptBreakdown {
 	/** Total estimated tokens in the full system prompt. */
 	total: number;
-	/** Core pi instructions + tools list — the "residual" after removing all known sections. */
+	/** Core pi instructions — the residual after removing all measured sections. */
 	core: number;
-	/** Tokens estimated from toolSnippets. */
+	/** Tokens for the "Available tools:" section, measured from the prompt string. */
 	tools: number;
-	/** Tokens estimated from promptGuidelines. */
+	/** Number of tool entries in the "Available tools:" section. */
+	toolCount: number;
+	/** Tokens for the "Guidelines:" section. */
 	guidelines: number;
-	/** Tokens estimated from appendSystemPrompt. */
+	/** Tokens estimated from appendSystemPrompt (from options). */
 	appendSystemPrompt: number;
 	/** Per-file token estimates from contextFiles. */
 	contextFiles: ContextFileBreakdown[];
-	/** Tokens estimated from the skills catalog XML block. */
+	/** Tokens for the full skills catalog block, measured from the prompt string. */
 	skillsCatalog: number;
+	/** Number of skills in the catalog. */
+	skillCount: number;
 }
 
 /** Token breakdown for the conversation history. */
@@ -67,9 +68,9 @@ export interface ConversationBreakdown {
 	toolResults: number;
 }
 
-// ────────────────────────────────────────────────────────────────────────────
+// ─────────────────────────────────────────────────────────────────────────────
 // Core helpers
-// ────────────────────────────────────────────────────────────────────────────
+// ─────────────────────────────────────────────────────────────────────────────
 
 /**
  * Rough token estimate using the same chars/4 heuristic pi uses internally.
@@ -79,50 +80,106 @@ export function estimateTokens(text: string): number {
 	return Math.ceil(text.length / 4);
 }
 
-// ────────────────────────────────────────────────────────────────────────────
-// Section reconstruction helpers (package-internal)
-// ────────────────────────────────────────────────────────────────────────────
+// ─────────────────────────────────────────────────────────────────────────────
+// System-prompt section scanners
+//
+// We scan the assembled systemPrompt string for known section markers rather
+// than reconstructing sections from options. This is more accurate because
+// options.toolSnippets does not include built-in tool snippets (they are
+// managed internally by pi and never surfaced in systemPromptOptions).
+// ─────────────────────────────────────────────────────────────────────────────
 
-/** Reconstruct the tools section text from toolSnippets. */
-function toolsText(options: SystemPromptOptions): string {
-	const snippets = options.toolSnippets ?? {};
-	const entries = Object.entries(snippets);
-	if (entries.length === 0) return "";
-	return entries.map(([name, snippet]) => `${name}: ${snippet}`).join("\n");
+/**
+ * Return the substring that starts at `startMarker` and ends just before the
+ * first occurrence of any `endMarkers` (searching after startMarker). Returns
+ * "" when startMarker is not found.
+ */
+function sliceBetween(text: string, startMarker: string, endMarkers: string[]): string {
+	const start = text.indexOf(startMarker);
+	if (start < 0) return "";
+	let end = text.length;
+	for (const m of endMarkers) {
+		const idx = text.indexOf(m, start + startMarker.length);
+		if (idx >= 0 && idx < end) end = idx;
+	}
+	return text.slice(start, end);
 }
 
-/** Reconstruct the guidelines section text. */
-function guidelinesText(options: SystemPromptOptions): string {
-	return (options.promptGuidelines ?? []).join("\n");
+/** Extract the "Available tools:" section and count tool entries. */
+function scanTools(systemPrompt: string): { tokens: number; count: number } {
+	const section = sliceBetween(systemPrompt, "Available tools:\n", [
+		"\n\nIn addition to the tools above",
+		"\nIn addition to the tools above",
+		"\n\nGuidelines:",
+	]);
+	const count = (section.match(/^- /gm) ?? []).length;
+	return { tokens: estimateTokens(section), count };
 }
 
-/** Reconstruct each context file's section text (mirrors buildSystemPrompt). */
-function contextFileSectionText(file: ContextFileEntry): string {
-	return `## ${file.path}\n\n${file.content}\n\n`;
+/** Extract the "Guidelines:" section. */
+function scanGuidelines(systemPrompt: string): number {
+	const section = sliceBetween(systemPrompt, "Guidelines:\n", [
+		"\n\nPi documentation",
+		"\n\n# Project Context",
+		"\n\nCurrent date:",
+	]);
+	return estimateTokens(section);
 }
 
-/** Reconstruct the skills catalog XML block. */
-function skillsCatalogText(skills: SkillEntry[]): string {
-	if (skills.length === 0) return "";
-	const items = skills
-		.map(
-			(s) =>
-				`  <skill>\n    <name>${s.name}</name>\n    <description>${s.description}</description>\n    <location>${s.filePath}</location>\n  </skill>`,
-		)
-		.join("\n");
-	return `<available_skills>\n${items}\n</available_skills>`;
+/** Extract the full skills catalog block and count skills. */
+function scanSkills(systemPrompt: string): { tokens: number; count: number } {
+	const PREAMBLE = "\n\nThe following skills provide specialized instructions";
+	const END = "</available_skills>";
+	const start = systemPrompt.indexOf(PREAMBLE);
+	const end = systemPrompt.indexOf(END);
+	if (start < 0 || end < 0 || end < start) return { tokens: 0, count: 0 };
+	const section = systemPrompt.slice(start, end + END.length);
+	const count = (section.match(/<skill>/g) ?? []).length;
+	return { tokens: estimateTokens(section), count };
 }
 
-// ────────────────────────────────────────────────────────────────────────────
+/**
+ * Estimate the token contribution of each context file by finding its section
+ * header in the assembled systemPrompt and measuring to the next header.
+ * Falls back to estimating from the raw file content when the section is not
+ * found (e.g. custom prompt that embeds files differently).
+ */
+function scanContextFiles(
+	systemPrompt: string,
+	contextFiles: ContextFileEntry[],
+): ContextFileBreakdown[] {
+	return contextFiles.map((f) => {
+		const header = `## ${f.path}\n\n`;
+		const headerIdx = systemPrompt.indexOf(header);
+		if (headerIdx < 0) {
+			return { path: f.path, tokens: estimateTokens(f.content) };
+		}
+		// Measure to the next "## " header or to a known post-context marker.
+		const contentStart = headerIdx;
+		const endMarkers = ["\n## ", "\n\nThe following skills", "\nCurrent date:"];
+		let end = systemPrompt.length;
+		for (const m of endMarkers) {
+			const idx = systemPrompt.indexOf(m, headerIdx + header.length);
+			if (idx >= 0 && idx < end) end = idx;
+		}
+		return { path: f.path, tokens: estimateTokens(systemPrompt.slice(contentStart, end)) };
+	});
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
 // Public breakdown builders
-// ────────────────────────────────────────────────────────────────────────────
+// ─────────────────────────────────────────────────────────────────────────────
 
 /**
  * Compute a per-section token breakdown for the system prompt.
  *
- * @param systemPrompt  The fully-assembled system prompt string.
- * @param options       Structured options used to build it (from
- *                      `event.systemPromptOptions` in `before_agent_start`).
+ * Sections are measured by scanning the assembled `systemPrompt` string for
+ * known structural markers. This handles built-in tools correctly (their
+ * snippets are not present in `options.toolSnippets`).
+ *
+ * @param systemPrompt  The fully-assembled system prompt string (from
+ *                      `event.systemPrompt` in `before_agent_start`).
+ * @param options       Structured options from `event.systemPromptOptions`.
  *                      Pass `undefined` when not available.
  */
 export function buildSystemPromptBreakdown(
@@ -131,39 +188,40 @@ export function buildSystemPromptBreakdown(
 ): SystemPromptBreakdown {
 	const total = estimateTokens(systemPrompt);
 
-	if (!options) {
+	if (!systemPrompt) {
 		return {
-			total,
-			core: total,
+			total: 0,
+			core: 0,
 			tools: 0,
+			toolCount: 0,
 			guidelines: 0,
 			appendSystemPrompt: 0,
 			contextFiles: [],
 			skillsCatalog: 0,
+			skillCount: 0,
 		};
 	}
 
-	const tools = estimateTokens(toolsText(options));
-	const guidelines = estimateTokens(guidelinesText(options));
-	const appendSP = estimateTokens(options.appendSystemPrompt ?? "");
-	const contextFiles: ContextFileBreakdown[] = (options.contextFiles ?? []).map((f) => ({
-		path: f.path,
-		tokens: estimateTokens(contextFileSectionText(f)),
-	}));
+	const toolsScan = scanTools(systemPrompt);
+	const guidelines = scanGuidelines(systemPrompt);
+	const skillsScan = scanSkills(systemPrompt);
+	const contextFiles = scanContextFiles(systemPrompt, options?.contextFiles ?? []);
 	const contextFilesTotal = contextFiles.reduce((sum, f) => sum + f.tokens, 0);
-	const skillsCatalog = estimateTokens(skillsCatalogText(options.skills ?? []));
+	const appendSP = estimateTokens(options?.appendSystemPrompt ?? "");
 
-	const components = tools + guidelines + appendSP + contextFilesTotal + skillsCatalog;
-	const core = Math.max(0, total - components);
+	const measured = toolsScan.tokens + guidelines + skillsScan.tokens + contextFilesTotal + appendSP;
+	const core = Math.max(0, total - measured);
 
 	return {
 		total,
 		core,
-		tools,
+		tools: toolsScan.tokens,
+		toolCount: toolsScan.count,
 		guidelines,
 		appendSystemPrompt: appendSP,
 		contextFiles,
-		skillsCatalog,
+		skillsCatalog: skillsScan.tokens,
+		skillCount: skillsScan.count,
 	};
 }
 
@@ -173,10 +231,7 @@ export interface MessageEntry {
 	message: {
 		role: "user" | "assistant" | "toolResult";
 		/** Text content — a string, or an array of content blocks. */
-		content:
-			| string
-			| Array<{ type: string; text?: string }>
-			| unknown;
+		content: string | Array<{ type: string; text?: string }> | unknown;
 		/** Usage stats — only present on assistant messages. */
 		usage?: {
 			input: number;
@@ -198,7 +253,12 @@ function contentToText(
 	if (typeof content === "string") return content;
 	if (Array.isArray(content)) {
 		return content
-			.filter((c): c is { type: string; text: string } => typeof c === "object" && c !== null && typeof (c as Record<string,unknown>)["text"] === "string")
+			.filter(
+				(c): c is { type: string; text: string } =>
+					typeof c === "object" &&
+					c !== null &&
+					typeof (c as Record<string, unknown>)["text"] === "string",
+			)
 			.map((c) => c.text)
 			.join("\n");
 	}
@@ -222,7 +282,6 @@ export function buildConversationBreakdown(entries: BranchEntry[]): Conversation
 		if (msg.role === "user") {
 			userMessages += estimateTokens(contentToText(msg.content));
 		} else if (msg.role === "assistant") {
-			// Use actual token count from usage when available; fall back to estimate.
 			if (msg.usage?.output !== undefined) {
 				assistantOutput += msg.usage.output;
 			} else {
