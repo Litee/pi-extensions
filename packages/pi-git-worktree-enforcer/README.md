@@ -1,4 +1,4 @@
-# pi-worktree-guard
+# pi-git-worktree-enforcer
 
 Pi extension that blocks file edits in the main repository and directs the LLM
 to use git worktrees instead.

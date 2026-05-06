@@ -1,5 +1,5 @@
 /**
- * pi-worktree-guard
+ * pi-git-worktree-enforcer
  *
  * Intercepts `edit` and `write` tool_call events. When the target file is in
  * the main repository (not inside a `.worktrees/` subdirectory), the tool call

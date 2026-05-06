@@ -1,5 +1,5 @@
 {
-  "name": "pi-worktree-guard",
+  "name": "pi-git-worktree-enforcer",
   "version": "0.1.0",
   "private": true,
   "description": "Pi extension that blocks file edits in the main repository and directs the LLM to use git worktrees instead.",
