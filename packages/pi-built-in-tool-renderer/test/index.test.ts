@@ -29,14 +29,14 @@ describe("default export", () => {
 		expect([...pi.tools.keys()].sort()).toEqual(["bash", "edit", "read", "write"]);
 	});
 
-	it("flags the edit tool with renderShell: 'self' so it owns its outer frame", () => {
+	it("all tools use the default boxed shell (no renderShell override)", () => {
 		const pi = makeFakePi();
 		createExtension(pi as never);
-		expect(pi.tools.get("edit")?.renderShell).toBe("self");
-		// Other tools intentionally leave renderShell undefined — they use the
-		// default boxed shell.
+		// All tools intentionally leave renderShell undefined — the default
+		// ToolExecutionComponent Box provides the bounding box and bg colours.
 		expect(pi.tools.get("read")?.renderShell).toBeUndefined();
 		expect(pi.tools.get("bash")?.renderShell).toBeUndefined();
+		expect(pi.tools.get("edit")?.renderShell).toBeUndefined();
 		expect(pi.tools.get("write")?.renderShell).toBeUndefined();
 	});
 });
