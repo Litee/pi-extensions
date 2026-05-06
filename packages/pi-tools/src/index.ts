@@ -12,6 +12,11 @@
  *   /tools <name>       → jump straight to details for <name>
  *   /tools --all        → render details for every tool in one view
  *
+ * From the tool selector list:
+ *   t                       → toggle tool enabled/disabled in place
+ *   Enter                   → open detail view for the focused tool
+ *   Esc                     → close
+ *
  * From the per-tool detail view:
  *   t                       → toggle tool enabled/disabled
  *   ← (Left arrow)          → back to the selector (when entered from it)
@@ -26,8 +31,8 @@
  */
 
 import type { ExtensionAPI, ExtensionCommandContext, ExtensionContext, ToolInfo } from "@mariozechner/pi-coding-agent";
-import { DynamicBorder, getMarkdownTheme } from "@mariozechner/pi-coding-agent";
-import { Container, Markdown, matchesKey, Text } from "@mariozechner/pi-tui";
+import { DynamicBorder, getMarkdownTheme, getSelectListTheme } from "@mariozechner/pi-coding-agent";
+import { Container, Markdown, matchesKey, type SelectItem, SelectList, Text } from "@mariozechner/pi-tui";
 
 import { estimateToolTokens, formatTokens, sourceLabel, truncate } from "./helpers.js";
 
@@ -241,6 +246,14 @@ export default function toolInfoExtension(pi: ExtensionAPI) {
 				return;
 			}
 
+			// Shared toggle callback reused by both the list and the detail view.
+			const onToggle = (name: string): void => {
+				if (enabledTools.has(name)) enabledTools.delete(name);
+				else enabledTools.add(name);
+				applyTools();
+				persistState();
+			};
+
 			// Named tool: show its details directly (with toggle support).
 			if (arg) {
 				const tool = tools.find((t) => t.name === arg);
@@ -248,17 +261,7 @@ export default function toolInfoExtension(pi: ExtensionAPI) {
 					ctx.ui.notify(`Unknown tool: ${arg}`, "warning");
 					return;
 				}
-				const toggleInfo: ToggleInfo = {
-					tool,
-					active,
-					onToggle: (name) => {
-						if (enabledTools.has(name)) enabledTools.delete(name);
-						else enabledTools.add(name);
-						applyTools();
-						persistState();
-					},
-				};
-				await showMarkdown(`Tool: ${tool.name}`, renderToolMarkdown(tool, active), ctx, false, toggleInfo);
+				await showMarkdown(`Tool: ${tool.name}`, renderToolMarkdown(tool, active), ctx, false, { tool, active, onToggle });
 				return;
 			}
 
@@ -316,18 +319,71 @@ export default function toolInfoExtension(pi: ExtensionAPI) {
 				return rows;
 			};
 
+			// Theme for the SelectList component.
+			const selectListTheme = getSelectListTheme();
+
 			while (true) {
-				const rows = buildRows();
-				const selectedLabel = await ctx.ui.select(
-					`Tools (${tools.length} total, ${active.size} active · ~${activeTokens()} tokens)`,
-					rows.map((r) => r.label),
-				);
-				if (!selectedLabel) return; // user cancelled
+				// Show the interactive selector. Pressing `t` toggles the focused tool
+				// in-place; Enter selects it; Esc cancels.
+				const selectedToolName = await ctx.ui.custom<string | null>((tui, _theme, _kb, done) => {
+					let savedIndex = 0;
 
-				const row = rows.find((r) => r.label === selectedLabel);
-				if (!row?.toolName) continue; // clicked a group header
+					const buildList = (): SelectList => {
+						const freshRows = buildRows();
+						const freshItems: SelectItem[] = freshRows.map((r) => ({
+							value: r.toolName ?? "__header__",
+							label: r.label,
+						}));
+						const sl = new SelectList(
+							freshItems,
+							Math.min(freshItems.length + 2, 20),
+							selectListTheme,
+						);
+						sl.onSelect = (item) => {
+							// Group headers are inert — stay in the list.
+							if (item.value === "__header__") return;
+							done(item.value);
+						};
+						sl.onCancel = () => done(null);
+						sl.onSelectionChange = (item) => {
+							savedIndex = freshItems.findIndex((i) => i.value === item.value);
+						};
+						return sl;
+					};
 
-				if (row.toolName === "__ALL__") {
+					let selectList = buildList();
+
+					return {
+						render: (w) => {
+							const title = `Tools (${tools.length} total · ${active.size} active · ~${activeTokens()} tokens)`;
+							return [
+								theme.bold(title),
+								"",
+								...selectList.render(w),
+								theme.fg("dim", " t to toggle · Enter to view details · Esc to close"),
+							];
+						},
+						invalidate: () => selectList.invalidate(),
+						handleInput: (data) => {
+							if (matchesKey(data, "t")) {
+								const item = selectList.getSelectedItem();
+								if (item?.value && item.value !== "__header__" && item.value !== "__ALL__") {
+									onToggle(item.value);
+									selectList = buildList();
+									selectList.setSelectedIndex(savedIndex);
+								}
+								tui.requestRender();
+								return;
+							}
+							selectList.handleInput(data);
+							tui.requestRender();
+						},
+					};
+				}) ?? null;
+
+				if (selectedToolName === null) return; // user cancelled
+
+				if (selectedToolName === "__ALL__") {
 					const byName = [...tools].sort((a, b) => a.name.localeCompare(b.name));
 					const body = byName.map((t) => renderToolMarkdown(t, active)).join("\n\n");
 					const reason = await showMarkdown("All Tools", body, ctx, true);
@@ -335,25 +391,15 @@ export default function toolInfoExtension(pi: ExtensionAPI) {
 					return;
 				}
 
-				const tool = tools.find((t) => t.name === row.toolName);
+				const tool = tools.find((t) => t.name === selectedToolName);
 				if (!tool) continue;
 
-				const toggleInfo: ToggleInfo = {
-					tool,
-					active,
-					onToggle: (name) => {
-						if (enabledTools.has(name)) enabledTools.delete(name);
-						else enabledTools.add(name);
-						applyTools();
-						persistState();
-					},
-				};
 				const reason = await showMarkdown(
 					`Tool: ${tool.name}`,
 					renderToolMarkdown(tool, active),
 					ctx,
 					true,
-					toggleInfo,
+					{ tool, active, onToggle },
 				);
 				if (reason === "back") continue;
 				return;
