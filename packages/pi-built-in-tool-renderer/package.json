@@ -1,0 +1,15 @@
+{
+  "name": "pi-built-in-tool-renderer",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Pi extension that re-registers the built-in read/bash/edit/write tools with compact custom renderCall / renderResult functions while delegating execute() to the originals. Demonstrates how to override rendering of built-in tools without changing their behaviour.",
+  "type": "module",
+  "keywords": ["pi-package"],
+  "pi": {
+    "extensions": ["./src/index.ts"]
+  },
+  "peerDependencies": {
+    "@mariozechner/pi-coding-agent": "*",
+    "@mariozechner/pi-tui": "*"
+  }
+}

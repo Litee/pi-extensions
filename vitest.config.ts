@@ -43,6 +43,18 @@ export default defineConfig({
 				// Markdown modal. All logic worth testing (truncate, formatTokens,
 				// estimateToolTokens, sourceLabel) lives in helpers.ts.
 				"**/pi-tool-info/src/index.ts",
+				// pi-plan-mode/index.ts is lifecycle wiring + pi-ai ui.select +
+				// setActiveTools orchestration, copied verbatim (minus a handful
+				// of strict-tsconfig patches) from the upstream pi-mono example.
+				// All pure logic (allow/deny lists, plan extraction, [DONE:n]
+				// tracking) lives in utils.ts and is covered there.
+				"**/pi-plan-mode/src/index.ts",
+				// pi-built-in-tool-renderer/index.ts is a set of Text-returning
+				// renderCall / renderResult overrides for the four built-in tools,
+				// copied verbatim from the upstream pi-mono example. Exercising
+				// the renderers requires a live theme + tool runtime; the smoke
+				// test in test/index.test.ts confirms the wiring is intact.
+				"**/pi-built-in-tool-renderer/src/index.ts",
 			],
 			reporter: ["text", "html"],
 			// Fail the suite (non-zero exit) when any threshold is not met.
