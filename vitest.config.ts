@@ -58,6 +58,11 @@ export default defineConfig({
 				// All pure logic (allow/deny lists, plan extraction, [DONE:n]
 				// tracking) lives in utils.ts and is covered there.
 				"**/pi-plan-mode/src/index.ts",
+				// pi-context-window-analysis/index.ts is lifecycle wiring +
+				// command registration + widget update calls. All pure logic
+				// (token estimation, breakdown, rendering) lives in breakdown.ts
+				// and render.ts and is fully covered there.
+				"**/pi-context-window-analysis/src/index.ts",
 				// pi-built-in-tool-renderer/index.ts is a set of Text-returning
 				// renderCall / renderResult overrides for the four built-in tools,
 				// copied verbatim from the upstream pi-mono example. Exercising

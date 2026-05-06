@@ -1,0 +1,124 @@
+import { describe, expect, it } from "vitest";
+
+import { formatTokens, renderBar, renderRow } from "../src/render.js";
+
+// ────────────────────────────────────────────────────────────────────────────
+// renderBar
+// ────────────────────────────────────────────────────────────────────────────
+
+describe("renderBar", () => {
+	it("returns all empty blocks when value is 0", () => {
+		const result = renderBar(0, 0, 20);
+		expect(result).toBe("░".repeat(20));
+		expect(result).toHaveLength(20);
+	});
+
+	it("returns all full blocks when value equals max", () => {
+		const result = renderBar(100, 100, 20);
+		expect(result).toBe("█".repeat(20));
+		expect(result).toHaveLength(20);
+	});
+
+	it("returns 10 full + 10 empty for 50% fill", () => {
+		const result = renderBar(50, 100, 20);
+		expect(result).toBe("█".repeat(10) + "░".repeat(10));
+		expect(result).toHaveLength(20);
+	});
+
+	it("returns at least 1 full block when value > 0", () => {
+		const result = renderBar(1, 100, 20);
+		expect(result[0]).toBe("█");
+		expect(result).toHaveLength(20);
+	});
+
+	it("always produces exactly `width` characters", () => {
+		for (const width of [1, 5, 10, 20, 40]) {
+			expect(renderBar(33, 100, width)).toHaveLength(width);
+		}
+	});
+
+	it("returns empty string for width 0", () => {
+		expect(renderBar(50, 100, 0)).toBe("");
+	});
+
+	it("returns all empty blocks when max is 0", () => {
+		const result = renderBar(50, 0, 20);
+		expect(result).toBe("░".repeat(20));
+	});
+});
+
+// ────────────────────────────────────────────────────────────────────────────
+// formatTokens
+// ────────────────────────────────────────────────────────────────────────────
+
+describe("formatTokens", () => {
+	it("returns '0' for 0", () => {
+		expect(formatTokens(0)).toBe("0");
+	});
+
+	it("returns '999' for 999", () => {
+		expect(formatTokens(999)).toBe("999");
+	});
+
+	it("returns '1.0k' for 1000", () => {
+		expect(formatTokens(1000)).toBe("1.0k");
+	});
+
+	it("returns '12.3k' for 12345", () => {
+		expect(formatTokens(12345)).toBe("12.3k");
+	});
+
+	it("formats small numbers verbatim (no 'k' suffix)", () => {
+		expect(formatTokens(42)).toBe("42");
+	});
+
+	it("formats thousands below 100k with one decimal", () => {
+		expect(formatTokens(1234)).toBe("1.2k");
+		expect(formatTokens(9949)).toBe("9.9k");
+		expect(formatTokens(10000)).toBe("10.0k");
+	});
+
+	it("formats 100k and above with no decimals", () => {
+		expect(formatTokens(100000)).toBe("100k");
+		expect(formatTokens(200000)).toBe("200k");
+	});
+});
+
+// ────────────────────────────────────────────────────────────────────────────
+// renderRow
+// ────────────────────────────────────────────────────────────────────────────
+
+describe("renderRow", () => {
+	it("output contains the label", () => {
+		const row = renderRow("my label", 500, 1000, 20, 21);
+		expect(row).toContain("my label");
+	});
+
+	it("output contains bar characters (full and/or empty blocks)", () => {
+		const row = renderRow("label", 500, 1000, 20, 21);
+		expect(row).toMatch(/[█░]/);
+	});
+
+	it("output contains a percent string", () => {
+		const row = renderRow("label", 50, 100, 20, 21);
+		expect(row).toContain("50%");
+	});
+
+	it("output contains a token count with ~ prefix", () => {
+		const row = renderRow("label", 4000, 10000, 20, 21);
+		expect(row).toContain("~");
+		expect(row).toContain("4.0k");
+	});
+
+	it("renders 0% and all empty bar when tokens is 0", () => {
+		const row = renderRow("empty", 0, 1000, 20, 21);
+		expect(row).toContain("0%");
+		expect(row).toContain("░".repeat(20));
+	});
+
+	it("renders 100% and all full bar when tokens equals parent", () => {
+		const row = renderRow("full", 1000, 1000, 20, 21);
+		expect(row).toContain("100%");
+		expect(row).toContain("█".repeat(20));
+	});
+});
