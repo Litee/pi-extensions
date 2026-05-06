@@ -1840,15 +1840,28 @@ describe("/local-issue-watcher browse subcommand (#0025)", () => {
 });
 
 // ---------------------------------------------------------------------------
-// Chromeless message renderer (#0028)
+// Styled message renderer (#0028)
 // ---------------------------------------------------------------------------
 //
 // Without a registered `pi.registerMessageRenderer`, pi's default display
 // stamps the raw customType literal (e.g. `[pi-local-issue-tracker-watcher]`)
-// onto the transcript. The fix registers a minimal chromeless renderer that
-// returns a zero-padding `Text` with just the message content; the customType
-// stays on the message for future routing / filtering. See the reference
-// implementation in pi-session-recap d5e9984.
+// onto the transcript. The fix registers a renderer that:
+//   - Wraps output in a Box with the `customMessageBg` background so messages
+//     are visually distinct.
+//   - Adds "pi-local-issue-tracker-watcher" as a bold header line in the
+//     `customMessageLabel` colour so the user can see which watcher fired.
+//   - Suppresses the default `[customType]` bracket label pi would otherwise
+//     prepend.
+// This applies equally to session-start announcements, poll-cycle event
+// updates, and /local-issue-watcher status output.
+
+/** Minimal theme stub: strips all colour/bold ANSI so assertions work on plain text. */
+const fakeTheme = {
+	fg: (_color: string, text: string) => text,
+	bg: (_color: string, text: string) => text,
+	bold: (text: string) => text,
+};
+
 describe("/local-issue-watcher message renderer (#0028)", () => {
 	let dbRoot: string;
 
@@ -1894,7 +1907,7 @@ describe("/local-issue-watcher message renderer (#0028)", () => {
 		expect(pi.renderers.get(customType)).toBe(renderer);
 	});
 
-	it("renderer output does NOT contain the raw customType literal", () => {
+	it("renderer output does NOT contain the pi default bracket label, but DOES show the extension name header", () => {
 		const pi = makeFakePi();
 		extensionWithDbRoot(pi, dbRoot);
 
@@ -1903,21 +1916,21 @@ describe("/local-issue-watcher message renderer (#0028)", () => {
 			(
 				message: { customType: string; content: string },
 				options: { expanded: boolean },
-				theme: unknown,
+				theme: typeof fakeTheme,
 			) => unknown,
 		];
 		const result = renderer(
 			{ customType, content: "line 1\nline 2" },
 			{ expanded: false },
-			{},
+			fakeTheme,
 		);
 		const lines = renderText(result);
 		const joined = lines.join("\n");
 
-		// The literal routing key must not appear anywhere in the rendered output.
-		// We reference the registered customType rather than hard-coding the string.
-		expect(joined).not.toContain(customType);
+		// The bracket form that pi's default renderer would stamp must not appear.
 		expect(joined).not.toContain(`[${customType}]`);
+		// The extension name IS shown as the first non-blank line (the header label).
+		expect(joined).toContain(customType);
 		// Content still comes through.
 		expect(joined).toContain("line 1");
 		expect(joined).toContain("line 2");
@@ -1932,27 +1945,27 @@ describe("/local-issue-watcher message renderer (#0028)", () => {
 			(
 				message: { customType: string; content: string },
 				options: { expanded: boolean },
-				theme: unknown,
+				theme: typeof fakeTheme,
 			) => unknown,
 		];
 		const result = renderer(
-			{ customType, content: "a\nb\nc" },
+			{ customType, content: "ALPHA\nBETA\nGAMMA" },
 			{ expanded: false },
-			{},
+			fakeTheme,
 		);
 		const lines = renderText(result);
 
-		// Three lines, in order. Extra trailing/leading blank lines are OK as long
-		// as 'a', 'b', 'c' appear in that sequence.
-		const indexA = lines.indexOf("a");
-		const indexB = lines.indexOf("b");
-		const indexC = lines.indexOf("c");
+		// Three content lines, in order. Extra padding/blank lines from the Box
+		// and header label are OK as long as the markers appear in sequence.
+		const indexA = lines.findIndex((l) => l.includes("ALPHA"));
+		const indexB = lines.findIndex((l) => l.includes("BETA"));
+		const indexC = lines.findIndex((l) => l.includes("GAMMA"));
 		expect(indexA).toBeGreaterThanOrEqual(0);
 		expect(indexB).toBeGreaterThan(indexA);
 		expect(indexC).toBeGreaterThan(indexB);
 	});
 
-	it("/local-issue-watcher status round-trip: renderer strips the customType label from the startup summary", async () => {
+	it("/local-issue-watcher status round-trip: renderer shows the header label and content without the bracket label", async () => {
 		// Seed a non-trivial snapshot so buildStartupChatMessage has content to render.
 		mkdirSync(join(dbRoot, "skill-a"), { recursive: true });
 		writeFileSync(
@@ -1975,22 +1988,23 @@ describe("/local-issue-watcher message renderer (#0028)", () => {
 			(
 				message: { customType: string; content: string },
 				options: { expanded: boolean },
-				theme: unknown,
+				theme: typeof fakeTheme,
 			) => unknown,
 		];
 		expect(payload.customType).toBe(customType);
 
-		const rendered = renderText(renderer(payload, { expanded: false }, {}));
+		const rendered = renderText(renderer(payload, { expanded: false }, fakeTheme));
 		const joined = rendered.join("\n");
 
+		// Bracket form from pi's default renderer must not appear.
 		expect(joined).not.toContain(`[${customType}]`);
-		expect(joined).not.toContain(customType);
-		// Content came through verbatim: the renderer returns the same string
-		// the sendMessage payload carried.
+		// Extension name header IS present.
+		expect(joined).toContain(customType);
+		// Content came through verbatim.
 		expect(joined).toContain(payload.content);
 	});
 
-	it("session-start round-trip: renderer strips the customType label from the startup summary", async () => {
+	it("session-start round-trip: renderer shows the header label and content without the bracket label", async () => {
 		// Running runstate + one issue => session_start may emit the #0011 startup chat.
 		mkdirSync(join(dbRoot, "skill-a"), { recursive: true });
 		writeFileSync(
@@ -2012,12 +2026,13 @@ describe("/local-issue-watcher message renderer (#0028)", () => {
 			(
 				message: { customType: string; content: string },
 				options: { expanded: boolean },
-				theme: unknown,
+				theme: typeof fakeTheme,
 			) => unknown,
 		];
 
 		// Session_start emits at least one customType-tagged payload (the startup
-		// chat). Every such payload must render chromelessly through our renderer.
+		// chat). Every such payload must render with the header label present and
+		// without the bracket form.
 		const customTypedCalls = pi.sendMessage.mock.calls.filter((c) => {
 			const msg = c[0] as { customType?: string };
 			return msg.customType === customType;
@@ -2025,10 +2040,10 @@ describe("/local-issue-watcher message renderer (#0028)", () => {
 		expect(customTypedCalls.length).toBeGreaterThan(0);
 
 		for (const [payload] of customTypedCalls as Array<[{ customType: string; content: string }]>) {
-			const rendered = renderText(renderer(payload, { expanded: false }, {}));
+			const rendered = renderText(renderer(payload, { expanded: false }, fakeTheme));
 			const joined = rendered.join("\n");
 			expect(joined).not.toContain(`[${customType}]`);
-			expect(joined).not.toContain(customType);
+			expect(joined).toContain(customType);
 			expect(joined).toContain(payload.content);
 		}
 	});

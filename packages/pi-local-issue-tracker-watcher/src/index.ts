@@ -35,7 +35,7 @@ import { homedir } from "node:os";
 import { join } from "node:path";
 
 import type { ExtensionAPI } from "@mariozechner/pi-coding-agent";
-import { Text } from "@mariozechner/pi-tui";
+import { Box, Text } from "@mariozechner/pi-tui";
 
 import { changedPaths, diffSnapshots } from "./diff.js";
 import {
@@ -582,14 +582,12 @@ export default function issueWatcher(pi: ExtensionAPI): void {
 		rt.ui = null;
 	});
 
-	// #0028: chromeless renderer so session-start and /local-issue-watcher
-	// status don't leak the literal `[pi-local-issue-tracker-watcher]`
-	// routing-key label into the user's transcript. The customType is kept
-	// on the message for future filtering / persistence; we just stop
-	// letting pi paint its name on the user's screen. Padding is 0/0 to
-	// match how pi's own plain info messages render — no border, no header,
-	// no decoration.
-	pi.registerMessageRenderer(CUSTOM_MESSAGE_TYPE, (message) => {
+	// #0028: renderer for session-start, event updates, and /local-issue-watcher
+	// status messages. Wraps content in a Box with the customMessageBg background
+	// so messages are visually distinct from plain text. The first line is the
+	// extension name, styled with the customMessageLabel colour + bold, so the
+	// user can immediately see which watcher produced the output.
+	pi.registerMessageRenderer(CUSTOM_MESSAGE_TYPE, (message, _options, theme) => {
 		// `CustomMessage.content` is typed as `string | (TextContent | ImageContent)[]`;
 		// this extension only ever sends string content via `pi.sendMessage`, but
 		// narrow defensively so a stray array form can't crash the renderer.
@@ -600,7 +598,11 @@ export default function issueWatcher(pi: ExtensionAPI): void {
 						.filter((c): c is { type: "text"; text: string } => c.type === "text")
 						.map((c) => c.text)
 						.join("\n");
-		return new Text(text, 0, 0);
+		const label = theme.bold(theme.fg("customMessageLabel", "pi-local-issue-tracker-watcher"));
+		const box = new Box(1, 1, (t) => theme.bg("customMessageBg", t));
+		box.addChild(new Text(label, 0, 0));
+		box.addChild(new Text(text, 0, 0));
+		return box;
 	});
 
 	pi.registerCommand("local-issue-watcher", {
