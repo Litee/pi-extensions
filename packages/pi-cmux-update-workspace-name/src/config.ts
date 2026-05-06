@@ -1,13 +1,15 @@
 /**
- * Environment-variable derived runtime config for pi-update-cmux-status.
+ * Environment-variable derived runtime config for pi-cmux-update-workspace-name.
  *
  * Kept in its own module so tests can exercise the parsing rules without
  * having to boot the rest of the extension.
  */
 
 /**
- * The sidebar status-pill key we write to with `cmux set-status`. One pill
- * per extension, matching slack-watcher / issue-watcher conventions.
+ * The sidebar status-pill key used by `logLine` when announcing rename
+ * decisions (`Renamed workspace …`, `Skipped workspace rename …`).
+ * Mirrored from pi-cmux-report-status so both extensions write to the
+ * same pill/log source when both are installed.
  *
  * Overridable via `$PI_CMUX_STATUS_KEY`; defaults to "pi".
  */
@@ -21,8 +23,6 @@ export function resolveStatusKey(env: NodeJS.ProcessEnv = process.env): string {
  * Whether the extension should rename the cmux workspace on the first
  * user prompt. Disabled when `$PI_CMUX_RENAME_WORKSPACE` is set to any
  * of `0`, `false`, `no` (case-insensitive). Default: enabled.
- *
- * Tab renaming was removed in #0003 and has no config flag.
  */
 export function resolveRenameWorkspace(env: NodeJS.ProcessEnv = process.env): boolean {
 	const raw = env["PI_CMUX_RENAME_WORKSPACE"];

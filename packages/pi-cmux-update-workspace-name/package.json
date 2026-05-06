@@ -1,0 +1,15 @@
+{
+  "name": "pi-cmux-update-workspace-name",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Pi extension that auto-renames the cmux workspace once per pi session based on an LLM summary of the first user prompt, with a /cmux-rename command for on-demand regeneration.",
+  "type": "module",
+  "keywords": ["pi-package"],
+  "pi": {
+    "extensions": ["./src/index.ts"]
+  },
+  "peerDependencies": {
+    "@mariozechner/pi-ai": "*",
+    "@mariozechner/pi-coding-agent": "*"
+  }
+}
