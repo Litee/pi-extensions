@@ -1,4 +1,4 @@
-# pi-cmux-report-status
+# pi-cmux-notifications
 
 Pi extension that mirrors pi lifecycle events into
 [cmux](https://cmux.dev) — sidebar status pill, log lines, and desktop

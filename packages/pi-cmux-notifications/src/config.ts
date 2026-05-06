@@ -1,5 +1,5 @@
 /**
- * Environment-variable derived runtime config for pi-cmux-report-status.
+ * Environment-variable derived runtime config for pi-cmux-notifications.
  *
  * Kept in its own module so tests can exercise the parsing rules without
  * having to boot the rest of the extension.

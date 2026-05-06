@@ -135,7 +135,7 @@ function enterCmux(): () => void {
 // ---------------------------------------------------------------------------
 
 describe("default export — wiring", () => {
-	it("subscribes to session_start + input only (status mirroring lives in pi-cmux-report-status)", () => {
+	it("subscribes to session_start + input only (status mirroring lives in pi-cmux-notifications)", () => {
 		const pi = makeFakePi();
 		createExtension(pi as never);
 

@@ -5,7 +5,7 @@
  * summary of the first user prompt. Split out of the old
  * `pi-update-cmux-status` package so the rename half and the sidebar
  * status-pill mirror can be installed independently (see the sibling
- * `pi-cmux-report-status` package for the status half).
+ * `pi-cmux-notifications` package for the status half).
  *
  *   session_start          → rehydrate the once-per-session rename flag
  *                             from the pi session log so `/reload`

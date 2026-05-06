@@ -6,7 +6,7 @@ Also provides a `/cmux-rename` slash command for on-demand regeneration.
 
 Split out of the former `pi-update-cmux-status` package. Sidebar
 status-pill mirroring now lives in the sibling
-[`pi-cmux-report-status`](../pi-cmux-report-status) package and can be
+[`pi-cmux-notifications`](../pi-cmux-notifications) package and can be
 installed independently.
 
 ## What it does

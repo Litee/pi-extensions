@@ -1,5 +1,5 @@
 /**
- * pi-cmux-report-status — pi extension.
+ * pi-cmux-notifications — pi extension.
  *
  * Mirrors pi lifecycle events into cmux (sidebar status pill, desktop
  * notifications). Split out of the old `pi-update-cmux-status` package

@@ -8,7 +8,7 @@
 /**
  * The sidebar status-pill key used by `logLine` when announcing rename
  * decisions (`Renamed workspace …`, `Skipped workspace rename …`).
- * Mirrored from pi-cmux-report-status so both extensions write to the
+ * Mirrored from pi-cmux-notifications so both extensions write to the
  * same pill/log source when both are installed.
  *
  * Overridable via `$PI_CMUX_STATUS_KEY`; defaults to "pi".
