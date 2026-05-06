@@ -14,7 +14,7 @@ import type { TextContent } from "@mariozechner/pi-ai";
 import type { ExtensionAPI, ExtensionContext } from "@mariozechner/pi-coding-agent";
 import { Key } from "@mariozechner/pi-tui";
 import { ToolSnapshot } from "./tool-snapshot.js";
-import { isSafeCommand } from "./utils.js";
+import { formatToolList, isSafeCommand } from "./utils.js";
 
 // Tools
 const PLAN_MODE_TOOLS = ["read", "bash", "grep", "find", "ls", "ask_user_question"];
@@ -46,10 +46,11 @@ export default function planModeExtension(pi: ExtensionAPI): void {
 		if (planModeEnabled) {
 			toolSnapshot.save(pi.getActiveTools());
 			pi.setActiveTools(PLAN_MODE_TOOLS);
-			ctx.ui.notify(`Plan mode enabled. Tools: ${PLAN_MODE_TOOLS.join(", ")}`);
+			ctx.ui.notify(`Plan mode enabled. ${formatToolList(PLAN_MODE_TOOLS)}`);
 		} else {
-			pi.setActiveTools(toolSnapshot.restore(NORMAL_MODE_TOOLS));
-			ctx.ui.notify("Plan mode disabled. Full access restored.");
+			const restored = toolSnapshot.restore(NORMAL_MODE_TOOLS);
+			pi.setActiveTools(restored);
+			ctx.ui.notify(`Plan mode disabled. ${formatToolList(restored)}`);
 		}
 		updateStatus(ctx);
 	}
