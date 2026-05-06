@@ -1907,7 +1907,7 @@ describe("/local-issue-watcher message renderer (#0028)", () => {
 		expect(pi.renderers.get(customType)).toBe(renderer);
 	});
 
-	it("renderer output contains [pi-local-issue-tracker-watcher] header and content, without double-bracket form", () => {
+	it("renderer output contains the extension name as header and content, without bracket wrapping", () => {
 		const pi = makeFakePi();
 		extensionWithDbRoot(pi, dbRoot);
 
@@ -1927,10 +1927,9 @@ describe("/local-issue-watcher message renderer (#0028)", () => {
 		const lines = renderText(result);
 		const joined = lines.join("\n");
 
-		// The bracketed label is deliberately shown.
-		expect(joined).toContain(`[${customType}]`);
-		// Double-bracket form must not appear (would indicate double-wrapping).
-		expect(joined).not.toContain(`[[${customType}]]`);
+		// Extension name is shown without brackets.
+		expect(joined).toContain(customType);
+		expect(joined).not.toContain(`[${customType}]`);
 		// Content still comes through.
 		expect(joined).toContain("line 1");
 		expect(joined).toContain("line 2");
@@ -1996,8 +1995,9 @@ describe("/local-issue-watcher message renderer (#0028)", () => {
 		const rendered = renderText(renderer(payload, { expanded: false }, fakeTheme));
 		const joined = rendered.join("\n");
 
-		// Bracketed label is deliberately shown.
-		expect(joined).toContain(`[${customType}]`);
+		// Extension name shown without brackets.
+		expect(joined).toContain(customType);
+		expect(joined).not.toContain(`[${customType}]`);
 		// Every non-blank content line appears in the rendered output
 		// (Box paddingX=1 adds a leading space per line so the raw multi-line
 		// string cannot be matched as a block).
@@ -2044,8 +2044,8 @@ describe("/local-issue-watcher message renderer (#0028)", () => {
 		for (const [payload] of customTypedCalls as Array<[{ customType: string; content: string }]>) {
 			const rendered = renderText(renderer(payload, { expanded: false }, fakeTheme));
 			const joined = rendered.join("\n");
-			expect(joined).toContain(`[${customType}]`);
-			expect(joined).not.toContain(`[[${customType}]]`);
+			expect(joined).toContain(customType);
+			expect(joined).not.toContain(`[${customType}]`);
 			for (const line of payload.content.split("\n").filter((l) => l.trim())) {
 				expect(joined).toContain(line);
 			}

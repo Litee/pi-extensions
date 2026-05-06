@@ -227,7 +227,7 @@ describe("buildStartupChatMessage (#0011)", () => {
 		expect(lines[0]).toBe("status: active");
 		expect(lines[1]).toBe("poll: 60s");
 		expect(lines[2]).toBe("db: /abs/db");
-		expect(lines[3]).toBe("1 open \u00b7 1 in_progress \u00b7 1 done");
+		expect(lines[3]).toBe("issues: 1 open \u00b7 1 in_progress \u00b7 1 done");
 		// No extension-name prefix — the box header already identifies the source.
 		expect(lines[0]).not.toContain("local-issue-watcher:");
 		// No commands hint line.
@@ -248,7 +248,7 @@ describe("buildStartupChatMessage (#0011)", () => {
 		expect(lines[0]).toBe("status: active");
 		expect(lines[1]).toBe("poll: 60s");
 		expect(lines[2]).toBe("db: /abs/db");
-		expect(lines[3]).toBe("0 open");
+		expect(lines[3]).toBe("issues: 0 open");
 	});
 
 	it("respects a custom pollIntervalMs", () => {

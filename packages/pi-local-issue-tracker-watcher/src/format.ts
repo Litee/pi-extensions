@@ -129,7 +129,7 @@ export function buildStartupChatMessage(
 		`status: active`,
 		`poll: ${pollSeconds}s`,
 		`db: ${dbRoot}`,
-		parts.join(" · "),
+		`issues: ${parts.join(" · ")}`,
 	].join("\n");
 }
 

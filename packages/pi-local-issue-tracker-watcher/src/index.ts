@@ -598,7 +598,7 @@ export default function issueWatcher(pi: ExtensionAPI): void {
 						.filter((c): c is { type: "text"; text: string } => c.type === "text")
 						.map((c) => c.text)
 						.join("\n");
-		const label = theme.bold(theme.fg("customMessageLabel", "[pi-local-issue-tracker-watcher]"));
+		const label = theme.bold(theme.fg("customMessageLabel", "pi-local-issue-tracker-watcher"));
 		const box = new Box(1, 1, (t) => theme.bg("customMessageBg", t));
 		box.addChild(new Text(`${label}\n\n${text}`, 0, 0));
 		return box;
