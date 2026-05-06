@@ -30,6 +30,15 @@ export default defineConfig({
 				// cmux-facing package is pure argv builders + dispatch and is
 				// fully covered.
 				"**/cmuxSpawner.ts",
+				// Thin `exec("aws glue …")` shim — cannot be meaningfully
+				// unit-tested without running the real AWS CLI. All logic is
+				// driven through the injected GlueClient interface instead.
+				"**/pi-aws-glue-watcher/src/cli-client.ts",
+				// pi-aws-glue-watcher/index.ts: session_start / session_shutdown /
+				// command-handler lifecycle wiring + setImmediate deferred
+				// sendMessage. All testable logic (handleToolAction, pollOnce,
+				// registerToolIfNeeded) is separately exported and fully covered.
+				"**/pi-aws-glue-watcher/src/index.ts",
 				// Thin `completeSimple(...)` shim; the orchestration in names.ts
 				// is exercised through an injectable completion hook.
 				"**/namesCompletion.ts",
@@ -38,11 +47,11 @@ export default defineConfig({
 				// + a raw stdin focus-event listener. All logic worth testing is
 				// factored into helpers.ts and covered there.
 				"**/pi-session-recap/src/index.ts",
-				// pi-tool-info/index.ts is pure TUI glue: a /tool-info command
+				// pi-tool-info/index.ts is pure TUI glue: a /tools command
 				// handler that calls ctx.ui.select, ctx.ui.custom, and renders a
 				// Markdown modal. All logic worth testing (truncate, formatTokens,
 				// estimateToolTokens, sourceLabel) lives in helpers.ts.
-				"**/pi-tool-info/src/index.ts",
+				"**/pi-tools/src/index.ts",
 				// pi-plan-mode/index.ts is lifecycle wiring + pi-ai ui.select +
 				// setActiveTools orchestration, copied verbatim (minus a handful
 				// of strict-tsconfig patches) from the upstream pi-mono example.
