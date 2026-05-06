@@ -93,9 +93,9 @@ export function buildMissingDbRootStatus(dbRoot: string): string {
  *
  * Format (rendered inside the [pi-local-issue-tracker-watcher] box):
  *
- *     active
- *     poll=60s
- *     dbRoot: <path>
+ *     status: active
+ *     poll: 60s
+ *     db: <path>
  *     <N> open · <M> done · <K> wont_fix
  *
  * The extension-name prefix is omitted — the box header already identifies
@@ -126,9 +126,9 @@ export function buildStartupChatMessage(
 	for (const s of leftover) parts.push(`${counts[s]} ${s}`);
 	const pollSeconds = Math.max(1, Math.round(pollIntervalMs / 1000));
 	return [
-		"active",
-		`poll=${pollSeconds}s`,
-		`dbRoot: ${dbRoot}`,
+		`status: active`,
+		`poll: ${pollSeconds}s`,
+		`db: ${dbRoot}`,
 		parts.join(" · "),
 	].join("\n");
 }

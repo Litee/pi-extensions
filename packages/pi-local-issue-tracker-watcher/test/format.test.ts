@@ -217,16 +217,16 @@ describe("buildStartupAnnouncement has no last-update segment (#0016, #0022)", (
 // ---------------------------------------------------------------------------
 
 describe("buildStartupChatMessage (#0011)", () => {
-	it("first two lines are 'active' then 'poll=Ns', no extension-name prefix", () => {
+	it("first two lines are 'status: active' then 'poll: Ns', no extension-name prefix", () => {
 		const msg = buildStartupChatMessage("/abs/db", {
 			"/a": issue("open"),
 			"/b": issue("in_progress"),
 			"/c": issue("done"),
 		});
 		const lines = msg.split("\n");
-		expect(lines[0]).toBe("active");
-		expect(lines[1]).toBe("poll=60s");
-		expect(lines[2]).toBe("dbRoot: /abs/db");
+		expect(lines[0]).toBe("status: active");
+		expect(lines[1]).toBe("poll: 60s");
+		expect(lines[2]).toBe("db: /abs/db");
 		expect(lines[3]).toBe("1 open \u00b7 1 in_progress \u00b7 1 done");
 		// No extension-name prefix — the box header already identifies the source.
 		expect(lines[0]).not.toContain("local-issue-watcher:");
@@ -245,17 +245,17 @@ describe("buildStartupChatMessage (#0011)", () => {
 	it("returns a sensible format for an empty tracker", () => {
 		const msg = buildStartupChatMessage("/abs/db", {});
 		const lines = msg.split("\n");
-		expect(lines[0]).toBe("active");
-		expect(lines[1]).toBe("poll=60s");
-		expect(lines[2]).toBe("dbRoot: /abs/db");
+		expect(lines[0]).toBe("status: active");
+		expect(lines[1]).toBe("poll: 60s");
+		expect(lines[2]).toBe("db: /abs/db");
 		expect(lines[3]).toBe("0 open");
 	});
 
 	it("respects a custom pollIntervalMs", () => {
 		const msg = buildStartupChatMessage("/abs/db", {}, 30_000);
 		const lines = msg.split("\n");
-		expect(lines[0]).toBe("active");
-		expect(lines[1]).toBe("poll=30s");
+		expect(lines[0]).toBe("status: active");
+		expect(lines[1]).toBe("poll: 30s");
 	});
 });
 
