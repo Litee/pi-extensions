@@ -147,7 +147,7 @@ export default function toolInfoExtension(pi: ExtensionAPI) {
 	// State
 	// ---------------------------------------------------------------------------
 
-	let enabledTools: Set<string> = new Set(pi.getActiveTools());
+	let enabledTools: Set<string> = new Set<string>();
 
 	function persistState(): void {
 		pi.appendEntry<ToolsState>("tools-config", { enabledTools: [...enabledTools] });
