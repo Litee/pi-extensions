@@ -35,6 +35,7 @@ import { homedir } from "node:os";
 import { join } from "node:path";
 
 import type { ExtensionAPI } from "@mariozechner/pi-coding-agent";
+import { Text } from "@mariozechner/pi-tui";
 
 import { changedPaths, diffSnapshots } from "./diff.js";
 import {
@@ -499,6 +500,27 @@ export default function issueWatcher(pi: ExtensionAPI): void {
 			/* noop — UI may already be torn down */
 		}
 		rt.ui = null;
+	});
+
+	// #0028: chromeless renderer so session-start and /local-issue-watcher
+	// status don't leak the literal `[pi-local-issue-tracker-watcher]`
+	// routing-key label into the user's transcript. The customType is kept
+	// on the message for future filtering / persistence; we just stop
+	// letting pi paint its name on the user's screen. Padding is 0/0 to
+	// match how pi's own plain info messages render — no border, no header,
+	// no decoration.
+	pi.registerMessageRenderer(CUSTOM_MESSAGE_TYPE, (message) => {
+		// `CustomMessage.content` is typed as `string | (TextContent | ImageContent)[]`;
+		// this extension only ever sends string content via `pi.sendMessage`, but
+		// narrow defensively so a stray array form can't crash the renderer.
+		const text =
+			typeof message.content === "string"
+				? message.content
+				: message.content
+						.filter((c): c is { type: "text"; text: string } => c.type === "text")
+						.map((c) => c.text)
+						.join("\n");
+		return new Text(text, 0, 0);
 	});
 
 	pi.registerCommand("local-issue-watcher", {

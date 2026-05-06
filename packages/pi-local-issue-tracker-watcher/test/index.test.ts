@@ -29,17 +29,27 @@ import type { Snapshot } from "../src/types.js";
 interface StubPi {
 	on: ReturnType<typeof vi.fn>;
 	registerCommand: ReturnType<typeof vi.fn>;
+	registerMessageRenderer: ReturnType<typeof vi.fn>;
 	sendMessage: ReturnType<typeof vi.fn>;
 	appendEntry: ReturnType<typeof vi.fn>;
 	/** The `session_start` handler registered by the extension (captured for tests). */
 	readonly sessionStartHandler: ((...args: unknown[]) => unknown) | undefined;
 	/** Map of commandName → registered handler (from registerCommand calls). */
 	readonly commands: Map<string, { description: string; handler: (args: string, ctx: unknown) => unknown | Promise<unknown> }>;
+	/** Map of customType → registered renderer (from registerMessageRenderer calls). */
+	readonly renderers: Map<
+		string,
+		(message: { customType: string; content: unknown; details?: unknown }, options: { expanded: boolean }, theme: unknown) => unknown
+	>;
 }
 
 function makeFakePi(): StubPi {
 	const handlers = new Map<string, (...args: unknown[]) => unknown>();
 	const commands = new Map<string, { description: string; handler: (args: string, ctx: unknown) => unknown | Promise<unknown> }>();
+	const renderers = new Map<
+		string,
+		(message: { customType: string; content: unknown; details?: unknown }, options: { expanded: boolean }, theme: unknown) => unknown
+	>();
 
 	const on = vi.fn((event: string, fn: (...args: unknown[]) => unknown) => {
 		handlers.set(event, fn);
@@ -47,18 +57,32 @@ function makeFakePi(): StubPi {
 	const registerCommand = vi.fn((name: string, def: { description: string; handler: (args: string, ctx: unknown) => unknown | Promise<unknown> }) => {
 		commands.set(name, def);
 	});
+	const registerMessageRenderer = vi.fn(
+		(
+			customType: string,
+			renderer: (
+				message: { customType: string; content: unknown; details?: unknown },
+				options: { expanded: boolean },
+				theme: unknown,
+			) => unknown,
+		) => {
+			renderers.set(customType, renderer);
+		},
+	);
 	const sendMessage = vi.fn();
 	const appendEntry = vi.fn();
 
 	return {
 		on,
 		registerCommand,
+		registerMessageRenderer,
 		sendMessage,
 		appendEntry,
 		get sessionStartHandler() {
 			return handlers.get("session_start");
 		},
 		commands,
+		renderers,
 	};
 }
 
@@ -1804,5 +1828,200 @@ describe("/local-issue-watcher browse subcommand (#0025)", () => {
 		expect(calls[0]![0]).toMatch(/local-issue-watcher browse/);
 		expect(calls[0]![0]).toContain(missing);
 		expect(calls[0]![1]).toBe("warning");
+	});
+});
+
+// ---------------------------------------------------------------------------
+// Chromeless message renderer (#0028)
+// ---------------------------------------------------------------------------
+//
+// Without a registered `pi.registerMessageRenderer`, pi's default display
+// stamps the raw customType literal (e.g. `[pi-local-issue-tracker-watcher]`)
+// onto the transcript. The fix registers a minimal chromeless renderer that
+// returns a zero-padding `Text` with just the message content; the customType
+// stays on the message for future routing / filtering. See the reference
+// implementation in pi-session-recap d5e9984.
+describe("/local-issue-watcher message renderer (#0028)", () => {
+	let dbRoot: string;
+
+	beforeEach(() => {
+		dbRoot = mkdtempSync(join(tmpdir(), "pi-local-issue-watcher-renderer-"));
+	});
+	afterEach(() => {
+		rmSync(dbRoot, { recursive: true, force: true });
+	});
+
+	function extensionWithDbRoot(pi: StubPi, root: string): void {
+		const prev = process.env["LOCAL_ISSUE_TRACKER_DB_ROOT"];
+		process.env["LOCAL_ISSUE_TRACKER_DB_ROOT"] = root;
+		try {
+			createExtension(pi as never);
+		} finally {
+			if (prev === undefined) delete process.env["LOCAL_ISSUE_TRACKER_DB_ROOT"];
+			else process.env["LOCAL_ISSUE_TRACKER_DB_ROOT"] = prev;
+		}
+	}
+
+	/** Run a pi-tui Text component and collect its rendered lines (right-pad trimmed). */
+	function renderText(component: unknown, width = 500): string[] {
+		// pi-tui's `Text` component exposes `.render(width)` returning styled line
+		// strings. We strip the right-pad whitespace so equality checks are stable.
+		// Use a wide width so the renderer doesn't wrap/truncate long content
+		// lines (e.g. paths in buildStartupChatMessage).
+		const renderable = component as { render: (w: number) => string[] };
+		return renderable.render(width).map((line) => line.trimEnd());
+	}
+
+	it("registers a renderer for the extension's CUSTOM_MESSAGE_TYPE during init", () => {
+		const pi = makeFakePi();
+		extensionWithDbRoot(pi, dbRoot);
+
+		// One registration, for the shared customType used by session-start and /status.
+		expect(pi.registerMessageRenderer).toHaveBeenCalled();
+		const calls = pi.registerMessageRenderer.mock.calls as Array<[string, unknown]>;
+		expect(calls).toHaveLength(1);
+		const [customType, renderer] = calls[0]!;
+		expect(customType).toBe("pi-local-issue-tracker-watcher");
+		expect(typeof renderer).toBe("function");
+		expect(pi.renderers.get(customType)).toBe(renderer);
+	});
+
+	it("renderer output does NOT contain the raw customType literal", () => {
+		const pi = makeFakePi();
+		extensionWithDbRoot(pi, dbRoot);
+
+		const [customType, renderer] = pi.registerMessageRenderer.mock.calls[0] as [
+			string,
+			(
+				message: { customType: string; content: string },
+				options: { expanded: boolean },
+				theme: unknown,
+			) => unknown,
+		];
+		const result = renderer(
+			{ customType, content: "line 1\nline 2" },
+			{ expanded: false },
+			{},
+		);
+		const lines = renderText(result);
+		const joined = lines.join("\n");
+
+		// The literal routing key must not appear anywhere in the rendered output.
+		// We reference the registered customType rather than hard-coding the string.
+		expect(joined).not.toContain(customType);
+		expect(joined).not.toContain(`[${customType}]`);
+		// Content still comes through.
+		expect(joined).toContain("line 1");
+		expect(joined).toContain("line 2");
+	});
+
+	it("renderer preserves all content lines in order", () => {
+		const pi = makeFakePi();
+		extensionWithDbRoot(pi, dbRoot);
+
+		const [customType, renderer] = pi.registerMessageRenderer.mock.calls[0] as [
+			string,
+			(
+				message: { customType: string; content: string },
+				options: { expanded: boolean },
+				theme: unknown,
+			) => unknown,
+		];
+		const result = renderer(
+			{ customType, content: "a\nb\nc" },
+			{ expanded: false },
+			{},
+		);
+		const lines = renderText(result);
+
+		// Three lines, in order. Extra trailing/leading blank lines are OK as long
+		// as 'a', 'b', 'c' appear in that sequence.
+		const indexA = lines.indexOf("a");
+		const indexB = lines.indexOf("b");
+		const indexC = lines.indexOf("c");
+		expect(indexA).toBeGreaterThanOrEqual(0);
+		expect(indexB).toBeGreaterThan(indexA);
+		expect(indexC).toBeGreaterThan(indexB);
+	});
+
+	it("/local-issue-watcher status round-trip: renderer strips the customType label from the startup summary", async () => {
+		// Seed a non-trivial snapshot so buildStartupChatMessage has content to render.
+		mkdirSync(join(dbRoot, "skill-a"), { recursive: true });
+		writeFileSync(
+			join(dbRoot, "skill-a", "0001-a.json"),
+			JSON.stringify({ id: "0001", status: "open", title: "t", skill: "skill-a" }),
+		);
+
+		const pi = makeFakePi();
+		extensionWithDbRoot(pi, dbRoot);
+		const ctx = makeFakeCtx();
+
+		await pi.commands.get("local-issue-watcher")!.handler("status", ctx);
+
+		expect(pi.sendMessage).toHaveBeenCalledTimes(1);
+		const [payload] = pi.sendMessage.mock.calls[0] as [
+			{ customType: string; content: string },
+		];
+		const [customType, renderer] = pi.registerMessageRenderer.mock.calls[0] as [
+			string,
+			(
+				message: { customType: string; content: string },
+				options: { expanded: boolean },
+				theme: unknown,
+			) => unknown,
+		];
+		expect(payload.customType).toBe(customType);
+
+		const rendered = renderText(renderer(payload, { expanded: false }, {}));
+		const joined = rendered.join("\n");
+
+		expect(joined).not.toContain(`[${customType}]`);
+		expect(joined).not.toContain(customType);
+		// Content came through verbatim: the renderer returns the same string
+		// the sendMessage payload carried.
+		expect(joined).toContain(payload.content);
+	});
+
+	it("session-start round-trip: renderer strips the customType label from the startup summary", async () => {
+		// Running runstate + one issue => session_start may emit the #0011 startup chat.
+		mkdirSync(join(dbRoot, "skill-a"), { recursive: true });
+		writeFileSync(
+			join(dbRoot, "skill-a", "0001-a.json"),
+			JSON.stringify({ id: "0001", status: "open", title: "t", skill: "skill-a" }),
+		);
+
+		const pi = makeFakePi();
+		extensionWithDbRoot(pi, dbRoot);
+		const ctx = makeFakeCtx([runningRunstate()]);
+		await pi.sessionStartHandler!({}, ctx);
+		// session_start uses `deferMessages: true` — sendMessage calls emitted
+		// during handleSessionStart are queued via setImmediate, not fired
+		// synchronously. Flush the setImmediate queue before inspecting.
+		await new Promise((resolve) => setImmediate(resolve));
+
+		const [customType, renderer] = pi.registerMessageRenderer.mock.calls[0] as [
+			string,
+			(
+				message: { customType: string; content: string },
+				options: { expanded: boolean },
+				theme: unknown,
+			) => unknown,
+		];
+
+		// Session_start emits at least one customType-tagged payload (the startup
+		// chat). Every such payload must render chromelessly through our renderer.
+		const customTypedCalls = pi.sendMessage.mock.calls.filter((c) => {
+			const msg = c[0] as { customType?: string };
+			return msg.customType === customType;
+		});
+		expect(customTypedCalls.length).toBeGreaterThan(0);
+
+		for (const [payload] of customTypedCalls as Array<[{ customType: string; content: string }]>) {
+			const rendered = renderText(renderer(payload, { expanded: false }, {}));
+			const joined = rendered.join("\n");
+			expect(joined).not.toContain(`[${customType}]`);
+			expect(joined).not.toContain(customType);
+			expect(joined).toContain(payload.content);
+		}
 	});
 });
