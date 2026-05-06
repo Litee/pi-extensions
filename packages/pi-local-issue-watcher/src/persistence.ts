@@ -1,7 +1,7 @@
 import type { IssueInfo, Snapshot } from "./types.js";
 
 /** Key used with `pi.appendEntry(...)` / session custom entries. */
-export const STATE_ENTRY_TYPE = "pi-local-issue-tracker-watcher-state";
+export const STATE_ENTRY_TYPE = "pi-local-issue-watcher-state";
 
 /**
  * Entry types we still accept on **read** for back-compat with session
@@ -13,7 +13,7 @@ export const STATE_ENTRY_TYPE = "pi-local-issue-tracker-watcher-state";
  *   prefix)
  *
  * #0020 renamed the active key to the package-prefixed form
- * `pi-local-issue-tracker-watcher-state`; both prior variants remain
+ * `pi-local-issue-watcher-state`; both prior variants remain
  * readable.
  */
 export const LEGACY_STATE_ENTRY_TYPES = [
@@ -27,7 +27,7 @@ export const LEGACY_STATE_ENTRY_TYPES = [
  * {@link STATE_ENTRY_TYPE} so that the snapshot can age out under its
  * 24h TTL while the user's explicit pause preference survives forever.
  */
-export const RUNSTATE_ENTRY_TYPE = "pi-local-issue-tracker-watcher-runstate";
+export const RUNSTATE_ENTRY_TYPE = "pi-local-issue-watcher-runstate";
 
 /**
  * Run-state entry types still accepted on read. Same layering as

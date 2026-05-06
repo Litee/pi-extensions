@@ -1,4 +1,4 @@
-# pi-local-issue-tracker-watcher
+# pi-local-issue-watcher
 
 Pi extension that watches a **local-skill-issues-tracker** database on disk
 and injects issue change notifications into the pi chat as custom
@@ -10,11 +10,11 @@ This is a greatly simplified TypeScript port of
 with three material differences:
 
 1. **No keystroke bridges.** Changes are delivered exclusively through
-   `pi.sendMessage({customType: "pi-local-issue-tracker-watcher", ...}, {triggerTurn: true})`.
+   `pi.sendMessage({customType: "pi-local-issue-watcher", ...}, {triggerTurn: true})`.
 2. **No external state file / PID lock.** The previous snapshot is stored via
-   `pi.appendEntry("pi-local-issue-tracker-watcher-state", ...)` with a 24 h
+   `pi.appendEntry("pi-local-issue-watcher-state", ...)` with a 24 h
    TTL, and the user's explicit pause/resume preference via
-   `pi.appendEntry("pi-local-issue-tracker-watcher-runstate", ...)` (no TTL)
+   `pi.appendEntry("pi-local-issue-watcher-runstate", ...)` (no TTL)
    — so the watcher auto-resumes through session restart or plugin
    reload without a separate state directory. All session-log keys
    carry the full package-name prefix (#0020) to keep the shared pi
@@ -49,7 +49,7 @@ On every `session_start`:
 2. If the directory does not exist → `ctx.ui.notify(...)` and bail out.
 3. Scan all `<dbRoot>/<skill>/NNNN-slug.json` files into a `Snapshot`.
 4. Pin a one-line **status entry** to the extension-status row via
-   `ctx.ui.setStatus("pi-local-issue-tracker-watcher", ...)` (the key is
+   `ctx.ui.setStatus("pi-local-issue-watcher", ...)` (the key is
    prefixed with the full package name per #0020, though the rendered
    line keeps the shorter `local-issue-watcher:` label to save footer
    width) — e.g.
@@ -85,7 +85,7 @@ On every `session_start`:
    current on-disk state differs, emit **one** chat message summarising
    every change (status, title/description update, comment added/removed,
    file added/removed). The message carries:
-   - `customType: "pi-local-issue-tracker-watcher"`
+   - `customType: "pi-local-issue-watcher"`
    - `content`: a human-readable summary (`N issue update(s)` + bullet list)
    - `details: { changes, changedPaths }` for programmatic consumers
    - delivery: `{ deliverAs: "followUp", triggerTurn: true }` — the agent is

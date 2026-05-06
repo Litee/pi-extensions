@@ -325,18 +325,18 @@ describe("rehydrateRunStateFromSession \u2014 legacy entry type (#0017)", () => 
 
 // ---------------------------------------------------------------------------
 // #0020 — state keys now carry the full package-name prefix
-// (`pi-local-issue-tracker-watcher-state` / `-runstate`). Entries written by
+// (`pi-local-issue-watcher-state` / `-runstate`). Entries written by
 // pre-#0017 builds (`issue-watcher-*`) and #0017…#0019 builds
 // (`local-issue-watcher-*`) both remain readable via the LEGACY_ arrays.
 // ---------------------------------------------------------------------------
 
 describe("rehydrateFromSession — #0020 package-name-prefixed keys", () => {
 	it("STATE_ENTRY_TYPE is prefixed with the full package name", () => {
-		expect(STATE_ENTRY_TYPE).toBe("pi-local-issue-tracker-watcher-state");
+		expect(STATE_ENTRY_TYPE).toBe("pi-local-issue-watcher-state");
 	});
 
 	it("RUNSTATE_ENTRY_TYPE is prefixed with the full package name", () => {
-		expect(RUNSTATE_ENTRY_TYPE).toBe("pi-local-issue-tracker-watcher-runstate");
+		expect(RUNSTATE_ENTRY_TYPE).toBe("pi-local-issue-watcher-runstate");
 	});
 
 	it("rehydrates from a mixed log containing all three legacy variants; newest wins", () => {

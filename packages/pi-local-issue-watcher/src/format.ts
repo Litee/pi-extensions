@@ -91,7 +91,7 @@ export function buildMissingDbRootStatus(dbRoot: string): string {
  * posts on each `session_start` so the LLM can see the watcher is active
  * and knows which tracker it is monitoring (#0011).
  *
- * Format (rendered inside the [pi-local-issue-tracker-watcher] box):
+ * Format (rendered inside the [pi-local-issue-watcher] box):
  *
  *     status: active
  *     poll: 60s

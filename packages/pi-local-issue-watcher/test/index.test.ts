@@ -264,7 +264,7 @@ describe("handleSessionStart", () => {
 		// Startup announcement emitted via ui.setStatus (pins to extension-status row),
 		// not via sendMessage (no agent turn).
 		const statusCalls = ctx.ui.setStatus.mock.calls as Array<[string, string | undefined]>;
-		const issueStatus = statusCalls.find(([k]) => k === "pi-local-issue-tracker-watcher");
+		const issueStatus = statusCalls.find(([k]) => k === "pi-local-issue-watcher");
 		expect(issueStatus).toBeDefined();
 		expect(issueStatus![1]).toContain("active");
 		// #0022: pinned status no longer carries the dbRoot path or the
@@ -323,7 +323,7 @@ describe("handleSessionStart", () => {
 			{ customType: string; content: string; display?: boolean; details?: unknown },
 			{ triggerTurn?: boolean; deliverAs?: string },
 		];
-		expect(payload.customType).toBe("pi-local-issue-tracker-watcher");
+		expect(payload.customType).toBe("pi-local-issue-watcher");
 		expect(payload.display).toBe(true);
 		expect(payload.content).toMatch(/issue update/);
 		expect(payload.content).toMatch(/status changed/);
@@ -378,7 +378,7 @@ describe("handleSessionStart", () => {
 		// Startup announcement still fires even when there are no changes,
 		// so the user can see the watcher is active (issue #0001).
 		const statusCalls = ctx.ui.setStatus.mock.calls as Array<[string, string | undefined]>;
-		const issueStatus = statusCalls.find(([k]) => k === "pi-local-issue-tracker-watcher");
+		const issueStatus = statusCalls.find(([k]) => k === "pi-local-issue-watcher");
 		expect(issueStatus).toBeDefined();
 		expect(issueStatus![1]).toContain("active");
 		// #0022: path + poll dropped from pinned status.
@@ -408,7 +408,7 @@ describe("handleSessionStart", () => {
 		// visible beyond the transient toast (#0014).
 		const statusCalls = ctx.ui.setStatus.mock.calls as Array<[string, string | undefined]>;
 		const pinned = statusCalls
-			.filter(([k]) => k === "pi-local-issue-tracker-watcher")
+			.filter(([k]) => k === "pi-local-issue-watcher")
 			.map(([, v]) => v ?? "");
 		expect(pinned).toHaveLength(1);
 		expect(pinned[0]).toContain("dbRoot missing");
@@ -432,7 +432,7 @@ describe("handleSessionStart", () => {
 		// DOES trigger an agent turn so the LLM sees the tracker state at
 		// session start — that is asserted separately in the #0011/#0013 block.
 		const statusCalls = ctx.ui.setStatus.mock.calls as Array<[string, string | undefined]>;
-		expect(statusCalls.some(([k]) => k === "pi-local-issue-tracker-watcher")).toBe(true);
+		expect(statusCalls.some(([k]) => k === "pi-local-issue-watcher")).toBe(true);
 	});
 
 	// -- issue #0001 (H1): no double-scan on session_start --
@@ -526,7 +526,7 @@ describe("handleSessionStart", () => {
 
 		// The pinned status text is the theme-wrapped output, not a raw ANSI escape.
 		const statusCalls = ctx.ui.setStatus.mock.calls as Array<[string, string | undefined]>;
-		const issueStatus = statusCalls.find(([k]) => k === "pi-local-issue-tracker-watcher");
+		const issueStatus = statusCalls.find(([k]) => k === "pi-local-issue-watcher");
 		expect(issueStatus![1]).not.toMatch(/\x1b\[36m/);
 		expect(issueStatus![1]).toContain("<fg:accent>");
 	});
@@ -588,7 +588,7 @@ describe("/local-issue-watcher command", () => {
 		// Resume also updates the pinned status line to mirror session_start.
 		const statusCalls = ctx.ui.setStatus.mock.calls as Array<[string, string | undefined]>;
 		const resumedStatus = statusCalls
-			.filter(([k]) => k === "pi-local-issue-tracker-watcher")
+			.filter(([k]) => k === "pi-local-issue-watcher")
 			.map(([, v]) => v ?? "")
 			.find((v) => /resumed/i.test(v));
 		expect(resumedStatus).toBeDefined();
@@ -607,7 +607,7 @@ describe("/local-issue-watcher command", () => {
 		await cmd!.handler("pause", ctx);
 
 		const statusCalls = ctx.ui.setStatus.mock.calls as Array<[string, string | undefined]>;
-		const ourCalls = statusCalls.filter(([k]) => k === "pi-local-issue-tracker-watcher");
+		const ourCalls = statusCalls.filter(([k]) => k === "pi-local-issue-watcher");
 		// #0019: paused = no pinned row. Every setStatus call for our key
 		// must be a clear (undefined) — no 'paused' string should be pinned.
 		expect(ourCalls.length).toBeGreaterThanOrEqual(1);
@@ -643,7 +643,7 @@ describe("/local-issue-watcher command", () => {
 		const statusCalls = ctx.ui.setStatus.mock.calls as Array<[string, string | undefined]>;
 		// #0019: paused = cleared row. No pinned string means no counts.
 		const pinnedStrings = statusCalls
-			.filter(([k]) => k === "pi-local-issue-tracker-watcher")
+			.filter(([k]) => k === "pi-local-issue-watcher")
 			.map(([, v]) => v)
 			.filter((v): v is string => typeof v === "string");
 		expect(pinnedStrings).toHaveLength(0);
@@ -669,7 +669,7 @@ describe("/local-issue-watcher command", () => {
 		const [payload] = pi.sendMessage.mock.calls[0] as [
 			{ customType: string; content: string; display?: boolean },
 		];
-		expect(payload.customType).toBe("pi-local-issue-tracker-watcher");
+		expect(payload.customType).toBe("pi-local-issue-watcher");
 		expect(payload.content).toBe(buildStartupChatMessage(dbRoot, scanIssueFiles(dbRoot)));
 		expect(payload.display).toBe(true);
 		expect(ctx.ui.notify).not.toHaveBeenCalled();
@@ -707,7 +707,7 @@ describe("/local-issue-watcher command", () => {
 		const [payload] = pi.sendMessage.mock.calls[0] as [
 			{ customType: string; content: string; display?: boolean },
 		];
-		expect(payload.customType).toBe("pi-local-issue-tracker-watcher");
+		expect(payload.customType).toBe("pi-local-issue-watcher");
 		expect(payload.content).toBe(buildStartupChatMessage(dbRoot, scanIssueFiles(dbRoot)));
 		expect(payload.display).toBe(true);
 		expect(ctx.ui.notify).not.toHaveBeenCalled();
@@ -791,7 +791,7 @@ describe("/local-issue-watcher command", () => {
 		const [payload] = pi.sendMessage.mock.calls[0] as [
 			{ customType: string; content: string },
 		];
-		expect(payload.customType).toBe("pi-local-issue-tracker-watcher");
+		expect(payload.customType).toBe("pi-local-issue-watcher");
 		expect(payload.content).toBe(buildStartupChatMessage(dbRoot, scanIssueFiles(dbRoot)));
 
 		// `/status` must not toggle pause state or produce any additional
@@ -880,7 +880,7 @@ describe("polling lifecycle", () => {
 			{ customType: string; content: string },
 			{ triggerTurn?: boolean },
 		];
-		expect(payload.customType).toBe("pi-local-issue-tracker-watcher");
+		expect(payload.customType).toBe("pi-local-issue-watcher");
 		expect(payload.content).toMatch(/status changed/);
 		expect(opts.triggerTurn).toBe(true);
 	});
@@ -1049,7 +1049,7 @@ describe("run-state persistence", () => {
 		// #0019: paused = no pinned row. Any setStatus call on our key must
 		// be a clear (undefined), never a 'paused' string.
 		const statusCalls = ctx.ui.setStatus.mock.calls as Array<[string, string | undefined]>;
-		const ourCalls = statusCalls.filter(([k]) => k === "pi-local-issue-tracker-watcher");
+		const ourCalls = statusCalls.filter(([k]) => k === "pi-local-issue-watcher");
 		for (const [, v] of ourCalls) {
 			expect(v).toBeUndefined();
 		}
@@ -1096,7 +1096,7 @@ describe("run-state persistence", () => {
 		]);
 		await handleSessionStart({ pi: pi as never, ctx: ctx as never, dbRoot });
 		const statusCalls = ctx.ui.setStatus.mock.calls as Array<[string, string | undefined]>;
-		const ourCalls = statusCalls.filter(([k]) => k === "pi-local-issue-tracker-watcher");
+		const ourCalls = statusCalls.filter(([k]) => k === "pi-local-issue-watcher");
 		// #0019: paused = no pinned row. Every setStatus call on our key must
 		// be a clear — never an 'active' or 'paused' string.
 		for (const [, v] of ourCalls) {
@@ -1264,7 +1264,7 @@ describe("run-state persistence", () => {
 			// silent under #0019. Every setStatus call for our key must be
 			// a clear, not a 'paused' string.
 			const statusCalls = ctx.ui.setStatus.mock.calls as Array<[string, string | undefined]>;
-			const ourCalls = statusCalls.filter(([k]) => k === "pi-local-issue-tracker-watcher");
+			const ourCalls = statusCalls.filter(([k]) => k === "pi-local-issue-watcher");
 			for (const [, v] of ourCalls) {
 				expect(v).toBeUndefined();
 			}
@@ -1336,7 +1336,7 @@ describe("status line — refresh on every poll (#0016 supersedes #0009)", () =>
 		await handleSessionStart({ pi: pi as never, ctx: ctx as never, dbRoot });
 
 		const statusCalls = ctx.ui.setStatus.mock.calls as Array<[string, string | undefined]>;
-		const pinned = statusCalls.find(([k]) => k === "pi-local-issue-tracker-watcher")?.[1] ?? "";
+		const pinned = statusCalls.find(([k]) => k === "pi-local-issue-watcher")?.[1] ?? "";
 		expect(pinned).not.toMatch(/last update/);
 		expect(pinned).not.toMatch(/\b(never|just now|\ds ago|\dm ago|\dh ago|\dd ago)\b/);
 	});
@@ -1406,14 +1406,14 @@ describe("status line — refresh on every poll (#0016 supersedes #0009)", () =>
 			await handler({}, ctx);
 
 			const statusAtStart = ctx.ui.setStatus.mock.calls.filter(
-				([k]) => k === "pi-local-issue-tracker-watcher",
+				([k]) => k === "pi-local-issue-watcher",
 			).length;
 
 			// Advance through 3 poll cycles with no disk changes.
 			await vi.advanceTimersByTimeAsync(POLL_INTERVAL_MS * 3);
 
 			const statusAfter = ctx.ui.setStatus.mock.calls.filter(
-				([k]) => k === "pi-local-issue-tracker-watcher",
+				([k]) => k === "pi-local-issue-watcher",
 			).length;
 
 			// Each poll re-pins the status line so the counts segment reflects
@@ -1461,7 +1461,7 @@ describe("startup chat message (#0011)", () => {
 		await handleSessionStart({ pi: pi as never, ctx: ctx as never, dbRoot });
 
 		const startupCalls = pi.sendMessage.mock.calls.filter(
-			(c) => (c[0] as { customType?: string }).customType === "pi-local-issue-tracker-watcher",
+			(c) => (c[0] as { customType?: string }).customType === "pi-local-issue-watcher",
 		);
 		expect(startupCalls).toHaveLength(1);
 		const [payload, opts] = startupCalls[0] as [
@@ -1538,7 +1538,7 @@ describe("startup chat message (#0011)", () => {
 		await handleSessionStart({ pi: pi as never, ctx: ctx as never, dbRoot });
 
 		const sent = pi.sendMessage.mock.calls.filter(
-			(c) => (c[0] as { customType?: string }).customType === "pi-local-issue-tracker-watcher",
+			(c) => (c[0] as { customType?: string }).customType === "pi-local-issue-watcher",
 		);
 		// Exactly one: the diff message. No second startup-summary message on top.
 		expect(sent).toHaveLength(1);
@@ -1598,7 +1598,7 @@ describe("handleSessionStart deferMessages (#0015)", () => {
 			{ customType: string; content: string; display?: boolean },
 			{ triggerTurn?: boolean },
 		];
-		expect(payload.customType).toBe("pi-local-issue-tracker-watcher");
+		expect(payload.customType).toBe("pi-local-issue-watcher");
 		expect(payload.content).toContain("active");
 		expect(opts.triggerTurn).toBe(true);
 	});
@@ -1664,7 +1664,7 @@ describe("paused watcher = silent + zero-IO (#0019)", () => {
 		// row defensively so stale content from a prior non-paused session
 		// does not linger.
 		const statusCalls = ctx.ui.setStatus.mock.calls as Array<[string, string | undefined]>;
-		const ourCalls = statusCalls.filter(([k]) => k === "pi-local-issue-tracker-watcher");
+		const ourCalls = statusCalls.filter(([k]) => k === "pi-local-issue-watcher");
 		for (const [, v] of ourCalls) {
 			expect(v).toBeUndefined();
 		}
@@ -1692,7 +1692,7 @@ describe("paused watcher = silent + zero-IO (#0019)", () => {
 		// Kick off an active session so the running path pins a row first.
 		await pi.sessionStartHandler!({}, ctx);
 		const activePinCount = (ctx.ui.setStatus.mock.calls as Array<[string, string | undefined]>)
-			.filter(([k, v]) => k === "pi-local-issue-tracker-watcher" && typeof v === "string")
+			.filter(([k, v]) => k === "pi-local-issue-watcher" && typeof v === "string")
 			.length;
 		expect(activePinCount).toBeGreaterThanOrEqual(1);
 
@@ -1703,7 +1703,7 @@ describe("paused watcher = silent + zero-IO (#0019)", () => {
 
 		// Last setStatus for our key must be a clear (undefined).
 		const statusCalls = ctx.ui.setStatus.mock.calls as Array<[string, string | undefined]>;
-		const ourCalls = statusCalls.filter(([k]) => k === "pi-local-issue-tracker-watcher");
+		const ourCalls = statusCalls.filter(([k]) => k === "pi-local-issue-watcher");
 		expect(ourCalls[ourCalls.length - 1]![1]).toBeUndefined();
 
 		// One-shot notify still fires so the user knows the command worked.
@@ -1735,14 +1735,14 @@ describe("paused watcher = silent + zero-IO (#0019)", () => {
 		]);
 		await pi.sessionStartHandler!({}, ctx);
 		const pausedPinStrings = (ctx.ui.setStatus.mock.calls as Array<[string, string | undefined]>)
-			.filter(([k, v]) => k === "pi-local-issue-tracker-watcher" && typeof v === "string");
+			.filter(([k, v]) => k === "pi-local-issue-watcher" && typeof v === "string");
 		expect(pausedPinStrings).toHaveLength(0);
 
 		// Resume — the first setStatus write afterwards must repopulate the row.
 		await pi.commands.get("local-issue-watcher")!.handler("resume", ctx);
 
 		const afterResume = (ctx.ui.setStatus.mock.calls as Array<[string, string | undefined]>)
-			.filter(([k]) => k === "pi-local-issue-tracker-watcher");
+			.filter(([k]) => k === "pi-local-issue-watcher");
 		const resumedPin = afterResume
 			.map(([, v]) => v)
 			.find((v) => typeof v === "string" && /resumed/i.test(v));
@@ -1844,11 +1844,11 @@ describe("/local-issue-watcher browse subcommand (#0025)", () => {
 // ---------------------------------------------------------------------------
 //
 // Without a registered `pi.registerMessageRenderer`, pi's default display
-// stamps the raw customType literal (e.g. `[pi-local-issue-tracker-watcher]`)
+// stamps the raw customType literal (e.g. `[pi-local-issue-watcher]`)
 // onto the transcript. The fix registers a renderer that:
 //   - Wraps output in a Box with the `customMessageBg` background so messages
 //     are visually distinct.
-//   - Adds "pi-local-issue-tracker-watcher" as a bold header line in the
+//   - Adds "pi-local-issue-watcher" as a bold header line in the
 //     `customMessageLabel` colour so the user can see which watcher fired.
 //   - Suppresses the default `[customType]` bracket label pi would otherwise
 //     prepend.
@@ -1902,7 +1902,7 @@ describe("/local-issue-watcher message renderer (#0028)", () => {
 		const calls = pi.registerMessageRenderer.mock.calls as Array<[string, unknown]>;
 		expect(calls).toHaveLength(1);
 		const [customType, renderer] = calls[0]!;
-		expect(customType).toBe("pi-local-issue-tracker-watcher");
+		expect(customType).toBe("pi-local-issue-watcher");
 		expect(typeof renderer).toBe("function");
 		expect(pi.renderers.get(customType)).toBe(renderer);
 	});

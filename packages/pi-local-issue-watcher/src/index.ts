@@ -1,5 +1,5 @@
 /**
- * pi-local-issue-tracker-watcher — pi extension.
+ * pi-local-issue-watcher — pi extension.
  *
  * Watches a single on-disk database produced by the upstream
  * `litee-claude-code-plugins/local-skill-issues-tracker` skill and injects
@@ -14,7 +14,7 @@
  *     4. rehydrate prior baseline from session entries (24h TTL)
  *     5a. if no prior baseline → persist `currentSnapshot` and start polling
  *     5b. if baseline present & fresh → `diffSnapshots`, if changes emit one
- *         `pi.sendMessage({customType:"pi-local-issue-tracker-watcher", ...}, {triggerTurn:true})`
+ *         `pi.sendMessage({customType:"pi-local-issue-watcher", ...}, {triggerTurn:true})`
  *         and persist `currentSnapshot`
  *     6. start a setInterval poll loop (disabled when paused)
  *
@@ -103,7 +103,7 @@ export const POLL_INTERVAL_MS = 60_000;
  * matchers; past messages in existing session logs keep their old
  * customType — that is fine, they are immutable history.
  */
-const CUSTOM_MESSAGE_TYPE = "pi-local-issue-tracker-watcher";
+const CUSTOM_MESSAGE_TYPE = "pi-local-issue-watcher";
 
 /**
  * Key used with `ctx.ui.setStatus(...)` to install / update / clear the
@@ -114,7 +114,7 @@ const CUSTOM_MESSAGE_TYPE = "pi-local-issue-tracker-watcher";
  * the shorter `local-issue-watcher:` prefix to save footer width —
  * this key is a machine namespace, not display text.
  */
-const STATUS_KEY = "pi-local-issue-tracker-watcher";
+const STATUS_KEY = "pi-local-issue-watcher";
 
 /** Apply the pi theme's accent color via `ctx.ui.theme.fg`. */
 function colorize(
@@ -598,7 +598,7 @@ export default function issueWatcher(pi: ExtensionAPI): void {
 						.filter((c): c is { type: "text"; text: string } => c.type === "text")
 						.map((c) => c.text)
 						.join("\n");
-		const label = theme.bold(theme.fg("customMessageLabel", "pi-local-issue-tracker-watcher"));
+		const label = theme.bold(theme.fg("customMessageLabel", "pi-local-issue-watcher"));
 		const box = new Box(1, 1, (t) => theme.bg("customMessageBg", t));
 		box.addChild(new Text(`${label}\n\n${text}`, 0, 0));
 		return box;
