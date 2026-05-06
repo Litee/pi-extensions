@@ -4,6 +4,8 @@
  * Registers a `/tools` command that lets you review every tool available
  * to pi in the current session: name, source, active/inactive state,
  * description, full JSON parameter schema, and a compact token estimate.
+ * Tools can also be toggled on/off from the detail view; the selection is
+ * persisted to the session and restored on reload or branch navigation.
  *
  * Usage:
  *   /tools              → pick a tool from a selector, then view details
@@ -11,6 +13,7 @@
  *   /tools --all        → render details for every tool in one view
  *
  * From the per-tool detail view:
+ *   t                       → toggle tool enabled/disabled
  *   ← (Left arrow)          → back to the selector (when entered from it)
  *   Enter / Esc             → close
  *
@@ -18,11 +21,11 @@
  * --------------
  *   - No network calls, no filesystem writes, no process spawns.
  *   - No dynamic imports, no `eval`, no `Function(...)`.
- *   - APIs touched: `pi.registerCommand`, `pi.getAllTools`, `pi.getActiveTools`
- *     and the `ctx.ui.*` dialog helpers.
+ *   - APIs touched: `pi.registerCommand`, `pi.getAllTools`, `pi.getActiveTools`,
+ *     `pi.setActiveTools`, `pi.appendEntry`, `pi.on`, and the `ctx.ui.*` dialog helpers.
  */
 
-import type { ExtensionAPI, ExtensionCommandContext, ToolInfo } from "@mariozechner/pi-coding-agent";
+import type { ExtensionAPI, ExtensionCommandContext, ExtensionContext, ToolInfo } from "@mariozechner/pi-coding-agent";
 import { DynamicBorder, getMarkdownTheme } from "@mariozechner/pi-coding-agent";
 import { Container, Markdown, matchesKey, Text } from "@mariozechner/pi-tui";
 
@@ -36,6 +39,10 @@ const ALL_FLAGS = new Set(["--all", "-a", "all", "*"]);
 const LIST_ROW_WIDTH = 100;
 const MIN_DESC_WIDTH = 20;
 const COMPLETION_DESC_WIDTH = 80;
+
+interface ToolsState {
+	enabledTools: string[];
+}
 
 function renderToolMarkdown(tool: ToolInfo, active: Set<string>): string {
 	const status = active.has(tool.name) ? "✅ active" : "⛔ inactive";
@@ -62,33 +69,50 @@ function renderToolMarkdown(tool: ToolInfo, active: Set<string>): string {
 
 type CloseReason = "back" | "done";
 
+/** Passed to showMarkdown to enable live in-place toggling. */
+interface ToggleInfo {
+	tool: ToolInfo;
+	/** The live enabledTools set — mutated by onToggle so re-renders see the new state. */
+	active: Set<string>;
+	onToggle: (name: string) => void;
+}
+
 /**
  * Render a Markdown body in a modal component.
  *
- * @param canGoBack when true, Left arrow resolves with "back" so the caller
- *                  can re-open the selector; otherwise Left simply closes.
+ * @param canGoBack  when true, Left arrow resolves with "back" so the caller
+ *                   can re-open the selector; otherwise Left simply closes.
+ * @param toggleInfo when provided, pressing `t` toggles the tool and
+ *                   re-renders the markdown in place without closing the view.
  */
 async function showMarkdown(
 	title: string,
 	body: string,
 	ctx: ExtensionCommandContext,
 	canGoBack: boolean,
+	toggleInfo?: ToggleInfo,
 ): Promise<CloseReason> {
 	if (!ctx.hasUI) {
 		ctx.ui.notify(`${title}\n\n${body}`, "info");
 		return "done";
 	}
 
-	const hint = canGoBack ? "Press ← to go back · Enter or Esc to close" : "Press Enter or Esc to close";
+	const hintParts = [
+		toggleInfo ? "t to toggle" : null,
+		canGoBack ? "← to go back" : null,
+		"Enter or Esc to close",
+	].filter((p): p is string => p !== null);
+	const hint = `Press ${hintParts.join(" · ")}`;
 
-	const result = await ctx.ui.custom<CloseReason>((_tui, theme, _kb, done) => {
+	const result = await ctx.ui.custom<CloseReason>((tui, theme, _kb, done) => {
 		const container = new Container();
 		const border = new DynamicBorder((s: string) => theme.fg("accent", s));
 		const mdTheme = getMarkdownTheme();
+		const md = new Markdown(body, 1, 1, mdTheme);
 
 		container.addChild(border);
 		container.addChild(new Text(theme.fg("accent", theme.bold(title)), 1, 0));
-		container.addChild(new Markdown(body, 1, 1, mdTheme));
+		container.addChild(md);
 		container.addChild(new Text(theme.fg("dim", hint), 1, 0));
 		container.addChild(border);
 
@@ -96,6 +120,14 @@ async function showMarkdown(
 			render: (width: number) => container.render(width),
 			invalidate: () => container.invalidate(),
 			handleInput: (data: string) => {
+				if (toggleInfo && matchesKey(data, "t")) {
+					toggleInfo.onToggle(toggleInfo.tool.name);
+					// Rebuild markdown body with the updated active set (mutated by onToggle).
+					md.setText(renderToolMarkdown(toggleInfo.tool, toggleInfo.active));
+					md.invalidate();
+					tui.requestRender();
+					return;
+				}
 				if (canGoBack && matchesKey(data, "left")) {
 					done("back");
 					return;
@@ -111,8 +143,64 @@ async function showMarkdown(
 }
 
 export default function toolInfoExtension(pi: ExtensionAPI) {
+	// ---------------------------------------------------------------------------
+	// State
+	// ---------------------------------------------------------------------------
+
+	let enabledTools: Set<string> = new Set(pi.getActiveTools());
+
+	function persistState(): void {
+		pi.appendEntry<ToolsState>("tools-config", { enabledTools: [...enabledTools] });
+	}
+
+	function applyTools(): void {
+		pi.setActiveTools([...enabledTools]);
+	}
+
+	function restoreFromBranch(ctx: ExtensionContext): void {
+		const allTools = pi.getAllTools();
+		const allToolNames = new Set(allTools.map((t) => t.name));
+
+		// Walk branch entries newest-first to find the last saved tools-config.
+		const branchEntries = ctx.sessionManager.getBranch();
+		let savedTools: string[] | undefined;
+		for (const entry of branchEntries) {
+			if (entry.type === "custom" && entry.customType === "tools-config") {
+				const data = entry.data as ToolsState | undefined;
+				if (data?.enabledTools) {
+					savedTools = data.enabledTools;
+				}
+		  }
+		}
+
+		if (savedTools) {
+			// Filter to only tools that still exist in this session.
+			enabledTools = new Set(savedTools.filter((t) => allToolNames.has(t)));
+			applyTools();
+		} else {
+			// No saved state — mirror whatever is currently active.
+			enabledTools = new Set(pi.getActiveTools());
+		}
+	}
+
+	// ---------------------------------------------------------------------------
+	// Session event handlers
+	// ---------------------------------------------------------------------------
+
+	pi.on("session_start", async (_event, ctx) => {
+		restoreFromBranch(ctx);
+	});
+
+	pi.on("session_tree", async (_event, ctx) => {
+		restoreFromBranch(ctx);
+	});
+
+	// ---------------------------------------------------------------------------
+	// /tools command
+	// ---------------------------------------------------------------------------
+
 	pi.registerCommand("tools", {
-		description: "Show tools with their descriptions and parameter schemas",
+		description: "Show tools with their descriptions and parameter schemas; press t in a tool view to toggle it",
 		getArgumentCompletions: (prefix) => {
 			const tools = pi.getAllTools();
 			const candidates = ["--all", ...tools.map((t) => t.name)];
@@ -132,19 +220,20 @@ export default function toolInfoExtension(pi: ExtensionAPI) {
 				ctx.ui.notify("No tools registered", "warning");
 				return;
 			}
-			const active = new Set(pi.getActiveTools());
+
+			// Use the live enabledTools set so the selector reflects real-time toggles.
+			const active = enabledTools;
 			const arg = args.trim();
 
 			const totalTokens = tools.reduce((sum, t) => sum + estimateToolTokens(t), 0);
-			const activeTokens = tools
-				.filter((t) => active.has(t.name))
-				.reduce((sum, t) => sum + estimateToolTokens(t), 0);
+			const activeTokens = () =>
+				tools.filter((t) => active.has(t.name)).reduce((sum, t) => sum + estimateToolTokens(t), 0);
 
-			// --all: dump every tool in one markdown view.
+			// --all: dump every tool in one markdown view (read-only, no toggle).
 			if (ALL_FLAGS.has(arg)) {
 				const byName = [...tools].sort((a, b) => a.name.localeCompare(b.name));
 				const body = [
-					`_${tools.length} tool(s) · ${active.size} active · ~${activeTokens} active tokens (${totalTokens} total)_`,
+					`_${tools.length} tool(s) · ${active.size} active · ~${activeTokens()} active tokens (${totalTokens} total)_`,
 					"",
 					...byName.map((t) => renderToolMarkdown(t, active)),
 				].join("\n\n");
@@ -152,14 +241,24 @@ export default function toolInfoExtension(pi: ExtensionAPI) {
 				return;
 			}
 
-			// Named tool: show its details directly.
+			// Named tool: show its details directly (with toggle support).
 			if (arg) {
 				const tool = tools.find((t) => t.name === arg);
 				if (!tool) {
 					ctx.ui.notify(`Unknown tool: ${arg}`, "warning");
 					return;
 				}
-				await showMarkdown(`Tool: ${tool.name}`, renderToolMarkdown(tool, active), ctx, false);
+				const toggleInfo: ToggleInfo = {
+					tool,
+					active,
+					onToggle: (name) => {
+						if (enabledTools.has(name)) enabledTools.delete(name);
+						else enabledTools.add(name);
+						applyTools();
+						persistState();
+					},
+				};
+				await showMarkdown(`Tool: ${tool.name}`, renderToolMarkdown(tool, active), ctx, false, toggleInfo);
 				return;
 			}
 
@@ -220,7 +319,7 @@ export default function toolInfoExtension(pi: ExtensionAPI) {
 			while (true) {
 				const rows = buildRows();
 				const selectedLabel = await ctx.ui.select(
-					`Tools (${tools.length} total, ${active.size} active · ~${activeTokens} tokens)`,
+					`Tools (${tools.length} total, ${active.size} active · ~${activeTokens()} tokens)`,
 					rows.map((r) => r.label),
 				);
 				if (!selectedLabel) return; // user cancelled
@@ -238,7 +337,24 @@ export default function toolInfoExtension(pi: ExtensionAPI) {
 
 				const tool = tools.find((t) => t.name === row.toolName);
 				if (!tool) continue;
-				const reason = await showMarkdown(`Tool: ${tool.name}`, renderToolMarkdown(tool, active), ctx, true);
+
+				const toggleInfo: ToggleInfo = {
+					tool,
+					active,
+					onToggle: (name) => {
+						if (enabledTools.has(name)) enabledTools.delete(name);
+						else enabledTools.add(name);
+						applyTools();
+						persistState();
+					},
+				};
+				const reason = await showMarkdown(
+					`Tool: ${tool.name}`,
+					renderToolMarkdown(tool, active),
+					ctx,
+					true,
+					toggleInfo,
+				);
 				if (reason === "back") continue;
 				return;
 			}
