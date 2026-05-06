@@ -1,0 +1,14 @@
+{
+  "name": "pi-worktree-guard",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Pi extension that blocks file edits in the main repository and directs the LLM to use git worktrees instead.",
+  "type": "module",
+  "keywords": ["pi-package"],
+  "pi": {
+    "extensions": ["./src/index.ts"]
+  },
+  "peerDependencies": {
+    "@mariozechner/pi-coding-agent": "*"
+  }
+}
