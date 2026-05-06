@@ -30,16 +30,10 @@ import type {
 	ExtensionCommandContext,
 	ExtensionContext,
 } from "@mariozechner/pi-coding-agent";
-import type { AssistantMessage } from "@mariozechner/pi-ai";
 import { Container, Text } from "@mariozechner/pi-tui";
 
-import {
-	buildConversationBreakdown,
-	buildSystemPromptBreakdown,
-	type BranchEntry,
-	type SystemPromptOptions,
-} from "./breakdown.js";
-import { buildWidgetLines, type LastTurnUsage, NO_THEME, type RenderTheme } from "./render.js";
+import { buildConversationBreakdown, buildSystemPromptBreakdown, type BranchEntry, type SystemPromptOptions } from "./breakdown.js";
+import { buildWidgetLines, NO_THEME, type RenderTheme } from "./render.js";
 
 const WIDGET_KEY = "pi-context-window-analysis";
 
@@ -62,30 +56,6 @@ function adaptOptions(raw: BuildSystemPromptOptions): SystemPromptOptions {
 	return result;
 }
 
-function collectLastUsage(ctx: ExtensionContext): LastTurnUsage | undefined {
-	try {
-		const branch = ctx.sessionManager.getBranch() as BranchEntry[];
-		// Walk backwards to find the last assistant message with usage.
-		for (let i = branch.length - 1; i >= 0; i--) {
-			const entry = branch[i];
-			if (entry?.type !== "message") continue;
-			const msg = (entry as { type: "message"; message: AssistantMessage }).message;
-			if (msg.role !== "assistant") continue;
-			if (!msg.usage) continue;
-			return {
-				input: msg.usage.input,
-				output: msg.usage.output,
-				cacheRead: msg.usage.cacheRead,
-				cacheWrite: msg.usage.cacheWrite,
-				cost: msg.usage.cost.total,
-			};
-		}
-	} catch {
-		/* best-effort */
-	}
-	return undefined;
-}
-
 function renderWidget(
 	systemPrompt: string,
 	options: SystemPromptOptions | undefined,
@@ -95,10 +65,9 @@ function renderWidget(
 	const sp = buildSystemPromptBreakdown(systemPrompt, options);
 	const branch = ctx.sessionManager.getBranch() as BranchEntry[];
 	const conv = buildConversationBreakdown(branch);
-	const usage = collectLastUsage(ctx);
 	const ctxUsage = ctx.getContextUsage();
 	const ctxWindow = ctxUsage?.contextWindow ?? 200_000;
-	return buildWidgetLines(sp, conv, usage, ctxWindow, theme);
+	return buildWidgetLines(sp, conv, ctxWindow, theme);
 }
 
 export default function contextWindowAnalysis(pi: ExtensionAPI): void {

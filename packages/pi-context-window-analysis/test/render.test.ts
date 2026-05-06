@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { formatTokens, renderBar, renderRow } from "../src/render.js";
+import { formatTokens, renderBar, renderRow, renderSimpleRow } from "../src/render.js";
 
 // ────────────────────────────────────────────────────────────────────────────
 // renderBar
@@ -120,5 +120,44 @@ describe("renderRow", () => {
 		const row = renderRow("full", 1000, 1000, 20, 21);
 		expect(row).toContain("100%");
 		expect(row).toContain("█".repeat(20));
+	});
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// renderSimpleRow
+// ─────────────────────────────────────────────────────────────────────────────
+
+describe("renderSimpleRow", () => {
+	it("output contains the label", () => {
+		const row = renderSimpleRow("my label", 4000, 34);
+		expect(row).toContain("my label");
+	});
+
+	it("output contains the token count with ~ prefix", () => {
+		const row = renderSimpleRow("label", 4000, 34);
+		expect(row).toContain("~4.0k");
+	});
+
+	it("has no bar characters", () => {
+		const row = renderSimpleRow("label", 500, 34);
+		expect(row).not.toMatch(/[█░]/);
+	});
+
+	it("has no percentage", () => {
+		const row = renderSimpleRow("label", 500, 34);
+		expect(row).not.toMatch(/\d+%/);
+	});
+
+	it("truncates a label longer than labelWidth from the left", () => {
+		const longLabel = "/very/long/path/to/some/agents/file.md";
+		const row = renderSimpleRow(longLabel, 100, 20);
+		expect(row).toContain("…");
+		expect(row.split("  ~")[0]).toHaveLength(20);
+	});
+
+	it("does not truncate a label that fits within labelWidth", () => {
+		const row = renderSimpleRow("short", 100, 20);
+		expect(row).not.toContain("…");
+		expect(row).toContain("short");
 	});
 });

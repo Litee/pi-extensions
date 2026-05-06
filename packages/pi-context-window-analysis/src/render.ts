@@ -86,27 +86,39 @@ export const NO_THEME: RenderTheme = {
 	bold: (text) => text,
 };
 
-// ────────────────────────────────────────────────────────────────────────────
-// Widget line builders
-// ────────────────────────────────────────────────────────────────────────────
+// ─────────────────────────────────────────────────────────────────────────────
+// Simple (no-bar) row renderer
+// ─────────────────────────────────────────────────────────────────────────────
 
-const BAR_WIDTH = 20;
-const LABEL_WIDTH = 21;
+const SIMPLE_LABEL_WIDTH = 34;
 const INDENT = "  ";
 
-/** Horizontal rule line. */
-function rule(label: string): string {
-	const pad = "─".repeat(4);
-	return `${pad} ${label} ${"─".repeat(Math.max(0, 50 - label.length - 7))}`;
+/**
+ * Truncate a string from the left, preserving the tail.
+ * Used for long file paths so the filename stays visible.
+ */
+function truncateLeft(s: string, max: number): string {
+	if (s.length <= max) return s;
+	return "\u2026" + s.slice(-(max - 1));
 }
 
-/** Usage stats from the last AssistantMessage. */
-export interface LastTurnUsage {
-	input: number;
-	output: number;
-	cacheRead: number;
-	cacheWrite: number;
-	cost: number;
+/**
+ * Render a label + token-count row with no bar or percentage.
+ *
+ * Layout: `<label padded/truncated to labelWidth>  ~<tokens>`
+ */
+export function renderSimpleRow(label: string, tokens: number, labelWidth: number): string {
+	const paddedLabel = truncateLeft(label, labelWidth).padEnd(labelWidth);
+	return `${paddedLabel}  ~${formatTokens(tokens)}`;
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Widget line builders
+// ─────────────────────────────────────────────────────────────────────────────
+
+/** Horizontal rule. */
+function rule(label: string): string {
+	return `\u2500\u2500\u2500\u2500 ${label} ${"\u2500".repeat(Math.max(0, 44 - label.length))}`;
 }
 
 import type { SystemPromptBreakdown, ConversationBreakdown } from "./breakdown.js";
@@ -114,122 +126,65 @@ import type { SystemPromptBreakdown, ConversationBreakdown } from "./breakdown.j
 /**
  * Build the full widget line array.
  *
- * @param sp       System prompt breakdown.
- * @param conv     Conversation breakdown.
- * @param usage    Last-turn actual usage (from AssistantMessage.usage), or undefined.
- * @param total    Total estimated context tokens (sp.total + conv.total).
- * @param ctxWindow  Context window size (from getContextUsage).
- * @param theme    Colour theme (pass NO_THEME for plain text).
+ * @param sp        System prompt breakdown.
+ * @param conv      Conversation breakdown.
+ * @param ctxWindow Context window size (from getContextUsage).
+ * @param theme     Colour theme (pass NO_THEME for plain text).
  */
 export function buildWidgetLines(
 	sp: SystemPromptBreakdown,
 	conv: ConversationBreakdown,
-	usage: LastTurnUsage | undefined,
 	ctxWindow: number,
 	theme: RenderTheme,
 ): string[] {
 	const total = sp.total + conv.total;
+	const W = SIMPLE_LABEL_WIDTH;
 	const lines: string[] = [];
 
-	// ── Context Breakdown ────────────────────────────────────────────────
+	const dim = (s: string) => theme.fg("dim", s);
+	const row = (label: string, tokens: number) => renderSimpleRow(label, tokens, W);
+
+	// ── Context Breakdown ────────────────────────────────────────────────────
 	lines.push(theme.fg("accent", rule("Context Breakdown")));
 
-	// System prompt row
-	lines.push(
-		theme.bold(
-			renderRow("System prompt", sp.total, total, BAR_WIDTH, LABEL_WIDTH),
-		),
-	);
-
-	// Sub-rows for system prompt (percentages relative to sp.total)
-	lines.push(
-		theme.fg("dim", renderRow(`${INDENT}core instructions`, sp.core, sp.total, BAR_WIDTH, LABEL_WIDTH)),
-	);
+	// System prompt section
+	lines.push(theme.bold(row("System prompt", sp.total)));
+	lines.push(dim(row(`${INDENT}core instructions`, sp.core)));
 
 	const toolsLabel = sp.toolCount > 0 ? `${INDENT}tools (${sp.toolCount})` : `${INDENT}tools`;
-	lines.push(theme.fg("dim", renderRow(toolsLabel, sp.tools, sp.total, BAR_WIDTH, LABEL_WIDTH)));
+	lines.push(dim(row(toolsLabel, sp.tools)));
 
 	if (sp.guidelines > 0) {
-		lines.push(
-			theme.fg("dim", renderRow(`${INDENT}guidelines`, sp.guidelines, sp.total, BAR_WIDTH, LABEL_WIDTH)),
-		);
-	}
-
-	if (sp.appendSystemPrompt > 0) {
-		lines.push(
-			theme.fg(
-				"dim",
-				renderRow(`${INDENT}appended prompt`, sp.appendSystemPrompt, sp.total, BAR_WIDTH, LABEL_WIDTH),
-			),
-		);
+		lines.push(dim(row(`${INDENT}guidelines`, sp.guidelines)));
 	}
 
 	for (const cf of sp.contextFiles) {
-		// Use the last path segment as label
-		const segments = cf.path.split(/[/\\]/).filter(Boolean);
-		const fileName = segments[segments.length - 1] ?? cf.path;
-		lines.push(
-			theme.fg("dim", renderRow(`${INDENT}${fileName}`, cf.tokens, sp.total, BAR_WIDTH, LABEL_WIDTH)),
-		);
+		lines.push(dim(row(`${INDENT}${cf.path}`, cf.tokens)));
+	}
+
+	if (sp.appendSystemPrompt > 0) {
+		const label = sp.appendSystemPromptPreview
+			? `${INDENT}appended: "${sp.appendSystemPromptPreview}"`
+			: `${INDENT}appended prompt`;
+		lines.push(dim(row(label, sp.appendSystemPrompt)));
 	}
 
 	if (sp.skillsCatalog > 0) {
 		const skillsLabel =
 			sp.skillCount > 0 ? `${INDENT}skills catalog (${sp.skillCount})` : `${INDENT}skills catalog`;
-		lines.push(theme.fg("dim", renderRow(skillsLabel, sp.skillsCatalog, sp.total, BAR_WIDTH, LABEL_WIDTH)));
+		lines.push(dim(row(skillsLabel, sp.skillsCatalog)));
 	}
 
-	// Conversation row
-	lines.push(
-		theme.bold(
-			renderRow("Conversation", conv.total, total, BAR_WIDTH, LABEL_WIDTH),
-		),
-	);
+	// Conversation section
+	lines.push(theme.bold(row("Conversation", conv.total)));
+	lines.push(dim(row(`${INDENT}user messages`, conv.userMessages)));
+	lines.push(dim(row(`${INDENT}assistant output`, conv.assistantOutput)));
+	lines.push(dim(row(`${INDENT}tool results`, conv.toolResults)));
 
-	lines.push(
-		theme.fg(
-			"dim",
-			renderRow(`${INDENT}user messages`, conv.userMessages, conv.total, BAR_WIDTH, LABEL_WIDTH),
-		),
-	);
-	lines.push(
-		theme.fg(
-			"dim",
-			renderRow(`${INDENT}assistant output`, conv.assistantOutput, conv.total, BAR_WIDTH, LABEL_WIDTH),
-		),
-	);
-	lines.push(
-		theme.fg(
-			"dim",
-			renderRow(`${INDENT}tool results`, conv.toolResults, conv.total, BAR_WIDTH, LABEL_WIDTH),
-		),
-	);
-
-	// ── Last turn (actual) ───────────────────────────────────────────────
-	if (usage) {
-		lines.push(theme.fg("accent", rule("Last turn (actual)")));
-		const inputSent = usage.input;
-		lines.push(renderRow(`${INDENT}input sent`, inputSent, inputSent, BAR_WIDTH, LABEL_WIDTH));
-		lines.push(
-			theme.fg("dim", renderRow(`${INDENT}cache read`, usage.cacheRead, inputSent, BAR_WIDTH, LABEL_WIDTH)),
-		);
-		lines.push(
-			theme.fg("dim", renderRow(`${INDENT}cache write`, usage.cacheWrite, inputSent, BAR_WIDTH, LABEL_WIDTH)),
-		);
-		lines.push(
-			theme.fg("dim", renderRow(`${INDENT}output`, usage.output, inputSent, BAR_WIDTH, LABEL_WIDTH)),
-		);
-		lines.push(theme.fg("dim", `${"  ".padEnd(LABEL_WIDTH + 2)}cost   $${usage.cost.toFixed(4)}`));
-	}
-
-	// ── Footer ───────────────────────────────────────────────────────────
-	lines.push(theme.fg("dim", "─".repeat(53)));
-
+	// Footer
+	lines.push(dim("\u2500".repeat(SIMPLE_LABEL_WIDTH + 10)));
 	const pct = ctxWindow > 0 ? Math.round((total / ctxWindow) * 100) : 0;
-	const bar = renderBar(total, ctxWindow, BAR_WIDTH);
-	const totalLine =
-		`Total  ~${formatTokens(total)} / ${formatTokens(ctxWindow)}  (${pct}%)  ${bar}`;
-	lines.push(theme.bold(totalLine));
+	lines.push(theme.bold(`Total  ~${formatTokens(total)} / ${formatTokens(ctxWindow)}  (${pct}%)`));
 
 	return lines;
 }

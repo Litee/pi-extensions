@@ -429,3 +429,34 @@ describe("buildConversationBreakdown", () => {
 		expect(result.toolResults).toBe(0);
 	});
 });
+
+// ─────────────────────────────────────────────────────────────────────────────
+// buildSystemPromptBreakdown — appendSystemPromptPreview
+// ─────────────────────────────────────────────────────────────────────────────
+
+describe("buildSystemPromptBreakdown — appendSystemPromptPreview", () => {
+	it("is undefined when there is no appendSystemPrompt", () => {
+		const result = buildSystemPromptBreakdown(makeSystemPrompt(), {});
+		expect(result.appendSystemPromptPreview).toBeUndefined();
+	});
+
+	it("contains the first non-empty line when appendSystemPrompt is set", () => {
+		const options: SystemPromptOptions = { appendSystemPrompt: "# CDK Guidelines\n\nSome text." };
+		const result = buildSystemPromptBreakdown(makeSystemPrompt({ appendSystemPrompt: "# CDK Guidelines\n\nSome text." }), options);
+		expect(result.appendSystemPromptPreview).toBe("# CDK Guidelines");
+	});
+
+	it("truncates previews longer than 40 characters", () => {
+		const longLine = "x".repeat(60);
+		const options: SystemPromptOptions = { appendSystemPrompt: longLine };
+		const result = buildSystemPromptBreakdown(makeSystemPrompt({ appendSystemPrompt: longLine }), options);
+		expect(result.appendSystemPromptPreview).toHaveLength(41); // 40 chars + ellipsis
+		expect(result.appendSystemPromptPreview).toMatch(/…$/);
+	});
+
+	it("skips leading blank lines to find the first non-empty line", () => {
+		const options: SystemPromptOptions = { appendSystemPrompt: "\n\n\n# Real Content" };
+		const result = buildSystemPromptBreakdown(makeSystemPrompt({ appendSystemPrompt: "\n\n\n# Real Content" }), options);
+		expect(result.appendSystemPromptPreview).toBe("# Real Content");
+	});
+});

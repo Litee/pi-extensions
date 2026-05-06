@@ -48,6 +48,8 @@ export interface SystemPromptBreakdown {
 	guidelines: number;
 	/** Tokens estimated from appendSystemPrompt (from options). */
 	appendSystemPrompt: number;
+	/** First non-empty line of appendSystemPrompt content (≤ 40 chars), for display. Absent when there is no appended content. */
+	appendSystemPromptPreview?: string | undefined;
 	/** Per-file token estimates from contextFiles. */
 	contextFiles: ContextFileBreakdown[];
 	/** Tokens for the full skills catalog block, measured from the prompt string. */
@@ -208,6 +210,12 @@ export function buildSystemPromptBreakdown(
 	const contextFiles = scanContextFiles(systemPrompt, options?.contextFiles ?? []);
 	const contextFilesTotal = contextFiles.reduce((sum, f) => sum + f.tokens, 0);
 	const appendSP = estimateTokens(options?.appendSystemPrompt ?? "");
+	const appendSystemPromptPreview: string | undefined = (() => {
+		const content = options?.appendSystemPrompt;
+		if (!content) return undefined;
+		const firstLine = content.split("\n").find((l) => l.trim().length > 0)?.trim() ?? "";
+		return firstLine.length > 40 ? firstLine.slice(0, 40) + "\u2026" : firstLine || undefined;
+	})();
 
 	const measured = toolsScan.tokens + guidelines + skillsScan.tokens + contextFilesTotal + appendSP;
 	const core = Math.max(0, total - measured);
@@ -219,6 +227,7 @@ export function buildSystemPromptBreakdown(
 		toolCount: toolsScan.count,
 		guidelines,
 		appendSystemPrompt: appendSP,
+		appendSystemPromptPreview,
 		contextFiles,
 		skillsCatalog: skillsScan.tokens,
 		skillCount: skillsScan.count,
