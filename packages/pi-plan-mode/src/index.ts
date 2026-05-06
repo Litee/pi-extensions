@@ -16,10 +16,13 @@ import type { AgentMessage } from "@mariozechner/pi-agent-core";
 import type { AssistantMessage, TextContent } from "@mariozechner/pi-ai";
 import type { ExtensionAPI, ExtensionContext } from "@mariozechner/pi-coding-agent";
 import { Key } from "@mariozechner/pi-tui";
+import { ToolSnapshot } from "./tool-snapshot.js";
 import { extractTodoItems, isSafeCommand, markCompletedSteps, type TodoItem } from "./utils.js";
 
 // Tools
-const PLAN_MODE_TOOLS = ["read", "bash", "grep", "find", "ls", "questionnaire"];
+const PLAN_MODE_TOOLS = ["read", "bash", "grep", "find", "ls", "ask_user_question"];
+// Fallback used when no snapshot exists (e.g. plan mode was restored from a
+// previous session and the pre-plan tool set is unknown).
 const NORMAL_MODE_TOOLS = ["read", "bash", "edit", "write"];
 
 // Type guard for assistant messages
@@ -39,6 +42,7 @@ export default function planModeExtension(pi: ExtensionAPI): void {
 	let planModeEnabled = false;
 	let executionMode = false;
 	let todoItems: TodoItem[] = [];
+	const toolSnapshot = new ToolSnapshot();
 
 	pi.registerFlag("plan", {
 		description: "Start in plan mode (read-only exploration)",
@@ -79,10 +83,11 @@ export default function planModeExtension(pi: ExtensionAPI): void {
 		todoItems = [];
 
 		if (planModeEnabled) {
+			toolSnapshot.save(pi.getActiveTools());
 			pi.setActiveTools(PLAN_MODE_TOOLS);
 			ctx.ui.notify(`Plan mode enabled. Tools: ${PLAN_MODE_TOOLS.join(", ")}`);
 		} else {
-			pi.setActiveTools(NORMAL_MODE_TOOLS);
+			pi.setActiveTools(toolSnapshot.restore(NORMAL_MODE_TOOLS));
 			ctx.ui.notify("Plan mode disabled. Full access restored.");
 		}
 		updateStatus(ctx);
@@ -175,11 +180,11 @@ export default function planModeExtension(pi: ExtensionAPI): void {
 You are in plan mode - a read-only exploration mode for safe code analysis.
 
 Restrictions:
-- You can only use: read, bash, grep, find, ls, questionnaire
+- You can only use: read, bash, grep, find, ls, ask_user_question
 - You CANNOT use: edit, write (file modifications are disabled)
 - Bash is restricted to an allowlist of read-only commands
 
-Ask clarifying questions using the questionnaire tool.
+Ask clarifying questions using the ask_user_question tool.
 Use brave-search skill via bash for web research.
 
 Create a detailed numbered plan under a "Plan:" header:
@@ -239,7 +244,7 @@ After completing a step, include a [DONE:n] tag in your response.`,
 				);
 				executionMode = false;
 				todoItems = [];
-				pi.setActiveTools(NORMAL_MODE_TOOLS);
+				pi.setActiveTools(toolSnapshot.restore(NORMAL_MODE_TOOLS));
 				updateStatus(ctx);
 				persistState(); // Save cleared state so resume doesn't restore old execution mode
 			}
@@ -279,7 +284,7 @@ After completing a step, include a [DONE:n] tag in your response.`,
 		if (choice?.startsWith("Execute")) {
 			planModeEnabled = false;
 			executionMode = todoItems.length > 0;
-			pi.setActiveTools(NORMAL_MODE_TOOLS);
+			pi.setActiveTools(toolSnapshot.restore(NORMAL_MODE_TOOLS));
 			updateStatus(ctx);
 
 			const execMessage =
@@ -345,6 +350,8 @@ After completing a step, include a [DONE:n] tag in your response.`,
 		}
 
 		if (planModeEnabled) {
+			// On session start/resume the pre-plan tool set is unknown, so we
+			// skip saving — restore() will fall back to NORMAL_MODE_TOOLS.
 			pi.setActiveTools(PLAN_MODE_TOOLS);
 		}
 		updateStatus(ctx);
