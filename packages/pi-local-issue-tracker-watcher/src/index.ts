@@ -594,19 +594,22 @@ export default function issueWatcher(pi: ExtensionAPI): void {
 						return;
 					}
 					const snap = scanIssueFiles(rt.dbRoot);
-					pi.sendMessage(
-						{
-							customType: CUSTOM_MESSAGE_TYPE,
-							content: buildStartupChatMessage(rt.dbRoot, snap),
-							display: true,
-						},
-						{
-							// "nextTurn" queues the message into the transcript
-							// without triggering an agent turn. Running /status
-							// ten times must not cost a single LLM call (#0027).
-							deliverAs: "nextTurn",
-						},
-					);
+					pi.sendMessage({
+						customType: CUSTOM_MESSAGE_TYPE,
+						content: buildStartupChatMessage(rt.dbRoot, snap),
+						display: true,
+					});
+					// #0030: omit `deliverAs` and `triggerTurn` so the message
+					// falls through the default branch in
+					// `AgentSession.sendCustomMessage` — pushed straight into
+					// `agent.state.messages`, appended to the session log, and
+					// emitted via `message_start` / `message_end` synchronously
+					// so the TUI renders it NOW instead of buffering it on
+					// `_pendingNextTurnMessages` until the next user prompt.
+					// Still zero LLM calls (#0027): both this path and the
+					// old `nextTurn` path inject the same message into the
+					// next turn's context — the only difference is when the
+					// render fires.
 					return;
 				}
 				default:

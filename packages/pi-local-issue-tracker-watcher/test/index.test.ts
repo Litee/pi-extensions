@@ -713,7 +713,17 @@ describe("/local-issue-watcher command", () => {
 		expect(ctx.ui.notify).not.toHaveBeenCalled();
 	});
 
-	it("'status' subcommand uses a non-turn-triggering delivery mode (#0027)", async () => {
+	it("'status' renders immediately without triggering an agent turn (#0027, #0030)", async () => {
+		// #0030: `deliverAs: "nextTurn"` buffers the chat message in
+		// `_pendingNextTurnMessages` and does NOT emit `message_start` /
+		// `message_end` until the user sends their next prompt — so the user
+		// sees nothing after `/local-issue-watcher status` until they type
+		// something unrelated. Agent-session's default branch
+		// (`deliverAs` omitted, `triggerTurn` not truthy, agent idle) pushes
+		// the message straight into `agent.state.messages` and emits the
+		// render events synchronously, which renders immediately while still
+		// costing zero LLM calls — same as `nextTurn` for the LLM context,
+		// but visible now. See #0027 for the zero-LLM-call requirement.
 		mkdirSync(join(dbRoot, "skill-a"), { recursive: true });
 		writeFileSync(
 			join(dbRoot, "skill-a", "0001-a.json"),
@@ -729,12 +739,10 @@ describe("/local-issue-watcher command", () => {
 		expect(pi.sendMessage).toHaveBeenCalledTimes(1);
 		const [, opts] = pi.sendMessage.mock.calls[0] as [
 			unknown,
-			{ deliverAs?: string; triggerTurn?: boolean },
+			{ deliverAs?: string; triggerTurn?: boolean } | undefined,
 		];
-		// `nextTurn` queues the message without triggering an agent turn so
-		// running /status ten times never costs an LLM call (#0027).
-		expect(opts.deliverAs).toBe("nextTurn");
-		expect(opts.triggerTurn).not.toBe(true);
+		expect(opts?.deliverAs).not.toBe("nextTurn");
+		expect(opts?.triggerTurn).not.toBe(true);
 	});
 
 	it("'status' with missing dbRoot falls back to ui.notify warning and does NOT send a chat message (#0027)", async () => {
