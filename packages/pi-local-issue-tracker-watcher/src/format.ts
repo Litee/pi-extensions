@@ -87,20 +87,32 @@ export function buildMissingDbRootStatus(dbRoot: string): string {
 }
 
 /**
- * Build the single-line, chat-visible startup announcement the watcher
+ * Build the multi-line, chat-visible startup announcement the watcher
  * posts on each `session_start` so the LLM can see the watcher is active
  * and knows which tracker it is monitoring (#0011).
  *
- * Format: `local-issue-watcher: active | dbRoot=<path> | <summary>`
+ * Format (rendered inside the [pi-local-issue-tracker-watcher] box):
  *
- * The summary includes an explicit `0 open` segment when the tracker has
- * no open issues — downstream agents can key off a stable structured shape.
+ *     active | poll=60s
+ *     dbRoot: <path>
+ *     <N> open · <M> done · <K> wont_fix
+ *
+ *     /local-issue-watcher: status · pause · resume · browse
+ *
+ * The extension-name prefix is omitted — the box header already identifies
+ * the source. The counts line uses `·` as separator for readability.
+ * A commands hint is appended so the user can see available subcommands
+ * at a glance without searching docs.
  *
  * Unlike {@link buildStartupAnnouncement} (which goes to the pinned status
  * row), this string is intended for `pi.sendMessage({ triggerTurn: false })`
  * so it lands in the conversation but does not cost an agent turn.
  */
-export function buildStartupChatMessage(dbRoot: string, snapshot: Snapshot): string {
+export function buildStartupChatMessage(
+	dbRoot: string,
+	snapshot: Snapshot,
+	pollIntervalMs = 60_000,
+): string {
 	const counts: Record<string, number> = {};
 	for (const info of Object.values(snapshot)) {
 		const s = info.status || "unknown";
@@ -115,7 +127,14 @@ export function buildStartupChatMessage(dbRoot: string, snapshot: Snapshot): str
 		.filter((s) => !(WELL_KNOWN_STATUSES as readonly string[]).includes(s))
 		.sort();
 	for (const s of leftover) parts.push(`${counts[s]} ${s}`);
-	return `local-issue-watcher: active | dbRoot=${dbRoot} | ${parts.join(", ")}`;
+	const pollSeconds = Math.max(1, Math.round(pollIntervalMs / 1000));
+	return [
+		`active | poll=${pollSeconds}s`,
+		`dbRoot: ${dbRoot}`,
+		parts.join(" · "),
+		"",
+		"/local-issue-watcher: status · pause · resume · browse",
+	].join("\n");
 }
 
 /** Render issue counts as "N open, M in_progress, ..." — matches the Python watcher. */

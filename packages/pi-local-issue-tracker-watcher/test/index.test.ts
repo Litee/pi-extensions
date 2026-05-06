@@ -1998,8 +1998,12 @@ describe("/local-issue-watcher message renderer (#0028)", () => {
 
 		// Bracketed label is deliberately shown.
 		expect(joined).toContain(`[${customType}]`);
-		// Content came through verbatim.
-		expect(joined).toContain(payload.content);
+		// Every non-blank content line appears in the rendered output
+		// (Box paddingX=1 adds a leading space per line so the raw multi-line
+		// string cannot be matched as a block).
+		for (const line of payload.content.split("\n").filter((l) => l.trim())) {
+			expect(joined).toContain(line);
+		}
 	});
 
 	it("session-start round-trip: renderer shows the header label and content without the bracket label", async () => {
@@ -2042,7 +2046,9 @@ describe("/local-issue-watcher message renderer (#0028)", () => {
 			const joined = rendered.join("\n");
 			expect(joined).toContain(`[${customType}]`);
 			expect(joined).not.toContain(`[[${customType}]]`);
-			expect(joined).toContain(payload.content);
+			for (const line of payload.content.split("\n").filter((l) => l.trim())) {
+				expect(joined).toContain(line);
+			}
 		}
 	});
 });

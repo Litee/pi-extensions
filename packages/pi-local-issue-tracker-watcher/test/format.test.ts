@@ -217,15 +217,19 @@ describe("buildStartupAnnouncement has no last-update segment (#0016, #0022)", (
 // ---------------------------------------------------------------------------
 
 describe("buildStartupChatMessage (#0011)", () => {
-	it("contains 'active', the absolute dbRoot, and the status summary", () => {
+	it("first line is 'active | poll=Ns' with no extension-name prefix", () => {
 		const msg = buildStartupChatMessage("/abs/db", {
 			"/a": issue("open"),
 			"/b": issue("in_progress"),
 			"/c": issue("done"),
 		});
-		expect(msg).toBe(
-			"local-issue-watcher: active | dbRoot=/abs/db | 1 open, 1 in_progress, 1 done",
-		);
+		const lines = msg.split("\n");
+		expect(lines[0]).toBe("active | poll=60s");
+		expect(lines[1]).toBe("dbRoot: /abs/db");
+		expect(lines[2]).toBe("1 open \u00b7 1 in_progress \u00b7 1 done");
+		// The extension name must not appear as a leading prefix on the first line
+		// (the box header already identifies the source).
+		expect(lines[0]).not.toContain("local-issue-watcher:");
 	});
 
 	it("includes an explicit 'N open' segment even when zero (structured signal for the LLM)", () => {
@@ -236,9 +240,22 @@ describe("buildStartupChatMessage (#0011)", () => {
 		expect(msg).toMatch(/0 open/);
 	});
 
-	it("returns a sensible line for an empty tracker", () => {
+	it("ends with the commands hint line", () => {
 		const msg = buildStartupChatMessage("/abs/db", {});
-		expect(msg).toBe("local-issue-watcher: active | dbRoot=/abs/db | 0 open");
+		expect(msg).toContain("/local-issue-watcher: status \u00b7 pause \u00b7 resume \u00b7 browse");
+	});
+
+	it("returns a sensible format for an empty tracker", () => {
+		const msg = buildStartupChatMessage("/abs/db", {});
+		const lines = msg.split("\n");
+		expect(lines[0]).toBe("active | poll=60s");
+		expect(lines[1]).toBe("dbRoot: /abs/db");
+		expect(lines[2]).toBe("0 open");
+	});
+
+	it("respects a custom pollIntervalMs", () => {
+		const msg = buildStartupChatMessage("/abs/db", {}, 30_000);
+		expect(msg.split("\n")[0]).toBe("active | poll=30s");
 	});
 });
 
