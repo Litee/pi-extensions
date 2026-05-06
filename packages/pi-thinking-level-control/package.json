@@ -1,0 +1,15 @@
+{
+  "name": "pi-thinking-level-control",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Pi extension that adds separate ctrl+] / ctrl+[ shortcuts for stepping the thinking level up/down one rung.",
+  "type": "module",
+  "keywords": ["pi-package"],
+  "pi": {
+    "extensions": ["./src/index.ts"]
+  },
+  "peerDependencies": {
+    "@mariozechner/pi-coding-agent": "*",
+    "@mariozechner/pi-tui": "*"
+  }
+}
