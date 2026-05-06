@@ -1,7 +1,7 @@
 import type { ToolInfo } from "@mariozechner/pi-coding-agent";
 import { describe, expect, it } from "vitest";
 
-import { estimateToolTokens, formatTokens, sourceLabel, truncate } from "../src/helpers.js";
+import { buildSelectorTitle, estimateToolTokens, formatTokens, sourceLabel, truncate } from "../src/helpers.js";
 
 function mkTool(partial: Partial<ToolInfo> & { name: string }): ToolInfo {
 	return {
@@ -150,5 +150,37 @@ describe("sourceLabel", () => {
 	it("falls back to 'unknown' when sourceInfo is missing", () => {
 		const tool = { name: "x", description: "", parameters: {} } as ToolInfo;
 		expect(sourceLabel(tool)).toBe("unknown");
+	});
+});
+
+describe("buildSelectorTitle", () => {
+	it("includes both active and total token counts when not all tools are active", () => {
+		const title = buildSelectorTitle(12, 5, 1200, 3400);
+		expect(title).toBe("Tools (12 total · 5 active · ~1.2k active tokens, 3.4k total)");
+	});
+
+	it("collapses to a single token figure when every tool is active", () => {
+		const title = buildSelectorTitle(12, 12, 3400, 3400);
+		expect(title).toBe("Tools (12 total · 12 active · ~3.4k tokens)");
+		expect(title).not.toContain("active tokens,");
+	});
+
+	it("includes total tokens when nothing is active (regression for empty-active selection)", () => {
+		const title = buildSelectorTitle(12, 0, 0, 3400);
+		expect(title).toContain("~0 active tokens");
+		expect(title).toContain("3.4k total");
+	});
+
+	it("renders small counts without the k suffix", () => {
+		expect(buildSelectorTitle(3, 1, 150, 450)).toBe("Tools (3 total · 1 active · ~150 active tokens, 450 total)");
+	});
+
+	it("always shows total tokens (the whole point of #n/a)", () => {
+		// Covers both branches — total must always appear somewhere in the title,
+		// whether as "N total" parenthetical or as the sole token figure.
+		const partial = buildSelectorTitle(10, 3, 500, 2000);
+		const full = buildSelectorTitle(10, 10, 2000, 2000);
+		expect(partial).toMatch(/2000|2\.0k/);
+		expect(full).toMatch(/2000|2\.0k/);
 	});
 });

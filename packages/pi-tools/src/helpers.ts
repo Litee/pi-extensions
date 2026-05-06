@@ -74,3 +74,28 @@ export function sourceLabel(tool: ToolInfo): string {
 	const path = tool.sourceInfo?.path;
 	return path && path !== `<builtin:${tool.name}>` ? `${src} · ${path}` : src;
 }
+
+/**
+ * Build the title line for the interactive tool selector.
+ *
+ * Shows both active and total token counts so the user can see the cost of
+ * currently-enabled tools and the ceiling of "what if I enabled everything."
+ * When `activeTokens === totalTokens` (every tool enabled) the parenthetical
+ * "(N total)" is suppressed to avoid visual noise.
+ *
+ * Example outputs:
+ *   `"Tools (12 total · 5 active · ~1.2k active tokens, 3.4k total)"`
+ *   `"Tools (12 total · 12 active · ~3.4k tokens)"`  (all active)
+ */
+export function buildSelectorTitle(
+	toolCount: number,
+	activeCount: number,
+	activeTokens: number,
+	totalTokens: number,
+): string {
+	const allActive = activeCount === toolCount;
+	const tokenPart = allActive
+		? `~${formatTokens(totalTokens)} tokens`
+		: `~${formatTokens(activeTokens)} active tokens, ${formatTokens(totalTokens)} total`;
+	return `Tools (${toolCount} total · ${activeCount} active · ${tokenPart})`;
+}

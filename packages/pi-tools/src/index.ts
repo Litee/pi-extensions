@@ -34,7 +34,7 @@ import type { ExtensionAPI, ExtensionCommandContext, ExtensionContext, ToolInfo 
 import { DynamicBorder, getMarkdownTheme, getSelectListTheme } from "@mariozechner/pi-coding-agent";
 import { Container, Markdown, matchesKey, type SelectItem, SelectList, Text } from "@mariozechner/pi-tui";
 
-import { estimateToolTokens, formatTokens, sourceLabel, truncate } from "./helpers.js";
+import { buildSelectorTitle, estimateToolTokens, formatTokens, sourceLabel, truncate } from "./helpers.js";
 
 const ALL_FLAGS = new Set(["--all", "-a", "all", "*"]);
 
@@ -355,7 +355,7 @@ export default function toolInfoExtension(pi: ExtensionAPI) {
 
 					return {
 						render: (w) => {
-							const title = `Tools (${tools.length} total · ${active.size} active · ~${activeTokens()} tokens)`;
+							const title = buildSelectorTitle(tools.length, active.size, activeTokens(), totalTokens);
 							return [
 								theme.bold(title),
 								"",
