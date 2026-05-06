@@ -25,7 +25,13 @@ analysis, then execute the generated plan with full tool access.
 | `/plan`                 | Toggle plan mode on/off                           |
 | `/todos`                | Show current plan progress                        |
 | `Ctrl+Alt+P`            | Toggle plan mode (shortcut)                       |
+| `Shift+Tab`             | Toggle plan mode (shortcut)                       |
 | `--plan` (CLI flag)     | Start pi in plan mode on launch                   |
+
+> **Note on `Shift+Tab`:** pi core's `app.thinking.cycle` action defaults to
+> `shift+tab`. To use `Shift+Tab` for plan mode, remove it from
+> `app.thinking.cycle` in `~/.pi/agent/keybindings.json` (any remaining
+> bindings on that action, e.g. `ctrl+]` / `ctrl+[`, keep working).
 
 ## Usage
 

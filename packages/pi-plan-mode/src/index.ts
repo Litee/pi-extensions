@@ -5,7 +5,7 @@
  * When enabled, only read-only tools are available.
  *
  * Features:
- * - /plan command or Ctrl+Alt+P to toggle
+ * - /plan command, Ctrl+Alt+P, or Shift+Tab to toggle
  * - Bash restricted to allowlisted read-only commands
  * - Extracts numbered plan steps from "Plan:" sections
  * - [DONE:n] markers to complete steps during execution
@@ -114,6 +114,15 @@ export default function planModeExtension(pi: ExtensionAPI): void {
 	});
 
 	pi.registerShortcut(Key.ctrlAlt("p"), {
+		description: "Toggle plan mode",
+		handler: async (ctx) => togglePlanMode(ctx),
+	});
+
+	// Shift+Tab as a second toggle. Pi core's `app.thinking.cycle` defaults to
+	// shift+tab; users who want plan-mode on this key should drop shift+tab
+	// from that action in ~/.pi/agent/keybindings.json (leaving any alternate
+	// bindings like ctrl+] / ctrl+[ for thinking cycle).
+	pi.registerShortcut(Key.shift("tab"), {
 		description: "Toggle plan mode",
 		handler: async (ctx) => togglePlanMode(ctx),
 	});
