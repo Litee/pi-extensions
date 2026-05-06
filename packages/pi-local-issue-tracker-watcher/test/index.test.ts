@@ -1907,7 +1907,7 @@ describe("/local-issue-watcher message renderer (#0028)", () => {
 		expect(pi.renderers.get(customType)).toBe(renderer);
 	});
 
-	it("renderer output does NOT contain the pi default bracket label, but DOES show the extension name header", () => {
+	it("renderer output contains [pi-local-issue-tracker-watcher] header and content, without double-bracket form", () => {
 		const pi = makeFakePi();
 		extensionWithDbRoot(pi, dbRoot);
 
@@ -1927,10 +1927,10 @@ describe("/local-issue-watcher message renderer (#0028)", () => {
 		const lines = renderText(result);
 		const joined = lines.join("\n");
 
-		// The bracket form that pi's default renderer would stamp must not appear.
-		expect(joined).not.toContain(`[${customType}]`);
-		// The extension name IS shown as the first non-blank line (the header label).
-		expect(joined).toContain(customType);
+		// The bracketed label is deliberately shown.
+		expect(joined).toContain(`[${customType}]`);
+		// Double-bracket form must not appear (would indicate double-wrapping).
+		expect(joined).not.toContain(`[[${customType}]]`);
 		// Content still comes through.
 		expect(joined).toContain("line 1");
 		expect(joined).toContain("line 2");
@@ -1996,10 +1996,8 @@ describe("/local-issue-watcher message renderer (#0028)", () => {
 		const rendered = renderText(renderer(payload, { expanded: false }, fakeTheme));
 		const joined = rendered.join("\n");
 
-		// Bracket form from pi's default renderer must not appear.
-		expect(joined).not.toContain(`[${customType}]`);
-		// Extension name header IS present.
-		expect(joined).toContain(customType);
+		// Bracketed label is deliberately shown.
+		expect(joined).toContain(`[${customType}]`);
 		// Content came through verbatim.
 		expect(joined).toContain(payload.content);
 	});
@@ -2042,8 +2040,8 @@ describe("/local-issue-watcher message renderer (#0028)", () => {
 		for (const [payload] of customTypedCalls as Array<[{ customType: string; content: string }]>) {
 			const rendered = renderText(renderer(payload, { expanded: false }, fakeTheme));
 			const joined = rendered.join("\n");
-			expect(joined).not.toContain(`[${customType}]`);
-			expect(joined).toContain(customType);
+			expect(joined).toContain(`[${customType}]`);
+			expect(joined).not.toContain(`[[${customType}]]`);
 			expect(joined).toContain(payload.content);
 		}
 	});
