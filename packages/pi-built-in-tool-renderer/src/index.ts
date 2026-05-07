@@ -179,7 +179,11 @@ export default function (pi: ExtensionAPI) {
 				state.startedAt = Date.now();
 				state.endedAt = undefined;
 			}
-			const cmd = args.command.length > 80 ? `${args.command.slice(0, 77)}...` : args.command;
+			const COLLAPSED_LIMIT = 80;
+			const cmd =
+				!context.expanded && args.command.length > COLLAPSED_LIMIT
+					? `${args.command.slice(0, COLLAPSED_LIMIT - 3)}...`
+					: args.command;
 			let text = theme.fg("toolTitle", theme.bold(`$ ${cmd}`));
 			if (args.timeout) {
 				text += theme.fg("muted", ` (timeout: ${args.timeout}s)`);

@@ -76,6 +76,52 @@ describe("formatDuration", () => {
 	});
 });
 
+// ---------------------------------------------------------------------------
+// bash renderCall — command crop behaviour
+// ---------------------------------------------------------------------------
+
+describe("bash renderCall — command crop", () => {
+	const fakeTheme = {
+		fg: (_color: string, text: string) => text,
+		bold: (text: string) => text,
+	};
+
+	function getBashRenderCall(pi: StubPi) {
+		const bash = pi.tools.get("bash") as unknown as {
+			renderCall: (args: { command: string }, theme: typeof fakeTheme, ctx: object) => { text: string };
+		};
+		return bash.renderCall.bind(bash);
+	}
+
+	const LONG_CMD = "x".repeat(200);
+
+	it("crops the command to 80 chars in collapsed mode", () => {
+		const pi = makeFakePi();
+		createExtension(pi as never);
+		const renderCall = getBashRenderCall(pi);
+		const result = renderCall(
+			{ command: LONG_CMD },
+			fakeTheme,
+			{ state: {}, executionStarted: false, expanded: false, invalidate: () => {} },
+		);
+		expect(result.text).toContain("x".repeat(77) + "...");
+		expect(result.text).not.toContain("x".repeat(78));
+	});
+
+	it("shows the full command in expanded mode", () => {
+		const pi = makeFakePi();
+		createExtension(pi as never);
+		const renderCall = getBashRenderCall(pi);
+		const result = renderCall(
+			{ command: LONG_CMD },
+			fakeTheme,
+			{ state: {}, executionStarted: false, expanded: true, invalidate: () => {} },
+		);
+		expect(result.text).toContain(LONG_CMD);
+		expect(result.text).not.toContain("...");
+	});
+});
+
 describe("describeBashFailure", () => {
 	it("parses a non-zero exit from the built-in bash.js sentinel", () => {
 		expect(__testDescribeBashFailure("stderr...\n\nCommand exited with code 1")).toBe("exit 1");
