@@ -144,9 +144,9 @@ describe("buildChangeChatMessage", () => {
 		expect(msg).toContain("• my-etl-job (jr_abc123): STARTING → RUNNING");
 	});
 
-	it("includes the UTC date string in the header", () => {
+	it("includes a compact [HH:mm] timestamp in the header", () => {
 		const msg = buildChangeChatMessage([makeStateChangedEvent()], FIXED_DATE);
-		expect(msg).toContain(FIXED_DATE.toUTCString());
+		expect(msg).toMatch(/^\[\d{2}:\d{2}\]/);
 	});
 
 	it("includes node_failure formatted line", () => {

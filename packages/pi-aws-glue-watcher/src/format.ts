@@ -51,6 +51,16 @@ export function buildStatusLine(input: StatusLineInput): string {
 }
 
 // ---------------------------------------------------------------------------
+// Helpers
+// ---------------------------------------------------------------------------
+
+/** Format a Date as a compact local `[HH:mm]` stamp. */
+function formatHm(date: Date): string {
+	const pad = (n: number): string => n.toString().padStart(2, "0");
+	return `[${pad(date.getHours())}:${pad(date.getMinutes())}]`;
+}
+
+// ---------------------------------------------------------------------------
 // Chat messages
 // ---------------------------------------------------------------------------
 
@@ -59,7 +69,7 @@ export function buildStatusLine(input: StatusLineInput): string {
  *
  * Format:
  * ```
- * 2 changes detected — Wed May 06 10:30:00 UTC 2026
+ * [10:30] 2 changes detected
  *
  * • my-etl-job (jr_abc123): STARTING → RUNNING
  * • my-workflow (wr_def456): RUNNING → COMPLETED ✓
@@ -67,7 +77,7 @@ export function buildStatusLine(input: StatusLineInput): string {
  */
 export function buildChangeChatMessage(events: GlueEvent[], date: Date): string {
 	const noun = events.length === 1 ? "change" : "changes";
-	const header = `${events.length} ${noun} detected — ${date.toUTCString()}`;
+	const header = `${formatHm(date)} ${events.length} ${noun} detected`;
 	const bullets = events.map((e) => e.formatted).join("\n");
 	return `${header}\n\n${bullets}`;
 }
@@ -78,7 +88,7 @@ export function buildChangeChatMessage(events: GlueEvent[], date: Date): string 
  *
  * Format when watches are present:
  * ```
- * active as of Wed May 06 10:30:00 UTC 2026 — watching 2 runs:
+ * [10:30] active — watching 2 runs:
  *
  * • job  my-etl-job (jr_abc123): state=RUNNING
  * • workflow  my-workflow (wr_def456): state=RUNNING [terminal]
@@ -95,5 +105,5 @@ export function buildStartupChatMessage(watches: WatchMap, date: Date): string {
 		const tag = w.terminal ? " [terminal]" : "";
 		return `• ${w.type}  ${w.name} (${w.runId}): state=${state}${tag}`;
 	});
-	return `active as of ${date.toUTCString()} — watching ${all.length} ${noun}:\n\n${lines.join("\n")}`;
+	return `${formatHm(date)} active — watching ${all.length} ${noun}:\n\n${lines.join("\n")}`;
 }
