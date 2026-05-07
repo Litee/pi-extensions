@@ -9,7 +9,7 @@
  * ------------
  *   session_start:
  *     1. resolve dbRoot (env LOCAL_ISSUE_TRACKER_DB_ROOT or hard-coded default)
- *     2. if dbRoot missing → `ctx.ui.notify(...)` and bail out
+ *     2. if dbRoot missing → pin status row + emit chat message with remediation steps
  *     3. scan disk -> `currentSnapshot`
  *     4. rehydrate prior baseline from session entries (24h TTL)
  *     5a. if no prior baseline → persist `currentSnapshot` and start polling
@@ -40,6 +40,7 @@ import { Box, Text } from "@mariozechner/pi-tui";
 import { changedPaths, diffSnapshots } from "./diff.js";
 import {
 	buildChatMessageContent,
+	buildMissingDbRootChatMessage,
 	buildMissingDbRootStatus,
 	buildStartupAnnouncement,
 	buildStartupChatMessage,
@@ -271,12 +272,21 @@ export async function handleSessionStart(
 			`local-issue-watcher: dbRoot not found (${dbRoot}); not watching.`,
 			"warning",
 		);
-		// Pin a persistent misconfiguration status line so the user can still
-		// see the watcher is loaded and which path it tried to watch after the
-		// transient warning toast disappears (#0014).
+		// Pin a terse misconfiguration status line so the watcher stays
+		// visible after the transient warning toast disappears (#0014).
 		setStatus?.(
 			STATUS_KEY,
 			colorize(theme, buildMissingDbRootStatus(dbRoot)),
+		);
+		// Emit a chat message with actionable remediation steps so the LLM
+		// can guide the user without requiring a separate /status invocation.
+		emit(
+			{
+				customType: CUSTOM_MESSAGE_TYPE,
+				content: buildMissingDbRootChatMessage(dbRoot),
+				display: true,
+			},
+			{ deliverAs: "followUp", triggerTurn: true },
 		);
 		return { started: false, paused: false, snapshot: {} };
 	}
@@ -286,12 +296,9 @@ export async function handleSessionStart(
 	const currentSnapshot = scanIssueFiles(dbRoot, baseline?.snapshot, scanHandler.onError);
 	scanHandler.flush();
 
-	// Emit a single, informational startup announcement so the user can see
-	// the watcher is running and which dbRoot is in effect — without having
-	// to run `/local-issue-watcher status`. Uses `ctx.ui.setStatus` so it pins to
-	// the extension-status row (below the main status line) and cannot
-	// trigger an agent turn (see issue #0001). #0019: this point is only
-	// reached on the non-paused path, so the state is always 'active'.
+	// Pin the active status row. Uses `ctx.ui.setStatus` so it cannot trigger
+	// an agent turn. Format: `local-issue-watcher: active (N open)`.
+	// Only reached on the non-paused path, so the state is always 'active'.
 	setStatus?.(
 		STATUS_KEY,
 		colorize(

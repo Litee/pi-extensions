@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { buildChatMessageContent, buildMissingDbRootStatus, buildStartupAnnouncement, buildStartupChatMessage, formatStatusSummary } from "../src/format.js";
+import { buildChatMessageContent, buildMissingDbRootChatMessage, buildMissingDbRootStatus, buildStartupAnnouncement, buildStartupChatMessage, formatStatusSummary } from "../src/format.js";
 import type { Change } from "../src/diff.js";
 import type { Snapshot } from "../src/types.js";
 
@@ -45,34 +45,24 @@ describe("formatStatusSummary", () => {
 	});
 });
 
-describe("buildStartupAnnouncement (#0022)", () => {
-	it("is a compact two-segment line: '<state> | <open> open, <total> total'", () => {
+describe("buildStartupAnnouncement", () => {
+	it("is a compact line: 'active (N open)'", () => {
 		const snap: Snapshot = {
 			"/a": issue("open"),
 			"/b": issue("in_progress"),
 		};
-		// Per #0022 the dbRoot and poll-period segments are both
-		// dropped from the pinned status row — they are static config
-		// that rarely changes and belong to an info / inspection
-		// surface, not the always-visible line.
 		const msg = buildStartupAnnouncement("active", "/abs/db", 60_000, snap);
-		expect(msg).toBe("local-issue-watcher: active | 1 open, 2 total");
+		expect(msg).toBe("local-issue-watcher: active (1 open)");
 	});
 
-	it("renders '0 open, 0 total' for an empty tracker and no dbRoot segment", () => {
+	it("renders '(0 open)' for an empty tracker", () => {
 		const msg = buildStartupAnnouncement("active", "/abs/db", 60_000, {});
-		expect(msg).toBe("local-issue-watcher: active | 0 open, 0 total");
+		expect(msg).toBe("local-issue-watcher: active (0 open)");
 		expect(msg).not.toContain("dbRoot");
-		expect(msg).not.toContain("/a/db");
 		expect(msg).not.toContain("/abs");
 	});
 
-	it("honours alternate states like 'resumed'", () => {
-		const msg = buildStartupAnnouncement("resumed", "/abs/db", 60_000, {});
-		expect(msg.startsWith("local-issue-watcher: resumed | ")).toBe(true);
-	});
-
-	it("drops the poll=<N>s segment entirely (#0022)", () => {
+	it("drops the poll=<N>s segment entirely", () => {
 		const msg = buildStartupAnnouncement("active", "/abs/db", 30_000, {
 			"/a": issue("open"),
 		});
@@ -80,10 +70,7 @@ describe("buildStartupAnnouncement (#0022)", () => {
 		expect(msg).not.toContain("30s");
 	});
 
-	it("ignores the dbRoot and pollIntervalMs arguments (retained for signature compatibility with chat surfaces)", () => {
-		// The dbRoot/poll parameters are still threaded through callers
-		// to the chat-surface `buildStartupChatMessage`; this function
-		// silently ignores them.
+	it("ignores the dbRoot and pollIntervalMs arguments", () => {
 		const a = buildStartupAnnouncement("active", "/abs/db", 60_000, {
 			"/a": issue("open"),
 		});
@@ -93,7 +80,7 @@ describe("buildStartupAnnouncement (#0022)", () => {
 		expect(a).toBe(b);
 	});
 
-	it("collapses per-status breakdown into a single 'total' number (#0022)", () => {
+	it("counts only open issues, not total", () => {
 		const snap: Snapshot = {
 			"/a": issue("open"),
 			"/b": issue("done"),
@@ -101,8 +88,8 @@ describe("buildStartupAnnouncement (#0022)", () => {
 			"/d": issue("wont_fix"),
 		};
 		const msg = buildStartupAnnouncement("active", "/abs/db", 60_000, snap);
-		expect(msg).toBe("local-issue-watcher: active | 1 open, 4 total");
-		expect(msg).not.toMatch(/done|wont_fix|in_progress/);
+		expect(msg).toBe("local-issue-watcher: active (1 open)");
+		expect(msg).not.toMatch(/done|wont_fix|in_progress|total/);
 	});
 });
 
@@ -163,7 +150,7 @@ describe("buildChatMessageContent", () => {
 // buildStartupAnnouncement when paused (#0010)
 // ---------------------------------------------------------------------------
 
-describe("buildStartupAnnouncement when paused (#0010, #0022)", () => {
+describe("buildStartupAnnouncement when paused", () => {
 	it("drops the count summary entirely for the paused state", () => {
 		const snap: Snapshot = {
 			"/a": issue("open"),
@@ -175,19 +162,19 @@ describe("buildStartupAnnouncement when paused (#0010, #0022)", () => {
 		expect(msg).not.toMatch(/open|in_progress|done|total/);
 	});
 
-	it("paused line is exactly the prefix — no dbRoot, no poll, no counts (#0022)", () => {
+	it("paused line is exactly the prefix — no dbRoot, no poll, no counts", () => {
 		const msg = buildStartupAnnouncement("paused", "/abs/db", 60_000, {
 			"/a": issue("open"),
 		});
 		expect(msg).toBe("local-issue-watcher: paused");
 	});
 
-	it("'active' still includes counts", () => {
+	it("'active' still includes open count", () => {
 		const msg = buildStartupAnnouncement("active", "/abs/db", 60_000, {
 			"/a": issue("open"),
 		});
 		expect(msg).toContain("1 open");
-		expect(msg).toContain("1 total");
+		expect(msg).not.toContain("total");
 	});
 });
 
@@ -195,12 +182,12 @@ describe("buildStartupAnnouncement when paused (#0010, #0022)", () => {
 // buildStartupAnnouncement — no last-update segment (#0016)
 // ---------------------------------------------------------------------------
 
-describe("buildStartupAnnouncement has no last-update segment (#0016, #0022)", () => {
-	it("active state ends at the counts — no 'last update:' phrase, no dbRoot, no poll", () => {
+describe("buildStartupAnnouncement has no last-update segment", () => {
+	it("active state ends at the open count — no 'last update:', no dbRoot, no poll", () => {
 		const msg = buildStartupAnnouncement("active", "/abs/db", 60_000, {
 			"/a": issue("open"),
 		});
-		expect(msg).toBe("local-issue-watcher: active | 1 open, 1 total");
+		expect(msg).toBe("local-issue-watcher: active (1 open)");
 		expect(msg).not.toMatch(/last update/);
 		expect(msg).not.toMatch(/\b(never|just now|\dm ago|\dh ago|\dd ago)\b/);
 	});
@@ -260,27 +247,56 @@ describe("buildStartupChatMessage (#0011)", () => {
 });
 
 // ---------------------------------------------------------------------------
-// buildMissingDbRootStatus (#0014) — pinned status line when dbRoot is absent
+// buildMissingDbRootStatus — pinned status line when dbRoot is absent
 // ---------------------------------------------------------------------------
 
-describe("buildMissingDbRootStatus (#0014)", () => {
-	it("contains the 'dbRoot missing' state marker and the abbreviated path (#0018)", () => {
+describe("buildMissingDbRootStatus", () => {
+	it("contains the 'dbRoot missing' state marker and the abbreviated path", () => {
 		const msg = buildMissingDbRootStatus("/some/missing/path");
 		expect(msg).toContain("local-issue-watcher: dbRoot missing");
 		expect(msg).toContain("/s/m/path");
-		// The raw full path and the `dbRoot=` label must NOT appear — this is a
-		// pinned status line, not a user-triggered notification (#0018).
 		expect(msg).not.toContain("/some/missing/path");
 		expect(msg).not.toContain("dbRoot=");
 	});
 
-	it("surfaces a remediation hint (env var or directory creation)", () => {
+	it("does not contain remediation guidance (that lives in the chat message)", () => {
 		const msg = buildMissingDbRootStatus("/abs/db");
-		expect(msg).toMatch(/LOCAL_ISSUE_TRACKER_DB_ROOT|create the directory/);
+		expect(msg).not.toMatch(/LOCAL_ISSUE_TRACKER_DB_ROOT|create the directory|mkdir/);
 	});
 
 	it("is a single line with no newlines", () => {
 		const msg = buildMissingDbRootStatus("/abs/db");
 		expect(msg).not.toMatch(/\n/);
+	});
+});
+
+// ---------------------------------------------------------------------------
+// buildMissingDbRootChatMessage — chat message when dbRoot is absent
+// ---------------------------------------------------------------------------
+
+describe("buildMissingDbRootChatMessage", () => {
+	it("starts with 'status: dbRoot missing'", () => {
+		const msg = buildMissingDbRootChatMessage("/abs/db");
+		expect(msg.split("\n")[0]).toBe("status: dbRoot missing");
+	});
+
+	it("includes the full dbRoot path", () => {
+		const msg = buildMissingDbRootChatMessage("/abs/db");
+		expect(msg).toContain("db: /abs/db");
+	});
+
+	it("includes mkdir remediation step with the exact path", () => {
+		const msg = buildMissingDbRootChatMessage("/abs/db");
+		expect(msg).toContain("mkdir -p /abs/db");
+	});
+
+	it("includes LOCAL_ISSUE_TRACKER_DB_ROOT remediation step", () => {
+		const msg = buildMissingDbRootChatMessage("/abs/db");
+		expect(msg).toContain("LOCAL_ISSUE_TRACKER_DB_ROOT");
+	});
+
+	it("is a multi-line string", () => {
+		const msg = buildMissingDbRootChatMessage("/abs/db");
+		expect(msg.split("\n").length).toBeGreaterThan(2);
 	});
 });

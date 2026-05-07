@@ -14,48 +14,24 @@ export type WatcherState = "active" | "paused";
 const WELL_KNOWN_STATUSES = ["open", "in_progress", "done", "wont_fix"] as const;
 
 /**
- * Build the one-line session-start / resume announcement.
+ * Build the one-line session-start / resume announcement for the pinned
+ * status row.
  *
- * Format: `local-issue-watcher: <state> | <N> open, <M> total`
- * where `<state>` is typically `active` or `resumed` and `<M>` is the
- * full count (open + in_progress + done + wont_fix + any other
- * statuses the tracker surfaces).
+ * Format:
+ *   active  → `local-issue-watcher: active (N open)`
+ *   paused  → `local-issue-watcher: paused`
  *
- * **Compact status line (#0018, #0022).** Pre-#0018 the line carried
- * `dbRoot=<path>`; #0018 dropped the label and abbreviated the path.
- * #0022 drops the dbRoot AND the `poll=<N>s` segments entirely: both
- * are static config that rarely change and answer 'how is this
- * configured?', which is a different question than 'is there
- * anything new?' — the latter is what the pinned status row answers
- * on every turn. Both live in chat / info surfaces instead.
- *
- * **Compact count format (#0022).** Pre-#0022 the tail read
- * `1 open, 455 done, 127 wont_fix` — a full per-status breakdown.
- * The always-visible line now reads `1 open, 583 total` so the user
- * can answer 'anything new?' at a glance. The per-status breakdown
- * lives on in the chat-message surface ({@link buildStartupChatMessage}).
- *
- * **Paused state (#0010)**: when `state === "paused"` the count
- * summary is dropped entirely — a paused watcher is not producing a
- * live readout, and freezing counts into the status bar is
- * misleading.
- *
- * **No last-update segment (#0016)**: the `| last update: Nm ago`
- * segment previously appended here was removed. The rendered age was
- * driven by the last-diff wallclock and became misleading whenever a
- * fresh session loaded while the tracker was quiet (would surface
- * `10h ago` etc.). A poll-based alternative would tick every 60s and
- * carry no information either, so the segment is simply gone.
- *
- * The message is meant for `ctx.ui.setStatus` (pinned status-row
- * text) and must NOT trigger an agent turn — it is purely a
- * user-visible status line.
+ * The count is embedded in parentheses after the state so it reads as an
+ * annotation rather than a separate metric. Total issue count is omitted —
+ * the open count is the only actionable signal at a glance. The per-status
+ * breakdown lives on the chat surface ({@link buildStartupChatMessage}).
  *
  * The `dbRoot` and `pollIntervalMs` parameters are retained in the
- * signature because callers still thread them through to the
- * chat-surface {@link buildStartupChatMessage} and the missing-dbRoot
- * {@link buildMissingDbRootStatus}; this function simply ignores
- * them post-#0022.
+ * signature because callers still thread them through to the chat-surface
+ * {@link buildStartupChatMessage}; this function ignores them.
+ *
+ * The message is meant for `ctx.ui.setStatus` (pinned status-row text) and
+ * must NOT trigger an agent turn — it is purely a user-visible status line.
  */
 export function buildStartupAnnouncement(
 	state: WatcherState,
@@ -64,42 +40,59 @@ export function buildStartupAnnouncement(
 	snapshot: Snapshot,
 ): string {
 	const prefix = `local-issue-watcher: ${state}`;
-	return state === "paused" ? prefix : `${prefix} | ${formatCompactStatusSummary(snapshot)}`;
+	if (state === "paused") return prefix;
+	return `${prefix} (${formatCompactStatusSummary(snapshot)})`;
 }
 
 /**
  * Build the pinned status line shown when `dbRoot` does not exist on disk.
  *
- * Example:
- * ```
- * local-issue-watcher: dbRoot missing | /U/a/… | set LOCAL_ISSUE_TRACKER_DB_ROOT or create the directory
- * ```
+ * Format: `local-issue-watcher: dbRoot missing | <abbreviated path>`
  *
- * Matches the user-visible shape used by the `active` / `paused` / `resumed`
- * variants so the footer reads consistently, including the compact
- * abbreviated path (#0018) so the remediation hint doesn't get clipped
- * on narrow terminals. Meant for `ctx.ui.setStatus` — see #0014 for the
- * motivation (transient toast alone isn't enough to keep the
- * misconfiguration visible).
+ * Deliberately terse — remediation guidance goes to the chat surface
+ * ({@link buildMissingDbRootChatMessage}) where there is room for it.
+ * The abbreviated path is included so the user can identify which
+ * directory needs to exist without leaving the status bar.
  */
 export function buildMissingDbRootStatus(dbRoot: string): string {
-	return (
-		`local-issue-watcher: dbRoot missing | ${abbreviatePath(dbRoot)}` +
-		` | set LOCAL_ISSUE_TRACKER_DB_ROOT or create the directory`
-	);
+	return `local-issue-watcher: dbRoot missing | ${abbreviatePath(dbRoot)}`;
+}
+
+/**
+ * Build the chat-visible message posted when `dbRoot` does not exist on
+ * disk. Unlike the terse pinned status row ({@link buildMissingDbRootStatus}),
+ * this message provides actionable remediation steps so the LLM can surface
+ * them to the user without requiring a separate `/status` invocation.
+ *
+ * Format (rendered inside the [pi-local-issue-watcher] box):
+ *
+ *     status: dbRoot missing
+ *     db: <path>
+ *     To start watching, either:
+ *     - Create the directory: mkdir -p <path>
+ *     - Or set LOCAL_ISSUE_TRACKER_DB_ROOT to an existing tracker path
+ */
+export function buildMissingDbRootChatMessage(dbRoot: string): string {
+	return [
+		`status: dbRoot missing`,
+		`db: ${dbRoot}`,
+		`To start watching, either:`,
+		`- Create the directory: mkdir -p ${dbRoot}`,
+		`- Or set LOCAL_ISSUE_TRACKER_DB_ROOT to an existing tracker path`,
+	].join("\n");
 }
 
 /**
  * Build the multi-line, chat-visible startup announcement the watcher
  * posts on each `session_start` so the LLM can see the watcher is active
- * and knows which tracker it is monitoring (#0011).
+ * and knows which tracker it is monitoring.
  *
  * Format (rendered inside the [pi-local-issue-watcher] box):
  *
  *     status: active
  *     poll: 60s
  *     db: <path>
- *     <N> open · <M> done · <K> wont_fix
+ *     issues: N open · M done · K wont_fix
  *
  * The extension-name prefix is omitted — the box header already identifies
  * the source. The counts line uses `·` as separator for readability.
@@ -155,21 +148,18 @@ export function formatStatusSummary(snapshot: Snapshot): string {
 }
 
 /**
- * Compact two-number summary for the pinned status row (#0022).
+ * Compact open-count summary for the pinned status row.
  *
- * Format: `<N> open, <M> total` where `M` is the grand total across
- * every status the tracker surfaces (open + in_progress + done +
- * wont_fix + any others). A new user coming back to the shell after
- * a break reads this in a glance: 'is there anything for me to look
- * at? (<N> open) and how much history exists to dig into? (<M>
- * total)'. Per-status breakdown goes to the chat surface via
+ * Format: `N open`
+ *
+ * Only the open count is surfaced — it is the only actionable signal at
+ * a glance. Per-status breakdown goes to the chat surface via
  * {@link buildStartupChatMessage}.
  */
 export function formatCompactStatusSummary(snapshot: Snapshot): string {
-	const entries = Object.values(snapshot);
 	let open = 0;
-	for (const info of entries) if ((info.status || "") === "open") open++;
-	return `${open} open, ${entries.length} total`;
+	for (const info of Object.values(snapshot)) if ((info.status || "") === "open") open++;
+	return `${open} open`;
 }
 
 /**

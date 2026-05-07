@@ -232,7 +232,8 @@ describe("handleSessionStart", () => {
 			expect.stringContaining("local-issue-watcher"),
 			expect.any(String),
 		);
-		expect(pi.sendMessage).not.toHaveBeenCalled();
+		// A chat message with remediation steps IS now emitted.
+		expect(pi.sendMessage).toHaveBeenCalledOnce();
 		expect(pi.appendEntry).not.toHaveBeenCalled();
 		expect(out.started).toBe(false);
 	});
@@ -267,13 +268,10 @@ describe("handleSessionStart", () => {
 		const issueStatus = statusCalls.find(([k]) => k === "pi-local-issue-watcher");
 		expect(issueStatus).toBeDefined();
 		expect(issueStatus![1]).toContain("active");
-		// #0022: pinned status no longer carries the dbRoot path or the
-		// poll-period segment; the <N> open, <M> total summary is the
-		// signal the user reads on every turn.
 		expect(issueStatus![1]).not.toContain(abbreviatePath(dbRoot));
 		expect(issueStatus![1]).not.toContain("poll=");
 		expect(issueStatus![1]).toContain("1 open");
-		expect(issueStatus![1]).toContain("total");
+		expect(issueStatus![1]).not.toContain("total");
 	});
 
 	it("with a fresh persisted baseline and new changes: emits sendMessage with triggerTurn and updates baseline", async () => {
@@ -381,10 +379,9 @@ describe("handleSessionStart", () => {
 		const issueStatus = statusCalls.find(([k]) => k === "pi-local-issue-watcher");
 		expect(issueStatus).toBeDefined();
 		expect(issueStatus![1]).toContain("active");
-		// #0022: path + poll dropped from pinned status.
 		expect(issueStatus![1]).not.toContain(abbreviatePath(dbRoot));
 		expect(issueStatus![1]).not.toContain("poll=");
-		expect(issueStatus![1]).toContain("total");
+		expect(issueStatus![1]).not.toContain("total");
 	});
 
 	it("missing-dbRoot path pins a 'dbRoot missing' status line with the resolved path (issue #0014)", async () => {
@@ -414,8 +411,12 @@ describe("handleSessionStart", () => {
 		expect(pinned[0]).toContain("dbRoot missing");
 		expect(pinned[0]).toContain(abbreviatePath(missing));
 
-		// Watcher still short-circuits: no scan, no polling, no chat messages.
-		expect(pi.sendMessage).not.toHaveBeenCalled();
+		// Watcher still short-circuits: no scan, no polling.
+		// A chat message IS emitted with remediation steps.
+		expect(pi.sendMessage).toHaveBeenCalledOnce();
+		const [msg] = pi.sendMessage.mock.calls[0] as [{ content: string }, unknown];
+		expect(msg.content).toContain("dbRoot missing");
+		expect(msg.content).toContain("mkdir");
 		expect(pi.appendEntry).not.toHaveBeenCalled();
 		expect(out.started).toBe(false);
 	});
@@ -519,10 +520,10 @@ describe("handleSessionStart", () => {
 		const accentCall = fgCalls.find(([c]) => c === "accent");
 		expect(accentCall).toBeDefined();
 		expect(accentCall![1]).toContain("active");
-		// #0022: no path + no poll in the pinned status.
 		expect(accentCall![1]).not.toContain(abbreviatePath(dbRoot));
 		expect(accentCall![1]).not.toContain("poll=");
-		expect(accentCall![1]).toContain("total");
+		expect(accentCall![1]).not.toContain("total");
+		expect(accentCall![1]).toContain("open");
 
 		// The pinned status text is the theme-wrapped output, not a raw ANSI escape.
 		const statusCalls = ctx.ui.setStatus.mock.calls as Array<[string, string | undefined]>;
