@@ -1,0 +1,17 @@
+{
+  "name": "pi-preset",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Pi extension for named presets — configure model, thinking level, tools, system-prompt instructions, bash command filtering, and post-agent-end action prompts per preset. Presets are defined in JSON config files and activated via CLI flag, /preset command, or Ctrl+Shift+U.",
+  "type": "module",
+  "keywords": ["pi-package"],
+  "pi": {
+    "extensions": ["./src/index.ts"]
+  },
+  "peerDependencies": {
+    "@mariozechner/pi-agent-core": "*",
+    "@mariozechner/pi-ai": "*",
+    "@mariozechner/pi-coding-agent": "*",
+    "@mariozechner/pi-tui": "*"
+  }
+}
