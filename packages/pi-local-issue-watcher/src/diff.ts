@@ -123,7 +123,7 @@ export function diffSnapshots(old: Snapshot, next: Snapshot): Change[] {
 		const newCount = n.comments.length;
 		if (newCount > oldCount) {
 			for (const c of n.comments.slice(oldCount)) {
-				const text = typeof c.text === "string" ? c.text : "";
+				const text = typeof c.text === "string" ? c.text : typeof c["body"] === "string" ? c["body"] : "";
 				// Preserve the total preview length (including the ellipsis) at
 				// COMMENT_PREVIEW_LEN so downstream consumers can size UI buffers
 				// against a single, honest constant (#0007).

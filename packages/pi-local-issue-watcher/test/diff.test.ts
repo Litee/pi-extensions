@@ -112,6 +112,21 @@ describe("diffSnapshots", () => {
 		expect((changes[1] as { preview: string }).preview.length).toBe(COMMENT_PREVIEW_LEN);
 	});
 
+	it("uses 'body' field as fallback when comment has no 'text' field (issue #0032)", () => {
+		const old: Snapshot = { [P1]: info({ mtimeNs: 10n, comments: [] }) };
+		const next: Snapshot = {
+			[P1]: info({
+				mtimeNs: 20n,
+				comments: [{ body: "Fixed in 56ea118. Startup message now uses labeled lines." }],
+			}),
+		};
+		const changes = diffSnapshots(old, next).filter((c) => c.kind === "comment_added");
+		expect(changes).toHaveLength(1);
+		expect((changes[0] as { preview: string }).preview).toBe(
+			"Fixed in 56ea118. Startup message now uses labeled lines.",
+		);
+	});
+
 	it("emits a 'comment_removed' change when a comment disappears", () => {
 		const old: Snapshot = {
 			[P1]: info({ mtimeNs: 10n, comments: [{ text: "a" }, { text: "b" }] }),
