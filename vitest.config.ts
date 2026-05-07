@@ -52,6 +52,11 @@ export default defineConfig({
 				// Markdown modal. All logic worth testing (truncate, formatTokens,
 				// estimateToolTokens, sourceLabel) lives in helpers.ts.
 				"**/pi-tools/src/index.ts",
+				// pi-skills-browser/index.ts is TUI wiring: a /skills command handler
+				// that builds a custom component via ctx.ui.custom. All pure logic
+				// (token estimation, filtering, sorting) lives in helpers.ts and is
+				// fully covered there.
+				"**/pi-skills-browser/src/index.ts",
 				// pi-plan-mode/index.ts is lifecycle wiring + pi-ai ui.select +
 				// setActiveTools orchestration, copied verbatim (minus a handful
 				// of strict-tsconfig patches) from the upstream pi-mono example.
