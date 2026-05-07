@@ -731,7 +731,7 @@ export function createExtensionWithClient(
 							),
 						{
 							overlay: true,
-							overlayOptions: { width: "100%", maxHeight: "100%" },
+							overlayOptions: { width: "100%", maxHeight: "100%", anchor: "bottom-center" },
 						},
 					);
 					return;
