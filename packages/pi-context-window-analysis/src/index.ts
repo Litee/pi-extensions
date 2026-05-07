@@ -30,6 +30,7 @@ import type {
 	ExtensionCommandContext,
 	ExtensionContext,
 } from "@mariozechner/pi-coding-agent";
+import { homedir } from "node:os";
 import { Container, Text } from "@mariozechner/pi-tui";
 
 import { buildConversationBreakdown, buildSystemPromptBreakdown, type BranchEntry, type SystemPromptOptions } from "./breakdown.js";
@@ -67,7 +68,7 @@ function renderWidget(
 	const conv = buildConversationBreakdown(branch);
 	const ctxUsage = ctx.getContextUsage();
 	const ctxWindow = ctxUsage?.contextWindow ?? 200_000;
-	return buildWidgetLines(sp, conv, ctxWindow, theme);
+	return buildWidgetLines(sp, conv, ctxWindow, theme, homedir());
 }
 
 export default function contextWindowAnalysis(pi: ExtensionAPI): void {

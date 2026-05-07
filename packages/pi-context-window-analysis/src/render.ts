@@ -90,16 +90,70 @@ export const NO_THEME: RenderTheme = {
 // Simple (no-bar) row renderer
 // ─────────────────────────────────────────────────────────────────────────────
 
-const SIMPLE_LABEL_WIDTH = 34;
+const SIMPLE_LABEL_WIDTH = 46;
 const INDENT = "  ";
 
 /**
  * Truncate a string from the left, preserving the tail.
- * Used for long file paths so the filename stays visible.
+ * Used so the end of a path (the filename) stays visible.
  */
 function truncateLeft(s: string, max: number): string {
 	if (s.length <= max) return s;
 	return "\u2026" + s.slice(-(max - 1));
+}
+
+/**
+ * Truncate a string from the right, preserving the head.
+ * Used so a meaningful label prefix stays visible.
+ */
+function truncateRight(s: string, max: number): string {
+	if (s.length <= max) return s;
+	return s.slice(0, max - 1) + "\u2026";
+}
+
+/**
+ * Compress a file-system path to fit within `maxLen` characters.
+ *
+ * Strategy (applied in order until the path fits):
+ *   1. Replace the home directory prefix with `~`.
+ *   2. Keep the last two path segments:  `…/parent/file.md`
+ *   3. Keep only the filename:           `…/file.md`
+ *   4. Hard left-truncate as a last resort.
+ *
+ * @param inputPath  Absolute or relative path to compress.
+ * @param maxLen     Maximum number of characters in the result.
+ * @param homeDir    Optional home directory string (e.g. `/Users/alice`).
+ *                   When provided, a leading match is replaced with `~`.
+ */
+export function compressPath(inputPath: string, maxLen: number, homeDir?: string): string {
+	if (inputPath.length <= maxLen) return inputPath;
+
+	// 1. Replace home directory with ~
+	let p = inputPath;
+	if (homeDir && p.startsWith(homeDir)) {
+		p = "~" + p.slice(homeDir.length);
+	}
+	if (p.length <= maxLen) return p;
+
+	// Detect path separator
+	const sep = p.includes("/") ? "/" : "\\";
+	const parts = p.split(sep).filter(Boolean);
+
+	// 2. Keep last two segments: …/parent/file.md
+	if (parts.length >= 2) {
+		const candidate = "\u2026" + sep + parts.slice(-2).join(sep);
+		if (candidate.length <= maxLen) return candidate;
+	}
+
+	// 3. Keep just the filename: …/file.md
+	const last = parts[parts.length - 1];
+	if (last !== undefined) {
+		const candidate = "\u2026" + sep + last;
+		if (candidate.length <= maxLen) return candidate;
+	}
+
+	// 4. Hard left-truncate
+	return truncateLeft(p, maxLen);
 }
 
 /**
@@ -116,9 +170,11 @@ export function renderSimpleRow(label: string, tokens: number, labelWidth: numbe
 // Widget line builders
 // ─────────────────────────────────────────────────────────────────────────────
 
-/** Horizontal rule. */
+/** Horizontal rule sized to match the widget width. */
 function rule(label: string): string {
-	return `\u2500\u2500\u2500\u2500 ${label} ${"\u2500".repeat(Math.max(0, 44 - label.length))}`;
+	const total = SIMPLE_LABEL_WIDTH + 8; // label col + "  ~" + token
+	const dashes = Math.max(0, total - label.length - 6); // 6 = "──── " + " "
+	return `\u2500\u2500\u2500\u2500 ${label} ${"\u2500".repeat(dashes)}`;
 }
 
 import type { SystemPromptBreakdown, ConversationBreakdown } from "./breakdown.js";
@@ -130,12 +186,14 @@ import type { SystemPromptBreakdown, ConversationBreakdown } from "./breakdown.j
  * @param conv      Conversation breakdown.
  * @param ctxWindow Context window size (from getContextUsage).
  * @param theme     Colour theme (pass NO_THEME for plain text).
+ * @param homeDir   Home directory for path compression (e.g. from `os.homedir()`).
  */
 export function buildWidgetLines(
 	sp: SystemPromptBreakdown,
 	conv: ConversationBreakdown,
 	ctxWindow: number,
 	theme: RenderTheme,
+	homeDir?: string,
 ): string[] {
 	const total = sp.total + conv.total;
 	const W = SIMPLE_LABEL_WIDTH;
@@ -143,6 +201,9 @@ export function buildWidgetLines(
 
 	const dim = (s: string) => theme.fg("dim", s);
 	const row = (label: string, tokens: number) => renderSimpleRow(label, tokens, W);
+
+	// Max chars available for a path after the indent
+	const maxPathLen = W - INDENT.length;
 
 	// ── Context Breakdown ────────────────────────────────────────────────────
 	lines.push(theme.fg("accent", rule("Context Breakdown")));
@@ -159,13 +220,22 @@ export function buildWidgetLines(
 	}
 
 	for (const cf of sp.contextFiles) {
-		lines.push(dim(row(`${INDENT}${cf.path}`, cf.tokens)));
+		const compressed = compressPath(cf.path, maxPathLen, homeDir);
+		lines.push(dim(row(`${INDENT}${compressed}`, cf.tokens)));
 	}
 
 	if (sp.appendSystemPrompt > 0) {
-		const label = sp.appendSystemPromptPreview
-			? `${INDENT}appended: "${sp.appendSystemPromptPreview}"`
-			: `${INDENT}appended prompt`;
+		let label: string;
+		if (sp.appendSystemPromptPreview) {
+			// Prefix is fixed; truncate only the preview so the prefix stays readable.
+			const prefix = `${INDENT}appended: "`;
+			const suffix = `"`;
+			const maxPreview = W - prefix.length - suffix.length;
+			const preview = truncateRight(sp.appendSystemPromptPreview, maxPreview);
+			label = `${prefix}${preview}${suffix}`;
+		} else {
+			label = `${INDENT}appended prompt`;
+		}
 		lines.push(dim(row(label, sp.appendSystemPrompt)));
 	}
 
@@ -182,7 +252,7 @@ export function buildWidgetLines(
 	lines.push(dim(row(`${INDENT}tool results`, conv.toolResults)));
 
 	// Footer
-	lines.push(dim("\u2500".repeat(SIMPLE_LABEL_WIDTH + 10)));
+	lines.push(dim("\u2500".repeat(W + 8)));
 	lines.push(theme.bold(`Total  ~${formatTokens(total)} / ${formatTokens(ctxWindow)}`));
 
 	return lines;

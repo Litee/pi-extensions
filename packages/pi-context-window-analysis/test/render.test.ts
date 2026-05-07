@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { formatTokens, renderBar, renderRow, renderSimpleRow } from "../src/render.js";
+import { compressPath, formatTokens, renderBar, renderRow, renderSimpleRow } from "../src/render.js";
 
 // ────────────────────────────────────────────────────────────────────────────
 // renderBar
@@ -159,5 +159,84 @@ describe("renderSimpleRow", () => {
 		const row = renderSimpleRow("short", 100, 20);
 		expect(row).not.toContain("…");
 		expect(row).toContain("short");
+	});
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// compressPath
+// ─────────────────────────────────────────────────────────────────────────────
+
+describe("compressPath", () => {
+	it("returns the path unchanged when it already fits", () => {
+		expect(compressPath("/short/path.md", 40)).toBe("/short/path.md");
+	});
+
+	it("replaces the home directory with ~", () => {
+		// Arrange — path is longer than maxLen but fits after ~ substitution
+		const home = "/Users/alice";
+		const path = `${home}/.pi/agent/subdir/AGENTS.md`; // 38 chars, maxLen=30
+
+		// Act
+		const result = compressPath(path, 30, home);
+
+		// Assert
+		expect(result).toBe("~/.pi/agent/subdir/AGENTS.md");
+		expect(result.length).toBeLessThanOrEqual(30);
+	});
+
+	it("returns ~ path unchanged when it fits after substitution", () => {
+		const home = "/Users/alice";
+		const path = `${home}/.pi/agent/subdir/AGENTS.md`; // too long at 30, fits as ~
+		const result = compressPath(path, 30, home);
+		expect(result.startsWith("~")).toBe(true);
+		expect(result).not.toContain("…");
+	});
+
+	it("falls back to last-two-segments when home substitution is still too long", () => {
+		// Arrange — a path that remains too long even after ~ substitution
+		const path = "/Users/alice/very/deep/nested/directory/structure/file.md";
+
+		// Act
+		const result = compressPath(path, 30, "/Users/alice");
+
+		// Assert
+		expect(result).toContain("…");
+		expect(result).toContain("structure/file.md");
+		expect(result.length).toBeLessThanOrEqual(30);
+	});
+
+	it("falls back to last-one-segment when two segments are still too long", () => {
+		// Arrange — a path with very long segment names
+		const path = "/Users/alice/averylongparentdirectoryname/averylongfilename.md";
+
+		// Act
+		const result = compressPath(path, 25, "/Users/alice");
+
+		// Assert
+		expect(result).toContain("…");
+		expect(result).toContain("averylongfilename.md");
+		expect(result.length).toBeLessThanOrEqual(25);
+	});
+
+	it("hard left-truncates as a last resort when even the filename is too long", () => {
+		// Arrange — filename itself exceeds maxLen
+		const path = "/a/verylongfilenamethatiswaytoobigtofit.md";
+
+		// Act
+		const result = compressPath(path, 10);
+
+		// Assert — last resort: left-truncated
+		expect(result).toHaveLength(10);
+		expect(result.startsWith("…")).toBe(true);
+	});
+
+	it("works without a homeDir argument", () => {
+		const path = "/some/path/to/file.md";
+		const result = compressPath(path, 15);
+		expect(result.length).toBeLessThanOrEqual(15);
+	});
+
+	it("does not modify a path that already fits without homeDir", () => {
+		expect(compressPath("/short.md", 20)).toBe("/short.md");
 	});
 });
