@@ -64,6 +64,7 @@ export class GlueWidget {
 	constructor(
 		private readonly pi: Pick<ExtensionAPI, "events">,
 		private readonly getWatches: () => WatchMap,
+		private readonly getPollIntervalMs: () => number,
 	) {
 		this.unsubscribe = this.pi.events.on("glue:change", () => this.refresh());
 	}
@@ -188,7 +189,7 @@ export class GlueWidget {
 		container.addChild(
 			new Text(
 				t.fg("accent", t.bold("Glue Watcher")) +
-					t.fg("dim", ` (${entries.length} active)`),
+					t.fg("dim", ` (${entries.length})  poll: ${Math.round(this.getPollIntervalMs() / 1000)}s`),
 				1,
 				0,
 			),

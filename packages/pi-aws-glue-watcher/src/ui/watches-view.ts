@@ -18,10 +18,12 @@ import { formatElapsed } from "./glue-widget.js";
 // Column widths (visible chars, before ANSI codes)
 // ---------------------------------------------------------------------------
 
-const COL_NAME = 30;
+const COL_NAME_MIN = 20; // name column: dynamic in render(), this is the floor
 const COL_STATE = 12;
 const COL_AGE = 7;
 const COL_WORKERS = 10;
+// fixed chars per row: lead(1) + sel(1) + spaces(4) + COL_STATE + COL_AGE + COL_WORKERS
+const COL_FIXED_OVERHEAD = 6 + COL_STATE + COL_AGE + COL_WORKERS;
 
 // ---------------------------------------------------------------------------
 // Display row
@@ -88,6 +90,7 @@ export class WatchesView implements Component {
 		private readonly removeWatch: (watchId: string) => void,
 		private readonly getPollIntervalMs: () => number,
 		private readonly toggleDisplay: () => void,
+		private readonly getDisplayMode: () => "widget" | "statusline",
 	) {}
 
 	invalidate(): void {
@@ -165,6 +168,8 @@ export class WatchesView implements Component {
 	render(width: number): string[] {
 		const t = this.theme;
 		const rows = this.buildRows();
+		const longestName = rows.reduce((m, r) => Math.max(m, r.displayName.length), COL_NAME_MIN);
+		const colName = Math.min(longestName, width - COL_FIXED_OVERHEAD);
 		const rule = t.fg("dim", "─".repeat(Math.max(1, width)));
 		const lines: string[] = [];
 
@@ -195,7 +200,7 @@ export class WatchesView implements Component {
 		} else {
 			lines.push(
 				` ${t.fg("accent", t.bold("Glue Watcher"))}` +
-					t.fg("dim", ` (${rows.length})  —  poll: ${Math.round(this.getPollIntervalMs() / 1000)}s   ↑↓ select   x stop   d unwatch   t toggle view   r refresh   q close`),
+					t.fg("dim", ` (${rows.length})  —  poll: ${Math.round(this.getPollIntervalMs() / 1000)}s   ↑↓ select   x stop   d unwatch   t → ${this.getDisplayMode() === "widget" ? "statusline" : "widget"}   r refresh   q close`),
 			);
 		}
 
@@ -203,7 +208,7 @@ export class WatchesView implements Component {
 
 		// Data rows
 		for (let i = 0; i < rows.length; i++) {
-			lines.push(this.formatRow(rows[i]!, i));
+			lines.push(this.formatRow(rows[i]!, i, colName));
 		}
 
 		// Detail panel for the selected row
@@ -313,12 +318,12 @@ export class WatchesView implements Component {
 		});
 	}
 
-	private formatRow(row: DisplayRow, index: number): string {
+	private formatRow(row: DisplayRow, index: number, colName: number): string {
 		const t = this.theme;
 		const isSelected = index === this.selectedIndex;
 
 		const sel = isSelected ? t.fg("accent", "▶") : " ";
-		const nameRaw = truncate(row.displayName, COL_NAME).padEnd(COL_NAME);
+		const nameRaw = truncate(row.displayName, colName).padEnd(colName);
 		const name = isSelected ? t.fg("accent", nameRaw) : t.fg("text", nameRaw);
 		const stateRaw = (row.state || "?").padEnd(COL_STATE);
 		const stateText = stateColor(t, row.state, stateRaw);

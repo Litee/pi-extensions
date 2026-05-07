@@ -623,7 +623,7 @@ export function createExtensionWithClient(
 	client: GlueClient,
 ): void {
 	const rt = makeRuntime(pi, client);
-	rt.widget = new GlueWidget(pi, () => rt.watches);
+	rt.widget = new GlueWidget(pi, () => rt.watches, () => rt.pollIntervalMs);
 
 	pi.on("session_start", async (_event, ctx) => {
 		const anyCtx = ctx as unknown as { hasUI?: boolean; ui?: UiSurface };
@@ -758,6 +758,7 @@ export function createExtensionWithClient(
 								},
 								() => rt.pollIntervalMs,
 								() => toggleDisplayMode(rt, ctx),
+								() => rt.displayMode,
 							),
 						{
 							overlay: true,
