@@ -44,6 +44,7 @@ import {
 	buildMissingDbRootStatus,
 	buildStartupAnnouncement,
 	buildStartupChatMessage,
+	buildStatusDetailMessage,
 	type WatcherState,
 } from "./format.js";
 import { handleInfo, type InfoPicker } from "./infoHandler.js";
@@ -717,7 +718,7 @@ export default function issueWatcher(pi: ExtensionAPI): void {
 					}
 					pi.sendMessage({
 						customType: CUSTOM_MESSAGE_TYPE,
-						content: buildStartupChatMessage(rt.dbRoot, snap),
+						content: buildStatusDetailMessage(rt.dbRoot, snap),
 						display: true,
 					});
 					// #0030: omit `deliverAs` and `triggerTurn` so the message
@@ -750,5 +751,5 @@ export default function issueWatcher(pi: ExtensionAPI): void {
 export { STATE_ENTRY_TYPE, RUNSTATE_ENTRY_TYPE } from "./persistence.js";
 export { scanIssueFiles } from "./scanner.js";
 export { diffSnapshots, changedPaths, formatChange } from "./diff.js";
-export { buildChatMessageContent, buildMissingDbRootStatus, buildStartupAnnouncement, buildStartupChatMessage, formatStatusSummary, type WatcherState } from "./format.js";
+export { buildChatMessageContent, buildMissingDbRootStatus, buildStartupAnnouncement, buildStartupChatMessage, buildStatusDetailMessage, formatStatusSummary, type WatcherState } from "./format.js";
 export { resolveDbRoot };

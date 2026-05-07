@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { buildChatMessageContent, buildMissingDbRootChatMessage, buildMissingDbRootStatus, buildStartupAnnouncement, buildStartupChatMessage, formatStatusSummary } from "../src/format.js";
+import { buildChatMessageContent, buildMissingDbRootChatMessage, buildMissingDbRootStatus, buildStartupAnnouncement, buildStartupChatMessage, buildStatusDetailMessage, formatStatusSummary } from "../src/format.js";
 import type { Change } from "../src/diff.js";
 import type { Snapshot } from "../src/types.js";
 
@@ -203,9 +203,43 @@ describe("buildStartupAnnouncement has no last-update segment", () => {
 // buildStartupChatMessage (#0011) — chat-visible startup summary
 // ---------------------------------------------------------------------------
 
-describe("buildStartupChatMessage (#0011)", () => {
+describe("buildStartupChatMessage (#0011, #0031)", () => {
+	it("returns 'active (N open)' with the open count from the snapshot", () => {
+		const snap: Snapshot = {
+			"/a": issue("open"),
+			"/b": issue("open"),
+			"/c": issue("done"),
+		};
+		expect(buildStartupChatMessage("/abs/db", snap)).toBe("active (2 open)");
+	});
+
+	it("returns 'active (0 open)' when no issues are open", () => {
+		expect(buildStartupChatMessage("/abs/db", {})).toBe("active (0 open)");
+	});
+
+	it("ignores dbRoot and pollIntervalMs (signature compatibility)", () => {
+		expect(buildStartupChatMessage("/ignored", {}, 30_000)).toBe("active (0 open)");
+	});
+
+	it("counts only 'open' — done/wont_fix/in_progress do not leak in", () => {
+		const snap: Snapshot = {
+			"/a": issue("done"),
+			"/b": issue("wont_fix"),
+			"/c": issue("in_progress"),
+		};
+		const msg = buildStartupChatMessage("/abs/db", snap);
+		expect(msg).toBe("active (0 open)");
+		expect(msg).not.toMatch(/done|wont_fix|in_progress|poll|db:/);
+	});
+});
+
+// ---------------------------------------------------------------------------
+// buildStatusDetailMessage (#0031) — detailed output used by `status` command
+// ---------------------------------------------------------------------------
+
+describe("buildStatusDetailMessage (#0031)", () => {
 	it("first two lines are 'status: active' then 'poll: Ns', no extension-name prefix", () => {
-		const msg = buildStartupChatMessage("/abs/db", {
+		const msg = buildStatusDetailMessage("/abs/db", {
 			"/a": issue("open"),
 			"/b": issue("in_progress"),
 			"/c": issue("done"),
@@ -215,14 +249,11 @@ describe("buildStartupChatMessage (#0011)", () => {
 		expect(lines[1]).toBe("poll: 60s");
 		expect(lines[2]).toBe("db: /abs/db");
 		expect(lines[3]).toBe("issues: 1 open \u00b7 1 in_progress \u00b7 1 done");
-		// No extension-name prefix — the box header already identifies the source.
 		expect(lines[0]).not.toContain("local-issue-watcher:");
-		// No commands hint line.
-		expect(msg).not.toContain("/local-issue-watcher:");
 	});
 
-	it("includes an explicit 'N open' segment even when zero (structured signal for the LLM)", () => {
-		const msg = buildStartupChatMessage("/abs/db", {
+	it("includes an explicit 'N open' segment even when zero", () => {
+		const msg = buildStatusDetailMessage("/abs/db", {
 			"/a": issue("done"),
 			"/b": issue("wont_fix"),
 		});
@@ -230,7 +261,7 @@ describe("buildStartupChatMessage (#0011)", () => {
 	});
 
 	it("returns a sensible format for an empty tracker", () => {
-		const msg = buildStartupChatMessage("/abs/db", {});
+		const msg = buildStatusDetailMessage("/abs/db", {});
 		const lines = msg.split("\n");
 		expect(lines[0]).toBe("status: active");
 		expect(lines[1]).toBe("poll: 60s");
@@ -239,7 +270,7 @@ describe("buildStartupChatMessage (#0011)", () => {
 	});
 
 	it("respects a custom pollIntervalMs", () => {
-		const msg = buildStartupChatMessage("/abs/db", {}, 30_000);
+		const msg = buildStatusDetailMessage("/abs/db", {}, 30_000);
 		const lines = msg.split("\n");
 		expect(lines[0]).toBe("status: active");
 		expect(lines[1]).toBe("poll: 30s");

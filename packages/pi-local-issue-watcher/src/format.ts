@@ -83,9 +83,30 @@ export function buildMissingDbRootChatMessage(dbRoot: string): string {
 }
 
 /**
- * Build the multi-line, chat-visible startup announcement the watcher
- * posts on each `session_start` so the LLM can see the watcher is active
- * and knows which tracker it is monitoring.
+ * Build the compact, chat-visible startup announcement the watcher posts
+ * on each `session_start`. #0031 collapsed the previous 4-line block
+ * (status/poll/db/issues) down to a single line — the detailed breakdown
+ * now lives in {@link buildStatusDetailMessage} and is only emitted on
+ * explicit `status` invocations.
+ *
+ * Format: `active (N open)`
+ *
+ * The `dbRoot` and `pollIntervalMs` parameters are retained for signature
+ * compatibility with existing callers; they are ignored.
+ */
+export function buildStartupChatMessage(
+	_dbRoot: string,
+	snapshot: Snapshot,
+	_pollIntervalMs = 60_000,
+): string {
+	let open = 0;
+	for (const info of Object.values(snapshot)) if ((info.status || "") === "open") open++;
+	return `active (${open} open)`;
+}
+
+/**
+ * Build the multi-line detailed status output used by the `status`
+ * subcommand. This is the pre-#0031 body of {@link buildStartupChatMessage}.
  *
  * Format (rendered inside the [pi-local-issue-watcher] box):
  *
@@ -93,15 +114,8 @@ export function buildMissingDbRootChatMessage(dbRoot: string): string {
  *     poll: 60s
  *     db: <path>
  *     issues: N open · M done · K wont_fix
- *
- * The extension-name prefix is omitted — the box header already identifies
- * the source. The counts line uses `·` as separator for readability.
- *
- * Unlike {@link buildStartupAnnouncement} (which goes to the pinned status
- * row), this string is intended for `pi.sendMessage({ triggerTurn: false })`
- * so it lands in the conversation but does not cost an agent turn.
  */
-export function buildStartupChatMessage(
+export function buildStatusDetailMessage(
 	dbRoot: string,
 	snapshot: Snapshot,
 	pollIntervalMs = 60_000,
