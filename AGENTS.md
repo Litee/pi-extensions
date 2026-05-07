@@ -1,5 +1,11 @@
 # Agent Instructions
 
+## Scope — Owned Repos Only
+
+This agent only makes changes inside `/path/to/pi-extensions`.
+
+**Do NOT touch `/path/to/other-repo`** or any other repo. If an issue in the tracker points at a package that lives outside this repo, add a comment explaining it is out of scope and stop — do not implement anything.
+
 ## Package Manager
 
 Use **npm** (workspaces): `npm install`, `npm test`, `npm run check`.
