@@ -53,6 +53,8 @@ function makeJobClient(state: string, errorMessage = ""): GlueClient {
 		getWorkflowRun: vi.fn(),
 		getLatestJobRunId: vi.fn(),
 		getLatestWorkflowRunId: vi.fn(),
+		stopJobRun: vi.fn().mockResolvedValue(undefined),
+		stopWorkflowRun: vi.fn().mockResolvedValue(undefined),
 	};
 }
 
@@ -77,6 +79,8 @@ function makeWorkflowClient(
 		} satisfies WorkflowRunResponse),
 		getLatestJobRunId: vi.fn(),
 		getLatestWorkflowRunId: vi.fn(),
+		stopJobRun: vi.fn().mockResolvedValue(undefined),
+		stopWorkflowRun: vi.fn().mockResolvedValue(undefined),
 	};
 }
 

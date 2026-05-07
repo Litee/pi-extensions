@@ -21,11 +21,13 @@ import type { JobBaseline, WatchMap, WorkflowBaseline } from "../types.js";
 
 const WIDGET_ID = "glue-watcher";
 
-// Column widths (characters, before ANSI codes are added)
-const COL_NAME = 28;
+// Fixed column widths (characters, before ANSI codes are added)
 const COL_STATE = 12;
 const COL_STARTED = 7;
 const COL_WORKERS = 10;
+// spaces between columns (1 leading + 3 separators) = 4
+const COL_FIXED_OVERHEAD = COL_STATE + COL_STARTED + COL_WORKERS + 4;
+const COL_NAME_MIN = 20;
 
 // ---------------------------------------------------------------------------
 // Module-level helper
@@ -158,7 +160,10 @@ export class GlueWidget {
 				const b = watch.baseline as WorkflowBaseline | undefined;
 				const nodes = b?.nodes;
 				if (nodes && nodes.length > 0) {
-					for (const node of nodes) {
+					const uniqueNodes = Array.from(
+						new Map(nodes.filter((n) => n.state !== "").map((n) => [n.name, n])).values(),
+					);
+					for (const node of uniqueNodes) {
 						entries.push({
 							displayName: `${watch.name}/${node.name}`,
 							state: node.state,
@@ -189,15 +194,24 @@ export class GlueWidget {
 			),
 		);
 
-		const rows = entries.map((entry) => {
+		const seen = new Set<string>();
+		const dedupedEntries = entries.filter((e) => {
+			if (seen.has(e.displayName)) return false;
+			seen.add(e.displayName);
+			return true;
+		});
+		const longestName = dedupedEntries.reduce((m, e) => Math.max(m, e.displayName.length), COL_NAME_MIN);
+		const colName = Math.min(longestName, width - COL_FIXED_OVERHEAD - 1);
+
+		const rows = dedupedEntries.map((entry) => {
 			const state = entry.state;
 
 			// -- name --
 			const nameRaw =
-				entry.displayName.length > COL_NAME
-					? `${entry.displayName.substring(0, COL_NAME - 3)}...`
+				entry.displayName.length > colName
+					? `${entry.displayName.substring(0, colName - 3)}...`
 					: entry.displayName;
-			const name = t.fg("text", nameRaw.padEnd(COL_NAME));
+			const name = t.fg("text", nameRaw.padEnd(colName));
 
 			// -- state: colored by outcome --
 			const stateRaw = (state || "?").padEnd(COL_STATE);

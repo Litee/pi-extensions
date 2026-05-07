@@ -48,7 +48,6 @@ import {
 import {
 	buildChangeChatMessage,
 	buildStartupChatMessage,
-	buildStatusLine,
 } from "./format.js";
 import {
 	rehydrateStateFromSession,
@@ -91,7 +90,6 @@ export const POLL_ERROR_THRESHOLD = 5;
 export const CUSTOM_MESSAGE_TYPE = "pi-aws-glue-watcher";
 
 /** Status-line key under which we pin our footer row. */
-export const STATUS_KEY = "glue-watcher";
 
 // ---------------------------------------------------------------------------
 // Module-level flag — shared across all sessions in a single process.
@@ -155,7 +153,6 @@ const GlueWatcherParams = Type.Object({
 
 interface UiSurface {
 	notify?: (msg: string, level?: string) => void;
-	setStatus?: (key: string, text: string | undefined) => void;
 	theme?: { fg?: (color: string, text: string) => string };
 	hasUI?: boolean;
 }
@@ -196,29 +193,9 @@ function makeRuntime(pi: Runtime["pi"], client: GlueClient): Runtime {
 // Status-line helpers
 // ---------------------------------------------------------------------------
 
-function colorize(
-	theme: UiSurface["theme"],
-	text: string,
-): string {
-	return theme?.fg ? theme.fg("accent", text) : text;
-}
-
-/** Re-render the status-line row from current runtime state. */
-function refreshStatus(rt: Runtime): void {
-	if (!rt.enabled) {
-		rt.ui?.setStatus?.(STATUS_KEY, undefined);
-		return;
-	}
-	const hasErrors = Object.values(rt.watches).some(
-		(w) => !w.terminal && w.consecutiveErrors >= POLL_ERROR_THRESHOLD,
-	);
-	const text = buildStatusLine({
-		watches: rt.watches,
-		paused: rt.paused,
-		pollIntervalMs: rt.pollIntervalMs,
-		hasErrors,
-	});
-	rt.ui?.setStatus?.(STATUS_KEY, colorize(rt.ui?.theme, text));
+/** No-op — status line removed; widget serves this purpose. */
+function refreshStatus(_rt: Runtime): void {
+	// status line removed — widget handles this
 }
 
 // ---------------------------------------------------------------------------
@@ -667,7 +644,6 @@ export function createExtensionWithClient(
 		try {
 			rt.widget?.hide(ctx);
 			rt.widget?.destroy();
-			rt.ui?.setStatus?.(STATUS_KEY, undefined);
 		} catch {
 			/* noop — UI may already be torn down */
 		}
@@ -714,8 +690,7 @@ export function createExtensionWithClient(
 					rt.widget?.hide(ctx);
 					removeToolFromActive(pi);
 					writeState(rt.pi, rt);
-					rt.ui?.setStatus?.(STATUS_KEY, undefined);
-					ui?.notify?.("glue-watcher: disabled. Status line and tool removed.", "info");
+					ui?.notify?.("glue-watcher: disabled. Tool removed.", "info");
 					return;
 				}
 
@@ -728,6 +703,16 @@ export function createExtensionWithClient(
 								theme as any,
 								() => tui.requestRender(),
 								() => done(undefined),
+								async (row) => {
+									const watch = rt.watches[row.watchId];
+									if (!watch) return;
+									if (watch.type === "job") {
+										await client.stopJobRun(watch.name, watch.runId, watch.profile, watch.region);
+									} else {
+										await client.stopWorkflowRun(watch.name, watch.runId, watch.profile, watch.region);
+									}
+								},
+								() => rt.pollIntervalMs,
 							),
 						{
 							overlay: true,

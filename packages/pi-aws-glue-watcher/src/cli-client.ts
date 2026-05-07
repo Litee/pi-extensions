@@ -103,6 +103,20 @@ export interface GlueClient {
 		profile: string,
 		region: string | undefined,
 	): Promise<string>;
+
+	stopJobRun(
+		jobName: string,
+		runId: string,
+		profile: string,
+		region: string | undefined,
+	): Promise<void>;
+
+	stopWorkflowRun(
+		workflowName: string,
+		runId: string,
+		profile: string,
+		region: string | undefined,
+	): Promise<void>;
 }
 
 // ---------------------------------------------------------------------------
@@ -185,6 +199,30 @@ export function createGlueClient(): GlueClient {
 			const wfRunId = result.Runs?.[0]?.WorkflowRunId;
 			if (!wfRunId) throw new GlueCliError(`No runs found for workflow '${workflowName}'`);
 			return wfRunId;
+		},
+
+		async stopJobRun(jobName, runId, profile, region) {
+			const cmd = [
+				"aws glue batch-stop-job-run",
+				`--job-name ${JSON.stringify(jobName)}`,
+				`--job-run-ids ${JSON.stringify(runId)}`,
+				`--profile ${JSON.stringify(profile)}`,
+				regionFlag(region),
+				"--output json",
+			].join(" ");
+			await awsCli(cmd);
+		},
+
+		async stopWorkflowRun(workflowName, runId, profile, region) {
+			const cmd = [
+				"aws glue stop-workflow-run",
+				`--name ${JSON.stringify(workflowName)}`,
+				`--run-id ${JSON.stringify(runId)}`,
+				`--profile ${JSON.stringify(profile)}`,
+				regionFlag(region),
+				"--output json",
+			].join(" ");
+			await awsCli(cmd);
 		},
 	};
 }

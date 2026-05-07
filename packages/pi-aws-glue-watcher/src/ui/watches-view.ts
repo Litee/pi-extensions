@@ -76,12 +76,16 @@ function stateColor(t: Theme, state: string, text: string): string {
 
 export class WatchesView implements Component {
 	private selectedIndex = 0;
+	private confirm: { displayName: string; row: DisplayRow } | null = null;
+	private stopError: string | null = null;
 
 	constructor(
 		private readonly getWatches: () => WatchMap,
 		private readonly theme: Theme,
 		private readonly requestRender: () => void,
 		private readonly done: () => void,
+		private readonly stopRow: (row: DisplayRow) => Promise<void>,
+		private readonly getPollIntervalMs: () => number,
 	) {}
 
 	invalidate(): void {
@@ -89,6 +93,25 @@ export class WatchesView implements Component {
 	}
 
 	handleInput(data: string): void {
+		// Confirmation mode intercepts all input
+		if (this.confirm) {
+			if (matchesKey(data, "y")) {
+				const target = this.confirm;
+				this.confirm = null;
+				this.stopError = null;
+				this.stopRow(target.row)
+					.catch((err: unknown) => {
+						this.stopError = err instanceof Error ? err.message : String(err);
+					})
+					.finally(() => { this.requestRender(); });
+				this.requestRender();
+			} else if (matchesKey(data, "n") || matchesKey(data, "escape")) {
+				this.confirm = null;
+				this.requestRender();
+			}
+			return;
+		}
+
 		if (matchesKey(data, "q") || matchesKey(data, "escape")) {
 			this.done();
 			return;
@@ -103,7 +126,19 @@ export class WatchesView implements Component {
 			return;
 		}
 		if (matchesKey(data, "r")) {
+			this.stopError = null;
 			this.requestRender();
+			return;
+		}
+		if (matchesKey(data, "x")) {
+			const rows = this.buildRows();
+			const sel = rows[this.selectedIndex];
+			if (sel && !sel.isTerminal) {
+				this.confirm = { displayName: sel.displayName, row: sel };
+				this.stopError = null;
+				this.requestRender();
+			}
+			return;
 		}
 	}
 
@@ -126,10 +161,20 @@ export class WatchesView implements Component {
 				` ${t.fg("accent", t.bold("Glue Watcher"))}` +
 					t.fg("dim", "  No watches configured.   q close"),
 			);
+		} else if (this.confirm) {
+			lines.push(
+				` ${t.fg("warning", `Stop "${this.confirm.displayName}"?`)}` +
+					t.fg("dim", "  y confirm   n cancel"),
+			);
+		} else if (this.stopError) {
+			lines.push(
+				` ${t.fg("error", `Stop failed: ${this.stopError}`)}` +
+					t.fg("dim", "   q close"),
+			);
 		} else {
 			lines.push(
 				` ${t.fg("accent", t.bold("Glue Watcher"))}` +
-					t.fg("dim", ` (${rows.length})  —  ↑↓ select   r refresh   q close`),
+					t.fg("dim", ` (${rows.length})  —  poll: ${Math.round(this.getPollIntervalMs() / 1000)}s   ↑↓ select   x stop   r refresh   q close`),
 			);
 		}
 
@@ -207,7 +252,10 @@ export class WatchesView implements Component {
 				const b = watch.baseline as WorkflowBaseline | undefined;
 				const nodes = b?.nodes;
 				if (nodes && nodes.length > 0) {
-					for (const node of nodes) {
+					const uniqueNodes = Array.from(
+						new Map(nodes.filter((n) => n.state !== "").map((n) => [n.name, n])).values(),
+					);
+					for (const node of uniqueNodes) {
 						rows.push({
 							displayName: `${watch.name}/${node.name}`,
 							state: node.state,
@@ -236,7 +284,12 @@ export class WatchesView implements Component {
 			}
 		}
 
-		return rows;
+		const seen = new Set<string>();
+		return rows.filter((r) => {
+			if (seen.has(r.displayName)) return false;
+			seen.add(r.displayName);
+			return true;
+		});
 	}
 
 	private formatRow(row: DisplayRow, index: number): string {
