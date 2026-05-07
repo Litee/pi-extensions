@@ -183,8 +183,7 @@ export function buildWidgetLines(
 
 	// Footer
 	lines.push(dim("\u2500".repeat(SIMPLE_LABEL_WIDTH + 10)));
-	const pct = ctxWindow > 0 ? Math.round((total / ctxWindow) * 100) : 0;
-	lines.push(theme.bold(`Total  ~${formatTokens(total)} / ${formatTokens(ctxWindow)}  (${pct}%)`));
+	lines.push(theme.bold(`Total  ~${formatTokens(total)} / ${formatTokens(ctxWindow)}`));
 
 	return lines;
 }
