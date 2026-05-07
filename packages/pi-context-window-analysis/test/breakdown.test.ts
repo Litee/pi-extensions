@@ -460,3 +460,24 @@ describe("buildSystemPromptBreakdown — appendSystemPromptPreview", () => {
 		expect(result.appendSystemPromptPreview).toBe("# Real Content");
 	});
 });
+
+describe("buildSystemPromptBreakdown — appendSystemPromptPaths", () => {
+	it("passes appendSystemPromptPaths through from options", () => {
+		// Arrange
+		const options: SystemPromptOptions = {
+			appendSystemPrompt: "content",
+			appendSystemPromptPaths: ["/home/user/.pi/agent/APPEND_SYSTEM.md"],
+		};
+
+		// Act
+		const result = buildSystemPromptBreakdown(makeSystemPrompt({ appendSystemPrompt: "content" }), options);
+
+		// Assert
+		expect(result.appendSystemPromptPaths).toEqual(["/home/user/.pi/agent/APPEND_SYSTEM.md"]);
+	});
+
+	it("appendSystemPromptPaths is undefined when not provided in options", () => {
+		const result = buildSystemPromptBreakdown(makeSystemPrompt(), {});
+		expect(result.appendSystemPromptPaths).toBeUndefined();
+	});
+});

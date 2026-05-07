@@ -206,7 +206,7 @@ export function buildWidgetLines(
 	const maxPathLen = W - INDENT.length;
 
 	// ── Context Breakdown ────────────────────────────────────────────────────
-	lines.push(theme.fg("accent", rule("Context Breakdown")));
+	lines.push(theme.fg("accent", rule("Context Window Breakdown")));
 
 	// System prompt section
 	lines.push(theme.bold(row("System prompt", sp.total)));
@@ -225,9 +225,17 @@ export function buildWidgetLines(
 	}
 
 	if (sp.appendSystemPrompt > 0) {
+		const paths = sp.appendSystemPromptPaths;
 		let label: string;
-		if (sp.appendSystemPromptPreview) {
-			// Prefix is fixed; truncate only the preview so the prefix stays readable.
+		if (paths && paths.length === 1) {
+			// Single file: show path like a context file row
+			const compressed = compressPath(paths[0]!, maxPathLen, homeDir);
+			label = `${INDENT}${compressed}`;
+		} else if (paths && paths.length > 1) {
+			// Multiple files: list count; individual paths would exceed one row
+			label = `${INDENT}appended (${paths.length} files)`;
+		} else if (sp.appendSystemPromptPreview) {
+			// No file found (e.g. --append-system-prompt CLI flag): show content preview
 			const prefix = `${INDENT}appended: "`;
 			const suffix = `"`;
 			const maxPreview = W - prefix.length - suffix.length;

@@ -30,7 +30,9 @@ import type {
 	ExtensionCommandContext,
 	ExtensionContext,
 } from "@mariozechner/pi-coding-agent";
+import { existsSync } from "node:fs";
 import { homedir } from "node:os";
+import { join } from "node:path";
 import { Container, Text } from "@mariozechner/pi-tui";
 
 import { buildConversationBreakdown, buildSystemPromptBreakdown, type BranchEntry, type SystemPromptOptions } from "./breakdown.js";
@@ -50,9 +52,26 @@ const HELP_TEXT = [
 	"conversation history, and the last turn's actual API usage.",
 ].join("\n");
 
-function adaptOptions(raw: BuildSystemPromptOptions): SystemPromptOptions {
+/**
+ * Mirror pi's own discovery logic for APPEND_SYSTEM.md files.
+ * Checks project-local (.pi/APPEND_SYSTEM.md) then global (~/.pi/agent/APPEND_SYSTEM.md).
+ */
+function discoverAppendPaths(cwd: string, home: string): string[] {
+	const paths: string[] = [];
+	const projectPath = join(cwd, ".pi", "APPEND_SYSTEM.md");
+	if (existsSync(projectPath)) paths.push(projectPath);
+	const globalPath = join(home, ".pi", "agent", "APPEND_SYSTEM.md");
+	if (existsSync(globalPath)) paths.push(globalPath);
+	return paths;
+}
+
+function adaptOptions(raw: BuildSystemPromptOptions, cwd: string, home: string): SystemPromptOptions {
 	const result: SystemPromptOptions = {};
 	if (raw.appendSystemPrompt !== undefined) result.appendSystemPrompt = raw.appendSystemPrompt;
+	if (raw.appendSystemPrompt) {
+		const paths = discoverAppendPaths(cwd, home);
+		if (paths.length > 0) result.appendSystemPromptPaths = paths;
+	}
 	if (raw.contextFiles !== undefined) result.contextFiles = raw.contextFiles;
 	return result;
 }
@@ -93,9 +112,9 @@ export default function contextWindowAnalysis(pi: ExtensionAPI): void {
 	}
 
 	// Capture system prompt + options from the start of each agent run.
-	pi.on("before_agent_start", async (event: BeforeAgentStartEvent) => {
+	pi.on("before_agent_start", async (event: BeforeAgentStartEvent, ctx) => {
 		lastSystemPrompt = event.systemPrompt;
-		lastOptions = adaptOptions(event.systemPromptOptions);
+		lastOptions = adaptOptions(event.systemPromptOptions, ctx.cwd, homedir());
 	});
 
 	// Refresh widget after each turn ends (if visible).

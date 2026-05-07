@@ -25,6 +25,7 @@ export interface ContextFileEntry {
  */
 export interface SystemPromptOptions {
 	appendSystemPrompt?: string;
+	appendSystemPromptPaths?: string[] | undefined;
 	contextFiles?: ContextFileEntry[];
 }
 
@@ -50,6 +51,8 @@ export interface SystemPromptBreakdown {
 	appendSystemPrompt: number;
 	/** First non-empty line of appendSystemPrompt content (≤ 40 chars), for display. Absent when there is no appended content. */
 	appendSystemPromptPreview?: string | undefined;
+	/** File paths that contributed to appendSystemPrompt, when discoverable. */
+	appendSystemPromptPaths?: string[] | undefined;
 	/** Per-file token estimates from contextFiles. */
 	contextFiles: ContextFileBreakdown[];
 	/** Tokens for the full skills catalog block, measured from the prompt string. */
@@ -228,6 +231,7 @@ export function buildSystemPromptBreakdown(
 		guidelines,
 		appendSystemPrompt: appendSP,
 		appendSystemPromptPreview,
+		appendSystemPromptPaths: options?.appendSystemPromptPaths,
 		contextFiles,
 		skillsCatalog: skillsScan.tokens,
 		skillCount: skillsScan.count,
