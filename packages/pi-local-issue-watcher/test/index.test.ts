@@ -587,15 +587,15 @@ describe("/local-issue-watcher command", () => {
 
 		// Resume also updates the pinned status line to mirror session_start.
 		const statusCalls = ctx.ui.setStatus.mock.calls as Array<[string, string | undefined]>;
-		const resumedStatus = statusCalls
+		const activeStatus = statusCalls
 			.filter(([k]) => k === "pi-local-issue-watcher")
 			.map(([, v]) => v ?? "")
-			.find((v) => /resumed/i.test(v));
-		expect(resumedStatus).toBeDefined();
+			.find((v) => /active/i.test(v));
+		expect(activeStatus).toBeDefined();
 		// #0022: pinned status is just `<state> | <counts>` — no path,
 		// no poll-period segment.
-		expect(resumedStatus!).not.toContain(abbreviatePath(dbRoot));
-		expect(resumedStatus!).not.toContain("poll=");
+		expect(activeStatus!).not.toContain(abbreviatePath(dbRoot));
+		expect(activeStatus!).not.toContain("poll=");
 	});
 
 	it("'pause' clears the pinned status row (#0019: paused = silent, no pinned row)", async () => {
@@ -1714,7 +1714,7 @@ describe("paused watcher = silent + zero-IO (#0019)", () => {
 		expect(lastNotify[0]).toContain(dbRoot);
 	});
 
-	it("'/local-issue-watcher resume' re-pins the status row (non-empty string, state 'resumed')", async () => {
+	it("'/local-issue-watcher resume' re-pins the status row (non-empty string, state 'active')", async () => {
 		const pi = makeFakePi();
 		const prev = process.env["LOCAL_ISSUE_TRACKER_DB_ROOT"];
 		process.env["LOCAL_ISSUE_TRACKER_DB_ROOT"] = dbRoot;
@@ -1743,12 +1743,12 @@ describe("paused watcher = silent + zero-IO (#0019)", () => {
 
 		const afterResume = (ctx.ui.setStatus.mock.calls as Array<[string, string | undefined]>)
 			.filter(([k]) => k === "pi-local-issue-watcher");
-		const resumedPin = afterResume
+		const activePin = afterResume
 			.map(([, v]) => v)
-			.find((v) => typeof v === "string" && /resumed/i.test(v));
-		expect(resumedPin).toBeDefined();
-		expect(typeof resumedPin).toBe("string");
-		expect((resumedPin as string).length).toBeGreaterThan(0);
+			.find((v) => typeof v === "string" && /active/i.test(v));
+		expect(activePin).toBeDefined();
+		expect(typeof activePin).toBe("string");
+		expect((activePin as string).length).toBeGreaterThan(0);
 	});
 });
 

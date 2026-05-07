@@ -3,6 +3,9 @@ import { formatChange } from "./diff.js";
 import { abbreviatePath } from "./path.js";
 import type { Snapshot } from "./types.js";
 
+/** The set of states the watcher status line can be in. */
+export type WatcherState = "active" | "paused";
+
 /**
  * Well-known statuses emitted by `local-skill-issues-tracker`, in the order
  * `watch_issues.py` uses for its summary line. Anything not in this list is
@@ -55,7 +58,7 @@ const WELL_KNOWN_STATUSES = ["open", "in_progress", "done", "wont_fix"] as const
  * them post-#0022.
  */
 export function buildStartupAnnouncement(
-	state: string,
+	state: WatcherState,
 	_dbRoot: string,
 	_pollIntervalMs: number,
 	snapshot: Snapshot,

@@ -43,6 +43,7 @@ import {
 	buildMissingDbRootStatus,
 	buildStartupAnnouncement,
 	buildStartupChatMessage,
+	type WatcherState,
 } from "./format.js";
 import { handleInfo, type InfoPicker } from "./infoHandler.js";
 import { makeInfoTuiPicker } from "./infoTui.js";
@@ -460,7 +461,7 @@ function makeRuntime(dbRoot: string, pi: Runtime["pi"]): Runtime {
 function refreshStatusLine(
 	ui: Runtime["ui"],
 	rt: Pick<Runtime, "dbRoot">,
-	state: string,
+	state: WatcherState,
 	snapshot: Snapshot,
 ): void {
 	ui?.setStatus?.(
@@ -679,7 +680,7 @@ export default function issueWatcher(pi: ExtensionAPI): void {
 						ui.notify(buildParseFailureToast(resumeFailureCount), "warning");
 						rt.parseFailureToastState.hasToasted = true;
 					}
-					refreshStatusLine(ui ?? null, rt, "resumed", resumedSnap);
+					refreshStatusLine(ui ?? null, rt, "active", resumedSnap);
 					ui?.notify?.(`local-issue-watcher: resumed (dbRoot=${rt.dbRoot})`, "info");
 					return;
 				}
@@ -742,5 +743,5 @@ export default function issueWatcher(pi: ExtensionAPI): void {
 export { STATE_ENTRY_TYPE, RUNSTATE_ENTRY_TYPE } from "./persistence.js";
 export { scanIssueFiles } from "./scanner.js";
 export { diffSnapshots, changedPaths, formatChange } from "./diff.js";
-export { buildChatMessageContent, buildMissingDbRootStatus, buildStartupAnnouncement, buildStartupChatMessage, formatStatusSummary } from "./format.js";
+export { buildChatMessageContent, buildMissingDbRootStatus, buildStartupAnnouncement, buildStartupChatMessage, formatStatusSummary, type WatcherState } from "./format.js";
 export { resolveDbRoot };
