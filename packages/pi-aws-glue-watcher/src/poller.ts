@@ -23,6 +23,7 @@ import {
 	type JobBaseline,
 	type WatchBaseline,
 	type WorkflowBaseline,
+	type WorkflowNodeInfo,
 } from "./types.js";
 
 // ---------------------------------------------------------------------------
@@ -63,6 +64,9 @@ export async function snapshotJobRun(
 	return {
 		state: resp.JobRun.JobRunState ?? "",
 		errorMessage: resp.JobRun.ErrorMessage ?? "",
+		...(resp.JobRun.StartedOn !== undefined ? { startedOn: resp.JobRun.StartedOn } : {}),
+		...(resp.JobRun.NumberOfWorkers !== undefined ? { numberOfWorkers: resp.JobRun.NumberOfWorkers } : {}),
+		...(resp.JobRun.WorkerType !== undefined ? { workerType: resp.JobRun.WorkerType } : {}),
 	};
 }
 
@@ -83,6 +87,19 @@ export async function snapshotWorkflowRun(
 	const alreadyFailed = nodes
 		.filter((n) => NODE_FAILURE_STATES.has(nodeState(n)))
 		.map((n) => n.Name);
+	const nodeInfos: WorkflowNodeInfo[] = nodes
+		.filter((n) => n.Type === "JOB")
+		.map((n) => {
+			const run = n.JobDetails?.JobRuns?.[0];
+			const info: WorkflowNodeInfo = {
+				name: n.Name,
+				state: run?.JobRunState ?? "",
+				...(run?.StartedOn !== undefined ? { startedOn: run.StartedOn } : {}),
+				...(run?.NumberOfWorkers !== undefined ? { numberOfWorkers: run.NumberOfWorkers } : {}),
+				...(run?.WorkerType !== undefined ? { workerType: run.WorkerType } : {}),
+			};
+			return info;
+		});
 	return {
 		state: resp.Run.Status ?? "",
 		totalActions: stats.TotalActions ?? 0,
@@ -90,6 +107,7 @@ export async function snapshotWorkflowRun(
 		failedActions: stats.FailedActions ?? 0,
 		runningActions: stats.RunningActions ?? 0,
 		reportedFailedNodes: alreadyFailed,
+		nodes: nodeInfos,
 	};
 }
 
@@ -122,6 +140,9 @@ export async function detectJobChanges(
 	const newBaseline: JobBaseline = {
 		state: resp.JobRun.JobRunState ?? "",
 		errorMessage: resp.JobRun.ErrorMessage ?? "",
+		...(resp.JobRun.StartedOn !== undefined ? { startedOn: resp.JobRun.StartedOn } : {}),
+		...(resp.JobRun.NumberOfWorkers !== undefined ? { numberOfWorkers: resp.JobRun.NumberOfWorkers } : {}),
+		...(resp.JobRun.WorkerType !== undefined ? { workerType: resp.JobRun.WorkerType } : {}),
 	};
 
 	const previous = watch.baseline as JobBaseline | undefined;
@@ -224,6 +245,19 @@ export async function detectWorkflowChanges(
 		failedActions: stats.FailedActions ?? 0,
 		runningActions: stats.RunningActions ?? 0,
 		reportedFailedNodes: [...(previous?.reportedFailedNodes ?? []), ...newlyFailed],
+		nodes: nodes
+			.filter((n) => n.Type === "JOB")
+			.map((n) => {
+				const run = n.JobDetails?.JobRuns?.[0];
+				const info: WorkflowNodeInfo = {
+					name: n.Name,
+					state: run?.JobRunState ?? "",
+					...(run?.StartedOn !== undefined ? { startedOn: run.StartedOn } : {}),
+					...(run?.NumberOfWorkers !== undefined ? { numberOfWorkers: run.NumberOfWorkers } : {}),
+					...(run?.WorkerType !== undefined ? { workerType: run.WorkerType } : {}),
+				};
+				return info;
+			}),
 	};
 
 	return { events, newBaseline };

@@ -24,6 +24,7 @@ function makePi() {
 		registerTool: vi.fn(),
 		getActiveTools: vi.fn().mockReturnValue([]),
 		setActiveTools: vi.fn(),
+		events: { on: vi.fn().mockReturnValue(() => {}), emit: vi.fn() },
 	};
 }
 

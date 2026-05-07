@@ -34,6 +34,11 @@ export interface JobRunResponse {
 	JobRun: {
 		JobRunState: string;
 		ErrorMessage?: string;
+		/** ISO-8601 timestamp when the run started. */
+		StartedOn?: string;
+		NumberOfWorkers?: number;
+		/** e.g. "G.1X" | "G.2X" | "G.025X" | "Standard" | "Z.2X" */
+		WorkerType?: string;
 	};
 }
 
@@ -41,7 +46,12 @@ export interface WorkflowRunNode {
 	Name: string;
 	Type: string;
 	JobDetails?: {
-		JobRuns?: Array<{ JobRunState: string }>;
+		JobRuns?: Array<{
+			JobRunState: string;
+			StartedOn?: string;
+			NumberOfWorkers?: number;
+			WorkerType?: string;
+		}>;
 	};
 	CrawlerDetails?: {
 		Crawls?: Array<{ State: string }>;

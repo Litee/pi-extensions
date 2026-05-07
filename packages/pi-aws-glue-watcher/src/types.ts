@@ -36,6 +36,21 @@ export interface JobBaseline {
 	/** e.g. "RUNNING", "SUCCEEDED" */
 	state: string;
 	errorMessage: string;
+	/** ISO-8601 timestamp when the run started (from AWS Glue API). */
+	startedOn?: string;
+	/** Configured number of workers for this run. */
+	numberOfWorkers?: number;
+	/** Worker type, e.g. "G.1X", "G.2X", "G.025X", "Standard". */
+	workerType?: string;
+}
+
+/** Per-node snapshot stored inside a WorkflowBaseline. JOB nodes only. */
+export interface WorkflowNodeInfo {
+	name: string;
+	state: string;
+	startedOn?: string;
+	numberOfWorkers?: number;
+	workerType?: string;
 }
 
 /**
@@ -53,6 +68,8 @@ export interface WorkflowBaseline {
 	runningActions: number;
 	/** Node names already reported as failed — prevents duplicate node_failure events. */
 	reportedFailedNodes: string[];
+	/** JOB nodes present in the workflow run graph. Empty until graph is populated. */
+	nodes?: WorkflowNodeInfo[];
 }
 
 /** Union type so a single `baseline` field covers both target kinds. */

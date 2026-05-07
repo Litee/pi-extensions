@@ -62,6 +62,8 @@ import {
 	snapshotWorkflowRun,
 } from "./poller.js";
 import type { GlueEvent, GlueWatch, WatchMap } from "./types.js";
+import { GlueWidget } from "./ui/glue-widget.js";
+import { WatchesView } from "./ui/watches-view.js";
 
 // ---------------------------------------------------------------------------
 // Constants
@@ -160,7 +162,7 @@ interface UiSurface {
 
 /** Mutable per-process runtime. One instance per `createExtensionWithClient` call. */
 interface Runtime {
-	pi: Pick<ExtensionAPI, "sendMessage" | "appendEntry">;
+	pi: Pick<ExtensionAPI, "sendMessage" | "appendEntry" | "events">;
 	client: GlueClient;
 	watches: WatchMap;
 	paused: boolean;
@@ -172,6 +174,7 @@ interface Runtime {
 	idleIntervalMs: number;
 	timer: ReturnType<typeof setInterval> | null;
 	ui: UiSurface | null;
+	widget: GlueWidget | null;
 }
 
 function makeRuntime(pi: Runtime["pi"], client: GlueClient): Runtime {
@@ -185,6 +188,7 @@ function makeRuntime(pi: Runtime["pi"], client: GlueClient): Runtime {
 		idleIntervalMs: POLL_INTERVAL_MS,
 		timer: null,
 		ui: null,
+		widget: null,
 	};
 }
 
@@ -362,6 +366,7 @@ export async function pollOnce(rt: Runtime): Promise<void> {
 		// but inactive one does.
 		bumpIdleInterval(rt);
 	}
+	rt.pi.events.emit("glue:change", {});
 	refreshStatus(rt);
 }
 
@@ -500,6 +505,7 @@ export async function handleToolAction(
 			rt.watches[watchId] = watch;
 			writeState(rt.pi, rt);
 			if (!rt.paused && rt.timer === null) startPolling(rt);
+			rt.pi.events.emit("glue:change", {});
 			refreshStatus(rt);
 
 			const stateLabel = watch.baseline ? watch.baseline.state || "?" : "?";
@@ -525,6 +531,7 @@ export async function handleToolAction(
 			delete rt.watches[id];
 			if (Object.keys(rt.watches).length === 0) stopPolling(rt);
 			writeState(rt.pi, rt);
+			rt.pi.events.emit("glue:change", {});
 			refreshStatus(rt);
 			const message = `glue-watcher: removed watch '${id}'. ${Object.keys(rt.watches).length} watch(es) remaining.`;
 			return {
@@ -602,6 +609,7 @@ export function createExtensionWithClient(
 	client: GlueClient,
 ): void {
 	const rt = makeRuntime(pi, client);
+	rt.widget = new GlueWidget(pi, () => rt.watches);
 
 	pi.on("session_start", async (_event, ctx) => {
 		const anyCtx = ctx as unknown as { hasUI?: boolean; ui?: UiSurface };
@@ -638,6 +646,7 @@ export function createExtensionWithClient(
 		const activeWatches = Object.values(rt.watches).filter((w) => !w.terminal);
 		if (!rt.paused && activeWatches.length > 0) startPolling(rt);
 		refreshStatus(rt);
+		rt.widget?.show(ctx);
 
 		if (Object.keys(rt.watches).length > 0) {
 			setImmediate(() => {
@@ -653,9 +662,11 @@ export function createExtensionWithClient(
 		}
 	});
 
-	pi.on("session_shutdown", async () => {
+	pi.on("session_shutdown", async (_event, ctx) => {
 		stopPolling(rt);
 		try {
+			rt.widget?.hide(ctx);
+			rt.widget?.destroy();
 			rt.ui?.setStatus?.(STATUS_KEY, undefined);
 		} catch {
 			/* noop — UI may already be torn down */
@@ -665,7 +676,7 @@ export function createExtensionWithClient(
 
 	pi.registerCommand("glue-watcher", {
 		description:
-			"AWS Glue watcher commands. Subcommands: enable, disable, status (default).",
+			"Manage Glue watcher. No args: open jobs view. Subcommands: enable, disable, status.",
 		handler: async (args, ctx) => {
 			const anyCtx = ctx as unknown as { hasUI?: boolean; ui?: UiSurface };
 			const hasUI = anyCtx.hasUI ?? anyCtx.ui?.hasUI ?? anyCtx.ui !== undefined;
@@ -685,6 +696,7 @@ export function createExtensionWithClient(
 					const activeWatches = Object.values(rt.watches).filter((w) => !w.terminal);
 					if (!rt.paused && activeWatches.length > 0 && rt.timer === null) startPolling(rt);
 					refreshStatus(rt);
+					rt.widget?.show(ctx);
 					ui?.notify?.(
 						"glue-watcher: enabled. Use the glue_watcher tool to add job or workflow watches.",
 						"info",
@@ -699,6 +711,7 @@ export function createExtensionWithClient(
 					}
 					rt.enabled = false;
 					stopPolling(rt);
+					rt.widget?.hide(ctx);
 					removeToolFromActive(pi);
 					writeState(rt.pi, rt);
 					rt.ui?.setStatus?.(STATUS_KEY, undefined);
@@ -707,6 +720,23 @@ export function createExtensionWithClient(
 				}
 
 				case "":
+				case "jobs": {
+					await ctx.ui.custom<void>(
+						(tui, theme, _kb, done) =>
+							new WatchesView(
+								() => rt.watches,
+								theme as any,
+								() => tui.requestRender(),
+								() => done(undefined),
+							),
+						{
+							overlay: true,
+							overlayOptions: { width: "100%", maxHeight: "100%" },
+						},
+					);
+					return;
+				}
+
 				case "status": {
 					const ids = Object.keys(rt.watches);
 					const active = ids.filter((id) => !rt.watches[id]?.terminal).length;
@@ -724,7 +754,7 @@ export function createExtensionWithClient(
 
 				default:
 					ui?.notify?.(
-						`glue-watcher: unknown subcommand '${args}'. Use: enable | disable | status`,
+						`glue-watcher: unknown subcommand '${args}'. Use: enable | disable | status | jobs (or no args)`,
 						"warning",
 					);
 			}
