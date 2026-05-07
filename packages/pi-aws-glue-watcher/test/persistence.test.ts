@@ -136,7 +136,7 @@ describe("rehydrateStateFromSession", () => {
 describe("writeState", () => {
 	it("calls appendEntry with STATE_CUSTOM_TYPE and the expected data shape", () => {
 		const appendEntry = vi.fn();
-		writeState({ appendEntry }, { enabled: true, paused: false, watches: {} });
+		writeState({ appendEntry }, { enabled: true, paused: false, watches: {}, displayMode: "widget" });
 		expect(appendEntry).toHaveBeenCalledOnce();
 		const [ct, data] = appendEntry.mock.calls[0] as [string, Record<string, unknown>];
 		expect(ct).toBe(STATE_CUSTOM_TYPE);
@@ -151,7 +151,7 @@ describe("writeState", () => {
 			throw new Error("storage failure");
 		});
 		expect(() =>
-			writeState({ appendEntry }, { enabled: false, paused: false, watches: {} }),
+			writeState({ appendEntry }, { enabled: false, paused: false, watches: {}, displayMode: "widget" }),
 		).not.toThrow();
 	});
 });

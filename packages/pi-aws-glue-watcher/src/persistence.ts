@@ -4,7 +4,7 @@
  * The extension writes a single combined state entry on every mutation via
  * `pi.appendEntry`:
  *
- *   - {@link STATE_CUSTOM_TYPE} — `{ savedAt, enabled, paused, watches }`.
+ *   - {@link STATE_CUSTOM_TYPE} — `{ savedAt, enabled, paused, watches, displayMode }`.
  *     No TTL — an explicit pause or a weeks-old watch list sticks until
  *     overwritten.
  *
@@ -38,6 +38,7 @@ export interface PersistedState {
 	enabled: boolean;
 	paused: boolean;
 	watches: WatchMap;
+	displayMode?: "widget" | "statusline";
 }
 
 /** Rehydrated in-memory state — same shape as persisted. */
@@ -46,6 +47,7 @@ export interface HydratedState {
 	enabled: boolean;
 	paused: boolean;
 	watches: WatchMap;
+	displayMode: "widget" | "statusline";
 }
 
 /**
@@ -88,6 +90,7 @@ export function rehydrateStateFromSession(ctx: SessionLike): HydratedState | nul
 			enabled: data.enabled,
 			paused: data.paused,
 			watches: normaliseWatches(data.watches),
+			displayMode: data.displayMode === "statusline" ? "statusline" : "widget",
 		};
 	}
 	return null;
@@ -99,7 +102,7 @@ export function rehydrateStateFromSession(ctx: SessionLike): HydratedState | nul
  */
 export function writeState(
 	pi: { appendEntry: (customType: string, data: unknown) => void },
-	snapshot: { enabled: boolean; paused: boolean; watches: WatchMap },
+	snapshot: { enabled: boolean; paused: boolean; watches: WatchMap; displayMode: "widget" | "statusline" },
 ): void {
 	try {
 		pi.appendEntry(STATE_CUSTOM_TYPE, {
@@ -107,6 +110,7 @@ export function writeState(
 			enabled: snapshot.enabled,
 			paused: snapshot.paused,
 			watches: snapshot.watches,
+			displayMode: snapshot.displayMode,
 		} satisfies PersistedState);
 	} catch {
 		/* swallow — state persistence is best-effort */

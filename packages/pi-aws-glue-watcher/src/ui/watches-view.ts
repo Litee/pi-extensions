@@ -76,8 +76,8 @@ function stateColor(t: Theme, state: string, text: string): string {
 
 export class WatchesView implements Component {
 	private selectedIndex = 0;
-	private confirm: { displayName: string; row: DisplayRow } | null = null;
-	private stopError: string | null = null;
+	private confirm: { kind: "stop" | "unwatch"; displayName: string; row: DisplayRow } | null = null;
+	private actionError: string | null = null;
 
 	constructor(
 		private readonly getWatches: () => WatchMap,
@@ -85,7 +85,9 @@ export class WatchesView implements Component {
 		private readonly requestRender: () => void,
 		private readonly done: () => void,
 		private readonly stopRow: (row: DisplayRow) => Promise<void>,
+		private readonly removeWatch: (watchId: string) => void,
 		private readonly getPollIntervalMs: () => number,
+		private readonly toggleDisplay: () => void,
 	) {}
 
 	invalidate(): void {
@@ -98,12 +100,16 @@ export class WatchesView implements Component {
 			if (matchesKey(data, "y")) {
 				const target = this.confirm;
 				this.confirm = null;
-				this.stopError = null;
-				this.stopRow(target.row)
-					.catch((err: unknown) => {
-						this.stopError = err instanceof Error ? err.message : String(err);
-					})
-					.finally(() => { this.requestRender(); });
+				this.actionError = null;
+				if (target.kind === "stop") {
+					this.stopRow(target.row)
+						.catch((err: unknown) => {
+							this.actionError = err instanceof Error ? err.message : String(err);
+						})
+						.finally(() => { this.requestRender(); });
+				} else {
+					this.removeWatch(target.row.watchId);
+				}
 				this.requestRender();
 			} else if (matchesKey(data, "n") || matchesKey(data, "escape")) {
 				this.confirm = null;
@@ -126,16 +132,30 @@ export class WatchesView implements Component {
 			return;
 		}
 		if (matchesKey(data, "r")) {
-			this.stopError = null;
+			this.actionError = null;
 			this.requestRender();
+			return;
+		}
+		if (matchesKey(data, "t")) {
+			this.toggleDisplay();
 			return;
 		}
 		if (matchesKey(data, "x")) {
 			const rows = this.buildRows();
 			const sel = rows[this.selectedIndex];
 			if (sel && !sel.isTerminal) {
-				this.confirm = { displayName: sel.displayName, row: sel };
-				this.stopError = null;
+				this.confirm = { kind: "stop", displayName: sel.displayName, row: sel };
+				this.actionError = null;
+				this.requestRender();
+			}
+			return;
+		}
+		if (matchesKey(data, "d")) {
+			const rows = this.buildRows();
+			const sel = rows[this.selectedIndex];
+			if (sel) {
+				this.confirm = { kind: "unwatch", displayName: sel.displayName, row: sel };
+				this.actionError = null;
 				this.requestRender();
 			}
 			return;
@@ -162,19 +182,20 @@ export class WatchesView implements Component {
 					t.fg("dim", "  No watches configured.   q close"),
 			);
 		} else if (this.confirm) {
+			const verb = this.confirm.kind === "stop" ? "Stop" : "Unwatch";
 			lines.push(
-				` ${t.fg("warning", `Stop "${this.confirm.displayName}"?`)}` +
+				` ${t.fg("warning", `${verb} "${this.confirm.displayName}"?`)}` +
 					t.fg("dim", "  y confirm   n cancel"),
 			);
-		} else if (this.stopError) {
+		} else if (this.actionError) {
 			lines.push(
-				` ${t.fg("error", `Stop failed: ${this.stopError}`)}` +
+				` ${t.fg("error", `Failed: ${this.actionError}`)}` +
 					t.fg("dim", "   q close"),
 			);
 		} else {
 			lines.push(
 				` ${t.fg("accent", t.bold("Glue Watcher"))}` +
-					t.fg("dim", ` (${rows.length})  —  poll: ${Math.round(this.getPollIntervalMs() / 1000)}s   ↑↓ select   x stop   r refresh   q close`),
+					t.fg("dim", ` (${rows.length})  —  poll: ${Math.round(this.getPollIntervalMs() / 1000)}s   ↑↓ select   x stop   d unwatch   t toggle view   r refresh   q close`),
 			);
 		}
 

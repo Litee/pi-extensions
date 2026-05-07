@@ -48,6 +48,7 @@ import {
 import {
 	buildChangeChatMessage,
 	buildStartupChatMessage,
+	buildStatusLine,
 } from "./format.js";
 import {
 	rehydrateStateFromSession,
@@ -88,6 +89,7 @@ export const POLL_ERROR_THRESHOLD = 5;
 
 /** customType on every chat message this extension injects. */
 export const CUSTOM_MESSAGE_TYPE = "pi-aws-glue-watcher";
+export const STATUS_KEY = "glue-watcher";
 
 /** Status-line key under which we pin our footer row. */
 
@@ -153,6 +155,7 @@ const GlueWatcherParams = Type.Object({
 
 interface UiSurface {
 	notify?: (msg: string, level?: string) => void;
+	setStatus?: (key: string, text: string | undefined) => void;
 	theme?: { fg?: (color: string, text: string) => string };
 	hasUI?: boolean;
 }
@@ -164,6 +167,7 @@ interface Runtime {
 	watches: WatchMap;
 	paused: boolean;
 	enabled: boolean;
+	displayMode: "widget" | "statusline";
 	/** Effective poll interval (ms). Grows on idle, resets on update. */
 	pollIntervalMs: number;
 	/** Idle back-off base (ms). Separate from pollIntervalMs so it isn't
@@ -181,6 +185,7 @@ function makeRuntime(pi: Runtime["pi"], client: GlueClient): Runtime {
 		watches: {},
 		paused: false,
 		enabled: false,
+		displayMode: "widget",
 		pollIntervalMs: POLL_INTERVAL_MS,
 		idleIntervalMs: POLL_INTERVAL_MS,
 		timer: null,
@@ -193,9 +198,41 @@ function makeRuntime(pi: Runtime["pi"], client: GlueClient): Runtime {
 // Status-line helpers
 // ---------------------------------------------------------------------------
 
-/** No-op — status line removed; widget serves this purpose. */
-function refreshStatus(_rt: Runtime): void {
-	// status line removed — widget handles this
+function colorize(theme: UiSurface["theme"], text: string): string {
+	return theme?.fg ? theme.fg("accent", text) : text;
+}
+
+function refreshStatus(rt: Runtime): void {
+	if (!rt.enabled || rt.displayMode !== "statusline") {
+		rt.ui?.setStatus?.(STATUS_KEY, undefined);
+		return;
+	}
+	const hasErrors = Object.values(rt.watches).some(
+		(w) => !w.terminal && w.consecutiveErrors >= POLL_ERROR_THRESHOLD,
+	);
+	const text = buildStatusLine({
+		watches: rt.watches,
+		paused: rt.paused,
+		pollIntervalMs: rt.pollIntervalMs,
+		hasErrors,
+	});
+	rt.ui?.setStatus?.(STATUS_KEY, colorize(rt.ui?.theme, text));
+}
+
+/**
+ * Toggle between the permanent widget and the compact status line.
+ * Persists the new mode and immediately updates the UI.
+ */
+function toggleDisplayMode(rt: Runtime, ctx: unknown): void {
+	rt.displayMode = rt.displayMode === "widget" ? "statusline" : "widget";
+	writeState(rt.pi, rt);
+	if (rt.displayMode === "widget") {
+		rt.ui?.setStatus?.(STATUS_KEY, undefined);
+		rt.widget?.show(ctx);
+	} else {
+		rt.widget?.hide(ctx);
+		refreshStatus(rt);
+	}
 }
 
 // ---------------------------------------------------------------------------
@@ -597,6 +634,7 @@ export function createExtensionWithClient(
 		rt.watches = state?.watches ?? {};
 		rt.paused = state?.paused ?? false;
 		rt.enabled = state?.enabled ?? false;
+		rt.displayMode = state?.displayMode ?? "widget";
 
 		if (!rt.enabled) return;
 
@@ -623,7 +661,7 @@ export function createExtensionWithClient(
 		const activeWatches = Object.values(rt.watches).filter((w) => !w.terminal);
 		if (!rt.paused && activeWatches.length > 0) startPolling(rt);
 		refreshStatus(rt);
-		rt.widget?.show(ctx);
+		if (rt.displayMode === "widget") rt.widget?.show(ctx); else rt.widget?.hide(ctx);
 
 		if (Object.keys(rt.watches).length > 0) {
 			setImmediate(() => {
@@ -672,7 +710,7 @@ export function createExtensionWithClient(
 					const activeWatches = Object.values(rt.watches).filter((w) => !w.terminal);
 					if (!rt.paused && activeWatches.length > 0 && rt.timer === null) startPolling(rt);
 					refreshStatus(rt);
-					rt.widget?.show(ctx);
+					if (rt.displayMode === "widget") rt.widget?.show(ctx); else rt.widget?.hide(ctx);
 					ui?.notify?.(
 						"glue-watcher: enabled. Use the glue_watcher tool to add job or workflow watches.",
 						"info",
@@ -712,7 +750,14 @@ export function createExtensionWithClient(
 										await client.stopWorkflowRun(watch.name, watch.runId, watch.profile, watch.region);
 									}
 								},
+								(watchId) => {
+									delete rt.watches[watchId];
+									if (Object.keys(rt.watches).length === 0) stopPolling(rt);
+									writeState(rt.pi, rt);
+									rt.pi.events.emit("glue:change", {});
+								},
 								() => rt.pollIntervalMs,
+								() => toggleDisplayMode(rt, ctx),
 							),
 						{
 							overlay: true,
