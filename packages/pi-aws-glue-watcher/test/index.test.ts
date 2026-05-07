@@ -472,7 +472,7 @@ describe("pollOnce", () => {
 
 		expect(pi.sendMessage).toHaveBeenCalledOnce();
 		const [msg] = pi.sendMessage.mock.calls[0] as [{ customType: string; content: string }, unknown];
-		expect(msg.customType).toBe("glue-watcher");
+		expect(msg.customType).toBe("pi-aws-glue-watcher");
 		expect(msg.content).toContain("STARTING");
 		expect(msg.content).toContain("RUNNING");
 	});

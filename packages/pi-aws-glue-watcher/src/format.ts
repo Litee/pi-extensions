@@ -59,7 +59,7 @@ export function buildStatusLine(input: StatusLineInput): string {
  *
  * Format:
  * ```
- * [Glue Watcher] 2 change(s) detected — Wed May 06 10:30:00 UTC 2026
+ * 2 changes detected — Wed May 06 10:30:00 UTC 2026
  *
  * • my-etl-job (jr_abc123): STARTING → RUNNING
  * • my-workflow (wr_def456): RUNNING → COMPLETED ✓
@@ -67,7 +67,7 @@ export function buildStatusLine(input: StatusLineInput): string {
  */
 export function buildChangeChatMessage(events: GlueEvent[], date: Date): string {
 	const noun = events.length === 1 ? "change" : "changes";
-	const header = `[Glue Watcher] ${events.length} ${noun} detected — ${date.toUTCString()}`;
+	const header = `${events.length} ${noun} detected — ${date.toUTCString()}`;
 	const bullets = events.map((e) => e.formatted).join("\n");
 	return `${header}\n\n${bullets}`;
 }
@@ -78,7 +78,7 @@ export function buildChangeChatMessage(events: GlueEvent[], date: Date): string 
  *
  * Format when watches are present:
  * ```
- * [Glue Watcher] active as of Wed May 06 10:30:00 UTC 2026 — watching 2 runs:
+ * active as of Wed May 06 10:30:00 UTC 2026 — watching 2 runs:
  *
  * • job  my-etl-job (jr_abc123): state=RUNNING
  * • workflow  my-workflow (wr_def456): state=RUNNING [terminal]
@@ -87,7 +87,7 @@ export function buildChangeChatMessage(events: GlueEvent[], date: Date): string 
 export function buildStartupChatMessage(watches: WatchMap, date: Date): string {
 	const all = Object.values(watches);
 	if (all.length === 0) {
-		return "[Glue Watcher] active — no watches configured. Use the glue_watcher tool to add a job or workflow.";
+		return "active — no watches configured. Use the glue_watcher tool to add a job or workflow.";
 	}
 	const noun = all.length === 1 ? "run" : "runs";
 	const lines = all.map((w) => {
@@ -95,5 +95,5 @@ export function buildStartupChatMessage(watches: WatchMap, date: Date): string {
 		const tag = w.terminal ? " [terminal]" : "";
 		return `• ${w.type}  ${w.name} (${w.runId}): state=${state}${tag}`;
 	});
-	return `[Glue Watcher] active as of ${date.toUTCString()} — watching ${all.length} ${noun}:\n\n${lines.join("\n")}`;
+	return `active as of ${date.toUTCString()} — watching ${all.length} ${noun}:\n\n${lines.join("\n")}`;
 }

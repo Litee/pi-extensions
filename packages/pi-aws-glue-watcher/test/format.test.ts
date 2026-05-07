@@ -125,7 +125,7 @@ describe("buildStatusLine", () => {
 describe("buildChangeChatMessage", () => {
 	it("includes event count header with singular 'change' for one event", () => {
 		const msg = buildChangeChatMessage([makeStateChangedEvent()], FIXED_DATE);
-		expect(msg).toContain("[Glue Watcher] 1 change detected");
+		expect(msg).toContain("1 change detected");
 	});
 
 	it("includes plural 'changes' for multiple events", () => {
@@ -133,7 +133,7 @@ describe("buildChangeChatMessage", () => {
 			[makeStateChangedEvent(), makeStateChangedEvent()],
 			FIXED_DATE,
 		);
-		expect(msg).toContain("[Glue Watcher] 2 changes detected");
+		expect(msg).toContain("2 changes detected");
 	});
 
 	it("includes the formatted bullet line from each event", () => {
@@ -167,7 +167,7 @@ describe("buildChangeChatMessage", () => {
 describe("buildStartupChatMessage", () => {
 	it("returns 'no watches configured' message for empty watch map", () => {
 		const msg = buildStartupChatMessage({}, FIXED_DATE);
-		expect(msg).toContain("[Glue Watcher] active");
+		expect(msg).toContain("active");
 		expect(msg).toContain("no watches configured");
 	});
 

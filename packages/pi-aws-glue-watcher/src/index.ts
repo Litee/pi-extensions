@@ -86,7 +86,7 @@ export const POLL_INTERVAL_MAX_MS = 900_000;
 export const POLL_ERROR_THRESHOLD = 5;
 
 /** customType on every chat message this extension injects. */
-export const CUSTOM_MESSAGE_TYPE = "glue-watcher";
+export const CUSTOM_MESSAGE_TYPE = "pi-aws-glue-watcher";
 
 /** Status-line key under which we pin our footer row. */
 export const STATUS_KEY = "glue-watcher";
@@ -302,7 +302,7 @@ export async function pollOnce(rt: Runtime): Promise<void> {
 					{
 						customType: CUSTOM_MESSAGE_TYPE,
 						content:
-							`[Glue Watcher] ✓ ${watch.type} '${watch.name}' (${watch.watchId}) ` +
+							`✓ ${watch.type} '${watch.name}' (${watch.watchId}) ` +
 							`recovered after ${prevErrors} consecutive error(s).`,
 						display: true,
 					},
@@ -330,7 +330,7 @@ export async function pollOnce(rt: Runtime): Promise<void> {
 					{
 						customType: CUSTOM_MESSAGE_TYPE,
 						content:
-							`[Glue Watcher] ⚠ ${watch.type} '${watch.name}' (${watch.watchId}) ` +
+							`⚠ ${watch.type} '${watch.name}' (${watch.watchId}) ` +
 							`has failed ${POLL_ERROR_THRESHOLD} consecutive polls. ` +
 							`Last error: ${(err as Error).message}`,
 						display: true,
