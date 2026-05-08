@@ -80,7 +80,7 @@ export const WIDGET_KEY = "pi-session-recap";
  */
 export const STATUS_KEY = "pi-session-recap";
 
-const DEFAULT_IDLE_SECONDS = 120;
+const DEFAULT_IDLE_SECONDS = 180;
 const DEFAULT_FOCUS_MIN_SECONDS = 3;
 
 // DECSET 1004 focus reporting — https://invisible-island.net/xterm/ctlseqs/ctlseqs.html
