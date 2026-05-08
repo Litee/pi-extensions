@@ -121,11 +121,14 @@ async function generateRecap(
 		"so the user can re-enter flow after switching focus back to this session.\n\n" +
 		"Rules:\n" +
 		"- Output ONE line, no preamble, no markdown.\n" +
-		"- Format: `recap: <what happened, past tense, concrete>. Next: <one-line next step>.`\n" +
+		"- Do not prefix with `recap:` — the UI already renders that label.\n" +
+		"- Format: `goal: <overall goal>. <what just happened, past tense, concrete>. Next: <one-line next step>.`\n" +
+		"- If the overall goal is unclear from the transcript, omit the `goal:` clause.\n" +
 		"- If there is no meaningful next step, omit the `Next:` clause.\n" +
 		"- If the transcript shows the turn was aborted or errored, say so explicitly " +
 		'(e.g. "aborted during X", "errored at Y").\n' +
 		"- Use file/function names where relevant. Be concrete, not vague.\n" +
+		"- Skip: root-cause narrative, fix internals, secondary to-dos, em-dash tangents, motivational framing.\n" +
 		"- Max ~220 characters.\n\n" +
 		"<transcript>\n" +
 		transcript.slice(0, 12000) +
