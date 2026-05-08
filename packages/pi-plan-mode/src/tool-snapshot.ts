@@ -21,6 +21,11 @@ export class ToolSnapshot {
 		return tools;
 	}
 
+	/** Returns a copy of the saved tool names, or null if nothing is saved. Does not clear the snapshot. */
+	getSaved(): string[] | null {
+		return this.saved === null ? null : [...this.saved];
+	}
+
 	hasSaved(): boolean {
 		return this.saved !== null;
 	}

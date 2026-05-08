@@ -344,3 +344,188 @@ describe("plan-mode model and thinking level", () => {
 		expect(pi.setModel).toHaveBeenCalledWith(ctx.model);
 	});
 });
+
+describe("plan-mode persistence across session restarts", () => {
+	it("persistState writes the full snapshot into a pi-plan-mode:state entry on enable", async () => {
+		// Arrange — pi returns a realistic pre-plan tool set; getThinkingLevel returns "medium".
+		const normalTools = ["read", "bash", "edit", "write"];
+		const pi = makeFakePi(normalTools);
+		const ctx = makeFakeCtx();
+		planModeExtension(pi as never);
+
+		const commandCalls = pi.registerCommand.mock.calls as Array<
+			[string, { handler: (args: unknown, ctx: unknown) => Promise<void> }]
+		>;
+		const handler = commandCalls.find(([name]) => name === "plan")![1].handler;
+
+		// Act — enable plan mode; this should persist the full snapshot.
+		await handler({}, ctx);
+
+		// Assert — appendEntry called with namespaced customType and full snapshot payload.
+		expect(pi.appendEntry).toHaveBeenCalledTimes(1);
+		const [customType, data] = (pi.appendEntry as ReturnType<typeof vi.fn>).mock.calls[0]!;
+		expect(customType).toBe("pi-plan-mode:state");
+		expect(data).toEqual({
+			enabled: true,
+			modelSnapshot: { id: "claude-sonnet-4-5", provider: "anthropic" },
+			thinkingLevelSnapshot: "medium",
+			toolsSnapshot: normalTools,
+		});
+	});
+
+	it("session_start restores snapshots from a pi-plan-mode:state entry", async () => {
+		// Arrange — a previous session persisted a full snapshot. The registry already has the opus model.
+		const persistedTools = ["read", "bash", "edit", "write", "grep"];
+		const pi = makeFakePi();
+		const ctx = {
+			...makeFakeCtx(),
+			sessionManager: {
+				getEntries: vi.fn(() => [
+					{
+						type: "custom",
+						customType: "pi-plan-mode:state",
+						data: {
+							enabled: true,
+							modelSnapshot: { id: "claude-opus-4-20250514", provider: "anthropic" },
+							thinkingLevelSnapshot: "high",
+							toolsSnapshot: persistedTools,
+						},
+					},
+				]),
+			},
+		};
+		(pi as any).getFlag = vi.fn(() => false);
+		planModeExtension(pi as never);
+
+		// Act — fire session_start (restores snapshot), then toggle /plan off.
+		const onCalls = pi.on.mock.calls as Array<[string, (...args: unknown[]) => unknown]>;
+		const sessionStartHandler = onCalls.find(([e]) => e === "session_start")![1];
+		await sessionStartHandler({}, ctx);
+
+		// Clear any setModel/setThinkingLevel/setActiveTools calls from session_start itself.
+		(pi.setModel as ReturnType<typeof vi.fn>).mockClear();
+		(pi.setThinkingLevel as ReturnType<typeof vi.fn>).mockClear();
+		(pi.setActiveTools as ReturnType<typeof vi.fn>).mockClear();
+		(ctx.ui.notify as ReturnType<typeof vi.fn>).mockClear();
+
+		const commandCalls = pi.registerCommand.mock.calls as Array<
+			[string, { handler: (args: unknown, ctx: unknown) => Promise<void> }]
+		>;
+		const handler = commandCalls.find(([name]) => name === "plan")![1].handler;
+		await handler({}, ctx); // toggle off — should restore from rehydrated snapshot
+
+		// Assert — model restored from the registry by id+provider.
+		expect(pi.setModel).toHaveBeenCalledTimes(1);
+		expect(pi.setModel).toHaveBeenCalledWith({ id: "claude-opus-4-20250514", provider: "anthropic" });
+
+		// Assert — thinking level restored.
+		expect(pi.setThinkingLevel).toHaveBeenCalledTimes(1);
+		expect(pi.setThinkingLevel).toHaveBeenCalledWith("high");
+
+		// Assert — tools restored from the persisted snapshot.
+		expect(pi.setActiveTools).toHaveBeenCalledWith(persistedTools);
+
+		// Assert — no "restored from previous session" warning, since the snapshot rehydrated.
+		const notifyCalls = (ctx.ui.notify as ReturnType<typeof vi.fn>).mock.calls as Array<
+			[string, string?]
+		>;
+		const warningCall = notifyCalls.find(([, type]) => type === "warning");
+		expect(warningCall).toBeUndefined();
+	});
+
+	it("session_start honors the legacy plan-mode entry without snapshots and warns on disable", async () => {
+		// Arrange — only the legacy customType with just `{ enabled: true }`.
+		const pi = makeFakePi();
+		const ctx = {
+			...makeFakeCtx(),
+			sessionManager: {
+				getEntries: vi.fn(() => [
+					{ type: "custom", customType: "plan-mode", data: { enabled: true } },
+				]),
+			},
+		};
+		(pi as any).getFlag = vi.fn(() => false);
+		planModeExtension(pi as never);
+
+		// Act — restore then toggle off.
+		const onCalls = pi.on.mock.calls as Array<[string, (...args: unknown[]) => unknown]>;
+		const sessionStartHandler = onCalls.find(([e]) => e === "session_start")![1];
+		await sessionStartHandler({}, ctx);
+
+		(pi.setModel as ReturnType<typeof vi.fn>).mockClear();
+		(pi.setThinkingLevel as ReturnType<typeof vi.fn>).mockClear();
+		(ctx.ui.notify as ReturnType<typeof vi.fn>).mockClear();
+
+		const commandCalls = pi.registerCommand.mock.calls as Array<
+			[string, { handler: (args: unknown, ctx: unknown) => Promise<void> }]
+		>;
+		const handler = commandCalls.find(([name]) => name === "plan")![1].handler;
+		await handler({}, ctx); // toggle off
+
+		// Assert — no snapshot, so setModel/setThinkingLevel skipped.
+		expect(pi.setModel).not.toHaveBeenCalled();
+		expect(pi.setThinkingLevel).not.toHaveBeenCalled();
+
+		// Assert — warning notification emitted.
+		const notifyCalls = (ctx.ui.notify as ReturnType<typeof vi.fn>).mock.calls as Array<
+			[string, string?]
+		>;
+		const warningCall = notifyCalls.find(([, type]) => type === "warning");
+		expect(warningCall).toBeDefined();
+		expect(warningCall![0]).toContain("previous session");
+	});
+
+	it("session_start leaves modelSnapshot undefined when the persisted model is no longer in the registry", async () => {
+		// Arrange — persisted snapshot references a ghost model not in the registry.
+		const pi = makeFakePi();
+		const ctx = {
+			...makeFakeCtx(),
+			sessionManager: {
+				getEntries: vi.fn(() => [
+					{
+						type: "custom",
+						customType: "pi-plan-mode:state",
+						data: {
+							enabled: true,
+							modelSnapshot: { id: "claude-ghost-9000", provider: "anthropic" },
+							thinkingLevelSnapshot: "low",
+							toolsSnapshot: ["read", "bash"],
+						},
+					},
+				]),
+			},
+		};
+		(pi as any).getFlag = vi.fn(() => false);
+		planModeExtension(pi as never);
+
+		const onCalls = pi.on.mock.calls as Array<[string, (...args: unknown[]) => unknown]>;
+		const sessionStartHandler = onCalls.find(([e]) => e === "session_start")![1];
+		await sessionStartHandler({}, ctx);
+
+		(pi.setModel as ReturnType<typeof vi.fn>).mockClear();
+		(pi.setThinkingLevel as ReturnType<typeof vi.fn>).mockClear();
+		(pi.setActiveTools as ReturnType<typeof vi.fn>).mockClear();
+		(ctx.ui.notify as ReturnType<typeof vi.fn>).mockClear();
+
+		const commandCalls = pi.registerCommand.mock.calls as Array<
+			[string, { handler: (args: unknown, ctx: unknown) => Promise<void> }]
+		>;
+		const handler = commandCalls.find(([name]) => name === "plan")![1].handler;
+		await handler({}, ctx); // toggle off
+
+		// Assert — model snapshot not restored (ghost model absent from registry).
+		expect(pi.setModel).not.toHaveBeenCalled();
+
+		// Assert — thinking level and tools still restored from their (present) snapshots.
+		expect(pi.setThinkingLevel).toHaveBeenCalledTimes(1);
+		expect(pi.setThinkingLevel).toHaveBeenCalledWith("low");
+		expect(pi.setActiveTools).toHaveBeenCalledWith(["read", "bash"]);
+
+		// Assert — no warning, because at least one snapshot was rehydrated (thinking + tools).
+		const notifyCalls = (ctx.ui.notify as ReturnType<typeof vi.fn>).mock.calls as Array<
+			[string, string?]
+		>;
+		const warningCall = notifyCalls.find(([, type]) => type === "warning");
+		expect(warningCall).toBeUndefined();
+	});
+});

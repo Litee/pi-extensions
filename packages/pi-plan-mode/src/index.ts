@@ -32,6 +32,23 @@ interface PlanModeConfig {
 	thinkingLevel?: ThinkingLevel;
 }
 
+/**
+ * Session-persisted plan mode state. Stored as a custom entry under
+ * `STATE_CUSTOM_TYPE` so plan mode can be fully rehydrated (including the
+ * pre-plan model, thinking level, and tool set) across agent restarts.
+ */
+interface PersistedPlanModeState {
+	enabled: boolean;
+	modelSnapshot?: { id: string; provider: string };
+	thinkingLevelSnapshot?: ThinkingLevel;
+	toolsSnapshot?: string[];
+}
+
+/** Namespaced custom-entry key to avoid collisions with other extensions. */
+const STATE_CUSTOM_TYPE = "pi-plan-mode:state";
+/** Legacy key used before snapshot persistence was added; read for backward compat. */
+const LEGACY_STATE_CUSTOM_TYPE = "plan-mode";
+
 function loadPlanModeConfig(): PlanModeConfig {
 	try {
 		const home = process.env["HOME"] ?? process.env["USERPROFILE"] ?? "";
@@ -48,8 +65,8 @@ export default function planModeExtension(pi: ExtensionAPI): void {
 	const toolSnapshot = new ToolSnapshot();
 
 	// Snapshots of model and thinking level captured when plan mode is enabled.
-	// Undefined means plan mode was restored from a previous session (no snapshot
-	// available), so we skip the restore step when disabling.
+	// Undefined means either plan mode was never enabled in this session chain,
+	// or the persisted snapshot pointed at a model that is no longer available.
 	let modelSnapshot: Model<any> | undefined;
 	let thinkingLevelSnapshot: ThinkingLevel | undefined;
 
@@ -140,7 +157,16 @@ export default function planModeExtension(pi: ExtensionAPI): void {
 	}
 
 	function persistState(): void {
-		pi.appendEntry("plan-mode", { enabled: planModeEnabled });
+		const savedTools = toolSnapshot.getSaved();
+		const state: PersistedPlanModeState = {
+			enabled: planModeEnabled,
+			...(modelSnapshot
+				? { modelSnapshot: { id: modelSnapshot.id, provider: modelSnapshot.provider } }
+				: {}),
+			...(thinkingLevelSnapshot !== undefined ? { thinkingLevelSnapshot } : {}),
+			...(savedTools !== null ? { toolsSnapshot: savedTools } : {}),
+		};
+		pi.appendEntry(STATE_CUSTOM_TYPE, state);
 	}
 
 	pi.registerCommand("plan", {
@@ -273,21 +299,40 @@ Do NOT attempt to make changes - just describe what you would do.`,
 		}
 
 		const entries = ctx.sessionManager.getEntries();
-		const planModeEntry = entries
-			.filter((e: { type: string; customType?: string }) => e.type === "custom" && e.customType === "plan-mode")
-			.pop() as { data?: { enabled: boolean } } | undefined;
+		const stateEntry = entries
+			.filter(
+				(e: { type: string; customType?: string }) =>
+					e.type === "custom" &&
+					(e.customType === STATE_CUSTOM_TYPE || e.customType === LEGACY_STATE_CUSTOM_TYPE),
+			)
+			.pop() as { customType?: string; data?: PersistedPlanModeState } | undefined;
 
-		if (planModeEntry?.data) {
-			planModeEnabled = planModeEntry.data.enabled ?? planModeEnabled;
+		if (stateEntry?.data) {
+			planModeEnabled = stateEntry.data.enabled ?? planModeEnabled;
+
+			// Only the new format carries snapshots.
+			if (planModeEnabled && stateEntry.customType === STATE_CUSTOM_TYPE) {
+				const data = stateEntry.data;
+				if (data.thinkingLevelSnapshot) {
+					thinkingLevelSnapshot = data.thinkingLevelSnapshot;
+				}
+				if (data.modelSnapshot) {
+					const { id, provider } = data.modelSnapshot;
+					const found = ctx.modelRegistry
+						.getAll()
+						.find((m) => m.id === id && m.provider === provider);
+					if (found) {
+						modelSnapshot = found;
+					}
+				}
+				if (data.toolsSnapshot && data.toolsSnapshot.length > 0) {
+					toolSnapshot.save(data.toolsSnapshot);
+				}
+			}
 		}
 
 		if (planModeEnabled) {
-			// On session start/resume the pre-plan tool set is unknown, so we
-			// skip saving — restore() will fall back to NORMAL_MODE_TOOLS.
-			// No snapshot taken: if the user disables plan mode in this session,
-			// model/thinking are left at whatever the current values are.
 			pi.setActiveTools(PLAN_MODE_TOOLS);
-			// Apply plan-mode model/thinking from config (best-effort).
 			await applyPlanModeConfig(ctx);
 		}
 		updateStatus(ctx);
