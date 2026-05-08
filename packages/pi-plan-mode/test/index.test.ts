@@ -528,4 +528,148 @@ describe("plan-mode persistence across session restarts", () => {
 		const warningCall = notifyCalls.find(([, type]) => type === "warning");
 		expect(warningCall).toBeUndefined();
 	});
+
+	it("disable persists enabled:false with no stale snapshot fields", async () => {
+		// Arrange
+		const pi = makeFakePi(["read", "bash", "edit", "write"]);
+		const ctx = makeFakeCtx();
+		planModeExtension(pi as never);
+
+		const commandCalls = pi.registerCommand.mock.calls as Array<
+			[string, { handler: (args: unknown, ctx: unknown) => Promise<void> }]
+		>;
+		const handler = commandCalls.find(([name]) => name === "plan")![1].handler;
+
+		// Act — enable then disable.
+		await handler({}, ctx);
+		await handler({}, ctx);
+
+		// Assert — two appendEntry calls; the second (disable) must be enabled:false
+		// with no leftover snapshot fields (disablePlanMode clears them first).
+		const appendCalls = (pi.appendEntry as ReturnType<typeof vi.fn>).mock.calls as Array<[string, any]>;
+		expect(appendCalls).toHaveLength(2);
+
+		const [disableType, disableData] = appendCalls[1]!;
+		expect(disableType).toBe("pi-plan-mode:state");
+		expect(disableData).toEqual({ enabled: false });
+		expect(disableData).not.toHaveProperty("modelSnapshot");
+		expect(disableData).not.toHaveProperty("thinkingLevelSnapshot");
+		expect(disableData).not.toHaveProperty("toolsSnapshot");
+	});
+
+	it("session_start with a disabled state entry leaves plan mode off (no PLAN_MODE_TOOLS applied)", async () => {
+		// Arrange — the last persisted entry says plan mode was disabled.
+		const pi = makeFakePi();
+		const ctx = {
+			...makeFakeCtx(),
+			sessionManager: {
+				getEntries: vi.fn(() => [
+					{ type: "custom", customType: "pi-plan-mode:state", data: { enabled: false } },
+				]),
+			},
+		};
+		(pi as any).getFlag = vi.fn(() => false);
+		planModeExtension(pi as never);
+
+		// Act — fire session_start.
+		const onCalls = pi.on.mock.calls as Array<[string, (...args: unknown[]) => unknown]>;
+		const sessionStartHandler = onCalls.find(([e]) => e === "session_start")![1];
+		await sessionStartHandler({}, ctx);
+
+		// Assert — no tool-set change, no model/thinking change, status cleared.
+		expect(pi.setActiveTools).not.toHaveBeenCalled();
+		expect(pi.setModel).not.toHaveBeenCalled();
+		expect(pi.setThinkingLevel).not.toHaveBeenCalled();
+		expect(ctx.ui.setStatus).toHaveBeenCalledWith("plan-mode", undefined);
+	});
+
+	it("session_start picks the latest state entry when multiple entries exist", async () => {
+		// Arrange — two pi-plan-mode:state entries: first enabled with snapshot,
+		// second disabled. Latest (second) must win.
+		const pi = makeFakePi();
+		const ctx = {
+			...makeFakeCtx(),
+			sessionManager: {
+				getEntries: vi.fn(() => [
+					{
+						type: "custom",
+						customType: "pi-plan-mode:state",
+						data: {
+							enabled: true,
+							modelSnapshot: { id: "claude-opus-4-20250514", provider: "anthropic" },
+							thinkingLevelSnapshot: "high",
+							toolsSnapshot: ["read", "bash", "edit", "write"],
+						},
+					},
+					{ type: "custom", customType: "pi-plan-mode:state", data: { enabled: false } },
+				]),
+			},
+		};
+		(pi as any).getFlag = vi.fn(() => false);
+		planModeExtension(pi as never);
+
+		// Act.
+		const onCalls = pi.on.mock.calls as Array<[string, (...args: unknown[]) => unknown]>;
+		const sessionStartHandler = onCalls.find(([e]) => e === "session_start")![1];
+		await sessionStartHandler({}, ctx);
+
+		// Assert — plan mode stays off: no PLAN_MODE_TOOLS activation, no model/thinking change.
+		expect(pi.setActiveTools).not.toHaveBeenCalled();
+		expect(pi.setModel).not.toHaveBeenCalled();
+		expect(pi.setThinkingLevel).not.toHaveBeenCalled();
+	});
+
+	it("session_start: disabled state entry overrides --plan flag", async () => {
+		// Arrange — user launched with --plan, but the resumed session's last entry
+		// says enabled:false (they disabled plan mode before the restart). The
+		// session entry must take precedence over the flag.
+		const pi = makeFakePi();
+		const ctx = {
+			...makeFakeCtx(),
+			sessionManager: {
+				getEntries: vi.fn(() => [
+					{ type: "custom", customType: "pi-plan-mode:state", data: { enabled: false } },
+				]),
+			},
+		};
+		(pi as any).getFlag = vi.fn(() => true); // --plan was set
+		planModeExtension(pi as never);
+
+		const onCalls = pi.on.mock.calls as Array<[string, (...args: unknown[]) => unknown]>;
+		const sessionStartHandler = onCalls.find(([e]) => e === "session_start")![1];
+		await sessionStartHandler({}, ctx);
+
+		expect(pi.setActiveTools).not.toHaveBeenCalled();
+		expect(ctx.ui.setStatus).toHaveBeenCalledWith("plan-mode", undefined);
+	});
+
+	it("enable→disable round-trip leaves the final persisted entry as enabled:false", async () => {
+		// Arrange — integration-ish: simulate what a real user does over a session.
+		const pi = makeFakePi(["read", "bash", "edit", "write"]);
+		const ctx = makeFakeCtx();
+		planModeExtension(pi as never);
+
+		const commandCalls = pi.registerCommand.mock.calls as Array<
+			[string, { handler: (args: unknown, ctx: unknown) => Promise<void> }]
+		>;
+		const handler = commandCalls.find(([name]) => name === "plan")![1].handler;
+
+		// Act — toggle plan mode on, off, on, off.
+		await handler({}, ctx);
+		await handler({}, ctx);
+		await handler({}, ctx);
+		await handler({}, ctx);
+
+		// Assert — 4 appendEntry calls, last one is enabled:false (no snapshot).
+		const appendCalls = (pi.appendEntry as ReturnType<typeof vi.fn>).mock.calls as Array<[string, any]>;
+		expect(appendCalls).toHaveLength(4);
+
+		const [finalType, finalData] = appendCalls[3]!;
+		expect(finalType).toBe("pi-plan-mode:state");
+		expect(finalData).toEqual({ enabled: false });
+
+		// And the enable entries in between did carry snapshots.
+		expect(appendCalls[0]![1]).toMatchObject({ enabled: true, toolsSnapshot: ["read", "bash", "edit", "write"] });
+		expect(appendCalls[2]![1]).toMatchObject({ enabled: true });
+	});
 });
