@@ -92,6 +92,16 @@ export default function planModeExtension(pi: ExtensionAPI): void {
 	 * Assumes `planModeEnabled` has already been set to false by the caller.
 	 */
 	async function disablePlanMode(ctx: ExtensionContext): Promise<void> {
+		// No snapshot means plan mode was restored from a previous session —
+		// we have no record of what model/thinking/tools were active before.
+		const hasSnapshot = modelSnapshot !== undefined || thinkingLevelSnapshot !== undefined || toolSnapshot.hasSaved();
+		if (!hasSnapshot) {
+			ctx.ui.notify(
+				"Plan mode was restored from a previous session — original model, thinking level, and tools could not be restored.",
+				"warning",
+			);
+		}
+
 		// Restore model if we have a snapshot (skipped for session-resumed plan mode).
 		if (modelSnapshot !== undefined) {
 			await pi.setModel(modelSnapshot);

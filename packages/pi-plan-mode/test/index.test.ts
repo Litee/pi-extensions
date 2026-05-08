@@ -316,6 +316,12 @@ describe("plan-mode model and thinking level", () => {
 		// Assert — setModel not called because there was no snapshot
 		expect(pi.setModel).not.toHaveBeenCalled();
 		expect(pi.setThinkingLevel).not.toHaveBeenCalled();
+
+		// Assert — warning notification emitted
+		const notifyCalls = (ctx.ui.notify as ReturnType<typeof vi.fn>).mock.calls as Array<[string, string?]>;
+		const warningCall = notifyCalls.find(([, type]) => type === "warning");
+		expect(warningCall).toBeDefined();
+		expect(warningCall![0]).toContain("previous session");
 	});
 
 	it("does not crash and skips model/thinking when config file is missing", async () => {
