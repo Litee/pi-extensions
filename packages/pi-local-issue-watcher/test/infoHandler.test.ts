@@ -133,12 +133,14 @@ describe("formatPreview", () => {
 		});
 		const out = formatPreview(info);
 		expect(out).toContain("my-skill #0042");
-		expect(out).toContain("status: open");
-		expect(out).toContain("title:  something interesting");
+		expect(out).toContain("status:  open");
+		expect(out).toContain("title:   something interesting");
 		expect(out).toContain("description:");
 		expect(out).toContain("The actual body of the issue.");
 		expect(out).toContain("comments (0):");
 		expect(out).toContain("(none)");
+		// Visual separators present
+		expect(out).toContain("─────");
 	});
 
 	it("renders each comment as a bullet with the `text` field", () => {
@@ -154,6 +156,21 @@ describe("formatPreview", () => {
 		expect(out).toContain("comments (2):");
 		expect(out).toContain("• first comment body");
 		expect(out).toContain("• second comment body");
+	});
+
+	it("renders author and timestamp header above each comment when present (issue #0001)", () => {
+		const info = mkIssue({
+			skill: "s",
+			issueId: "0001",
+			comments: [
+				{ text: "fixed it", author: "alice", created_at: "2026-05-07T01:44:00Z" },
+			],
+		});
+		const out = formatPreview(info);
+		expect(out).toContain("[2026-05-07T01:44:00Z] @alice");
+		expect(out).toContain("• fixed it");
+		// Header line must appear before the bullet line
+		expect(out.indexOf("@alice")).toBeLessThan(out.indexOf("• fixed it"));
 	});
 
 	it("falls back to `body` when `text` is missing, and to JSON when both are missing", () => {

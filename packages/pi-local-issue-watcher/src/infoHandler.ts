@@ -116,24 +116,38 @@ export function formatRowLabel(info: IssueInfo): string {
  * corresponding sections are rendered as a single "(none)" placeholder
  * so the detail view is never empty.
  */
+const HR = "─".repeat(60);
+
 export function formatPreview(info: IssueInfo): string {
 	const lines: string[] = [];
+
+	// ── Header ──────────────────────────────────────────────────
 	lines.push(`${info.skill} #${info.issueId}`);
-	lines.push(`status: ${info.status}`);
-	lines.push(`title:  ${info.title}`);
-	lines.push("");
+	lines.push(`title:   ${info.title}`);
+	lines.push(`status:  ${info.status}`);
+	if (info.skillVersion) lines.push(`version: ${info.skillVersion}`);
+
+	// ── Description ─────────────────────────────────────────────
+	lines.push(HR);
 	lines.push("description:");
-	lines.push(info.description.trim().length > 0 ? info.description : "(none)");
+	lines.push(info.description.trim().length > 0 ? info.description.trim() : "(none)");
+
+	// ── Comments ─────────────────────────────────────────────────
 	lines.push("");
+	lines.push(HR);
 	lines.push(`comments (${info.comments.length}):`);
 	if (info.comments.length === 0) {
 		lines.push("(none)");
 	} else {
 		for (const c of info.comments) {
-			// Comments have heterogeneous keys (text, timestamp, author,
-			// …). Render whatever `text`/`body` the tracker stored; fall
-			// back to JSON for anything we don't recognise so nothing is
-			// silently lost.
+			// Per-comment header: author and timestamp when available.
+			const author = typeof c["author"] === "string" ? c["author"] : null;
+			const ts = typeof c["created_at"] === "string" ? c["created_at"] : null;
+			const header = [ts ? `[${ts}]` : null, author ? `@${author}` : null]
+				.filter(Boolean)
+				.join(" ");
+			if (header) lines.push(`  ${header}`);
+			// Body: text / body field, fallback to JSON.
 			const body =
 				typeof c.text === "string"
 					? c.text
