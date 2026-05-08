@@ -22,6 +22,11 @@
 ## find
 - ALWAYS use the find tool for file discovery. Never run `find` or `fd` via bash.
 - Patterns with `/` in them match full paths; patterns without match basenames only.
+- Use bash `find` only when the tool can't express the constraint (type, mtime, size, depth, logical operators, or intentional .gitignore bypass).
+
+## ls
+- ALWAYS use the `ls` tool for simple directory listing.
+- Use bash `ls` when you need file metadata, custom sort order, recursive listing, or piping into other commands.
 
 ## Parallel tool calls
 - When multiple independent pieces of information are needed, issue all tool calls
