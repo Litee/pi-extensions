@@ -1,4 +1,7 @@
-import { describe, expect, it, vi } from "vitest";
+import { beforeEach, describe, expect, it, vi } from "vitest";
+
+vi.mock("node:fs");
+import { readFileSync } from "node:fs";
 
 import planModeExtension from "../src/index.js";
 
@@ -25,6 +28,9 @@ function makeFakePi(activeTools: string[] = []) {
 			on: vi.fn(),
 		},
 		sendMessage: vi.fn(),
+		setModel: vi.fn(async () => true),
+		getThinkingLevel: vi.fn(() => "medium" as const),
+		setThinkingLevel: vi.fn(),
 	};
 }
 
@@ -37,8 +43,24 @@ function makeFakeCtx() {
 			select: vi.fn(async () => "Stay in plan mode"),
 		},
 		hasUI: true,
+		model: { id: "claude-sonnet-4-5", provider: "anthropic" } as any,
+		modelRegistry: {
+			getAll: vi.fn(() => [
+				{ id: "claude-sonnet-4-5", provider: "anthropic" },
+				{ id: "claude-opus-4-20250514", provider: "anthropic" },
+			] as any[]),
+		},
 	};
 }
+
+beforeEach(() => {
+	// Default: config file does not exist.
+	vi.mocked(readFileSync).mockImplementation(() => {
+		const err = new Error("ENOENT: no such file or directory") as NodeJS.ErrnoException;
+		err.code = "ENOENT";
+		throw err;
+	});
+});
 
 describe("plan-mode extension registration", () => {
 	it("binds both Ctrl+Alt+P and Shift+Tab to the plan-mode toggle shortcut", () => {
@@ -182,5 +204,137 @@ describe("agent_end pi.events emissions", () => {
 		// Assert — no events, no select
 		expect(pi.events.emit).not.toHaveBeenCalled();
 		expect(ctx.ui.select).not.toHaveBeenCalled();
+	});
+});
+
+describe("plan-mode model and thinking level", () => {
+	it("saves model snapshot on enable and restores it on disable (no config file)", async () => {
+		// Arrange — readFileSync already mocked to throw ENOENT in beforeEach
+		const pi = makeFakePi();
+		const ctx = makeFakeCtx();
+		planModeExtension(pi as never);
+
+		const commandCalls = pi.registerCommand.mock.calls as Array<
+			[string, { handler: (args: unknown, ctx: unknown) => Promise<void> }]
+		>;
+		const handler = commandCalls.find(([name]) => name === "plan")![1].handler;
+
+		// Act
+		await handler({}, ctx);  // enable
+		await handler({}, ctx);  // disable
+
+		// Assert — setModel called once on disable with ctx.model (the snapshot)
+		expect(pi.setModel).toHaveBeenCalledTimes(1);
+		expect(pi.setModel).toHaveBeenCalledWith(ctx.model);
+
+		// setThinkingLevel called once on disable with the snapshotted value ("medium")
+		expect(pi.setThinkingLevel).toHaveBeenCalledTimes(1);
+		expect(pi.setThinkingLevel).toHaveBeenCalledWith("medium");
+	});
+
+	it("applies model and thinkingLevel from config on enable", async () => {
+		// Arrange — config specifies a different model and thinking level
+		vi.mocked(readFileSync).mockReturnValue(
+			JSON.stringify({ model: "claude-opus-4-20250514", thinkingLevel: "high" }),
+		);
+
+		const pi = makeFakePi();
+		const ctx = makeFakeCtx();
+		planModeExtension(pi as never);
+
+		const commandCalls = pi.registerCommand.mock.calls as Array<
+			[string, { handler: (args: unknown, ctx: unknown) => Promise<void> }]
+		>;
+		const handler = commandCalls.find(([name]) => name === "plan")![1].handler;
+
+		// Act — enable only
+		await handler({}, ctx);
+
+		// Assert — setModel called with the resolved model object
+		expect(pi.setModel).toHaveBeenCalledTimes(1);
+		expect(pi.setModel).toHaveBeenCalledWith({ id: "claude-opus-4-20250514", provider: "anthropic" });
+
+		// setThinkingLevel called with config value
+		expect(pi.setThinkingLevel).toHaveBeenCalledTimes(1);
+		expect(pi.setThinkingLevel).toHaveBeenCalledWith("high");
+	});
+
+	it("applies model with provider filter from config", async () => {
+		// Arrange
+		vi.mocked(readFileSync).mockReturnValue(
+			JSON.stringify({ model: "claude-opus-4-20250514", provider: "anthropic", thinkingLevel: "xhigh" }),
+		);
+
+		const pi = makeFakePi();
+		const ctx = makeFakeCtx();
+		planModeExtension(pi as never);
+
+		const commandCalls = pi.registerCommand.mock.calls as Array<
+			[string, { handler: (args: unknown, ctx: unknown) => Promise<void> }]
+		>;
+		const handler = commandCalls.find(([name]) => name === "plan")![1].handler;
+
+		// Act
+		await handler({}, ctx);
+
+		// Assert — correct model resolved by both id and provider
+		expect(pi.setModel).toHaveBeenCalledWith({ id: "claude-opus-4-20250514", provider: "anthropic" });
+	});
+
+	it("does not call setModel on disable when no snapshot exists (session-resumed plan mode)", async () => {
+		// Arrange — simulate session_start restoring plan mode (no in-session enable, no snapshot)
+		const pi = makeFakePi();
+		// Provide a minimal sessionManager with a plan-mode-enabled entry
+		const ctx = {
+			...makeFakeCtx(),
+			sessionManager: {
+				getEntries: vi.fn(() => [
+					{ type: "custom", customType: "plan-mode", data: { enabled: true } },
+				]),
+			},
+		};
+		(pi as any).getFlag = vi.fn(() => false);
+
+		planModeExtension(pi as never);
+
+		// Fire session_start to restore plan-mode without a snapshot
+		const onCalls = pi.on.mock.calls as Array<[string, (...args: unknown[]) => unknown]>;
+		const sessionStartHandler = onCalls.find(([e]) => e === "session_start")![1];
+		await sessionStartHandler({}, ctx);
+
+		// Clear any setModel/setThinkingLevel calls made during session_start (config apply)
+		(pi.setModel as ReturnType<typeof vi.fn>).mockClear();
+		(pi.setThinkingLevel as ReturnType<typeof vi.fn>).mockClear();
+
+		// Now disable plan mode via /plan command — no snapshot should be restored
+		const commandCalls = pi.registerCommand.mock.calls as Array<
+			[string, { handler: (args: unknown, ctx: unknown) => Promise<void> }]
+		>;
+		const handler = commandCalls.find(([name]) => name === "plan")![1].handler;
+		await handler({}, ctx);  // disable (plan mode was on, this toggles it off)
+
+		// Assert — setModel not called because there was no snapshot
+		expect(pi.setModel).not.toHaveBeenCalled();
+		expect(pi.setThinkingLevel).not.toHaveBeenCalled();
+	});
+
+	it("does not crash and skips model/thinking when config file is missing", async () => {
+		// Arrange — readFileSync throws ENOENT (default from beforeEach)
+		const pi = makeFakePi();
+		const ctx = makeFakeCtx();
+		planModeExtension(pi as never);
+
+		const commandCalls = pi.registerCommand.mock.calls as Array<
+			[string, { handler: (args: unknown, ctx: unknown) => Promise<void> }]
+		>;
+		const handler = commandCalls.find(([name]) => name === "plan")![1].handler;
+
+		// Act — enable then disable; should not throw
+		await expect(handler({}, ctx)).resolves.toBeUndefined();  // enable
+		await expect(handler({}, ctx)).resolves.toBeUndefined();  // disable
+
+		// setModel called exactly once on disable (restoring the snapshot, not config)
+		expect(pi.setModel).toHaveBeenCalledTimes(1);
+		expect(pi.setModel).toHaveBeenCalledWith(ctx.model);
 	});
 });

@@ -51,6 +51,40 @@ extensions can react to user-attention states:
 flip the cmux sidebar pill to `waiting` and fire a desktop notification
 when user input is required.
 
+## Configuration
+
+Create `~/.pi/agent/pi-plan-mode.json` to specify the model and thinking level
+used while plan mode is active. All fields are optional; omit a field to leave
+that setting unchanged.
+
+```json
+{
+  "model": "claude-opus-4-20250514",
+  "provider": "anthropic",
+  "thinkingLevel": "high"
+}
+```
+
+| Field          | Type   | Description                                                                                         |
+|----------------|--------|-----------------------------------------------------------------------------------------------------|
+| `model`        | string | Model ID to switch to when plan mode is enabled (e.g. `"claude-opus-4-20250514"`).                  |
+| `provider`     | string | Optional provider name used to disambiguate when multiple providers have a model with the same ID.  |
+| `thinkingLevel`| string | Thinking/reasoning effort: `"off"`, `"minimal"`, `"low"`, `"medium"`, `"high"`, or `"xhigh"`.        |
+
+When plan mode is **enabled** (via `/plan`, a shortcut, or session resume), the
+extension:
+1. Snapshots the current model and thinking level (in-session toggles only).
+2. Applies the model and thinking level from the config file.
+
+When plan mode is **disabled**, the extension restores the snapshotted model and
+thinking level. If plan mode was active at session start (restored from a
+previous session's entry log), no snapshot is available and the model/thinking
+level are left at their current values after disabling.
+
+If the file does not exist or cannot be parsed, the model and thinking level are
+left unchanged when enabling plan mode (the snapshot is still taken and restored
+on disable).
+
 ## Allowlists
 
 Safe commands (allowed in plan mode) include:

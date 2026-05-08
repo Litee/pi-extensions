@@ -7,10 +7,14 @@
  * Features:
  * - /plan command, Ctrl+Alt+P, or Shift+Tab to toggle
  * - Bash restricted to allowlisted read-only commands
+ * - Switches to model/thinking-level from ~/.pi/agent/pi-plan-mode.json while active;
+ *   restores the previous model and thinking level when disabled.
  */
 
-import type { AgentMessage } from "@mariozechner/pi-agent-core";
-import type { TextContent } from "@mariozechner/pi-ai";
+import { readFileSync } from "node:fs";
+import { join } from "node:path";
+import type { AgentMessage, ThinkingLevel } from "@mariozechner/pi-agent-core";
+import type { Model, TextContent } from "@mariozechner/pi-ai";
 import type { ExtensionAPI, ExtensionContext } from "@mariozechner/pi-coding-agent";
 import { Key } from "@mariozechner/pi-tui";
 import { ToolSnapshot } from "./tool-snapshot.js";
@@ -22,9 +26,32 @@ const PLAN_MODE_TOOLS = ["read", "bash", "grep", "find", "ls", "ask_user_questio
 // previous session and the pre-plan tool set is unknown).
 const NORMAL_MODE_TOOLS = ["read", "bash", "edit", "write"];
 
+interface PlanModeConfig {
+	model?: string;
+	provider?: string;
+	thinkingLevel?: ThinkingLevel;
+}
+
+function loadPlanModeConfig(): PlanModeConfig {
+	try {
+		const home = process.env["HOME"] ?? process.env["USERPROFILE"] ?? "";
+		const configPath = join(home, ".pi", "agent", "pi-plan-mode.json");
+		const content = readFileSync(configPath, "utf-8");
+		return JSON.parse(content) as PlanModeConfig;
+	} catch {
+		return {};
+	}
+}
+
 export default function planModeExtension(pi: ExtensionAPI): void {
 	let planModeEnabled = false;
 	const toolSnapshot = new ToolSnapshot();
+
+	// Snapshots of model and thinking level captured when plan mode is enabled.
+	// Undefined means plan mode was restored from a previous session (no snapshot
+	// available), so we skip the restore step when disabling.
+	let modelSnapshot: Model<any> | undefined;
+	let thinkingLevelSnapshot: ThinkingLevel | undefined;
 
 	pi.registerFlag("plan", {
 		description: "Start in plan mode (read-only exploration)",
@@ -40,19 +67,66 @@ export default function planModeExtension(pi: ExtensionAPI): void {
 		}
 	}
 
-	function togglePlanMode(ctx: ExtensionContext): void {
+	/**
+	 * Apply model + thinking level from the plan-mode config file.
+	 * Called both on enable (in-session toggle) and on session_start resume.
+	 */
+	async function applyPlanModeConfig(ctx: ExtensionContext): Promise<void> {
+		const config = loadPlanModeConfig();
+		if (config.model) {
+			const models = ctx.modelRegistry.getAll();
+			const model = config.provider
+				? models.find((m) => m.id === config.model && m.provider === config.provider)
+				: models.find((m) => m.id === config.model);
+			if (model) {
+				await pi.setModel(model);
+			}
+		}
+		if (config.thinkingLevel) {
+			pi.setThinkingLevel(config.thinkingLevel);
+		}
+	}
+
+	/**
+	 * Disable plan mode: restore tool set, model, and thinking level.
+	 * Assumes `planModeEnabled` has already been set to false by the caller.
+	 */
+	async function disablePlanMode(ctx: ExtensionContext): Promise<void> {
+		// Restore model if we have a snapshot (skipped for session-resumed plan mode).
+		if (modelSnapshot !== undefined) {
+			await pi.setModel(modelSnapshot);
+		}
+		if (thinkingLevelSnapshot !== undefined) {
+			pi.setThinkingLevel(thinkingLevelSnapshot);
+		}
+		modelSnapshot = undefined;
+		thinkingLevelSnapshot = undefined;
+
+		const restored = toolSnapshot.restore(NORMAL_MODE_TOOLS);
+		pi.setActiveTools(restored);
+		ctx.ui.notify(`Plan mode disabled. ${formatToolList(restored)}`);
+		updateStatus(ctx);
+	}
+
+	async function togglePlanMode(ctx: ExtensionContext): Promise<void> {
 		planModeEnabled = !planModeEnabled;
 
 		if (planModeEnabled) {
+			// Snapshot current model and thinking level before switching.
+			modelSnapshot = ctx.model;
+			thinkingLevelSnapshot = pi.getThinkingLevel();
+
 			toolSnapshot.save(pi.getActiveTools());
 			pi.setActiveTools(PLAN_MODE_TOOLS);
 			ctx.ui.notify(`Plan mode enabled. ${formatToolList(PLAN_MODE_TOOLS)}`);
+			updateStatus(ctx);
+
+			// Apply plan-mode model/thinking after notifying so the user sees the
+			// enable message regardless of whether setModel succeeds.
+			await applyPlanModeConfig(ctx);
 		} else {
-			const restored = toolSnapshot.restore(NORMAL_MODE_TOOLS);
-			pi.setActiveTools(restored);
-			ctx.ui.notify(`Plan mode disabled. ${formatToolList(restored)}`);
+			await disablePlanMode(ctx);
 		}
-		updateStatus(ctx);
 	}
 
 	function persistState(): void {
@@ -62,7 +136,7 @@ export default function planModeExtension(pi: ExtensionAPI): void {
 	pi.registerCommand("plan", {
 		description: "Toggle plan mode (read-only exploration)",
 		handler: async (_args, ctx) => {
-			togglePlanMode(ctx);
+			await togglePlanMode(ctx);
 			persistState();
 		},
 	});
@@ -70,7 +144,7 @@ export default function planModeExtension(pi: ExtensionAPI): void {
 	pi.registerShortcut(Key.ctrlAlt("p"), {
 		description: "Toggle plan mode",
 		handler: async (ctx) => {
-			togglePlanMode(ctx);
+			await togglePlanMode(ctx);
 			persistState();
 		},
 	});
@@ -82,7 +156,7 @@ export default function planModeExtension(pi: ExtensionAPI): void {
 	pi.registerShortcut(Key.shift("tab"), {
 		description: "Toggle plan mode",
 		handler: async (ctx) => {
-			togglePlanMode(ctx);
+			await togglePlanMode(ctx);
 			persistState();
 		},
 	});
@@ -165,8 +239,7 @@ Do NOT attempt to make changes - just describe what you would do.`,
 
 		if (choice === "Execute the plan") {
 			planModeEnabled = false;
-			pi.setActiveTools(toolSnapshot.restore(NORMAL_MODE_TOOLS));
-			updateStatus(ctx);
+			await disablePlanMode(ctx);
 			persistState();
 			pi.sendMessage(
 				{ customType: "plan-mode-execute", content: "Execute the plan you just created.", display: true },
@@ -201,7 +274,11 @@ Do NOT attempt to make changes - just describe what you would do.`,
 		if (planModeEnabled) {
 			// On session start/resume the pre-plan tool set is unknown, so we
 			// skip saving — restore() will fall back to NORMAL_MODE_TOOLS.
+			// No snapshot taken: if the user disables plan mode in this session,
+			// model/thinking are left at whatever the current values are.
 			pi.setActiveTools(PLAN_MODE_TOOLS);
+			// Apply plan-mode model/thinking from config (best-effort).
+			await applyPlanModeConfig(ctx);
 		}
 		updateStatus(ctx);
 	});
