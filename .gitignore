@@ -4,6 +4,7 @@
 .worktrees/
 *.log
 *.tsbuildinfo
+tmp/
 coverage/
 dist/
 node_modules
