@@ -27,7 +27,7 @@ Event wiring:
 | `input` (interactive/rpc, non-slash)      | pill → `working`                                      |
 | `tool_execution_start` (attention tool)   | pill → `waiting`, desktop `notify`                    |
 | `tool_execution_end` (attention tool)     | pill → `working`                                      |
-| `agent_end`                               | pill → `idle`, clear-progress, log, desktop `notify`  |
+| `agent_end`                               | pill → `idle`, clear-progress, log (no desktop notify)  |
 | `session_shutdown`                        | clear progress, clear status pill                     |
 
 The attention-tools list is a hardcoded allowlist in `src/index.ts`. Today

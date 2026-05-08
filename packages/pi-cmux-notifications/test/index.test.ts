@@ -219,14 +219,17 @@ describe("session lifecycle side-effects", () => {
 		expect(argvs.some((a) => a[0] === "notify")).toBe(false);
 	});
 
-	it("agent_end clears progress, sets idle, and sends a notify", async () => {
+	it("agent_end clears progress, sets idle pill, logs, but does NOT send a desktop notify", async () => {
 		const pi = makeFakePi();
 		createExtension(pi as never);
 		await pi.handlers.get("agent_end")!({}, makeFakeCtx());
 		const argvs = spawner.mock.calls.map((c) => c[0] as string[]);
 		expect(argvs).toContainEqual(["clear-progress"]);
 		expect(argvs.some((a) => a[0] === "set-status" && a[2] === "idle")).toBe(true);
-		expect(argvs.some((a) => a[0] === "notify")).toBe(true);
+		expect(argvs.some((a) => a[0] === "log" && a.some((s) => s.includes("Response complete")))).toBe(true);
+		// Desktop notification is intentionally suppressed — the sidebar log and
+		// status pill are sufficient when the agent merely finishes its turn.
+		expect(argvs.some((a) => a[0] === "notify")).toBe(false);
 	});
 
 	it("session_shutdown clears progress and the status pill", async () => {

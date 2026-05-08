@@ -19,7 +19,7 @@
  *                             (hardcoded), status "waiting" + notify.
  *   tool_execution_end     → if toolName is in ATTENTION_TOOLS,
  *                             status back to "working".
- *   agent_end              → status "idle" + clear-progress + log + notify
+ *   agent_end              → status "idle" + clear-progress + log (no desktop notify)
  *   session_shutdown       → clear status pill + clear progress
  *
  * All cmux calls are no-ops when not running inside cmux (see
@@ -106,7 +106,9 @@ export default function cmuxReportStatus(pi: ExtensionAPI): void {
 		clearProgress();
 		setStatus(rt.statusKey, "idle", "checkmark", "#30d158");
 		logLine(rt.statusKey, "success", `[${hhmm()}] Response complete`);
-		notifyCmux("pi", shortCwd(process.cwd()), `[${hhmm()}] Response complete`);
+		// No desktop notification here: agent finishing is surfaced via the
+		// status pill and sidebar log only. Notifications are reserved for
+		// states where the agent actively needs human input (attention tools).
 	});
 
 	// ── Attention tools → waiting pill + desktop notify ────────────────
