@@ -153,6 +153,10 @@ Do NOT attempt to make changes - just describe what you would do.`,
 	pi.on("agent_end", async (_event, ctx) => {
 		if (!planModeEnabled || !ctx.hasUI) return;
 
+		// Signal to other extensions (e.g. pi-cmux-notifications) that the agent
+		// is now blocked waiting for user input at the UI level.
+		pi.events.emit("need_user_attention", { source: "plan-mode", title: "Plan mode — what next?" });
+
 		const choice = await ctx.ui.select("Plan mode - what next?", [
 			"Execute the plan",
 			"Stay in plan mode",
@@ -174,6 +178,9 @@ Do NOT attempt to make changes - just describe what you would do.`,
 				pi.sendUserMessage(refinement.trim());
 			}
 		}
+
+		// User has responded — clear the attention state.
+		pi.events.emit("user_attention_resolved", { source: "plan-mode" });
 	});
 
 	// Restore state on session start/resume

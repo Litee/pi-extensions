@@ -12,6 +12,11 @@ interface StubPi {
 	registerCommand: ReturnType<typeof vi.fn>;
 	sendMessage: ReturnType<typeof vi.fn>;
 	appendEntry: ReturnType<typeof vi.fn>;
+	events: {
+		on: ReturnType<typeof vi.fn>;
+		emit: ReturnType<typeof vi.fn>;
+		handlers: Map<string, (data: unknown) => void>;
+	};
 	readonly handlers: Map<string, (...args: unknown[]) => unknown>;
 	readonly commands: Map<
 		string,
@@ -45,11 +50,20 @@ function makeFakePi(): StubPi {
 			commands.set(name, def);
 		},
 	);
+	const eventHandlers = new Map<string, (data: unknown) => void>();
+	const eventsOn = vi.fn((channel: string, fn: (data: unknown) => void) => {
+		eventHandlers.set(channel, fn);
+	});
 	return {
 		on,
 		registerCommand,
 		sendMessage: vi.fn(),
 		appendEntry: vi.fn(),
+		events: {
+			on: eventsOn,
+			emit: vi.fn(),
+			handlers: eventHandlers,
+		},
 		handlers,
 		commands,
 	};
@@ -239,6 +253,28 @@ describe("session lifecycle side-effects", () => {
 		const argvs = spawner.mock.calls.map((c) => c[0] as string[]);
 		expect(argvs).toContainEqual(["clear-progress"]);
 		expect(argvs).toContainEqual(["set-status", "pi", ""]);
+	});
+
+	it("pi.events need_user_attention flips pill to waiting and fires a desktop notify", async () => {
+		const pi = makeFakePi();
+		createExtension(pi as never);
+		const handler = pi.events.handlers.get("need_user_attention")!;
+		expect(handler).toBeDefined();
+		handler({ source: "plan-mode", title: "Plan mode \u2014 what next?" });
+		const argvs = spawner.mock.calls.map((c) => c[0] as string[]);
+		expect(argvs.some((a) => a[0] === "set-status" && a[2] === "waiting")).toBe(true);
+		expect(argvs.some((a) => a[0] === "notify" && a.some((s) => s.includes("Plan mode")))).toBe(true);
+	});
+
+	it("pi.events user_attention_resolved flips pill back to working", async () => {
+		const pi = makeFakePi();
+		createExtension(pi as never);
+		const handler = pi.events.handlers.get("user_attention_resolved")!;
+		expect(handler).toBeDefined();
+		handler(undefined);
+		const argvs = spawner.mock.calls.map((c) => c[0] as string[]);
+		expect(argvs.some((a) => a[0] === "set-status" && a[2] === "working")).toBe(true);
+		expect(argvs.some((a) => a[0] === "notify")).toBe(false);
 	});
 });
 

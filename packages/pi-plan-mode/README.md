@@ -37,6 +37,20 @@ analysis, then switch back to full tool access to execute.
    normal tool set and run it, **Stay in plan mode** to keep exploring, or
    **Refine the plan** to iterate.
 
+## Events emitted
+
+`pi-plan-mode` emits the following events on `pi.events` so other
+extensions can react to user-attention states:
+
+| Event                     | When                                                       | Payload                                          |
+|---------------------------|------------------------------------------------------------|--------------------------------------------------|
+| `need_user_attention`     | Immediately before the "Plan mode — what next?" prompt     | `{ source: "plan-mode", title: string }`          |
+| `user_attention_resolved` | Immediately after the user completes the post-plan prompt  | `{ source: "plan-mode" }`                        |
+
+`pi-cmux-notifications` (sibling extension) listens to these events to
+flip the cmux sidebar pill to `waiting` and fire a desktop notification
+when user input is required.
+
 ## Allowlists
 
 Safe commands (allowed in plan mode) include:

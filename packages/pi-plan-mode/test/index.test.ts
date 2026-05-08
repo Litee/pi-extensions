@@ -20,6 +20,11 @@ function makeFakePi(activeTools: string[] = []) {
 		getActiveTools: vi.fn(() => tools),
 		setActiveTools: vi.fn(),
 		appendEntry: vi.fn(),
+		events: {
+			emit: vi.fn(),
+			on: vi.fn(),
+		},
+		sendMessage: vi.fn(),
 	};
 }
 
@@ -29,6 +34,7 @@ function makeFakeCtx() {
 			notify: vi.fn(),
 			setStatus: vi.fn(),
 			theme: { fg: vi.fn((_color: string, text: string) => text) },
+			select: vi.fn(async () => "Stay in plan mode"),
 		},
 		hasUI: true,
 	};
@@ -121,5 +127,60 @@ describe("plan-mode exit notification", () => {
 		expect(exitMessage.toLowerCase()).toContain("plan mode disabled");
 		// No total-count annotation when all tools fit in the sample
 		expect(exitMessage).not.toContain("total");
+	});
+});
+
+describe("agent_end pi.events emissions", () => {
+	it("emits need_user_attention before ctx.ui.select and user_attention_resolved after", async () => {
+		// Arrange
+		const callOrder: string[] = [];
+		const pi = makeFakePi();
+		(pi.events.emit as ReturnType<typeof vi.fn>).mockImplementation((channel: string) => {
+			callOrder.push(`emit:${channel}`);
+		});
+
+		const ctx = makeFakeCtx();
+		(ctx.ui.select as ReturnType<typeof vi.fn>).mockImplementation(async () => {
+			callOrder.push("select");
+			return "Stay in plan mode";
+		});
+
+		planModeExtension(pi as never);
+
+		// Enable plan mode via /plan command
+		const commandCalls = pi.registerCommand.mock.calls as Array<
+			[string, { handler: (args: unknown, ctx: unknown) => Promise<void> }]
+		>;
+		const planHandler = commandCalls.find(([name]) => name === "plan")![1].handler;
+		await planHandler({}, ctx);
+
+		// Trigger agent_end
+		const onCalls = pi.on.mock.calls as Array<[string, (...args: unknown[]) => unknown]>;
+		const agentEndHandler = onCalls.find(([e]) => e === "agent_end")![1];
+		await agentEndHandler({}, ctx);
+
+		// Assert — emit order: attention before select, resolved after
+		expect(callOrder).toEqual(["emit:need_user_attention", "select", "emit:user_attention_resolved"]);
+		expect(pi.events.emit).toHaveBeenCalledWith("need_user_attention", {
+			source: "plan-mode",
+			title: "Plan mode \u2014 what next?",
+		});
+		expect(pi.events.emit).toHaveBeenCalledWith("user_attention_resolved", { source: "plan-mode" });
+	});
+
+	it("does not emit attention events when plan mode is disabled", async () => {
+		// Arrange — plan mode starts disabled
+		const pi = makeFakePi();
+		const ctx = makeFakeCtx();
+		planModeExtension(pi as never);
+
+		// Act — fire agent_end without enabling plan mode
+		const onCalls = pi.on.mock.calls as Array<[string, (...args: unknown[]) => unknown]>;
+		const agentEndHandler = onCalls.find(([e]) => e === "agent_end")![1];
+		await agentEndHandler({}, ctx);
+
+		// Assert — no events, no select
+		expect(pi.events.emit).not.toHaveBeenCalled();
+		expect(ctx.ui.select).not.toHaveBeenCalled();
 	});
 });

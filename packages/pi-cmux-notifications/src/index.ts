@@ -22,6 +22,12 @@
  *   agent_end              → status "idle" + clear-progress + log (no desktop notify)
  *   session_shutdown       → clear status pill + clear progress
  *
+ * Additionally, two inter-extension events on pi.events are handled:
+ *   pi.events "need_user_attention"    → status "waiting" + desktop notify
+ *   pi.events "user_attention_resolved" → status back to "working"
+ * These cover UI-level prompts outside the tool pipeline (e.g. pi-plan-mode's
+ * ctx.ui.select approval prompt).
+ *
  * All cmux calls are no-ops when not running inside cmux (see
  * `cmuxAvailable`), so loading this extension in a plain terminal is safe.
  */
@@ -73,6 +79,16 @@ export function shortCwd(cwd: string): string {
 export default function cmuxReportStatus(pi: ExtensionAPI): void {
 	const rt = makeRuntime();
 
+	// ── Attention state helpers ────────────────────────────────────────
+	function enterWaiting(label: string): void {
+		setStatus(rt.statusKey, "waiting", "bell", "#5ac8fa");
+		notifyCmux(rt.statusKey, shortCwd(process.cwd()), `[${hhmm()}] ${label}`);
+	}
+
+	function exitWaiting(): void {
+		setStatus(rt.statusKey, "working", "bolt", "#ff9500");
+	}
+
 	// ── Session lifecycle ──────────────────────────────────────────────
 	pi.on("session_start", async () => {
 		if (!cmuxAvailable()) return;
@@ -111,18 +127,28 @@ export default function cmuxReportStatus(pi: ExtensionAPI): void {
 		// states where the agent actively needs human input (attention tools).
 	});
 
+	// ── Inter-extension attention events ────────────────────────────────
+	// Extensions that block on UI prompts outside the tool pipeline
+	// (e.g. pi-plan-mode's ctx.ui.select) emit these events so we can
+	// flip the pill and fire a desktop notification without coupling.
+	pi.events.on("need_user_attention", (data: unknown) => {
+		if (!cmuxAvailable()) return;
+		const payload = data as { title?: string } | undefined;
+		enterWaiting(payload?.title ?? "Needs your input");
+	});
+
+	pi.events.on("user_attention_resolved", () => {
+		if (!cmuxAvailable()) return;
+		exitWaiting();
+	});
+
 	// ── Attention tools → waiting pill + desktop notify ────────────────
 	pi.on("tool_execution_start", async (event) => {
 		if (!cmuxAvailable()) return;
 		const toolName = (event as { toolName?: unknown }).toolName;
 		if (typeof toolName !== "string") return;
 		if (!ATTENTION_TOOLS.includes(toolName)) return;
-		setStatus(rt.statusKey, "waiting", "bell", "#5ac8fa");
-		notifyCmux(
-			"pi",
-			shortCwd(process.cwd()),
-			`[${hhmm()}] Needs your input (${toolName})`,
-		);
+		enterWaiting(`Needs your input (${toolName})`);
 	});
 
 	pi.on("tool_execution_end", async (event) => {
@@ -130,7 +156,7 @@ export default function cmuxReportStatus(pi: ExtensionAPI): void {
 		const toolName = (event as { toolName?: unknown }).toolName;
 		if (typeof toolName !== "string") return;
 		if (!ATTENTION_TOOLS.includes(toolName)) return;
-		setStatus(rt.statusKey, "working", "bolt", "#ff9500");
+		exitWaiting();
 	});
 }
 

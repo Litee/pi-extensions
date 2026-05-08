@@ -27,13 +27,20 @@ Event wiring:
 | `input` (interactive/rpc, non-slash)      | pill → `working`                                      |
 | `tool_execution_start` (attention tool)   | pill → `waiting`, desktop `notify`                    |
 | `tool_execution_end` (attention tool)     | pill → `working`                                      |
+| `pi.events` `need_user_attention`         | pill → `waiting`, desktop `notify`                    |
+| `pi.events` `user_attention_resolved`     | pill → `working`                                      |
 | `agent_end`                               | pill → `idle`, clear-progress, log (no desktop notify)  |
 | `session_shutdown`                        | clear progress, clear status pill                     |
 
-The attention-tools list is a hardcoded allowlist in `src/index.ts`. Today
-it's just `ask_user_question` from the sibling `pi-ask-user-question`
-extension — tools that block pi waiting on user interaction. Other tools
-don't move the pill, so `bash` / `read` / `edit` loops don't flicker it.
+Two complementary attention mechanisms are wired up:
+
+**Tool-based**: `ATTENTION_TOOLS` (hardcoded allowlist in `src/index.ts`) catches tools like
+`ask_user_question` that block the agent waiting for user input.
+
+**Event-based**: extensions that show a UI prompt outside the tool pipeline (e.g. `pi-plan-mode`)
+emit `need_user_attention` / `user_attention_resolved` on `pi.events`; this extension subscribes
+and reacts identically — pill to `waiting` + desktop notify on attention needed, pill back to
+`working` when resolved.
 
 ## Configuration
 
