@@ -2,7 +2,7 @@
   "name": "pi-additional-system-prompt",
   "version": "0.1.0",
   "private": true,
-  "description": "Pi extension that appends additional system prompt guidelines from PROMPT.md to the system prompt on every turn.",
+  "description": "Pi extension that appends additional system prompt guidelines from assets/PROMPT.md to the system prompt on every turn.",
   "type": "module",
   "keywords": ["pi-package"],
   "pi": {
