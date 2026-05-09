@@ -2,15 +2,12 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import type { ExtensionAPI } from "@mariozechner/pi-coding-agent";
 import type { GlueClient, JobRunResponse, WorkflowRunResponse } from "../src/cli-client.js";
+import { makeRuntime, POLL_ERROR_THRESHOLD, POLL_INTERVAL_MS, pollOnce } from "../src/runtime.js";
 import {
-	__createRuntimeForTest,
-	__resetToolRegisteredForTests,
 	handleToolAction,
-	POLL_ERROR_THRESHOLD,
-	POLL_INTERVAL_MS,
-	pollOnce,
 	registerToolIfNeeded,
-} from "../src/index.js";
+	resetToolRegisteredForTests,
+} from "../src/toolAction.js";
 import type { GlueWatch } from "../src/types.js";
 
 // ---------------------------------------------------------------------------
@@ -69,7 +66,7 @@ function makeWatch(overrides: Partial<GlueWatch> = {}): GlueWatch {
 // ---------------------------------------------------------------------------
 
 beforeEach(() => {
-	__resetToolRegisteredForTests();
+	resetToolRegisteredForTests();
 });
 
 afterEach(() => {
@@ -84,7 +81,7 @@ describe("registerToolIfNeeded", () => {
 	it("calls pi.registerTool exactly once even when invoked multiple times", () => {
 		const pi = makePi();
 		const client = makeClient();
-		const rt = __createRuntimeForTest(pi, client);
+		const rt = makeRuntime(pi, client);
 		const piApi = pi as unknown as ExtensionAPI;
 
 		registerToolIfNeeded(piApi, rt);
@@ -97,7 +94,7 @@ describe("registerToolIfNeeded", () => {
 	it("registers a tool with the name glue_watcher", () => {
 		const pi = makePi();
 		const client = makeClient();
-		const rt = __createRuntimeForTest(pi, client);
+		const rt = makeRuntime(pi, client);
 
 		registerToolIfNeeded(pi as unknown as ExtensionAPI, rt);
 
@@ -115,7 +112,7 @@ describe("handleToolAction — add", () => {
 	it("adds a job watch and seeds baseline when runId is provided", async () => {
 		const pi = makePi();
 		const client = makeClient();
-		const rt = __createRuntimeForTest(pi, client);
+		const rt = makeRuntime(pi, client);
 
 		const result = await handleToolAction(rt, {
 			action: "add",
@@ -137,7 +134,7 @@ describe("handleToolAction — add", () => {
 	it("adds a workflow watch and seeds baseline", async () => {
 		const pi = makePi();
 		const client = makeClient();
-		const rt = __createRuntimeForTest(pi, client);
+		const rt = makeRuntime(pi, client);
 
 		const result = await handleToolAction(rt, {
 			action: "add",
@@ -155,7 +152,7 @@ describe("handleToolAction — add", () => {
 	it("fetches the latest run ID when runId is omitted for a job", async () => {
 		const pi = makePi();
 		const client = makeClient();
-		const rt = __createRuntimeForTest(pi, client);
+		const rt = makeRuntime(pi, client);
 
 		await handleToolAction(rt, {
 			action: "add",
@@ -172,7 +169,7 @@ describe("handleToolAction — add", () => {
 	it("fetches the latest workflow run ID when runId is omitted", async () => {
 		const pi = makePi();
 		const client = makeClient();
-		const rt = __createRuntimeForTest(pi, client);
+		const rt = makeRuntime(pi, client);
 
 		await handleToolAction(rt, {
 			action: "add",
@@ -186,7 +183,7 @@ describe("handleToolAction — add", () => {
 
 	it("returns an error when type is missing", async () => {
 		const pi = makePi();
-		const rt = __createRuntimeForTest(pi, makeClient());
+		const rt = makeRuntime(pi, makeClient());
 		const result = await handleToolAction(rt, { action: "add", name: "job", profile: "p" });
 		expect(result.details.ok).toBe(false);
 		expect(result.details.message).toContain("type");
@@ -194,7 +191,7 @@ describe("handleToolAction — add", () => {
 
 	it("returns an error when name is missing", async () => {
 		const pi = makePi();
-		const rt = __createRuntimeForTest(pi, makeClient());
+		const rt = makeRuntime(pi, makeClient());
 		const result = await handleToolAction(rt, { action: "add", type: "job", profile: "p" });
 		expect(result.details.ok).toBe(false);
 		expect(result.details.message).toContain("name");
@@ -202,7 +199,7 @@ describe("handleToolAction — add", () => {
 
 	it("returns an error when profile is missing", async () => {
 		const pi = makePi();
-		const rt = __createRuntimeForTest(pi, makeClient());
+		const rt = makeRuntime(pi, makeClient());
 		const result = await handleToolAction(rt, { action: "add", type: "job", name: "my-job" });
 		expect(result.details.ok).toBe(false);
 		expect(result.details.message).toContain("profile");
@@ -214,7 +211,7 @@ describe("handleToolAction — add", () => {
 		(client.getLatestJobRunId as ReturnType<typeof vi.fn>).mockRejectedValue(
 			new Error("no runs found"),
 		);
-		const rt = __createRuntimeForTest(pi, client);
+		const rt = makeRuntime(pi, client);
 		const result = await handleToolAction(rt, {
 			action: "add",
 			type: "job",
@@ -231,7 +228,7 @@ describe("handleToolAction — add", () => {
 		(client.getJobRun as ReturnType<typeof vi.fn>).mockRejectedValue(
 			new Error("permission denied"),
 		);
-		const rt = __createRuntimeForTest(pi, client);
+		const rt = makeRuntime(pi, client);
 		const result = await handleToolAction(rt, {
 			action: "add",
 			type: "job",
@@ -246,7 +243,7 @@ describe("handleToolAction — add", () => {
 
 	it("persists state after adding a watch", async () => {
 		const pi = makePi();
-		const rt = __createRuntimeForTest(pi, makeClient());
+		const rt = makeRuntime(pi, makeClient());
 		await handleToolAction(rt, {
 			action: "add",
 			type: "job",
@@ -265,7 +262,7 @@ describe("handleToolAction — add", () => {
 describe("handleToolAction — remove", () => {
 	it("removes an existing watch by watchId", async () => {
 		const pi = makePi();
-		const rt = __createRuntimeForTest(pi, makeClient());
+		const rt = makeRuntime(pi, makeClient());
 		rt.watches["aabb"] = makeWatch({ watchId: "aabb" });
 
 		const result = await handleToolAction(rt, { action: "remove", watchId: "aabb" });
@@ -276,14 +273,14 @@ describe("handleToolAction — remove", () => {
 
 	it("returns an error for an unknown watchId", async () => {
 		const pi = makePi();
-		const rt = __createRuntimeForTest(pi, makeClient());
+		const rt = makeRuntime(pi, makeClient());
 		const result = await handleToolAction(rt, { action: "remove", watchId: "nonexistent" });
 		expect(result.details.ok).toBe(false);
 	});
 
 	it("returns an error when watchId is omitted", async () => {
 		const pi = makePi();
-		const rt = __createRuntimeForTest(pi, makeClient());
+		const rt = makeRuntime(pi, makeClient());
 		const result = await handleToolAction(rt, { action: "remove" });
 		expect(result.details.ok).toBe(false);
 		expect(result.details.message).toContain("watchId");
@@ -297,7 +294,7 @@ describe("handleToolAction — remove", () => {
 describe("handleToolAction — list", () => {
 	it("returns an appropriate message when no watches exist", async () => {
 		const pi = makePi();
-		const rt = __createRuntimeForTest(pi, makeClient());
+		const rt = makeRuntime(pi, makeClient());
 		const result = await handleToolAction(rt, { action: "list" });
 		expect(result.details.ok).toBe(true);
 		expect(result.details.message).toContain("no watches");
@@ -306,7 +303,7 @@ describe("handleToolAction — list", () => {
 
 	it("lists all watches with their name and state", async () => {
 		const pi = makePi();
-		const rt = __createRuntimeForTest(pi, makeClient());
+		const rt = makeRuntime(pi, makeClient());
 		rt.watches["aabb"] = makeWatch({
 			watchId: "aabb",
 			name: "my-etl-job",
@@ -322,7 +319,7 @@ describe("handleToolAction — list", () => {
 
 	it("marks terminal watches with [terminal] in the list output", async () => {
 		const pi = makePi();
-		const rt = __createRuntimeForTest(pi, makeClient());
+		const rt = makeRuntime(pi, makeClient());
 		rt.watches["aabb"] = makeWatch({ watchId: "aabb", terminal: true });
 
 		const result = await handleToolAction(rt, { action: "list" });
@@ -338,14 +335,14 @@ describe("handleToolAction — list", () => {
 describe("handleToolAction — pause / resume", () => {
 	it("sets paused=true on the runtime", async () => {
 		const pi = makePi();
-		const rt = __createRuntimeForTest(pi, makeClient());
+		const rt = makeRuntime(pi, makeClient());
 		await handleToolAction(rt, { action: "pause" });
 		expect(rt.paused).toBe(true);
 	});
 
 	it("clears paused=false on the runtime", async () => {
 		const pi = makePi();
-		const rt = __createRuntimeForTest(pi, makeClient());
+		const rt = makeRuntime(pi, makeClient());
 		rt.paused = true;
 		await handleToolAction(rt, { action: "resume" });
 		expect(rt.paused).toBe(false);
@@ -353,7 +350,7 @@ describe("handleToolAction — pause / resume", () => {
 
 	it("persists state when pausing", async () => {
 		const pi = makePi();
-		const rt = __createRuntimeForTest(pi, makeClient());
+		const rt = makeRuntime(pi, makeClient());
 		await handleToolAction(rt, { action: "pause" });
 		expect(pi.appendEntry).toHaveBeenCalled();
 	});
@@ -366,7 +363,7 @@ describe("handleToolAction — pause / resume", () => {
 describe("handleToolAction — status", () => {
 	it("returns a summary with enabled/disabled and active watch counts", async () => {
 		const pi = makePi();
-		const rt = __createRuntimeForTest(pi, makeClient());
+		const rt = makeRuntime(pi, makeClient());
 		rt.enabled = true;
 		rt.watches["aa"] = makeWatch({ watchId: "aa", terminal: false });
 		rt.watches["bb"] = makeWatch({ watchId: "bb", terminal: true });
@@ -382,7 +379,7 @@ describe("handleToolAction — status", () => {
 
 	it("shows 'paused' when the runtime is paused", async () => {
 		const pi = makePi();
-		const rt = __createRuntimeForTest(pi, makeClient());
+		const rt = makeRuntime(pi, makeClient());
 		rt.paused = true;
 
 		const result = await handleToolAction(rt, { action: "status" });
@@ -392,7 +389,7 @@ describe("handleToolAction — status", () => {
 
 	it("shows the current poll interval in seconds", async () => {
 		const pi = makePi();
-		const rt = __createRuntimeForTest(pi, makeClient());
+		const rt = makeRuntime(pi, makeClient());
 
 		const result = await handleToolAction(rt, { action: "status" });
 
@@ -408,7 +405,7 @@ describe("handleToolAction — status", () => {
 describe("handleToolAction — unknown action", () => {
 	it("returns ok=false for an unrecognised action", async () => {
 		const pi = makePi();
-		const rt = __createRuntimeForTest(pi, makeClient());
+		const rt = makeRuntime(pi, makeClient());
 		const result = await handleToolAction(rt, { action: "bogus" });
 		expect(result.details.ok).toBe(false);
 		expect(result.details.message).toContain("unknown action");
@@ -423,7 +420,7 @@ describe("pollOnce", () => {
 	it("does nothing when paused", async () => {
 		const pi = makePi();
 		const client = makeClient();
-		const rt = __createRuntimeForTest(pi, client);
+		const rt = makeRuntime(pi, client);
 		rt.paused = true;
 		rt.enabled = true;
 		rt.watches["aa"] = makeWatch({ watchId: "aa" });
@@ -437,7 +434,7 @@ describe("pollOnce", () => {
 	it("does nothing when not enabled", async () => {
 		const pi = makePi();
 		const client = makeClient();
-		const rt = __createRuntimeForTest(pi, client);
+		const rt = makeRuntime(pi, client);
 		rt.enabled = false;
 		rt.watches["aa"] = makeWatch({ watchId: "aa" });
 
@@ -449,7 +446,7 @@ describe("pollOnce", () => {
 	it("does not call sendMessage when there are no events", async () => {
 		const pi = makePi();
 		const client = makeClient(); // getJobRun returns RUNNING, baseline is RUNNING
-		const rt = __createRuntimeForTest(pi, client);
+		const rt = makeRuntime(pi, client);
 		rt.enabled = true;
 		rt.watches["aa"] = makeWatch({
 			watchId: "aa",
@@ -464,7 +461,7 @@ describe("pollOnce", () => {
 	it("sends a chat message when a state change is detected", async () => {
 		const pi = makePi();
 		const client = makeClient(); // getJobRun returns RUNNING
-		const rt = __createRuntimeForTest(pi, client);
+		const rt = makeRuntime(pi, client);
 		rt.enabled = true;
 		rt.watches["aa"] = makeWatch({
 			watchId: "aa",
@@ -488,7 +485,7 @@ describe("pollOnce", () => {
 				JobRun: { JobRunState: "SUCCEEDED", ErrorMessage: "" },
 			} satisfies JobRunResponse),
 		};
-		const rt = __createRuntimeForTest(pi, client);
+		const rt = makeRuntime(pi, client);
 		rt.enabled = true;
 		rt.watches["aa"] = makeWatch({
 			watchId: "aa",
@@ -503,7 +500,7 @@ describe("pollOnce", () => {
 	it("skips terminal watches during polling", async () => {
 		const pi = makePi();
 		const client = makeClient();
-		const rt = __createRuntimeForTest(pi, client);
+		const rt = makeRuntime(pi, client);
 		rt.enabled = true;
 		rt.watches["aa"] = makeWatch({ watchId: "aa", terminal: true });
 
@@ -520,7 +517,7 @@ describe("pollOnce", () => {
 			.mockResolvedValueOnce({
 				JobRun: { JobRunState: "RUNNING", ErrorMessage: "" },
 			} satisfies JobRunResponse);
-		const rt = __createRuntimeForTest(pi, client);
+		const rt = makeRuntime(pi, client);
 		rt.enabled = true;
 		rt.watches["aa"] = makeWatch({ watchId: "aa", baseline: { state: "RUNNING", errorMessage: "" } });
 		rt.watches["bb"] = makeWatch({ watchId: "bb", runId: "jr_xyz", baseline: { state: "STARTING", errorMessage: "" } });
@@ -532,7 +529,7 @@ describe("pollOnce", () => {
 	it("persists state after detecting changes", async () => {
 		const pi = makePi();
 		const client = makeClient(); // returns RUNNING
-		const rt = __createRuntimeForTest(pi, client);
+		const rt = makeRuntime(pi, client);
 		rt.enabled = true;
 		rt.watches["aa"] = makeWatch({
 			watchId: "aa",
@@ -554,7 +551,7 @@ describe("pollOnce — consecutive error tracking", () => {
 		const pi = makePi();
 		const client = makeClient();
 		vi.spyOn(client, "getJobRun").mockRejectedValue(new Error("timeout"));
-		const rt = __createRuntimeForTest(pi, client);
+		const rt = makeRuntime(pi, client);
 		rt.enabled = true;
 		rt.watches["aa"] = makeWatch({ watchId: "aa", baseline: { state: "RUNNING", errorMessage: "" } });
 
@@ -571,7 +568,7 @@ describe("pollOnce — consecutive error tracking", () => {
 			.mockRejectedValueOnce(new Error("timeout"))
 			.mockRejectedValueOnce(new Error("timeout"))
 			.mockResolvedValueOnce({ JobRun: { JobRunState: "RUNNING", ErrorMessage: "" } } satisfies JobRunResponse);
-		const rt = __createRuntimeForTest(pi, client);
+		const rt = makeRuntime(pi, client);
 		rt.enabled = true;
 		rt.watches["aa"] = makeWatch({ watchId: "aa", baseline: { state: "RUNNING", errorMessage: "" } });
 
@@ -587,7 +584,7 @@ describe("pollOnce — consecutive error tracking", () => {
 		const pi = makePi();
 		const client = makeClient();
 		vi.spyOn(client, "getJobRun").mockRejectedValue(new Error("credentials expired"));
-		const rt = __createRuntimeForTest(pi, client);
+		const rt = makeRuntime(pi, client);
 		rt.enabled = true;
 		rt.watches["aa"] = makeWatch({ watchId: "aa", consecutiveErrors: POLL_ERROR_THRESHOLD - 1, baseline: { state: "RUNNING", errorMessage: "" } });
 
@@ -609,7 +606,7 @@ describe("pollOnce — consecutive error tracking", () => {
 		const pi = makePi();
 		const client = makeClient();
 		vi.spyOn(client, "getJobRun").mockResolvedValue({ JobRun: { JobRunState: "RUNNING", ErrorMessage: "" } } satisfies JobRunResponse);
-		const rt = __createRuntimeForTest(pi, client);
+		const rt = makeRuntime(pi, client);
 		rt.enabled = true;
 		// Pre-load with a streak above threshold
 		rt.watches["aa"] = makeWatch({ watchId: "aa", consecutiveErrors: POLL_ERROR_THRESHOLD, baseline: { state: "RUNNING", errorMessage: "" } });
@@ -628,7 +625,7 @@ describe("pollOnce — consecutive error tracking", () => {
 		const pi = makePi();
 		const client = makeClient();
 		vi.spyOn(client, "getJobRun").mockResolvedValue({ JobRun: { JobRunState: "RUNNING", ErrorMessage: "" } } satisfies JobRunResponse);
-		const rt = __createRuntimeForTest(pi, client);
+		const rt = makeRuntime(pi, client);
 		rt.enabled = true;
 		rt.watches["aa"] = makeWatch({ watchId: "aa", consecutiveErrors: 2, baseline: { state: "RUNNING", errorMessage: "" } });
 

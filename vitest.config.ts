@@ -34,11 +34,6 @@ export default defineConfig({
 				// unit-tested without running the real AWS CLI. All logic is
 				// driven through the injected GlueClient interface instead.
 				"**/pi-aws-glue-watcher/src/cli-client.ts",
-				// pi-aws-glue-watcher/index.ts: session_start / session_shutdown /
-				// command-handler lifecycle wiring + setImmediate deferred
-				// sendMessage. All testable logic (handleToolAction, pollOnce,
-				// registerToolIfNeeded) is separately exported and fully covered.
-				"**/pi-aws-glue-watcher/src/index.ts",
 				// Thin `completeSimple(...)` shim; the orchestration in names.ts
 				// is exercised through an injectable completion hook.
 				"**/namesCompletion.ts",
@@ -62,11 +57,6 @@ export default defineConfig({
 				// (handleCcSkills, discovery, collisions) is exported and fully
 				// covered in the dedicated test files.
 				"**/pi-claude-code-skills-import/src/index.ts",
-				// (GlueWidget + WatchesView) that require a live pi-tui runtime.
-				// All testable logic (state transitions, formatting) lives in
-				// index.ts, format.ts, and poller.ts which are fully covered.
-				"**/pi-aws-glue-watcher/src/ui/glue-widget.ts",
-				"**/pi-aws-glue-watcher/src/ui/watches-view.ts",
 				// pi-additional-system-prompt/index.ts reads PROMPT.md and
 				// appends it to the system prompt via before_agent_start.
 				// Pure lifecycle wiring; no testable logic beyond what the
