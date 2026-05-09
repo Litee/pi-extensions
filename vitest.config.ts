@@ -38,10 +38,6 @@ export default defineConfig({
 				// is exercised through an injectable completion hook.
 				"**/namesCompletion.ts",
 				"**/namesCompletion.ts",
-				// session-recap/index.ts is lifecycle wiring + a pi-ai model call
-				// + a raw stdin focus-event listener. All logic worth testing is
-				// factored into helpers.ts and covered there.
-				"**/pi-session-recap/src/index.ts",
 				// pi-tool-info/index.ts is pure TUI glue: a /tools command
 				// handler that calls ctx.ui.select, ctx.ui.custom, and renders a
 				// Markdown modal. All logic worth testing (truncate, formatTokens,

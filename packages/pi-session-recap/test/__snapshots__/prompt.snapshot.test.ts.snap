@@ -1,0 +1,21 @@
+// Vitest Snapshot v1, https://vitest.dev/guide/snapshot.html
+
+exports[`buildRecapPrompt > matches the recorded snapshot for a canonical transcript 1`] = `
+"You produce a single-line recap of what the coding agent just did, so the user can re-enter flow after switching focus back to this session.
+
+Rules:
+- Output ONE line, no preamble, no markdown.
+- Do not prefix with \`recap:\` — the UI already renders that label.
+- Format: \`goal: <overall goal>. <what just happened, past tense, concrete>. Next: <one-line next step>.\`
+- If the overall goal is unclear from the transcript, omit the \`goal:\` clause.
+- If there is no meaningful next step, omit the \`Next:\` clause.
+- If the transcript shows the turn was aborted or errored, say so explicitly (e.g. "aborted during X", "errored at Y").
+- Use file/function names where relevant. Be concrete, not vague.
+- Skip: root-cause narrative, fix internals, secondary to-dos, em-dash tangents, motivational framing.
+- Max ~220 characters.
+
+<transcript>
+User: add a Skip rule.
+Assistant: done.
+</transcript>"
+`;
