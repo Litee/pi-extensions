@@ -180,10 +180,29 @@ describe("detectJobChanges", () => {
 		expect(events[0]!.formatted).toContain("?");
 	});
 
-	it("returns an updated baseline even when no events were emitted", async () => {
-		const watch = makeJobWatch({ state: "RUNNING", errorMessage: "" });
-		const { newBaseline } = await detectJobChanges(makeJobClient("RUNNING"), watch);
-		expect((newBaseline as JobBaseline).state).toBe("RUNNING");
+	it("includes optional job-run fields (StartedOn, NumberOfWorkers, WorkerType) in baseline when present", async () => {
+		const client: GlueClient = {
+			getJobRun: vi.fn().mockResolvedValue({
+				JobRun: {
+					JobRunState: "RUNNING",
+					ErrorMessage: "",
+					StartedOn: "2026-01-01T00:00:00Z",
+					NumberOfWorkers: 10,
+					WorkerType: "G.1X",
+				},
+			} satisfies JobRunResponse),
+			getWorkflowRun: vi.fn(),
+			getLatestJobRunId: vi.fn(),
+			getLatestWorkflowRunId: vi.fn(),
+			stopJobRun: vi.fn().mockResolvedValue(undefined),
+			stopWorkflowRun: vi.fn().mockResolvedValue(undefined),
+		};
+		const watch = makeJobWatch({ state: "STARTING", errorMessage: "" });
+		const { newBaseline } = await detectJobChanges(client, watch);
+		const b = newBaseline as JobBaseline;
+		expect(b.startedOn).toBe("2026-01-01T00:00:00Z");
+		expect(b.numberOfWorkers).toBe(10);
+		expect(b.workerType).toBe("G.1X");
 	});
 });
 
@@ -323,5 +342,31 @@ describe("detectWorkflowChanges", () => {
 		};
 		const { newBaseline } = await detectWorkflowChanges(client, watch);
 		expect((newBaseline as WorkflowBaseline).totalActions).toBe(0);
+	});
+
+	it("includes optional node-level fields (StartedOn, NumberOfWorkers, WorkerType) in node info when present", async () => {
+		// Exercises the truthy branches of the optional spreads in detectWorkflowChanges
+		const watch = makeWorkflowWatch(runningBaseline);
+		const nodes: WorkflowRunNode[] = [
+			{
+				Name: "job-a",
+				Type: "JOB",
+				JobDetails: {
+					JobRuns: [{
+						JobRunState: "RUNNING",
+						StartedOn: "2026-01-01T00:00:00Z",
+						NumberOfWorkers: 5,
+						WorkerType: "G.2X",
+					}],
+				},
+			},
+		];
+		const client = makeWorkflowClient("RUNNING", { TotalActions: 1 }, nodes);
+		const { newBaseline } = await detectWorkflowChanges(client, watch);
+		const nodeInfos = (newBaseline as WorkflowBaseline).nodes ?? [];
+		const node = nodeInfos.find((n) => n.name === "job-a");
+		expect(node?.startedOn).toBe("2026-01-01T00:00:00Z");
+		expect(node?.numberOfWorkers).toBe(5);
+		expect(node?.workerType).toBe("G.2X");
 	});
 });

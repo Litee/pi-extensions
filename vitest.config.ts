@@ -57,7 +57,26 @@ export default defineConfig({
 				// (token estimation, filtering, sorting) lives in helpers.ts and is
 				// fully covered there.
 				"**/pi-skills-browser/src/index.ts",
-				// pi-plan-mode/index.ts is lifecycle wiring + pi-ai ui.select +
+				// pi-claude-code-skills-import/src/index.ts: session_start handler
+				// + cc-skills-info command registration. All testable logic
+				// (handleCcSkills, discovery, collisions) is exported and fully
+				// covered in the dedicated test files.
+				"**/pi-claude-code-skills-import/src/index.ts",
+				// (GlueWidget + WatchesView) that require a live pi-tui runtime.
+				// All testable logic (state transitions, formatting) lives in
+				// index.ts, format.ts, and poller.ts which are fully covered.
+				"**/pi-aws-glue-watcher/src/ui/glue-widget.ts",
+				"**/pi-aws-glue-watcher/src/ui/watches-view.ts",
+				// pi-additional-system-prompt/index.ts reads PROMPT.md and
+				// appends it to the system prompt via before_agent_start.
+				// Pure lifecycle wiring; no testable logic beyond what the
+				// PROMPT.md content itself provides.
+				"**/pi-additional-system-prompt/src/index.ts",
+				// pi-thinking-level-control/index.ts registers two keyboard
+				// shortcuts (ctrl+] / ctrl+[) via pi.registerShortcut. The
+				// shortcut handler logic is fully covered by the test suite;
+				// the wiring itself requires a live pi-tui runtime.
+				"**/pi-thinking-level-control/src/index.ts",
 				// setActiveTools orchestration, copied verbatim (minus a handful
 				// of strict-tsconfig patches) from the upstream pi-mono example.
 				// All pure logic (allow/deny lists, plan extraction, [DONE:n]
