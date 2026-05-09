@@ -1,0 +1,17 @@
+{
+  "name": "pi-btw",
+  "version": "0.4.0",
+  "private": true,
+  "description": "Pi extension for parallel /btw side conversations (copy of https://github.com/dbachelder/pi-btw).",
+  "type": "module",
+  "keywords": ["pi-package"],
+  "pi": {
+    "extensions": ["./src/index.ts"],
+    "skills": ["./skills"]
+  },
+  "peerDependencies": {
+    "@mariozechner/pi-ai": "*",
+    "@mariozechner/pi-coding-agent": "*",
+    "@mariozechner/pi-tui": "*"
+  }
+}

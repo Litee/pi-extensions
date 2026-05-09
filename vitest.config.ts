@@ -93,6 +93,15 @@ export default defineConfig({
 				// the renderers requires a live theme + tool runtime; the smoke
 				// test in test/index.test.ts confirms the wiring is intact.
 				"**/pi-built-in-tool-renderer/src/index.ts",
+				// pi-btw/src/index.ts is a copy of dbachelder/pi-btw's extensions/btw.ts
+				// (MIT, © Dan Bachelder). The file is end-to-end TUI wiring:
+				// overlay rendering, slash-command dispatch, focus/keybinding
+				// handling, sub-session lifecycle orchestration, and error toasts.
+				// The 50-test btw.runtime.test.ts suite exercises the business
+				// logic against mocked sessions as far as possible without a
+				// live pi-tui runtime; the remaining branches (overlay render
+				// paths, focus refresh, toast paths) cannot be unit-tested.
+				"**/pi-btw/src/index.ts",
 			],
 			reporter: ["text", "html"],
 			// Fail the suite (non-zero exit) when any threshold is not met.
