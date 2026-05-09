@@ -9,6 +9,7 @@ import createExtension, {
 	__setInfoPickerForTests,
 	buildMissingDbRootStatus,
 	buildStartupChatMessage,
+	buildStatusDetailMessage,
 	handleSessionStart,
 	resolveDbRoot,
 	scanIssueFiles,
@@ -671,7 +672,7 @@ describe("/local-issue-watcher command", () => {
 			{ customType: string; content: string; display?: boolean },
 		];
 		expect(payload.customType).toBe("pi-local-issue-watcher");
-		expect(payload.content).toBe(buildStartupChatMessage(dbRoot, scanIssueFiles(dbRoot)));
+		expect(payload.content).toBe(buildStatusDetailMessage(dbRoot, scanIssueFiles(dbRoot)));
 		expect(payload.display).toBe(true);
 		expect(ctx.ui.notify).not.toHaveBeenCalled();
 	});
@@ -709,7 +710,7 @@ describe("/local-issue-watcher command", () => {
 			{ customType: string; content: string; display?: boolean },
 		];
 		expect(payload.customType).toBe("pi-local-issue-watcher");
-		expect(payload.content).toBe(buildStartupChatMessage(dbRoot, scanIssueFiles(dbRoot)));
+		expect(payload.content).toBe(buildStatusDetailMessage(dbRoot, scanIssueFiles(dbRoot)));
 		expect(payload.display).toBe(true);
 		expect(ctx.ui.notify).not.toHaveBeenCalled();
 	});
@@ -793,7 +794,7 @@ describe("/local-issue-watcher command", () => {
 			{ customType: string; content: string },
 		];
 		expect(payload.customType).toBe("pi-local-issue-watcher");
-		expect(payload.content).toBe(buildStartupChatMessage(dbRoot, scanIssueFiles(dbRoot)));
+		expect(payload.content).toBe(buildStatusDetailMessage(dbRoot, scanIssueFiles(dbRoot)));
 
 		// `/status` must not toggle pause state or produce any additional
 		// notify toasts beyond what pause/resume already emitted.
@@ -1470,7 +1471,6 @@ describe("startup chat message (#0011)", () => {
 			{ triggerTurn?: boolean; deliverAs?: string },
 		];
 		expect(payload.content).toContain("active");
-		expect(payload.content).toContain(dbRoot);
 		expect(payload.content).toMatch(/\d+ open/);
 		// #0013 reversed the original #0011 decision: the startup summary now
 		// triggers an agent turn so the LLM sees the tracker state at session
