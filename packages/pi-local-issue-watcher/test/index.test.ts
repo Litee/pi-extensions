@@ -8,7 +8,6 @@ import createExtension, {
 	POLL_INTERVAL_MS,
 	__setInfoPickerForTests,
 	buildMissingDbRootStatus,
-	buildStartupChatMessage,
 	buildStatusDetailMessage,
 	handleSessionStart,
 	resolveDbRoot,
