@@ -38,11 +38,6 @@ export default defineConfig({
 				// is exercised through an injectable completion hook.
 				"**/namesCompletion.ts",
 				"**/namesCompletion.ts",
-				// pi-tool-info/index.ts is pure TUI glue: a /tools command
-				// handler that calls ctx.ui.select, ctx.ui.custom, and renders a
-				// Markdown modal. All logic worth testing (truncate, formatTokens,
-				// estimateToolTokens, sourceLabel) lives in helpers.ts.
-				"**/pi-tools/src/index.ts",
 				// pi-skills-browser/index.ts is TUI wiring: a /skills command handler
 				// that builds a custom component via ctx.ui.custom. All pure logic
 				// (token estimation, filtering, sorting) lives in helpers.ts and is

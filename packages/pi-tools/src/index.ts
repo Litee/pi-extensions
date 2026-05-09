@@ -1,5 +1,5 @@
 /**
- * pi-tool-info
+ * pi-tools
  *
  * Registers a `/tools` command that lets you review every tool available
  * to pi in the current session: name, source, active/inactive state,
@@ -22,6 +22,15 @@
  *   ← (Left arrow)          → back to the selector (when entered from it)
  *   Enter / Esc             → close
  *
+ * This file is intentionally thin: state vars, event wiring, and the
+ * `/tools` command glue that drives `ctx.ui.custom`. All pure logic lives
+ * in sibling modules and is unit-tested:
+ *   - `renderToolMarkdown.ts` — Markdown assembly for the detail view
+ *   - `completions.ts`        — argument autocomplete filter + truncation
+ *   - `rows.ts`               — selector row layout & grouping
+ *   - `branchState.ts`        — saved-tools lookup in the session branch
+ *   - `helpers.ts`            — token estimation + title formatting
+ *
  * Security notes
  * --------------
  *   - No network calls, no filesystem writes, no process spawns.
@@ -34,43 +43,18 @@ import type { ExtensionAPI, ExtensionCommandContext, ExtensionContext, ToolInfo 
 import { DynamicBorder, getMarkdownTheme, getSelectListTheme } from "@mariozechner/pi-coding-agent";
 import { Container, Markdown, matchesKey, type SelectItem, SelectList, Text } from "@mariozechner/pi-tui";
 
-import { buildSelectorTitle, estimateToolTokens, formatTokens, sourceLabel, truncate } from "./helpers.js";
+import { pickSavedTools, TOOLS_CONFIG_CUSTOM_TYPE, type ToolsState } from "./branchState.js";
+import { getToolArgumentCompletions } from "./completions.js";
+import { buildSelectorTitle, estimateToolTokens } from "./helpers.js";
+import { renderToolMarkdown } from "./renderToolMarkdown.js";
+import { buildToolRows, type RowLayout } from "./rows.js";
 
 const ALL_FLAGS = new Set(["--all", "-a", "all", "*"]);
 
 // Total target visible width for a list row. The description tail shrinks to
 // fit whatever space is left after the name + token badge. If the terminal is
 // narrower, the select component will still clip visually at the right.
-const LIST_ROW_WIDTH = 100;
-const MIN_DESC_WIDTH = 20;
-const COMPLETION_DESC_WIDTH = 80;
-
-interface ToolsState {
-	enabledTools: string[];
-}
-
-function renderToolMarkdown(tool: ToolInfo, active: Set<string>): string {
-	const status = active.has(tool.name) ? "✅ active" : "⛔ inactive";
-	const desc = tool.description?.trim() || "_(no description)_";
-	const tokens = estimateToolTokens(tool);
-	let schema: string;
-	try {
-		schema = JSON.stringify(tool.parameters ?? {}, null, 2);
-	} catch {
-		schema = String(tool.parameters);
-	}
-	return [
-		`## ${tool.name}  ${status}`,
-		`**Source:** ${sourceLabel(tool)}  ·  **Tokens:** ~${tokens}`,
-		"",
-		desc,
-		"",
-		"**Parameters:**",
-		"```json",
-		schema,
-		"```",
-	].join("\n");
-}
+const LIST_LAYOUT: RowLayout = { listRowWidth: 100, minDescWidth: 20 };
 
 type CloseReason = "back" | "done";
 
@@ -127,7 +111,6 @@ async function showMarkdown(
 			handleInput: (data: string) => {
 				if (toggleInfo && matchesKey(data, "t")) {
 					toggleInfo.onToggle(toggleInfo.tool.name);
-					// Rebuild markdown body with the updated active set (mutated by onToggle).
 					md.setText(renderToolMarkdown(toggleInfo.tool, toggleInfo.active));
 					md.invalidate();
 					tui.requestRender();
@@ -155,7 +138,7 @@ export default function toolInfoExtension(pi: ExtensionAPI) {
 	let enabledTools: Set<string> = new Set<string>();
 
 	function persistState(): void {
-		pi.appendEntry<ToolsState>("tools-config", { enabledTools: [...enabledTools] });
+		pi.appendEntry<ToolsState>(TOOLS_CONFIG_CUSTOM_TYPE, { enabledTools: [...enabledTools] });
 	}
 
 	function applyTools(): void {
@@ -163,27 +146,12 @@ export default function toolInfoExtension(pi: ExtensionAPI) {
 	}
 
 	function restoreFromBranch(ctx: ExtensionContext): void {
-		const allTools = pi.getAllTools();
-		const allToolNames = new Set(allTools.map((t) => t.name));
-
-		// Walk branch entries newest-first to find the last saved tools-config.
-		const branchEntries = ctx.sessionManager.getBranch();
-		let savedTools: string[] | undefined;
-		for (const entry of branchEntries) {
-			if (entry.type === "custom" && entry.customType === "tools-config") {
-				const data = entry.data as ToolsState | undefined;
-				if (data?.enabledTools) {
-					savedTools = data.enabledTools;
-				}
-		  }
-		}
-
-		if (savedTools) {
-			// Filter to only tools that still exist in this session.
-			enabledTools = new Set(savedTools.filter((t) => allToolNames.has(t)));
+		const allToolNames = new Set(pi.getAllTools().map((t) => t.name));
+		const saved = pickSavedTools(ctx.sessionManager.getBranch());
+		if (saved) {
+			enabledTools = new Set(saved.filter((t) => allToolNames.has(t)));
 			applyTools();
 		} else {
-			// No saved state — mirror whatever is currently active.
 			enabledTools = new Set(pi.getActiveTools());
 		}
 	}
@@ -206,19 +174,7 @@ export default function toolInfoExtension(pi: ExtensionAPI) {
 
 	pi.registerCommand("tools", {
 		description: "Show tools with their descriptions and parameter schemas; press t in a tool view to toggle it",
-		getArgumentCompletions: (prefix) => {
-			const tools = pi.getAllTools();
-			const candidates = ["--all", ...tools.map((t) => t.name)];
-			const filtered = candidates.filter((c) => c.startsWith(prefix));
-			if (filtered.length === 0) return null;
-			return filtered.map((value) => {
-				const tool = tools.find((t) => t.name === value);
-				const first = tool?.description?.split("\n")[0] ?? "";
-				return first
-					? { value, label: value, description: truncate(first, COMPLETION_DESC_WIDTH) }
-					: { value, label: value };
-			});
-		},
+		getArgumentCompletions: (prefix) => getToolArgumentCompletions(prefix, pi.getAllTools()),
 		handler: async (args, ctx) => {
 			const tools = pi.getAllTools();
 			if (tools.length === 0) {
@@ -268,50 +224,11 @@ export default function toolInfoExtension(pi: ExtensionAPI) {
 			// No args: interactive selector, grouped by source. Repeat until the
 			// user dismisses a detail view with Enter/Esc (or cancels the list).
 			const theme = ctx.ui.theme;
+			const selectListTheme = getSelectListTheme();
 
-			type Row = { label: string; toolName?: string };
-			const buildRows = (): Row[] => {
-				const grouped = new Map<string, ToolInfo[]>();
-				for (const tool of tools) {
-					const key = tool.sourceInfo?.source ?? "unknown";
-					const list = grouped.get(key) ?? [];
-					list.push(tool);
-					grouped.set(key, list);
-				}
-				const sourceOrder = ["builtin", "sdk", "extension", "skill", "unknown"];
-				const orderedKeys = [
-					...sourceOrder.filter((k) => grouped.has(k)),
-					...[...grouped.keys()].filter((k) => !sourceOrder.includes(k)),
-				];
-
-				const rows: Row[] = [];
-				for (const key of orderedKeys) {
-					const list = grouped.get(key)!.sort((a, b) => a.name.localeCompare(b.name));
-					rows.push({ label: theme.fg("dim", `── ${key} (${list.length}) ──`) });
-					for (const tool of list) {
-						const mark = active.has(tool.name) ? theme.fg("accent", "●") : theme.fg("dim", "○");
-						// Plain (uncolored) pieces are used to measure visible width;
-						// colored/bold versions are used for display.
-						const tokenPlain = `[${formatTokens(estimateToolTokens(tool))} tok]`;
-						const name = theme.bold(tool.name);
-						const tokens = theme.fg("dim", tokenPlain);
-
-						const firstLine = tool.description?.split("\n")[0]?.trim() ?? "";
-						let desc = "";
-						if (firstLine) {
-							// Fixed pieces in visible chars: mark(1) + 2sp + name + 1sp +
-							// tokenPlain + " — " (3) + description. Description shrinks to
-							// fit LIST_ROW_WIDTH, but never below MIN_DESC_WIDTH.
-							const fixed = 1 + 2 + tool.name.length + 1 + tokenPlain.length + 3;
-							const budget = Math.max(MIN_DESC_WIDTH, LIST_ROW_WIDTH - fixed);
-							desc = ` ${theme.fg("dim", `— ${truncate(firstLine, budget)}`)}`;
-						}
-						rows.push({ label: `${mark}  ${name} ${tokens}${desc}`, toolName: tool.name });
-					}
-				}
-				rows.push({
-					label: theme.fg("dim", "── actions ──"),
-				});
+			const buildRowsWithActions = () => {
+				const rows = buildToolRows(tools, active, theme, LIST_LAYOUT);
+				rows.push({ label: theme.fg("dim", "── actions ──") });
 				rows.push({
 					label: `${theme.fg("accent", "»")}  ${theme.bold("show all tools in one view")}`,
 					toolName: "__ALL__",
@@ -319,17 +236,14 @@ export default function toolInfoExtension(pi: ExtensionAPI) {
 				return rows;
 			};
 
-			// Theme for the SelectList component.
-			const selectListTheme = getSelectListTheme();
-
 			while (true) {
 				// Show the interactive selector. Pressing `t` toggles the focused tool
 				// in-place; Enter selects it; Esc cancels.
-				const selectedToolName = await ctx.ui.custom<string | null>((tui, _theme, _kb, done) => {
+				const selectedToolName = (await ctx.ui.custom<string | null>((tui, _theme, _kb, done) => {
 					let savedIndex = 0;
 
 					const buildList = (): SelectList => {
-						const freshRows = buildRows();
+						const freshRows = buildRowsWithActions();
 						const freshItems: SelectItem[] = freshRows.map((r) => ({
 							value: r.toolName ?? "__header__",
 							label: r.label,
@@ -379,7 +293,7 @@ export default function toolInfoExtension(pi: ExtensionAPI) {
 							tui.requestRender();
 						},
 					};
-				}) ?? null;
+				})) ?? null;
 
 				if (selectedToolName === null) return; // user cancelled
 
