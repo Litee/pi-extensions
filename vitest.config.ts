@@ -87,6 +87,26 @@ export default defineConfig({
 				// renderRead/Bash/Edit/Write/Grep/Ls/Find) lives in helpers.ts +
 				// renderers.ts and is 100% covered there.
 				"**/pi-built-in-tool-renderer/src/index.ts",
+				// pi-prompt-scheduler/index.ts is lifecycle wiring:
+				// session_start / session_shutdown + a `/schedule-prompt` command
+				// that calls ctx.ui.select / ctx.ui.custom. All pure logic
+				// (validation, persistence, jobs-view state machine, tool actions)
+				// is exported from scheduler.ts / storage.ts / settings.ts /
+				// tool.ts / ui/jobs-view.ts and covered there.
+				"**/pi-prompt-scheduler/src/index.ts",
+				// pi-prompt-scheduler/subagent.ts spawns an in-process
+				// AgentSession via pi-coding-agent to run a scheduled prompt in
+				// a fresh model context. Cannot be exercised without live
+				// pi-agent-core plumbing + a provider API key; resolveModel and
+				// the runner are exercised end-to-end through the scheduler's
+				// subagent firing path in manual QA.
+				"**/pi-prompt-scheduler/src/subagent.ts",
+				// pi-prompt-scheduler/ui/cron-widget.ts is the live
+				// below-the-editor status widget. Rendering depends on
+				// pi-coding-agent's DynamicBorder + a running TUI loop; the
+				// pure helpers (formatISOShort, humanizeCron) it reads from
+				// live in scheduler.ts and are covered there.
+				"**/pi-prompt-scheduler/src/ui/cron-widget.ts",
 			],
 			// `json-summary` makes the coverage output machine-readable so CI or
 			// review tooling (e.g. gh-action coverage comments, pi-session-recap

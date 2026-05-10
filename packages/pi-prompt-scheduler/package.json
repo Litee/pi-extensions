@@ -1,0 +1,23 @@
+{
+  "name": "pi-prompt-scheduler",
+  "version": "0.3.0",
+  "private": true,
+  "description": "LLM-facing scheduler for pi: registers a `schedule_prompt` tool and exposes a browse/cancel TUI for the jobs the agent has created (cron, interval, relative time, ISO). Copy of tintinweb/pi-schedule-prompt.",
+  "license": "MIT",
+  "author": "tintinweb (upstream); ported and trimmed to LLM-only surface by Andrey Lipatkin",
+  "type": "module",
+  "keywords": ["pi-package"],
+  "pi": {
+    "extensions": ["./src/index.ts"]
+  },
+  "peerDependencies": {
+    "@mariozechner/pi-agent-core": "*",
+    "@mariozechner/pi-ai": "*",
+    "@mariozechner/pi-coding-agent": "*",
+    "@mariozechner/pi-tui": "*"
+  },
+  "dependencies": {
+    "croner": "^10.0.1",
+    "nanoid": "^5.0.0"
+  }
+}
