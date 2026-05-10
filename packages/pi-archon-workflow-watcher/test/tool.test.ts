@@ -59,36 +59,57 @@ function makeRt(runs: ArchonRun[] | Error, snapshot: RunSnapshot = {}) {
 // ---------------------------------------------------------------------------
 
 describe("handleToolAction — status", () => {
-	it("returns current workflow status when no runs are active", async () => {
+	it("returns 'no runs being watched' when watchedIds is empty", async () => {
 		const { rt, pi } = makeRt([]);
 		const result = await handleToolAction(rt, { action: "status" }, pi);
 		expect(result.details.ok).toBe(true);
 		expect(result.details.action).toBe("status");
-		expect(result.content[0]!.text).toContain("No active workflow runs");
+		expect(result.content[0]!.text).toContain("no runs being watched");
 	});
 
-	it("returns formatted run list when runs are active", async () => {
+	it("returns formatted run list when runs are watched", async () => {
 		const run = makeRun({
 			id: "r1",
 			status: "running",
 			workflowName: "archon-assist",
 			workingPath: "/repo/feat-foo",
 		});
-		const { rt, pi } = makeRt([run]);
+		const { rt, pi } = makeRt([run], { r1: run });
+		rt.watchedIds.add("r1");
 		const result = await handleToolAction(rt, { action: "status" }, pi);
 		expect(result.details.ok).toBe(true);
 		expect(result.content[0]!.text).toContain("archon-assist");
 		expect(result.content[0]!.text).toContain("running");
 	});
 
-	it("returns error when archon CLI fails", async () => {
-		const { rt, pi } = makeRt(new Error("archon not found"));
-		const warnSpy = vi.spyOn(console, "warn").mockImplementation(() => {});
-		const result = await handleToolAction(rt, { action: "status" }, pi);
-		warnSpy.mockRestore();
+	it("'add' returns error when runId is missing", async () => {
+		const { rt, pi } = makeRt([]);
+		const result = await handleToolAction(rt, { action: "add" }, pi);
 		expect(result.details.ok).toBe(false);
-		expect(result.content[0]!.text).toContain("failed to fetch status");
-		expect(result.content[0]!.text).toContain("archon not found");
+		expect(result.content[0]!.text).toContain("requires a runId");
+	});
+
+	it("'add' adds runId to watchedIds and seeds snapshot from client", async () => {
+		vi.useFakeTimers();
+		const run = makeRun({ id: "r1", status: "running", workflowName: "my-wf" });
+		const { rt, pi } = makeRt([run]);
+		const result = await handleToolAction(rt, { action: "add", runId: "r1" }, pi);
+		expect(result.details.ok).toBe(true);
+		expect(result.content[0]!.text).toContain("watching");
+		expect(rt.watchedIds.has("r1")).toBe(true);
+		expect(rt.snapshot["r1"]).toBeDefined();
+		// timer started because not paused
+		expect(rt.timer).not.toBeNull();
+		clearInterval(rt.timer!);
+		vi.useRealTimers();
+	});
+
+	it("'add' is idempotent — ok when already watching", async () => {
+		const { rt, pi } = makeRt([]);
+		rt.watchedIds.add("r1");
+		const result = await handleToolAction(rt, { action: "add", runId: "r1" }, pi);
+		expect(result.details.ok).toBe(true);
+		expect(result.content[0]!.text).toContain("already watching");
 	});
 
 	it("does not mutate rt.snapshot", async () => {
@@ -97,9 +118,53 @@ describe("handleToolAction — status", () => {
 			[makeRun({ id: "new", status: "running" })],
 			{ old: existing },
 		);
+		// watchedIds is empty → status returns early without touching snapshot
 		await handleToolAction(rt, { action: "status" }, pi);
-		// snapshot should be unchanged — status is a read-only fetch
 		expect(Object.keys(rt.snapshot)).toEqual(["old"]);
+	});
+});
+
+// ---------------------------------------------------------------------------
+// remove action
+// ---------------------------------------------------------------------------
+
+describe("handleToolAction — remove", () => {
+	it("returns error when runId is missing", async () => {
+		const { rt, pi } = makeRt([]);
+		const result = await handleToolAction(rt, { action: "remove" }, pi);
+		expect(result.details.ok).toBe(false);
+		expect(result.content[0]!.text).toContain("requires a runId");
+	});
+
+	it("returns error when runId is not in watch list", async () => {
+		const { rt, pi } = makeRt([]);
+		const result = await handleToolAction(rt, { action: "remove", runId: "r1" }, pi);
+		expect(result.details.ok).toBe(false);
+		expect(result.content[0]!.text).toContain("not in the watch list");
+	});
+
+	it("removes runId from watchedIds and snapshot", async () => {
+		const run = makeRun({ id: "r1", status: "running" });
+		const { rt, pi } = makeRt([], { r1: run });
+		rt.watchedIds.add("r1");
+		const result = await handleToolAction(rt, { action: "remove", runId: "r1" }, pi);
+		expect(result.details.ok).toBe(true);
+		expect(rt.watchedIds.has("r1")).toBe(false);
+		expect(rt.snapshot["r1"]).toBeUndefined();
+	});
+
+	it("stops polling when last run is removed", async () => {
+		vi.useFakeTimers();
+		const run = makeRun({ id: "r1", status: "running" });
+		const { rt, pi } = makeRt([], { r1: run });
+		rt.watchedIds.add("r1");
+		// Start the timer manually
+		const { startPolling } = await import("../src/runtime.js");
+		startPolling(rt);
+		expect(rt.timer).not.toBeNull();
+		await handleToolAction(rt, { action: "remove", runId: "r1" }, pi);
+		expect(rt.timer).toBeNull();
+		vi.useRealTimers();
 	});
 });
 
@@ -141,6 +206,7 @@ describe("handleToolAction — resume", () => {
 		vi.useFakeTimers();
 		const { rt, pi } = makeRt([]);
 		rt.paused = true;
+		rt.watchedIds.add("r1"); // timer only starts when watchedIds is non-empty
 		const result = await handleToolAction(rt, { action: "resume" }, pi);
 		expect(rt.paused).toBe(false);
 		expect(rt.timer).not.toBeNull();
@@ -187,6 +253,7 @@ describe("handleToolAction — poll", () => {
 	it("runs pollOnce and returns the updated snapshot", async () => {
 		const run = makeRun({ id: "r1", status: "running", workflowName: "archon-assist" });
 		const { rt, pi } = makeRt([run]);
+		rt.watchedIds.add("r1");
 		const result = await handleToolAction(rt, { action: "poll" }, pi);
 		expect(result.details.ok).toBe(true);
 		// snapshot was updated by pollOnce
@@ -197,6 +264,7 @@ describe("handleToolAction — poll", () => {
 	it("sends a chat message with the snapshot after polling", async () => {
 		const run = makeRun({ id: "r1", status: "running" });
 		const { rt, pi } = makeRt([run]);
+		rt.watchedIds.add("r1");
 		await handleToolAction(rt, { action: "poll" }, pi);
 		// At least one sendMessage call should be the status snapshot (last call)
 		expect(pi.sendMessage).toHaveBeenCalled();
@@ -208,10 +276,10 @@ describe("handleToolAction — poll", () => {
 		expect(lastCall[1].triggerTurn).toBe(false);
 	});
 
-	it("returns 'No active workflow runs' when archon has no runs", async () => {
+	it("returns 'no runs being watched' when watchedIds is empty", async () => {
 		const { rt, pi } = makeRt([]);
 		const result = await handleToolAction(rt, { action: "poll" }, pi);
-		expect(result.content[0]!.text).toContain("No active workflow runs");
+		expect(result.content[0]!.text).toContain("no runs being watched");
 	});
 });
 

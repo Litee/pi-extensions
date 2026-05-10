@@ -3,9 +3,6 @@ import type { RunSnapshot } from "./types.js";
 export const STATE_ENTRY_TYPE = "pi-archon-workflow-watcher:state";
 export const RUNSTATE_ENTRY_TYPE = "pi-archon-workflow-watcher:runstate";
 
-/** Maximum age at which a persisted snapshot is still trusted as baseline. */
-export const STATE_MAX_AGE_MS = 5 * 60 * 1000; // 5 minutes
-
 export interface SessionLike {
 	sessionManager: {
 		getEntries(): Array<{ type?: string; customType?: string; data?: unknown }>;
@@ -14,12 +11,15 @@ export interface SessionLike {
 
 export interface PersistedState {
 	savedAt: number;
-	snapshot: RunSnapshot; // already JSON-safe (no bigint)
+	snapshot: RunSnapshot;
+	/** Explicitly watched run IDs — no TTL, sticky until removed. */
+	watchedIds: string[];
 }
 
 export interface RehydratedState {
 	savedAt: number;
 	snapshot: RunSnapshot;
+	watchedIds: string[];
 }
 
 export interface PersistedRunState {
@@ -33,9 +33,9 @@ export interface RehydratedRunState {
 }
 
 /**
- * Walk the session entry log newest → oldest. Return the first entry whose
- * customType === STATE_ENTRY_TYPE and whose savedAt is within STATE_MAX_AGE_MS.
- * Returns null otherwise.
+ * Walk the session entry log newest → oldest and return the first valid
+ * state entry. No TTL — watchedIds must survive across sessions.
+ * Returns null when no entry has been written yet.
  */
 export function rehydrateSnapshotFromSession(
 	ctx: SessionLike,
@@ -59,19 +59,18 @@ export function rehydrateSnapshotFromSession(
 			console.warn("[archon-watcher] persisted state entry malformed; ignoring");
 			continue;
 		}
-		if (Date.now() - savedAt > STATE_MAX_AGE_MS) return null;
-		return { savedAt, snapshot: snapshot as RunSnapshot };
+		const watchedIds = Array.isArray(data.watchedIds)
+			? data.watchedIds.filter((id): id is string => typeof id === "string")
+			: [];
+		return { savedAt, snapshot: snapshot as RunSnapshot, watchedIds };
 	}
 	return null;
 }
 
 /**
  * Walk the session entry log newest → oldest and return the most recent
- * run-state entry. Unlike rehydrateSnapshotFromSession, this has no TTL —
- * an explicit pause preference is sticky until the user resumes.
- *
- * Returns null when no run-state entry has ever been written — callers
- * should treat that as the default (paused=false, i.e. running).
+ * run-state entry. No TTL — an explicit pause preference is sticky until
+ * the user resumes.
  */
 export function rehydrateRunStateFromSession(
 	ctx: SessionLike,
@@ -98,9 +97,14 @@ export function rehydrateRunStateFromSession(
 export function writeSnapshot(
 	pi: { appendEntry(type: string, data: unknown): void },
 	snapshot: RunSnapshot,
+	watchedIds: Set<string>,
 ): void {
 	try {
-		pi.appendEntry(STATE_ENTRY_TYPE, { savedAt: Date.now(), snapshot });
+		pi.appendEntry(STATE_ENTRY_TYPE, {
+			savedAt: Date.now(),
+			snapshot,
+			watchedIds: [...watchedIds],
+		} satisfies PersistedState);
 	} catch {
 		/* noop — persistence is best-effort */
 	}

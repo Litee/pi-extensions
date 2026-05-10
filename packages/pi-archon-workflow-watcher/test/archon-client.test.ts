@@ -189,3 +189,14 @@ describe("ArchonCliError", () => {
 		expect(new ArchonCliError("x", 0)).toBeInstanceOf(Error);
 	});
 });
+
+// ---------------------------------------------------------------------------
+// DB_LOCKED_MARKER export
+// ---------------------------------------------------------------------------
+
+describe("DB_LOCKED_MARKER", () => {
+	it("is exported and matches the archon error string", async () => {
+		const { DB_LOCKED_MARKER } = await import("../src/archon-client.js");
+		expect(DB_LOCKED_MARKER).toBe("database is locked");
+	});
+});

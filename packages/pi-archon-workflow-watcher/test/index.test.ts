@@ -224,7 +224,14 @@ describe("session_start — active (not paused)", () => {
 		const client = makeClient([makeRun({ id: "r1", status: "running" })]);
 		createExtensionWithClient(pi as never, client);
 
-		const ctx = makeFakeCtx([runningRunstate()]);
+		const ctx = makeFakeCtx([
+			runningRunstate(),
+			{
+				type: "custom",
+				customType: STATE_ENTRY_TYPE,
+				data: { savedAt: Date.now(), snapshot: {}, watchedIds: ["r1"] },
+			},
+		]);
 		await pi.sessionStartHandler!({}, ctx);
 
 		// setImmediate defers the message; flush micro/macro tasks
@@ -244,7 +251,14 @@ describe("session_start — active (not paused)", () => {
 			pi as never,
 			makeClient([makeRun({ id: "r1", status: "running" })]),
 		);
-		const ctx = makeFakeCtx([runningRunstate()]);
+		const ctx = makeFakeCtx([
+			runningRunstate(),
+			{
+				type: "custom",
+				customType: STATE_ENTRY_TYPE,
+				data: { savedAt: Date.now(), snapshot: {}, watchedIds: ["r1"] },
+			},
+		]);
 		await pi.sessionStartHandler!({}, ctx);
 
 		const stateCalls = pi.appendEntry.mock.calls.filter(
@@ -272,7 +286,14 @@ describe("session_start — active (not paused)", () => {
 		const pi = makePi();
 		const run = makeRun({ id: "r1", status: "running", workflowName: "archon-assist" });
 		createExtensionWithClient(pi as never, makeClient([run]));
-		const ctx = makeFakeCtx([runningRunstate()]);
+		const ctx = makeFakeCtx([
+			runningRunstate(),
+			{
+				type: "custom",
+				customType: STATE_ENTRY_TYPE,
+				data: { savedAt: Date.now(), snapshot: { r1: run }, watchedIds: ["r1"] },
+			},
+		]);
 		await pi.sessionStartHandler!({}, ctx);
 
 		const statusCalls = ctx.ui.setStatus.mock.calls as Array<
@@ -300,6 +321,7 @@ describe("session_start — active (not paused)", () => {
 				data: {
 					savedAt: Date.now(),
 					snapshot: { r1: makeRun({ id: "r1", status: "running" }) },
+					watchedIds: ["r1"],
 				},
 			},
 		]);
@@ -327,6 +349,7 @@ describe("session_start — active (not paused)", () => {
 				data: {
 					savedAt: Date.now(),
 					snapshot: { r1: run },
+					watchedIds: ["r1"],
 				},
 			},
 		]);
@@ -418,7 +441,15 @@ describe("session_start — paused", () => {
 		const pi = makePi();
 		const client = makeClient([]);
 		createExtensionWithClient(pi as never, client);
-		const ctx = makeFakeCtx([]); // no runstate entry
+		// No runstate entry → defaults to not paused.
+		// Add a baseline with watchedIds so the active path proceeds and calls the client.
+		const ctx = makeFakeCtx([
+			{
+				type: "custom",
+				customType: STATE_ENTRY_TYPE,
+				data: { savedAt: Date.now(), snapshot: {}, watchedIds: ["r1"] },
+			},
+		]);
 		await pi.sessionStartHandler!({}, ctx);
 		// active path: getWorkflowStatus should have been called
 		expect(client.getWorkflowStatus).toHaveBeenCalled();
@@ -607,7 +638,19 @@ describe("polling loop integration", () => {
 		const client = makeClient(runs);
 		createExtensionWithClient(pi as never, client);
 
-		const ctx = makeFakeCtx([runningRunstate()]);
+		// Provide a baseline with watchedIds so session_start proceeds and starts polling.
+		const ctx = makeFakeCtx([
+			runningRunstate(),
+			{
+				type: "custom",
+				customType: STATE_ENTRY_TYPE,
+				data: {
+					savedAt: Date.now(),
+					snapshot: { r1: makeRun({ id: "r1", status: "running" }) },
+					watchedIds: ["r1"],
+				},
+			},
+		]);
 		await pi.sessionStartHandler!({}, ctx);
 		// Flush deferred setImmediate calls (faked by vitest fake timers)
 		await vi.advanceTimersByTimeAsync(0);

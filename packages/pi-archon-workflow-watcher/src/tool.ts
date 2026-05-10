@@ -2,12 +2,16 @@
  * Tool registration + action handler for pi-archon-workflow-watcher.
  *
  * Registers an `archon_watcher` tool so the LLM can programmatically
- * interact with the watcher — checking status, pausing/resuming, and
- * triggering an immediate poll — without relying on the human-typed
- * `/archon-watcher` slash command.
+ * manage the watch list and control polling.
  *
- * Extracted from index.ts so `handleToolAction` can be unit-tested
- * without a live pi-tui runtime.
+ * Actions:
+ *   add    — register a run ID to watch (required before any tracking happens)
+ *   remove — stop watching a run ID
+ *   list   — fetch the global archon active runs (for run ID discovery)
+ *   status — show current state of watched runs only
+ *   poll   — trigger an immediate poll cycle of watched runs
+ *   pause  — suspend background polling (persisted)
+ *   resume — resume background polling (persisted)
  */
 
 import type { ExtensionAPI } from "@mariozechner/pi-coding-agent";
@@ -15,7 +19,7 @@ import { Type } from "typebox";
 
 import type { ArchonClient } from "./archon-client.js";
 import { buildStartupChatMessage } from "./format.js";
-import { writeRunState } from "./persistence.js";
+import { writeRunState, writeSnapshot } from "./persistence.js";
 import {
 	CUSTOM_MESSAGE_TYPE,
 	pollOnce,
@@ -24,7 +28,7 @@ import {
 	stopPolling,
 	type Runtime,
 } from "./runtime.js";
-import type { RunSnapshot } from "./types.js";
+import type { ArchonRun, RunSnapshot } from "./types.js";
 
 // ---------------------------------------------------------------------------
 // Schema
@@ -33,18 +37,27 @@ import type { RunSnapshot } from "./types.js";
 export const ArchonWatcherParams = Type.Object({
 	action: Type.Union(
 		[
+			Type.Literal("add"),
+			Type.Literal("remove"),
 			Type.Literal("status"),
+			Type.Literal("poll"),
 			Type.Literal("pause"),
 			Type.Literal("resume"),
-			Type.Literal("poll"),
 		],
 		{
 			description:
-				"status: fetch and return the current archon workflow run statuses. " +
+				"add: start watching a specific run ID — required before the watcher tracks anything. " +
+				"remove: stop watching a run ID. " +
+				"status: show current state of watched runs only. " +
+				"poll: trigger an immediate poll of watched runs now. " +
 				"pause: suspend background polling (persisted across sessions). " +
-				"resume: resume background polling (persisted). " +
-				"poll: run one immediate poll cycle now and return any detected changes.",
+				"resume: resume background polling (persisted).",
 		},
+	),
+	runId: Type.Optional(
+		Type.String({
+			description: "Workflow run ID — required for 'add' and 'remove'.",
+		}),
 	),
 });
 
@@ -70,15 +83,14 @@ export function registerToolIfNeeded(pi: ExtensionAPI, rt: Runtime): void {
 		name: "archon_watcher",
 		label: "Archon Workflow Watcher",
 		description:
-			"Interact with the background archon workflow watcher. " +
-			"Use 'status' to see all current workflow run states, " +
-			"'poll' to trigger an immediate check for changes, " +
-			"'pause' to suspend polling, or 'resume' to re-enable it. " +
-			"State-change notifications (paused, completed, failed) are " +
-			"injected into chat automatically — you only need this tool " +
-			"when you want to check status on demand or control polling.",
+			"Manage the archon workflow watcher. " +
+			"Call 'add' with a run ID to start watching it — get the ID from `archon workflow status --json`. " +
+			"The watcher will automatically notify you when the run's status changes " +
+			"(paused = waiting for input, disappeared = completed or failed). " +
+			"Use 'status' to see watched runs, 'remove' to stop watching, " +
+			"'poll' to check immediately, 'pause'/'resume' to control polling.",
 		promptSnippet:
-			"archon_watcher({action}) — status | pause | resume | poll",
+			"archon_watcher({action, runId?}) — add | remove | status | poll | pause | resume",
 		parameters: ArchonWatcherParams,
 		async execute(_toolCallId, params) {
 			return handleToolAction(rt, params, pi);
@@ -105,7 +117,15 @@ function toolText(text: string): ToolResultContent["content"] {
 	return [{ type: "text", text }];
 }
 
-export type ToolParams = { action: string };
+function ok(action: string, message: string): ToolResultContent {
+	return { content: toolText(message), details: { action, ok: true, message } };
+}
+
+function err(action: string, message: string): ToolResultContent {
+	return { content: toolText(message), details: { action, ok: false, message } };
+}
+
+export type ToolParams = { action: string; runId?: string };
 
 export async function handleToolAction(
 	rt: Runtime,
@@ -113,20 +133,81 @@ export async function handleToolAction(
 	pi: Pick<ExtensionAPI, "sendMessage" | "appendEntry" | "getActiveTools" | "setActiveTools">,
 ): Promise<ToolResultContent> {
 	switch (params.action) {
-		case "status": {
-			let runs: import("./types.js").ArchonRun[];
+
+		case "add": {
+			const runId = params.runId?.trim() ?? "";
+			if (!runId) {
+				return err("add", "archon-watcher: 'add' requires a runId.");
+			}
+			if (rt.watchedIds.has(runId)) {
+				return ok("add", `archon-watcher: already watching run '${runId}'.`);
+			}
+			// Seed the snapshot entry from the current global status.
+			let match: ArchonRun | undefined;
 			try {
-				runs = await rt.client.getWorkflowStatus();
-			} catch (err) {
-				const message = `archon-watcher: failed to fetch status: ${(err as Error).message}`;
-				return { content: toolText(message), details: { action: "status", ok: false, message } };
+				const runs = await rt.client.getWorkflowStatus();
+				match = runs.find((r) => r.id === runId);
+			} catch {
+				// Non-fatal — we add to watchedIds even if seeding fails.
 			}
-			const current: RunSnapshot = {};
-			for (const run of runs) {
-				if (run.id) current[run.id] = run;
+			rt.watchedIds.add(runId);
+			if (match) rt.snapshot[runId] = match;
+			writeSnapshot(pi, rt.snapshot, rt.watchedIds);
+			if (!rt.paused && rt.timer === null) startPolling(rt);
+			refreshStatus(rt);
+			const label = match?.workflowName ?? runId;
+			const state = match?.status ?? "unknown (run not found in active list)";
+			return ok("add",
+				`archon-watcher: watching '${label}' (${runId}) — status: ${state}. ` +
+				`You will be notified automatically when the status changes.`,
+			);
+		}
+
+		case "remove": {
+			const runId = params.runId?.trim() ?? "";
+			if (!runId) {
+				return err("remove", "archon-watcher: 'remove' requires a runId.");
 			}
-			const message = buildStartupChatMessage(current, new Date());
-			return { content: toolText(message), details: { action: "status", ok: true, message } };
+			if (!rt.watchedIds.has(runId)) {
+				return err("remove", `archon-watcher: '${runId}' is not in the watch list.`);
+			}
+			rt.watchedIds.delete(runId);
+			delete rt.snapshot[runId];
+			if (rt.watchedIds.size === 0) stopPolling(rt);
+			writeSnapshot(pi, rt.snapshot, rt.watchedIds);
+			refreshStatus(rt);
+			return ok("remove",
+				`archon-watcher: stopped watching '${runId}'. ` +
+				`${rt.watchedIds.size} run(s) remaining.`,
+			);
+		}
+
+		case "status": {
+			if (rt.watchedIds.size === 0) {
+				return ok("status",
+					"archon-watcher: no runs being watched. " +
+					"Call list to see active runs, then add with a run ID.",
+				);
+			}
+			const message = buildStartupChatMessage(rt.snapshot, new Date());
+			pi.sendMessage(
+				{ customType: CUSTOM_MESSAGE_TYPE, content: message, display: true },
+				{ deliverAs: "followUp", triggerTurn: false },
+			);
+			return ok("status", message);
+		}
+
+		case "poll": {
+			if (rt.watchedIds.size === 0) {
+				return ok("poll", "archon-watcher: no runs being watched — nothing to poll.");
+			}
+			await pollOnce(rt);
+			const message = buildStartupChatMessage(rt.snapshot, new Date());
+			pi.sendMessage(
+				{ customType: CUSTOM_MESSAGE_TYPE, content: message, display: true },
+				{ deliverAs: "followUp", triggerTurn: false },
+			);
+			return ok("poll", message);
 		}
 
 		case "pause": {
@@ -134,43 +215,27 @@ export async function handleToolAction(
 			stopPolling(rt);
 			writeRunState(pi, true);
 			refreshStatus(rt);
-			const message =
+			return ok("pause",
 				"archon-watcher: paused. Background polling suspended. " +
-				"Call archon_watcher({action:'resume'}) to re-enable.";
-			return { content: toolText(message), details: { action: "pause", ok: true, message } };
+				"Call archon_watcher({action:'resume'}) to re-enable.",
+			);
 		}
 
 		case "resume": {
 			rt.paused = false;
 			writeRunState(pi, false);
-			startPolling(rt);
+			if (rt.watchedIds.size > 0 && rt.timer === null) startPolling(rt);
 			refreshStatus(rt);
-			const activeCount = Object.keys(rt.snapshot).length;
-			const message =
+			return ok("resume",
 				`archon-watcher: resumed. Polling every ${Math.round(rt.pollIntervalMs / 1000)}s. ` +
-				`${activeCount} run(s) currently tracked.`;
-			return { content: toolText(message), details: { action: "resume", ok: true, message } };
-		}
-
-		case "poll": {
-			await pollOnce(rt);
-			// After the poll, snapshot reflects the latest state.
-			const message = buildStartupChatMessage(rt.snapshot, new Date());
-			// Send as a chat message so the LLM sees it in the conversation too.
-			pi.sendMessage(
-				{
-					customType: CUSTOM_MESSAGE_TYPE,
-					content: message,
-					display: true,
-				},
-				{ deliverAs: "followUp", triggerTurn: false },
+				`Watching ${rt.watchedIds.size} run(s).`,
 			);
-			return { content: toolText(message), details: { action: "poll", ok: true, message } };
 		}
 
 		default: {
-			const message = `archon-watcher: unknown action ${JSON.stringify(params.action)}.`;
-			return { content: toolText(message), details: { action: params.action, ok: false, message } };
+			return err(params.action,
+				`archon-watcher: unknown action ${JSON.stringify(params.action)}.`,
+			);
 		}
 	}
 }

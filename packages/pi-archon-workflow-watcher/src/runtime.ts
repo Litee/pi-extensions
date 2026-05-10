@@ -11,6 +11,7 @@ import type { ArchonClient } from "./archon-client.js";
 import { buildChangeChatMessage, buildStatusLine } from "./format.js";
 import { writeSnapshot } from "./persistence.js";
 import { detectChanges } from "./poller.js";
+import { DB_LOCKED_MARKER } from "./archon-client.js";
 import { TERMINAL_STATUSES, type ArchonRun, type RunSnapshot } from "./types.js";
 
 // ---------------------------------------------------------------------------
@@ -54,7 +55,16 @@ export interface UiSurface {
 export interface Runtime {
 	pi: Pick<ExtensionAPI, "sendMessage" | "appendEntry">;
 	client: ArchonClient;
+	/**
+	 * Snapshot of last known state for watched runs only.
+	 * Keyed by run ID. Updated after every poll.
+	 */
 	snapshot: RunSnapshot;
+	/**
+	 * Explicitly watched run IDs. The poll loop only tracks these;
+	 * all other active archon runs are ignored.
+	 */
+	watchedIds: Set<string>;
 	paused: boolean;
 	/** Effective poll interval (ms). Grows on idle, resets on update. */
 	pollIntervalMs: number;
@@ -70,6 +80,7 @@ export function makeRuntime(pi: Runtime["pi"], client: ArchonClient): Runtime {
 		pi,
 		client,
 		snapshot: {},
+		watchedIds: new Set(),
 		paused: false,
 		pollIntervalMs: POLL_INTERVAL_MS,
 		idleIntervalMs: POLL_INTERVAL_MS,
@@ -93,17 +104,16 @@ function colorize(theme: UiSurface["theme"], text: string): string {
  * Safe to call with no UI.
  */
 export function refreshStatus(rt: Runtime): void {
-	const runCount = Object.keys(rt.snapshot).length;
+	const watchedCount = rt.watchedIds.size;
 	const activeCount = Object.values(rt.snapshot).filter(
 		(r) => !TERMINAL_STATUSES.has(r.status),
 	).length;
-	// Clear the status row when paused or when there are no active runs —
-	// no visual noise when the extension is idle.
-	if (rt.paused || activeCount === 0) {
+	// Clear the status row when paused or watching nothing.
+	if (rt.paused || watchedCount === 0) {
 		rt.ui?.setStatus?.(STATUS_KEY, undefined);
 		return;
 	}
-	const text = buildStatusLine({ paused: false, runCount, activeCount });
+	const text = buildStatusLine({ paused: false, runCount: watchedCount, activeCount });
 	rt.ui?.setStatus?.(STATUS_KEY, colorize(rt.ui.theme, text));
 }
 
@@ -158,20 +168,26 @@ export function stopPolling(rt: Runtime): void {
  */
 export async function pollOnce(rt: Runtime): Promise<void> {
 	if (rt.paused) return;
+	if (rt.watchedIds.size === 0) return; // nothing to watch
 
-	let runs: ArchonRun[];
+	let allRuns: ArchonRun[];
 	try {
-		runs = await rt.client.getWorkflowStatus();
+		allRuns = await rt.client.getWorkflowStatus();
 	} catch (err) {
+		const msg = (err as Error).message;
+		// db-locked is transient (retries already exhausted in the client).
+		// Don't penalise the error counter — just skip this poll quietly.
+		if (msg.includes(DB_LOCKED_MARKER)) {
+			console.warn("[archon-watcher] poll skipped: database is locked");
+			return;
+		}
 		rt.consecutiveErrors += 1;
-		console.warn(
-			`[archon-watcher] poll failed: ${(err as Error).message}`,
-		);
+		console.warn(`[archon-watcher] poll failed: ${msg}`);
 		if (rt.consecutiveErrors === ERROR_THRESHOLD) {
 			rt.pi.sendMessage(
 				{
 					customType: CUSTOM_MESSAGE_TYPE,
-					content: `⚠ archon-workflow-watcher: ${ERROR_THRESHOLD} consecutive poll failures. Last error: ${(err as Error).message}`,
+					content: `⚠ archon-workflow-watcher: ${ERROR_THRESHOLD} consecutive poll failures. Last error: ${msg}`,
 					display: true,
 				},
 				{ deliverAs: "followUp", triggerTurn: true },
@@ -182,10 +198,10 @@ export async function pollOnce(rt: Runtime): Promise<void> {
 
 	rt.consecutiveErrors = 0;
 
-	// Build current snapshot, filtering out runs with empty id
+	// Filter to only the runs we are explicitly watching.
 	const current: RunSnapshot = {};
-	for (const run of runs) {
-		if (run.id) {
+	for (const run of allRuns) {
+		if (run.id && rt.watchedIds.has(run.id)) {
 			current[run.id] = run;
 		}
 	}
@@ -203,12 +219,21 @@ export async function pollOnce(rt: Runtime): Promise<void> {
 			},
 			{ deliverAs: "followUp", triggerTurn },
 		);
+		// Auto-remove runs that have ended (disappeared from active list).
+		for (const event of events) {
+			if (event.eventType === "run_removed") {
+				rt.watchedIds.delete(event.runId);
+			}
+		}
 		resetIntervalAfterUpdate(rt);
 	} else {
 		bumpIdleInterval(rt);
 	}
 
 	rt.snapshot = current;
-	writeSnapshot(rt.pi, current);
+	writeSnapshot(rt.pi, current, rt.watchedIds);
 	refreshStatus(rt);
+
+	// Stop polling once nothing remains to watch.
+	if (rt.watchedIds.size === 0) stopPolling(rt);
 }

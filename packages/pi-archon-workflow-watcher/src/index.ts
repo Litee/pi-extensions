@@ -96,55 +96,52 @@ export function createExtensionWithClient(
 		registerToolIfNeeded(pi, rt);
 		addToolToActive(pi);
 
-		// Seed initial snapshot from archon workflow status (errors are not fatal)
+		// Rehydrate watched IDs and last-known snapshot.
+		// If no IDs are persisted, skip the archon CLI call entirely —
+		// there is nothing to watch and no reason to touch archon.
+		const baseline = rehydrateSnapshotFromSession(sessionCtx);
+		if (!baseline || baseline.watchedIds.length === 0) {
+			// Nothing to watch — stay completely silent.
+			return;
+		}
+
+		// Restore watched IDs.
+		for (const id of baseline.watchedIds) rt.watchedIds.add(id);
+
+		// Fetch current status and filter to watched IDs only.
 		let initialRuns: ArchonRun[] = [];
 		try {
 			initialRuns = await client.getWorkflowStatus();
-		} catch (err) {
+		} catch (e) {
 			console.warn(
-				`[archon-watcher] session_start: could not fetch initial status: ${(err as Error).message}`,
+				`[archon-watcher] session_start: could not fetch initial status: ${(e as Error).message}`,
 			);
 		}
 
 		const current: RunSnapshot = {};
 		for (const run of initialRuns) {
-			if (run.id) current[run.id] = run;
+			if (run.id && rt.watchedIds.has(run.id)) current[run.id] = run;
 		}
 
-		// Diff against persisted baseline and emit appropriate startup message.
-		// Suppress all startup messages when there are no active runs — we don't
-		// want to inject "No active workflow runs" noise on every session start.
-		const baseline = rehydrateSnapshotFromSession(sessionCtx);
-		const hasActiveRuns = Object.keys(current).length > 0;
-		if (baseline !== null) {
-			const events = detectChanges(baseline.snapshot, current);
-			if (events.length > 0) {
-				// Real changes since last session — always emit regardless of
-				// whether runs are currently active.
-				const triggerTurn = events.some((e) => e.shouldTriggerTurn);
-				emit(
-					{
-						customType: CUSTOM_MESSAGE_TYPE,
-						content: buildChangeChatMessage(events, new Date()),
-						display: true,
-						details: { events },
-					},
-					{ deliverAs: "followUp", triggerTurn },
-				);
-			} else if (hasActiveRuns) {
-				// No diff, but runs are active — brief summary, no turn trigger.
-				emit(
-					{
-						customType: CUSTOM_MESSAGE_TYPE,
-						content: buildStartupChatMessage(current, new Date()),
-						display: true,
-					},
-					{ deliverAs: "followUp", triggerTurn: false },
-				);
+		// Diff against persisted snapshot and emit startup message if anything changed.
+		const events = detectChanges(baseline.snapshot, current);
+		if (events.length > 0) {
+			const triggerTurn = events.some((e) => e.shouldTriggerTurn);
+			emit(
+				{
+					customType: CUSTOM_MESSAGE_TYPE,
+					content: buildChangeChatMessage(events, new Date()),
+					display: true,
+					details: { events },
+				},
+				{ deliverAs: "followUp", triggerTurn },
+			);
+			// Auto-remove runs that ended between sessions.
+			for (const event of events) {
+				if (event.eventType === "run_removed") rt.watchedIds.delete(event.runId);
 			}
-			// else: no changes and no active runs — stay silent.
-		} else if (hasActiveRuns) {
-			// No prior baseline but runs are active — emit startup summary.
+		} else if (Object.keys(current).length > 0) {
+			// Watched runs are active and unchanged — brief summary, no turn trigger.
 			emit(
 				{
 					customType: CUSTOM_MESSAGE_TYPE,
@@ -153,14 +150,12 @@ export function createExtensionWithClient(
 				},
 				{ deliverAs: "followUp", triggerTurn: false },
 			);
-			// else: no prior baseline and no active runs — stay silent.
 		}
+		// else: watched IDs exist but no longer active (already ended) — stay silent.
 
 		rt.snapshot = current;
-		writeSnapshot(pi, current);
-		startPolling(rt);
-
-		// Pin status line only when there are active runs.
+		writeSnapshot(pi, current, rt.watchedIds);
+		if (rt.watchedIds.size > 0) startPolling(rt);
 		refreshStatus(rt);
 	});
 

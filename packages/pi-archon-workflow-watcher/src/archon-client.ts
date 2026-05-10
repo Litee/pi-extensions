@@ -23,6 +23,23 @@ export class ArchonCliError extends Error {
 const NOT_IN_GIT_REPO_MARKER = "Not in a git repository";
 
 /**
+ * SQLite reports this when another process holds a write lock. It is
+ * transient — the runner releases the lock in milliseconds — so we retry
+ * a few times before giving up.
+ */
+export const DB_LOCKED_MARKER = "database is locked";
+
+/** How many times to retry a db-locked failure before surfacing the error. */
+const DB_LOCKED_RETRIES = 3;
+
+/** Delay between db-locked retries (ms). Doubles on each attempt. */
+const DB_LOCKED_RETRY_BASE_MS = 150;
+
+function sleep(ms: number): Promise<void> {
+	return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+/**
  * Parse raw archon CLI output. The command emits pino log lines
  * ({"level":30,...}) followed by the actual JSON ({runs:[...]}).
  * Filter out log lines and parse the remainder.
@@ -127,7 +144,7 @@ export function createArchonClient(): ArchonClient {
 	return {
 		async getWorkflowStatus(): Promise<ArchonRun[]> {
 			try {
-				return await runArchonStatus();
+				return await runWithRetry();
 			} catch (err) {
 				// When not in a git repository, retry with a known archon workspace
 				// as the --cwd context. Archon reads from its global SQLite database
@@ -136,7 +153,7 @@ export function createArchonClient(): ArchonClient {
 				if ((err as Error).message.includes(NOT_IN_GIT_REPO_MARKER)) {
 					const fallbackCwd = findArchonWorkspaceCwd();
 					if (fallbackCwd !== null) {
-						return runArchonStatus(fallbackCwd);
+						return runWithRetry(fallbackCwd);
 					}
 					// No workspaces exist yet — no workflows can be running.
 					return [];
@@ -145,4 +162,26 @@ export function createArchonClient(): ArchonClient {
 			}
 		},
 	};
+}
+
+/**
+ * Run `archon workflow status --json` with automatic retry on transient
+ * SQLite "database is locked" errors. The archon workflow runner holds a
+ * write lock briefly; retrying with exponential back-off resolves it.
+ */
+async function runWithRetry(cwd?: string): Promise<ArchonRun[]> {
+	let lastError: Error | undefined;
+	for (let attempt = 0; attempt <= DB_LOCKED_RETRIES; attempt++) {
+		if (attempt > 0) await sleep(DB_LOCKED_RETRY_BASE_MS * attempt);
+		try {
+			return await runArchonStatus(cwd);
+		} catch (err) {
+			if ((err as Error).message.includes(DB_LOCKED_MARKER)) {
+				lastError = err as Error;
+				continue;
+			}
+			throw err;
+		}
+	}
+	throw lastError;
 }

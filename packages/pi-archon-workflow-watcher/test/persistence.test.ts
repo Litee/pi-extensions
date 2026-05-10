@@ -3,7 +3,6 @@ import { describe, expect, it, vi } from "vitest";
 import {
 	RUNSTATE_ENTRY_TYPE,
 	STATE_ENTRY_TYPE,
-	STATE_MAX_AGE_MS,
 	rehydrateRunStateFromSession,
 	rehydrateSnapshotFromSession,
 	writeRunState,
@@ -79,18 +78,20 @@ describe("rehydrateSnapshotFromSession", () => {
 		expect(Object.keys(got!.snapshot)).toEqual(["run-new"]);
 	});
 
-	it("returns null when the most recent matching entry is older than STATE_MAX_AGE_MS", () => {
-		const stale = now() - STATE_MAX_AGE_MS - 1000;
+	it("returns a stale entry (no TTL — entries never expire)", () => {
+		// The old design had a 5-minute TTL; the new design has no TTL.
+		const veryOld = now() - 7 * 24 * 60 * 60 * 1000; // 7 days ago
 		const ctx = makeCtx([
-			entry(STATE_ENTRY_TYPE, { savedAt: stale, snapshot: SAMPLE_SNAPSHOT }),
+			entry(STATE_ENTRY_TYPE, { savedAt: veryOld, snapshot: SAMPLE_SNAPSHOT }),
 		]);
-		expect(rehydrateSnapshotFromSession(ctx as never)).toBeNull();
+		const got = rehydrateSnapshotFromSession(ctx as never);
+		expect(got).not.toBeNull();
+		expect(got!.snapshot).toEqual(SAMPLE_SNAPSHOT);
 	});
 
-	it("returns a valid entry within TTL", () => {
-		const fresh = now() - STATE_MAX_AGE_MS + 30_000;
+	it("returns a valid entry", () => {
 		const ctx = makeCtx([
-			entry(STATE_ENTRY_TYPE, { savedAt: fresh, snapshot: SAMPLE_SNAPSHOT }),
+			entry(STATE_ENTRY_TYPE, { savedAt: now(), snapshot: SAMPLE_SNAPSHOT }),
 		]);
 		const got = rehydrateSnapshotFromSession(ctx as never);
 		expect(got).not.toBeNull();
@@ -178,8 +179,8 @@ describe("rehydrateRunStateFromSession", () => {
 		expect(got!.paused).toBe(false);
 	});
 
-	it("has no TTL — honours a paused entry older than STATE_MAX_AGE_MS", () => {
-		const ancient = now() - STATE_MAX_AGE_MS - 1_000_000;
+	it("has no TTL — honours a paused entry from a long time ago", () => {
+		const ancient = now() - 7 * 24 * 60 * 60 * 1000; // 7 days ago
 		const ctx = makeCtx([
 			entry(RUNSTATE_ENTRY_TYPE, { savedAt: ancient, paused: true }),
 		]);
@@ -232,7 +233,7 @@ describe("writeSnapshot", () => {
 	it("calls pi.appendEntry with STATE_ENTRY_TYPE and snapshot", () => {
 		const appendEntry = vi.fn();
 		const pi = { appendEntry };
-		writeSnapshot(pi, SAMPLE_SNAPSHOT);
+		writeSnapshot(pi, SAMPLE_SNAPSHOT, new Set());
 		expect(appendEntry).toHaveBeenCalledOnce();
 		const [type, data] = appendEntry.mock.calls[0] as [
 			string,
@@ -249,7 +250,7 @@ describe("writeSnapshot", () => {
 				throw new Error("storage failure");
 			}),
 		};
-		expect(() => writeSnapshot(pi, SAMPLE_SNAPSHOT)).not.toThrow();
+		expect(() => writeSnapshot(pi, SAMPLE_SNAPSHOT, new Set())).not.toThrow();
 	});
 });
 
@@ -303,7 +304,4 @@ describe("constants", () => {
 		expect(RUNSTATE_ENTRY_TYPE).toBe("pi-archon-workflow-watcher:runstate");
 	});
 
-	it("STATE_MAX_AGE_MS is 5 minutes", () => {
-		expect(STATE_MAX_AGE_MS).toBe(5 * 60 * 1000);
-	});
 });
