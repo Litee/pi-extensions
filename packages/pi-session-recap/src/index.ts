@@ -218,6 +218,8 @@ export default function (pi: ExtensionAPI) {
 		} catch {
 			/* defensive */
 		}
+		// Cancel any in-flight recap or pending timer from the prior session.
+		if (orchestratorCtx !== ctx) orchestrator?.reset();
 		attachFocusReporting(ctx);
 		if (isDisabled()) return;
 		if (event.reason === "resume" || event.reason === "fork") {

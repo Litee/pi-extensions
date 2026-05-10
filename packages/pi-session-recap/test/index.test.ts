@@ -525,3 +525,65 @@ describe("/recap subcommand renderer (#0008)", () => {
 		expect(rendered).toContain("anthropic/claude-sonnet-4-6");
 	});
 });
+
+describe("orchestrator lifecycle — session replacement", () => {
+	let agentDir: string;
+	let prevAgentDir: string | undefined;
+
+	beforeEach(() => {
+		agentDir = mkdtempSync(join(tmpdir(), "pi-session-recap-lifecycle-"));
+		prevAgentDir = process.env["PI_CODING_AGENT_DIR"];
+		process.env["PI_CODING_AGENT_DIR"] = agentDir;
+	});
+
+	afterEach(() => {
+		if (prevAgentDir === undefined) delete process.env["PI_CODING_AGENT_DIR"];
+		else process.env["PI_CODING_AGENT_DIR"] = prevAgentDir;
+		rmSync(agentDir, { recursive: true, force: true });
+	});
+
+	it("cancels the old orchestrator's pending recap timer on session replacement (prevents stale ctx access)", async () => {
+		vi.useFakeTimers();
+		try {
+			const pi = makeFakePi();
+			createExtension(pi as any);
+
+			// Branch with enough assistant words to pass hasMeaningfulActivity
+			const meaningfulEntries = [
+				{
+					type: "message",
+					message: { role: "user", content: [{ type: "text", text: "tell me about X" }] },
+				},
+				{
+					type: "message",
+					message: {
+						role: "assistant",
+						content: [{ type: "text", text: "word ".repeat(35).trim() }],
+					},
+				},
+			];
+
+			const ctx1 = makeFakeCtx();
+			ctx1.sessionManager.getBranch.mockReturnValue(meaningfulEntries);
+			// getApiKeyAndHeaders is the first ctx access inside runModelCall.
+			// If the timer fires with a stale ctx, this spy will record the call.
+			ctx1.modelRegistry.getApiKeyAndHeaders = vi.fn(async () => ({ ok: false }));
+
+			// Initial session start + turn end → recap timer scheduled on ctx1
+			await pi.handlers.get("session_start")?.({ reason: "startup" }, ctx1);
+			await pi.handlers.get("turn_end")?.({}, ctx1);
+
+			// Session is replaced (e.g. /reload, /new, /fork) — no session_shutdown in between
+			const ctx2 = makeFakeCtx();
+			await pi.handlers.get("session_start")?.({ reason: "startup" }, ctx2);
+
+			// Advance past the default idle timeout (180 s)
+			await vi.advanceTimersByTimeAsync(200_000);
+
+			// The old orchestrator's timer must have been cleared — ctx1 was never accessed
+			expect(ctx1.modelRegistry.getApiKeyAndHeaders).not.toHaveBeenCalled();
+		} finally {
+			vi.useRealTimers();
+		}
+	});
+});
