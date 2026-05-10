@@ -28,6 +28,19 @@
 - ALWAYS use the `ls` tool for simple directory listing.
 - Use bash `ls` when you need file metadata, custom sort order, recursive listing, or piping into other commands.
 
+## git
+- When a git command must run in a specific directory, use `git -C <dir> <command>`
+  instead of `cd <dir> && git <command>`. This avoids working-directory drift and
+  works correctly even when the shell's cwd is already set to something else.
+  ```bash
+  # ✓ correct
+  git -C /path/to/repo status
+  git -C /path/to/repo log --oneline -5
+
+  # ✗ avoid
+  cd /path/to/repo && git status
+  ```
+
 ## Parallel tool calls
 - When multiple independent pieces of information are needed, issue all tool calls
   in a single response rather than sequentially.
