@@ -11,54 +11,30 @@
  *   restores the previous model and thinking level when disabled.
  */
 
-import { readFileSync } from "node:fs";
-import { join } from "node:path";
-import type { AgentMessage, ThinkingLevel } from "@mariozechner/pi-agent-core";
-import type { Model, TextContent } from "@mariozechner/pi-ai";
+import type { ThinkingLevel } from "@mariozechner/pi-agent-core";
+import type { Model } from "@mariozechner/pi-ai";
 import type { ExtensionAPI, ExtensionContext } from "@mariozechner/pi-coding-agent";
 import { Key } from "@mariozechner/pi-tui";
+import {
+	buildPlanModeContextMessage,
+	filterContextMessages,
+	shouldBlockBashInPlan,
+} from "./handlers.js";
+import {
+	loadPlanModeConfig,
+	pickLatestPlanState,
+	type PersistedPlanModeState,
+	type PlanStateCandidateEntry,
+	STATE_CUSTOM_TYPE,
+} from "./state.js";
 import { ToolSnapshot } from "./tool-snapshot.js";
-import { formatToolList, isSafeCommand } from "./utils.js";
+import { formatToolList } from "./utils.js";
 
 // Tools
 const PLAN_MODE_TOOLS = ["read", "bash", "grep", "find", "ls", "ask_user_question"];
 // Fallback used when no snapshot exists (e.g. plan mode was restored from a
 // previous session and the pre-plan tool set is unknown).
 const NORMAL_MODE_TOOLS = ["read", "bash", "edit", "write"];
-
-interface PlanModeConfig {
-	model?: string;
-	provider?: string;
-	thinkingLevel?: ThinkingLevel;
-}
-
-/**
- * Session-persisted plan mode state. Stored as a custom entry under
- * `STATE_CUSTOM_TYPE` so plan mode can be fully rehydrated (including the
- * pre-plan model, thinking level, and tool set) across agent restarts.
- */
-interface PersistedPlanModeState {
-	enabled: boolean;
-	modelSnapshot?: { id: string; provider: string };
-	thinkingLevelSnapshot?: ThinkingLevel;
-	toolsSnapshot?: string[];
-}
-
-/** Namespaced custom-entry key to avoid collisions with other extensions. */
-const STATE_CUSTOM_TYPE = "pi-plan-mode:state";
-/** Legacy key used before snapshot persistence was added; read for backward compat. */
-const LEGACY_STATE_CUSTOM_TYPE = "plan-mode";
-
-function loadPlanModeConfig(): PlanModeConfig {
-	try {
-		const home = process.env["HOME"] ?? process.env["USERPROFILE"] ?? "";
-		const configPath = join(home, ".pi", "agent", "pi-plan-mode.json");
-		const content = readFileSync(configPath, "utf-8");
-		return JSON.parse(content) as PlanModeConfig;
-	} catch {
-		return {};
-	}
-}
 
 export default function planModeExtension(pi: ExtensionAPI): void {
 	let planModeEnabled = false;
@@ -198,65 +174,18 @@ export default function planModeExtension(pi: ExtensionAPI): void {
 	});
 
 	// Block destructive bash commands in plan mode
-	pi.on("tool_call", async (event) => {
-		if (!planModeEnabled || event.toolName !== "bash") return;
-
-		const command = event.input.command as string;
-		if (!isSafeCommand(command)) {
-			return {
-				block: true,
-				reason: `Plan mode: command blocked (not allowlisted). Use /plan to disable plan mode first.\nCommand: ${command}`,
-			};
-		}
-		return undefined;
-	});
+	pi.on("tool_call", async (event) => shouldBlockBashInPlan(event, planModeEnabled));
 
 	// Filter out stale plan mode context when not in plan mode
 	pi.on("context", async (event) => {
 		if (planModeEnabled) return;
-
-		return {
-			messages: event.messages.filter((m) => {
-				const msg = m as AgentMessage & { customType?: string };
-				if (msg.customType === "plan-mode-context") return false;
-				if (msg.role !== "user") return true;
-
-				const content = msg.content;
-				if (typeof content === "string") {
-					return !content.includes("[PLAN MODE ACTIVE]");
-				}
-				if (Array.isArray(content)) {
-					return !content.some(
-						(c) => c.type === "text" && (c as TextContent).text?.includes("[PLAN MODE ACTIVE]"),
-					);
-				}
-				return true;
-			}),
-		};
+		return { messages: filterContextMessages(event.messages) };
 	});
 
 	// Inject plan-mode context before agent starts
 	pi.on("before_agent_start", async () => {
 		if (!planModeEnabled) return undefined;
-		return {
-			message: {
-				customType: "plan-mode-context",
-				content: `[PLAN MODE ACTIVE]
-You are in plan mode - a read-only exploration mode for safe code analysis.
-
-Restrictions:
-- You can only use: read, bash, grep, find, ls, ask_user_question
-- You CANNOT use: edit, write (file modifications are disabled)
-- Bash is restricted to an allowlist of read-only commands
-
-Ask clarifying questions using the ask_user_question tool.
-Use brave-search skill via bash for web research.
-
-Describe the plan as a numbered list under a "Plan:" header.
-Do NOT attempt to make changes - just describe what you would do.`,
-				display: false,
-			},
-		};
+		return { message: buildPlanModeContextMessage() };
 	});
 
 	// After the plan is drafted, prompt the user for the next action.
@@ -298,21 +227,16 @@ Do NOT attempt to make changes - just describe what you would do.`,
 			planModeEnabled = true;
 		}
 
-		const entries = ctx.sessionManager.getEntries();
-		const stateEntry = entries
-			.filter(
-				(e: { type: string; customType?: string }) =>
-					e.type === "custom" &&
-					(e.customType === STATE_CUSTOM_TYPE || e.customType === LEGACY_STATE_CUSTOM_TYPE),
-			)
-			.pop() as { customType?: string; data?: PersistedPlanModeState } | undefined;
+		const entries = ctx.sessionManager.getEntries() as readonly PlanStateCandidateEntry[];
+		const picked = pickLatestPlanState(entries);
 
-		if (stateEntry?.data) {
-			planModeEnabled = stateEntry.data.enabled ?? planModeEnabled;
+		if (picked) {
+			planModeEnabled = picked.state.enabled ?? planModeEnabled;
 
-			// Only the new format carries snapshots.
-			if (planModeEnabled && stateEntry.customType === STATE_CUSTOM_TYPE) {
-				const data = stateEntry.data;
+			// Only the new format carries snapshots; `pickLatestPlanState` already
+			// strips snapshot fields from legacy entries.
+			if (planModeEnabled && picked.source === "new") {
+				const data = picked.state;
 				if (data.thinkingLevelSnapshot) {
 					thinkingLevelSnapshot = data.thinkingLevelSnapshot;
 				}

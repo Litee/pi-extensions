@@ -62,7 +62,6 @@ export default defineConfig({
 				// of strict-tsconfig patches) from the upstream pi-mono example.
 				// All pure logic (allow/deny lists, plan extraction, [DONE:n]
 				// tracking) lives in utils.ts and is covered there.
-				"**/pi-plan-mode/src/index.ts",
 				// pi-context-window-analysis/index.ts is lifecycle wiring +
 				// command registration + widget update calls. All pure logic
 				// (token estimation, breakdown, rendering) lives in breakdown.ts
