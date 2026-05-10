@@ -1974,6 +1974,7 @@ export default function (pi: ExtensionAPI) {
 
   async function restoreThread(ctx: ExtensionContext): Promise<void> {
     await disposeBtwSession();
+    dismissOverlay();
     pendingThread = [];
     pendingMode = "contextual";
     btwModelOverride = null;

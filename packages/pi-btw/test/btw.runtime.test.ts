@@ -1890,6 +1890,38 @@ describe("btw runtime behavior", () => {
     }
   });
 
+  it("dismisses the overlay on session_start to prevent stale ctx access after session replacement", async () => {
+    const harness = createHarness();
+    await harness.runSessionStart();
+
+    // Open the BTW overlay
+    await harness.command("btw", "");
+    const overlayHandle = harness.overlayHandles.at(-1);
+    expect(overlayHandle).toBeDefined();
+    expect(overlayHandle?.isHidden()).toBe(false);
+
+    // Simulate session replacement — in real pi this happens on /new, /fork, or ctx.reload()
+    await harness.runEvent("session_start");
+
+    // The overlay must be dismissed so its captured ctx (from before replacement) is
+    // never used again; using it would throw "stale ctx" and crash the agent.
+    expect(overlayHandle?.hideCalls).toBeGreaterThan(0);
+  });
+
+  it("dismisses the overlay on session_tree to prevent stale ctx access after branch switch", async () => {
+    const harness = createHarness();
+    await harness.runSessionStart();
+
+    await harness.command("btw", "");
+    const overlayHandle = harness.overlayHandles.at(-1);
+    expect(overlayHandle).toBeDefined();
+    expect(overlayHandle?.isHidden()).toBe(false);
+
+    await harness.runEvent("session_tree");
+
+    expect(overlayHandle?.hideCalls).toBeGreaterThan(0);
+  });
+
   it("/btw:inject success extracts the active sub-session thread, disposes it, dismisses the overlay, and reopens fresh", async () => {
     const harness = createHarness();
     promptStreamMock.mockImplementation(() => streamAnswer("First answer"));
