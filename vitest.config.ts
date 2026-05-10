@@ -16,8 +16,10 @@ export default defineConfig({
 				"**/*.d.ts",
 				// Type-only declaration files contribute no runtime code to exercise.
 				"**/types.ts",
-				// TUI pickers are integration code that needs a live pi-tui runtime;
-				// logic that can be unit-tested lives in index.ts (handleCcSkills).
+				// pi-claude-code-skills-import/src/tuiPicker.ts: live
+				// pi-tui + ctx.ui.custom wiring. The pure colour-decision
+				// helper (decoratePickerValue) has been extracted to
+				// pickerValue.ts and is fully covered there.
 				"**/tuiPicker.ts",
 				// TUI-backed `/local-issue-watcher-info` picker — integration
 				// code that needs a live pi-tui runtime. Pure orchestration
@@ -37,11 +39,6 @@ export default defineConfig({
 				// Thin `completeSimple(...)` shim; the orchestration in names.ts
 				// is exercised through an injectable completion hook.
 				"**/namesCompletion.ts",
-				// pi-claude-code-skills-import/src/index.ts: session_start handler
-				// + cc-skills-info command registration. All testable logic
-				// (handleCcSkills, discovery, collisions) is exported and fully
-				// covered in the dedicated test files.
-				"**/pi-claude-code-skills-import/src/index.ts",
 				// pi-additional-system-prompt/index.ts reads PROMPT.md and
 				// appends it to the system prompt via before_agent_start.
 				// Pure lifecycle wiring; no testable logic beyond what the

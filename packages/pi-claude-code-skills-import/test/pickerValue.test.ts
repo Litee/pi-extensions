@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from "vitest";
 
-import { decoratePickerValue, type PickerValueTheme } from "../src/tuiPicker.js";
+import { decoratePickerValue, type PickerValueTheme } from "../src/pickerValue.js";
 
 // Marker-string fakes keep the assertions readable and make it obvious
 // which branch of `decoratePickerValue` executed — we never care about the

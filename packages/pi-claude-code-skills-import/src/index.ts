@@ -4,6 +4,7 @@ import { join } from "node:path";
 import type { ExtensionAPI } from "@mariozechner/pi-coding-agent";
 
 import { computeCollisions } from "./collisions.js";
+import { buildDiscoverNotifications } from "./discoverMessages.js";
 import { discoverAllSkills } from "./discover.js";
 import { readDisabled, writeDisabled } from "./persistence.js";
 import { resolveClaudeDir } from "./resolve.js";
@@ -100,44 +101,13 @@ export default function (pi: ExtensionAPI): void {
 		const disabled = readDisabled(stateFile);
 		const collisions = computeCollisions(all);
 
-		const enabled = all.filter((s) => !disabled.has(s.qualifiedName));
-		const skillPaths = enabled.map((s) => s.skillDir);
-
-		const on = enabled.length;
-		const off = all.length - on;
-		ctx.ui.notify(
-			`Claude Code skills: ${on} loaded${off ? ` (${off} disabled)` : ""}`,
-			"info",
-		);
-
-		if (collisions.size > 0) {
-			const lines: string[] = [`${collisions.size} Claude Code skill name collision(s):`];
-			for (const [name, list] of collisions) {
-				const sources = list.map((s) => s.qualifiedName).join(", ");
-				lines.push(`  • "${name}" appears in: ${sources}`);
-			}
-			ctx.ui.notify(lines.join("\n"), "warning");
+		for (const n of buildDiscoverNotifications({ all, disabled, collisions, stateFile })) {
+			ctx.ui.notify(n.text, n.level);
 		}
 
-		// #0005: surface disabled-id drift. The state file is
-		// append-only from the user's perspective — entries are never
-		// pruned when a plugin is uninstalled / renamed. Walk the
-		// disabled set and flag any qualifiedName that no longer
-		// matches a discovered skill. Pure `ctx.ui.notify(warning)`;
-		// does NOT call pi.sendMessage, does NOT trigger an agent
-		// turn — same delivery pattern as the collision warning
-		// directly above.
-		const presentIds = new Set(all.map((s) => s.qualifiedName));
-		const stale = [...disabled].filter((id) => !presentIds.has(id)).sort();
-		if (stale.length > 0) {
-			const lines: string[] = [
-				`Claude Code skills: ${stale.length} disabled id(s) in state file no longer resolve to any installed skill:`,
-				...stale.map((id) => `  • ${id}`),
-				`Run /cc-skills-info to review, or edit ${stateFile}.`,
-			];
-			ctx.ui.notify(lines.join("\n"), "warning");
-		}
-
+		const skillPaths = all
+			.filter((s) => !disabled.has(s.qualifiedName))
+			.map((s) => s.skillDir);
 		return { skillPaths };
 	});
 
