@@ -1,19 +1,19 @@
 /**
  * TUI glue for the ask_user_question dialog.
  *
- * The business logic lives in `DialogController` (state machine, pure) and in
- * the `rows` / `format` / `render` helpers. This file is the thin wrapper
- * that wires the controller to the real pi-tui components:
+ * All routing and layout logic lives in:
+ *   - `controller.ts`  — pure state machine
+ *   - `inputRouter.ts` — pure key-dispatch
+ *   - `renderPanel.ts` — pure layout helpers (tab bar, option list, submit, help)
  *
- *  - an `Editor` for free-text input (Type something / note / chat)
- *  - a `Markdown` cache for side-by-side option previews
- *  - keystroke routing (`matchesKey(data, Key.*)`) → controller methods
- *  - rendering controller state into an array of styled lines
+ * This file only owns the pieces that need a live pi-tui runtime: the
+ * `Editor` component, the `Markdown` preview cache, the side-by-side
+ * option/preview composition, and translation of {@link KeyAction} values
+ * into concrete controller + editor + `done()` calls.
  *
- * The file is excluded from v8 coverage (via `vitest.config.ts`) because
- * exercising it requires a real pi-tui stack (Kitty keyboard protocol,
- * Markdown highlighter, etc.) which we deliberately do not mock. Every piece
- * of logic worth testing has been factored into the modules above.
+ * Excluded from v8 coverage (see `vitest.config.ts`) because exercising it
+ * requires the real pi-tui stack (Kitty keyboard protocol, Markdown
+ * highlighter, etc.), which we intentionally do not mock.
  */
 
 import { getMarkdownTheme } from "@mariozechner/pi-coding-agent";
@@ -29,13 +29,37 @@ import {
 
 import { DialogController } from "./controller.js";
 import type { Result } from "./format.js";
+import { dispatchKey, type KeyAction, type KeyId, type KeyProbe } from "./inputRouter.js";
+import {
+	padRight,
+	renderHelp,
+	renderOptionList,
+	renderSubmitTab,
+	renderTabBar,
+	type LayoutProbe,
+	type PanelTheme,
+} from "./renderPanel.js";
 import type { Row } from "./rows.js";
 import type { TQuestion } from "./schema.js";
 
-export function runDialog(
-	ctx: any,
-	questions: TQuestion[],
-): Promise<Result> {
+/** Bridge from router `KeyId` strings onto pi-tui's `matchesKey` + `Key` constants. */
+const keyProbe: KeyProbe = {
+	matches(data, keyId: KeyId) {
+		switch (keyId) {
+			case "tab": return matchesKey(data, Key.tab);
+			case "shift-tab": return matchesKey(data, Key.shift("tab"));
+			case "left": return matchesKey(data, Key.left);
+			case "right": return matchesKey(data, Key.right);
+			case "up": return matchesKey(data, Key.up);
+			case "down": return matchesKey(data, Key.down);
+			case "enter": return matchesKey(data, Key.enter);
+			case "escape": return matchesKey(data, Key.escape);
+			case "space": return matchesKey(data, Key.space);
+		}
+	},
+};
+
+export function runDialog(ctx: any, questions: TQuestion[]): Promise<Result> {
 	return ctx.ui.custom((tui: any, theme: any, _kb: any, done: (v: Result) => void) => {
 		const ctrl = new DialogController(questions);
 
@@ -69,168 +93,79 @@ export function runDialog(
 			return m;
 		};
 
+		const panelTheme: PanelTheme = theme;
+		const layout: LayoutProbe = { truncateToWidth, visibleWidth };
+
 		function openEditorForNote(): void {
 			editor.setText(ctrl.getCurrentNoteDraft());
 			tui.requestRender();
 		}
 
-		function handleInput(data: string): void {
-			const state = ctrl.getState();
+		function finishIfDone(): boolean {
+			const status = ctrl.getStatus();
+			if (status.kind === "done") {
+				done(status.result);
+				return true;
+			}
+			return false;
+		}
 
-			if (state.inputMode !== "none") {
-				if (matchesKey(data, Key.escape)) {
+		function applyAction(action: KeyAction, data: string): void {
+			switch (action.kind) {
+				case "cancel-input":
 					ctrl.cancelInput();
 					editor.setText("");
 					tui.requestRender();
 					return;
-				}
-				editor.handleInput(data);
-				tui.requestRender();
-				return;
-			}
-
-			if (ctrl.isSubmitTab()) {
-				if (matchesKey(data, Key.tab) || matchesKey(data, Key.right)) {
+				case "editor-input":
+					editor.handleInput(data);
+					tui.requestRender();
+					return;
+				case "next-tab":
 					ctrl.nextTab();
 					tui.requestRender();
 					return;
-				}
-				if (matchesKey(data, Key.shift("tab")) || matchesKey(data, Key.left)) {
+				case "prev-tab":
 					ctrl.prevTab();
 					tui.requestRender();
 					return;
-				}
-				if (matchesKey(data, Key.enter)) {
+				case "move-up":
+					ctrl.moveUp();
+					tui.requestRender();
+					return;
+				case "move-down":
+					ctrl.moveDown();
+					tui.requestRender();
+					return;
+				case "begin-note":
+					if (ctrl.beginNote()) openEditorForNote();
+					return;
+				case "toggle-current":
+					ctrl.toggleCurrent();
+					tui.requestRender();
+					return;
+				case "enter": {
 					ctrl.enter();
-					const status = ctrl.getStatus();
-					if (status.kind === "done") done(status.result);
+					if (finishIfDone()) return;
+					if (ctrl.getState().inputMode !== "none") editor.setText("");
+					tui.requestRender();
 					return;
 				}
-				if (matchesKey(data, Key.escape)) {
+				case "cancel":
 					ctrl.cancel();
-					const status = ctrl.getStatus();
-					if (status.kind === "done") done(status.result);
-					return;
-				}
-				return;
-			}
-
-			// Regular question tab.
-			if (questions.length > 1) {
-				if (matchesKey(data, Key.tab) || matchesKey(data, Key.right)) {
-					ctrl.nextTab();
+					if (finishIfDone()) return;
 					tui.requestRender();
 					return;
-				}
-				if (matchesKey(data, Key.shift("tab")) || matchesKey(data, Key.left)) {
-					ctrl.prevTab();
-					tui.requestRender();
+				case "ignore":
 					return;
-				}
 			}
+		}
 
-			if (matchesKey(data, Key.up)) {
-				ctrl.moveUp();
-				tui.requestRender();
-				return;
-			}
-			if (matchesKey(data, Key.down)) {
-				ctrl.moveDown();
-				tui.requestRender();
-				return;
-			}
-
-			if (data === "n") {
-				if (ctrl.beginNote()) {
-					openEditorForNote();
-					return;
-				}
-			}
-
-			if (ctrl.isMultiSelect() && matchesKey(data, Key.space)) {
-				ctrl.toggleCurrent();
-				tui.requestRender();
-				return;
-			}
-
-			if (matchesKey(data, Key.enter)) {
-				ctrl.enter();
-				const status = ctrl.getStatus();
-				if (status.kind === "done") {
-					done(status.result);
-					return;
-				}
-				// Text / chat mode may have been opened; clear the editor.
-				if (ctrl.getState().inputMode !== "none") editor.setText("");
-				tui.requestRender();
-				return;
-			}
-
-			if (matchesKey(data, Key.escape)) {
-				ctrl.cancel();
-				const status = ctrl.getStatus();
-				if (status.kind === "done") done(status.result);
-				return;
-			}
+		function handleInput(data: string): void {
+			applyAction(dispatchKey(ctrl.getState(), questions, data, keyProbe), data);
 		}
 
 		// ---- rendering --------------------------------------------------------
-
-		function renderTabBar(width: number): string[] {
-			if (questions.length < 2) return [];
-			const s = ctrl.getState();
-			const parts: string[] = [];
-			for (let i = 0; i < questions.length; i++) {
-				const isActive = i === s.currentTab;
-				const isDone = s.answers[i] !== null;
-				const box = isDone ? "■" : "□";
-				const label = ` ${box} Q${i + 1} `;
-				const styled = isActive
-					? theme.bg("selectedBg", theme.fg("text", label))
-					: theme.fg(isDone ? "success" : "muted", label);
-				parts.push(`${styled} `);
-			}
-			const isSubmit = ctrl.isSubmitTab();
-			const submitLabel = " ✓ Submit ";
-			const submitStyled = isSubmit
-				? theme.bg("selectedBg", theme.fg("text", submitLabel))
-				: theme.fg(ctrl.allAnswered() ? "success" : "dim", submitLabel);
-			parts.push(submitStyled);
-			return [truncateToWidth(` ${parts.join("")}`, width), ""];
-		}
-
-		function renderOptionList(rows: Row[], width: number): string[] {
-			const s = ctrl.getState();
-			const q = questions[s.currentTab];
-			const multi = q?.multiSelect === true;
-			const lines: string[] = [];
-			for (let i = 0; i < rows.length; i++) {
-				const r = rows[i]!;
-				const isCursor = i === s.rowIndex;
-				const prefix = isCursor ? theme.fg("accent", "> ") : "  ";
-				let checkbox = "";
-				if (r.kind === "option" && multi) {
-					const set = s.multiSel[s.currentTab]!;
-					checkbox = set.has(r.optionIndex!) ? theme.fg("success", "[x] ") : theme.fg("muted", "[ ] ");
-				}
-				const sentinelColor =
-					r.kind === "option"
-						? isCursor
-							? "accent"
-							: "text"
-						: r.kind === "chat"
-							? "warning"
-							: "accent";
-				const labelText = `${r.kind === "option" && r.optionIndex !== undefined ? `${r.optionIndex + 1}. ` : ""}${r.label}`;
-				const note =
-					r.kind === "option" ? s.notesByTab[s.currentTab]?.[r.optionIndex!] : undefined;
-				const noteTag = note ? theme.fg("dim", "  ✎") : "";
-				lines.push(truncateToWidth(`${prefix}${checkbox}${theme.fg(sentinelColor, labelText)}${noteTag}`, width));
-				if (r.description) lines.push(truncateToWidth(`     ${theme.fg("muted", r.description)}`, width));
-				if (note) lines.push(truncateToWidth(`     ${theme.fg("dim", `note: ${note}`)}`, width));
-			}
-			return lines;
-		}
 
 		function renderPreviewPane(preview: string, width: number, maxHeight: number): string[] {
 			const md = getPreview(preview);
@@ -246,16 +181,20 @@ export function runDialog(
 			return mdLines.map((l) => truncateToWidth(l, width));
 		}
 
-		function padRight(s: string, width: number): string {
-			const w = visibleWidth(s);
-			if (w >= width) return truncateToWidth(s, width);
-			return s + " ".repeat(width - w);
-		}
-
 		function renderSideBySide(rows: Row[], activePreview: string, width: number): string[] {
+			const s = ctrl.getState();
+			const q = questions[s.currentTab];
+			const multi = q?.multiSelect === true;
 			const leftWidth = Math.max(20, Math.floor(width * 0.5));
 			const rightWidth = Math.max(20, width - leftWidth - 3);
-			const leftLines = renderOptionList(rows, leftWidth);
+			const leftLines = renderOptionList({
+				rows,
+				state: s,
+				multi,
+				width: leftWidth,
+				theme: panelTheme,
+				layout,
+			});
 			const maxH = leftLines.length;
 			const rightLines = renderPreviewPane(activePreview, rightWidth, maxH);
 			const out: string[] = [];
@@ -263,50 +202,9 @@ export function runDialog(
 				const l = leftLines[i] ?? "";
 				const r = rightLines[i] ?? "";
 				const sep = theme.fg("dim", "│");
-				out.push(padRight(l, leftWidth) + " " + sep + " " + padRight(r, rightWidth));
+				out.push(padRight(l, leftWidth, layout) + " " + sep + " " + padRight(r, rightWidth, layout));
 			}
 			return out;
-		}
-
-		function renderSubmitTab(width: number): string[] {
-			const s = ctrl.getState();
-			const lines: string[] = [];
-			lines.push(truncateToWidth(theme.fg("accent", theme.bold(" Review your answers")), width));
-			lines.push("");
-			for (let i = 0; i < questions.length; i++) {
-				const q = questions[i]!;
-				const a = s.answers[i];
-				lines.push(truncateToWidth(theme.fg("muted", ` Q${i + 1}. ${q.question}`), width));
-				if (!a) {
-					lines.push(truncateToWidth(`    ${theme.fg("warning", "(unanswered)")}`, width));
-				} else if (a.kind === "single") {
-					const tail = a.note ? theme.fg("dim", ` (note: ${a.note})`) : "";
-					lines.push(truncateToWidth(`    ${theme.fg("text", `${a.index + 1}. ${a.label}`)}${tail}`, width));
-				} else if (a.kind === "multi") {
-					for (let k = 0; k < a.indices.length; k++) {
-						const idx = a.indices[k]!;
-						const lbl = a.labels[k];
-						const note = a.notes[idx];
-						const tail = note ? theme.fg("dim", ` (note: ${note})`) : "";
-						lines.push(truncateToWidth(`    ${theme.fg("text", `[x] ${idx + 1}. ${lbl}`)}${tail}`, width));
-					}
-				} else if (a.kind === "text") {
-					lines.push(truncateToWidth(`    ${theme.fg("text", `"${a.text}"`)}`, width));
-				} else {
-					lines.push(truncateToWidth(`    ${theme.fg("warning", `chat: ${a.text}`)}`, width));
-				}
-				lines.push("");
-			}
-			if (ctrl.allAnswered()) {
-				lines.push(truncateToWidth(theme.fg("success", " Press Enter to submit"), width));
-			} else {
-				const missing = questions
-					.map((_, i) => (s.answers[i] ? null : `Q${i + 1}`))
-					.filter(Boolean)
-					.join(", ");
-				lines.push(truncateToWidth(theme.fg("warning", ` Unanswered: ${missing}`), width));
-			}
-			return lines;
 		}
 
 		function renderInputPanel(label: string, width: number): string[] {
@@ -321,44 +219,46 @@ export function runDialog(
 			return lines;
 		}
 
-		function renderHelp(width: number): string[] {
-			const s = ctrl.getState();
-			if (s.inputMode !== "none") return [];
-			const q = questions[s.currentTab];
-			const multi = questions.length > 1;
-			const parts: string[] = [];
-			if (ctrl.isSubmitTab()) {
-				if (multi) parts.push("Tab/←→ switch tab");
-				parts.push("Enter submit");
-				parts.push("Esc cancel");
-			} else if (q?.multiSelect === true) {
-				if (multi) parts.push("Tab/←→ tabs");
-				parts.push("↑↓ move");
-				parts.push("Space/Enter toggle");
-				parts.push("n note");
-				parts.push("Next row to advance");
-				parts.push("Esc cancel");
-			} else {
-				if (multi) parts.push("Tab/←→ tabs");
-				parts.push("↑↓ move");
-				parts.push("Enter select");
-				parts.push("n note");
-				parts.push("Esc cancel");
-			}
-			return [truncateToWidth(theme.fg("dim", ` ${parts.join(" • ")}`), width)];
-		}
-
 		function render(width: number): string[] {
 			const s = ctrl.getState();
 			const lines: string[] = [];
 			const sep = theme.fg("accent", "─".repeat(Math.max(4, width)));
 			lines.push(sep);
-			for (const l of renderTabBar(width)) lines.push(l);
+			for (const l of renderTabBar({
+				state: s,
+				questions,
+				isSubmitTab: ctrl.isSubmitTab(),
+				allAnswered: ctrl.allAnswered(),
+				width,
+				theme: panelTheme,
+				layout,
+			})) {
+				lines.push(l);
+			}
 
 			if (ctrl.isSubmitTab()) {
-				for (const l of renderSubmitTab(width)) lines.push(l);
+				for (const l of renderSubmitTab({
+					state: s,
+					questions,
+					allAnswered: ctrl.allAnswered(),
+					width,
+					theme: panelTheme,
+					layout,
+				})) {
+					lines.push(l);
+				}
 				lines.push("");
-				for (const l of renderHelp(width)) lines.push(l);
+				for (const l of renderHelp({
+					state: s,
+					activeQuestion: undefined,
+					isSubmitTab: true,
+					hasMultipleQuestions: questions.length > 1,
+					width,
+					theme: panelTheme,
+					layout,
+				})) {
+					lines.push(l);
+				}
 				lines.push(sep);
 				return lines;
 			}
@@ -374,7 +274,16 @@ export function runDialog(
 			if (activePreview) {
 				for (const l of renderSideBySide(rows, activePreview, width)) lines.push(l);
 			} else {
-				for (const l of renderOptionList(rows, width)) lines.push(l);
+				for (const l of renderOptionList({
+					rows,
+					state: s,
+					multi: q.multiSelect === true,
+					width,
+					theme: panelTheme,
+					layout,
+				})) {
+					lines.push(l);
+				}
 			}
 
 			if (s.inputMode === "text") {
@@ -386,7 +295,17 @@ export function runDialog(
 			}
 
 			lines.push("");
-			for (const l of renderHelp(width)) lines.push(l);
+			for (const l of renderHelp({
+				state: s,
+				activeQuestion: q,
+				isSubmitTab: false,
+				hasMultipleQuestions: questions.length > 1,
+				width,
+				theme: panelTheme,
+				layout,
+			})) {
+				lines.push(l);
+			}
 			lines.push(sep);
 			return lines;
 		}
