@@ -1451,13 +1451,13 @@ describe("btw runtime behavior", () => {
     expect(handle?.isFocused()).toBe(true);
     expect(overlay.focused).toBe(true);
 
-    overlay.handleInput("\u001b\u0017");
+    overlay.handleInput("\x1c");
 
     expect(handle?.isFocused()).toBe(false);
     expect(handle?.isHidden()).toBe(false);
     expect(overlay.focused).toBe(false);
 
-    await harness.shortcut("ctrl+alt+w");
+    await harness.shortcut("ctrl+\\");
 
     expect(handle?.isFocused()).toBe(true);
     expect(handle?.isHidden()).toBe(false);
@@ -1488,6 +1488,135 @@ describe("btw runtime behavior", () => {
     overlay.handleInput("abc");
 
     expect(inputHandleSpy).toHaveBeenCalledWith("abc");
+  });
+
+  it("scrolls the BTW transcript on Ctrl+F / Ctrl+B without forwarding those bytes to the composer", async () => {
+    const harness = createHarness();
+    const longAnswer = Array.from({ length: 60 }, (_, index) => `answer line ${index + 1}`).join("\n");
+    promptStreamMock.mockImplementation(() => streamAnswer(longAnswer));
+
+    await harness.runSessionStart();
+    await harness.command("btw", "fill the transcript");
+
+    const overlay = harness.latestOverlayComponent();
+    const inputHandleSpy = vi.spyOn(overlay.input, "handleInput");
+
+    // Prime the viewport height by rendering once; the overlay derives page
+    // size from terminalRows, so this is enough for the scroll math.
+    overlay.render(80);
+
+    const offsetBefore = overlay.transcriptScrollOffset;
+
+    // Ctrl+B — back / page up — should never reach the composer.
+    overlay.handleInput("\x02");
+    const offsetAfterCtrlB = overlay.transcriptScrollOffset;
+    expect(offsetAfterCtrlB).toBeLessThan(offsetBefore + 1);
+    expect(overlay.followTranscript).toBe(false);
+
+    // Ctrl+F — forward / page down.
+    overlay.handleInput("\x06");
+    expect(overlay.transcriptScrollOffset).toBeGreaterThan(offsetAfterCtrlB);
+
+    expect(inputHandleSpy).not.toHaveBeenCalledWith("\x02");
+    expect(inputHandleSpy).not.toHaveBeenCalledWith("\x06");
+  });
+
+  it("hint text only mentions shortcuts that the overlay actually handles", async () => {
+    const harness = createHarness();
+    promptStreamMock.mockImplementation(() => streamAnswer("ok"));
+
+    await harness.runSessionStart();
+    await harness.command("btw", "hello");
+
+    const overlay = harness.latestOverlayComponent();
+    overlay.render(80);
+    const hint = overlay.hintsTextValue as string;
+
+    // Every shortcut token in the hint must correspond to a binding the overlay
+    // really accepts. Catches copy-paste drift between code and docs.
+    const claimedTokens = [
+      "Ctrl+\\",
+      "Ctrl+L",
+      "Ctrl+B/F",
+      "PgUp/PgDn",
+      "Escape",
+      "Enter",
+    ];
+    for (const token of claimedTokens) {
+      expect(hint, `hint missing claimed shortcut ${token}`).toContain(token);
+    }
+
+    // Negative: previously-shipped bindings that no longer exist must not be
+    // advertised. Guards against stale hint strings like the Alt+U/D regression.
+    const forbiddenTokens = ["Alt+/", "Ctrl+Alt+W", "Alt+U", "Alt+D", "Ctrl+U", "Ctrl+D"];
+    for (const token of forbiddenTokens) {
+      expect(hint, `hint still advertises removed shortcut ${token}`).not.toContain(token);
+    }
+  });
+
+  it("replaces the composer prompt glyph with a focus-state marker", async () => {
+    const harness = createHarness([], {
+      theme: {
+        fg: (name: string, text: string) => `<fg:${name}>${text}</fg:${name}>`,
+        bg: (_name: string, text: string) => text,
+        italic: (text: string) => text,
+        bold: (text: string) => `<bold>${text}</bold>`,
+      },
+    });
+    promptStreamMock.mockImplementation(() => streamAnswer("ok"));
+
+    await harness.runSessionStart();
+    await harness.command("btw", "hello");
+
+    const overlay = harness.latestOverlayComponent();
+
+    overlay.focused = true;
+    const focusedLines = overlay.render(80);
+    const focusedInputLine = focusedLines.at(-3);
+    expect(focusedInputLine).toContain("<fg:accent><bold>\u25b6</bold></fg:accent>");
+    // The leading prompt must have been replaced — no dim-coloured ">" should
+    // appear while focused.
+    expect(focusedInputLine).not.toContain("<fg:dim>></fg:dim>");
+
+    harness.overlayHandles.at(-1)?.unfocus();
+    overlay.focused = false;
+    const unfocusedLines = overlay.render(80);
+    const unfocusedInputLine = unfocusedLines.at(-3);
+    expect(unfocusedInputLine).toContain("<fg:dim>></fg:dim>");
+    expect(unfocusedInputLine).not.toContain("\u25b6");
+  });
+
+  it("clears the BTW thread on Ctrl+L while keeping the overlay open and the composer unaffected", async () => {
+    const harness = createHarness();
+    promptStreamMock.mockImplementation(() => streamAnswer("First answer"));
+
+    await harness.runSessionStart();
+    await harness.command("btw", "first question");
+
+    expect(getCustomEntries(harness.entries, "btw-thread-entry")).toHaveLength(1);
+
+    const overlay = harness.latestOverlayComponent();
+    const inputHandleSpy = vi.spyOn(overlay.input, "handleInput");
+    const hideCallsBefore = harness.overlayHandles.at(-1)?.hideCalls ?? 0;
+
+    overlay.handleInput("\x0c");
+    await flushAsyncWork();
+
+    // Thread persisted entry remains for history, but a reset marker is appended
+    // and the live transcript is emptied.
+    expect(transcriptEntries(overlay)).toEqual([]);
+    expect(
+      harness.entries.some(
+        (entry: any) => entry.type === "custom" && entry.customType === "btw-thread-reset",
+      ),
+    ).toBe(true);
+
+    // Overlay stayed open and composer never saw Ctrl+L.
+    expect(harness.overlayHandles.at(-1)?.hideCalls).toBe(hideCallsBefore);
+    expect(inputHandleSpy).not.toHaveBeenCalledWith("\x0c");
+    expect(
+      harness.notifications.some((entry) => entry.message === "Cleared BTW thread."),
+    ).toBe(true);
   });
 
   it("renders BTW as a bordered dialog with an internal transcript viewport", async () => {
@@ -1531,11 +1660,21 @@ describe("btw runtime behavior", () => {
     await harness.command("btw", "");
 
     const overlay = harness.latestOverlayComponent();
+    // The overlay opens focused by default; unfocus both the overlay handle
+    // (which refresh() reads from) and the overlay's cached focus state so
+    // this test continues to cover the borderMuted single-colour invariant
+    // even across submit-triggered refreshes.
+    harness.overlayHandles.at(-1)?.unfocus();
+    overlay.focused = false;
     const emptyLines = overlay.render(80);
 
     overlay.input.onSubmit?.("first question");
     await flushAsyncWork();
 
+    // The submit flow triggers syncUi/refresh which re-reads focus from the
+    // handle; unfocus again before rendering so the invariant still holds.
+    harness.overlayHandles.at(-1)?.unfocus();
+    overlay.focused = false;
     const populatedLines = overlay.render(80);
     const emptyStateLine = emptyLines.find((line: string) => line.includes("No BTW thread yet."));
     const inputLine = populatedLines.at(-3);
@@ -1549,7 +1688,7 @@ describe("btw runtime behavior", () => {
     expect(emptyStateLine).toContain("<fg:borderMuted>│</fg:borderMuted><fg:dim>No BTW thread yet.");
     expect(emptyStateLine).not.toContain("<fg:borderMuted>│</fg:borderMuted> <fg:dim>No BTW thread yet.");
     expect(assistantBodyLine).toContain("<fg:borderMuted>│</fg:borderMuted>    First answer");
-    expect(inputLine).toContain("<fg:borderMuted>│</fg:borderMuted>> ");
+    expect(inputLine).toContain("<fg:borderMuted>│</fg:borderMuted><fg:dim>></fg:dim> ");
     expect(inputLine).not.toContain("\x1b_pi:c\x07");
   });
 

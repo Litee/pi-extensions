@@ -34,7 +34,7 @@ session stays visible underneath.
   contextless side thread that does not inherit the main-session context.
 - Opens a focused BTW modal shell with its own composer and transcript.
 - Keeps the BTW overlay open while you switch focus back to the main editor
-  with `Alt+/` (or `Ctrl+Alt+W` as a fallback).
+  with `Ctrl+\`.
 - Keeps BTW thread entries out of the main agent's future context (hidden
   custom session entries).
 - Supports BTW-only model and thinking overrides without changing the main
@@ -59,10 +59,16 @@ session stays visible underneath.
 
 ## Overlay controls
 
-- `Alt+/` toggles focus between the BTW overlay and the main editor without
-  closing the overlay.
-- `Ctrl+Alt+W` is a fallback focus toggle for terminals that do not deliver
-  `Alt+/` as a usable shortcut.
+- `Ctrl+\` toggles focus between the BTW overlay and the main editor
+  without closing the overlay.
+- `Ctrl+L` clears the current BTW thread while keeping the overlay open,
+  ready for a fresh question (equivalent to `/btw:clear` but non-dismissing).
+- `Ctrl+F` / `Ctrl+B` scroll the transcript forward / back by a page
+  (MacBook-friendly alternative to `PgUp` / `PgDn`; follows the less/vim
+  convention of forward = down, back = up).
+- The composer's prompt glyph tracks keyboard focus: a bright `▶` when
+  BTW is receiving your input, a dim `>` when the main editor owns focus.
+  The overlay frame also brightens to accent colour when BTW is focused.
 - `Esc` dismisses BTW immediately while the overlay is focused.
 - The BTW overlay opens top-centered so the main session stays visible
   underneath it.

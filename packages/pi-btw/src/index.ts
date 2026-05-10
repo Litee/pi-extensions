@@ -52,7 +52,7 @@ const BTW_ENTRY_TYPE = "btw-thread-entry";
 const BTW_RESET_TYPE = "btw-thread-reset";
 const BTW_MODEL_OVERRIDE_TYPE = "btw-model-override";
 const BTW_THINKING_OVERRIDE_TYPE = "btw-thinking-override";
-const BTW_FOCUS_SHORTCUTS = [Key.alt("/"), Key.ctrlAlt("w")] as const;
+const BTW_FOCUS_SHORTCUTS = [Key.ctrl("\\")] as const;
 
 function matchesBtwFocusShortcut(data: string): boolean {
   return BTW_FOCUS_SHORTCUTS.some((shortcut) => matchesKey(data, shortcut));
@@ -1052,6 +1052,7 @@ class BtwOverlayComponent extends Container implements Focusable {
   private readonly onSubmitCallback: (value: string) => void;
   private readonly onDismissCallback: () => void;
   private readonly onUnfocusCallback: () => void;
+  private readonly onClearCallback: () => void;
   private readonly tui: TUI;
   private readonly theme: ExtensionContext["ui"]["theme"];
   private transcriptLines: string[] = [];
@@ -1083,6 +1084,7 @@ class BtwOverlayComponent extends Container implements Focusable {
     onSubmit: (value: string) => void,
     onDismiss: () => void,
     onUnfocus: () => void,
+    onClear: () => void,
   ) {
     super();
     this.tui = tui;
@@ -1093,6 +1095,7 @@ class BtwOverlayComponent extends Container implements Focusable {
     this.onSubmitCallback = onSubmit;
     this.onDismissCallback = onDismiss;
     this.onUnfocusCallback = onUnfocus;
+    this.onClearCallback = onClear;
 
     this.modeText = new Text("", 1, 0);
     this.summaryText = new Text("", 1, 0);
@@ -1133,20 +1136,25 @@ class BtwOverlayComponent extends Container implements Focusable {
     this.refresh();
   }
 
+  private borderColor(): "accent" | "borderMuted" {
+    return this._focused ? "accent" : "borderMuted";
+  }
+
   private frameLine(content: string, innerWidth: number): string {
     const truncated = truncateToWidth(content, innerWidth, "");
     const padding = Math.max(0, innerWidth - visibleWidth(truncated));
-    return `${this.theme.fg("borderMuted", "│")}${truncated}${" ".repeat(padding)}${this.theme.fg("borderMuted", "│")}`;
+    const border = this.borderColor();
+    return `${this.theme.fg(border, "│")}${truncated}${" ".repeat(padding)}${this.theme.fg(border, "│")}`;
   }
 
   private ruleLine(innerWidth: number): string {
-    return this.theme.fg("borderMuted", `├${"─".repeat(innerWidth)}┤`);
+    return this.theme.fg(this.borderColor(), `├${"─".repeat(innerWidth)}┤`);
   }
 
   private borderLine(innerWidth: number, edge: "top" | "bottom"): string {
     const left = edge === "top" ? "┌" : "└";
     const right = edge === "top" ? "┐" : "┘";
-    return this.theme.fg("borderMuted", `${left}${"─".repeat(innerWidth)}${right}`);
+    return this.theme.fg(this.borderColor(), `${left}${"─".repeat(innerWidth)}${right}`);
   }
 
   private wrapTranscript(innerWidth: number): string[] {
@@ -1172,14 +1180,19 @@ class BtwOverlayComponent extends Container implements Focusable {
       return;
     }
 
-    if (matchesKey(data, Key.pageUp)) {
+    if (matchesKey(data, Key.ctrl("l"))) {
+      this.onClearCallback();
+      return;
+    }
+
+    if (matchesKey(data, Key.pageUp) || matchesKey(data, Key.ctrl("b"))) {
       this.followTranscript = false;
       this.transcriptScrollOffset = Math.max(0, this.transcriptScrollOffset - Math.max(1, this.transcriptViewportHeight - 1));
       this.tui.requestRender();
       return;
     }
 
-    if (matchesKey(data, Key.pageDown)) {
+    if (matchesKey(data, Key.pageDown) || matchesKey(data, Key.ctrl("f"))) {
       this.transcriptScrollOffset += Math.max(1, this.transcriptViewportHeight - 1);
       this.tui.requestRender();
       return;
@@ -1197,11 +1210,27 @@ class BtwOverlayComponent extends Container implements Focusable {
     // the row stays geometrically stable while the overlay still owns keyboard input.
     this.input.focused = false;
     try {
-      const inputLine = this.input.render(targetWidth)[0] ?? "";
-      return `${this.theme.fg("borderMuted", "│")}${inputLine}${this.theme.fg("borderMuted", "│")}`;
+      const rawInputLine = this.input.render(targetWidth)[0] ?? "";
+      // pi-tui Input hardcodes the prompt as "> " (see pi-tui components/input.js).
+      // Strip it and replace with a focus-state glyph so the user sees, right next
+      // to where they type, whether typing goes to BTW or to the main editor.
+      const inputLine = rawInputLine.startsWith("> ")
+        ? `${this.focusPrompt()} ${rawInputLine.slice(2)}`
+        : rawInputLine;
+      const border = this.theme.fg(this.borderColor(), "\u2502");
+      return `${border}${inputLine}${border}`;
     } finally {
       this.input.focused = previousFocused;
     }
+  }
+
+  private focusPrompt(): string {
+    // Focused: bright accent ▶ so the prompt itself announces which composer
+    // owns input. Unfocused: dim > so the main editor's own prompt visually
+    // outweighs this one.
+    return this._focused
+      ? this.theme.fg("accent", this.theme.bold("\u25b6"))
+      : this.theme.fg("dim", ">");
   }
 
   override render(width: number): string[] {
@@ -1288,7 +1317,7 @@ class BtwOverlayComponent extends Container implements Focusable {
     const status = this.getStatus() ?? "Ready. Enter submits; Escape dismisses without clearing.";
     this.statusTextValue = status;
     this.statusText.setText(this.statusTextValue);
-    this.hintsTextValue = "Enter submit · Alt+/ toggle focus · Escape dismiss · PgUp/PgDn scroll";
+    this.hintsTextValue = "Enter submit · Ctrl+B/F or PgUp/PgDn scroll · Ctrl+\\ toggle focus · Ctrl+L clear thread · Escape dismiss";
     this.hintsText.setText(this.hintsTextValue);
     this.tui.requestRender();
   }
@@ -1666,6 +1695,12 @@ export default function (pi: ExtensionAPI) {
             () => {
               overlayRuntime?.handle?.unfocus();
               overlayRuntime?.refresh?.();
+            },
+            () => {
+              void (async () => {
+                await resetThread(ctx, true, pendingMode);
+                notify(ctx, "Cleared BTW thread.", "info");
+              })();
             },
           );
 
