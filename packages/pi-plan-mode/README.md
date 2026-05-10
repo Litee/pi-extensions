@@ -3,10 +3,34 @@
 Read-only exploration mode for pi — toggle a restricted tool set for safe code
 analysis, then switch back to full tool access to execute.
 
-> **Source:** copied from
-> [`pi-coding-agent/examples/extensions/plan-mode`](https://github.com/badlogic/pi-mono/tree/main/packages/coding-agent/examples/extensions/plan-mode)
-> (MIT, © Mario Zechner), with todo-tracking removed and strictest-tsconfig
-> patches applied.
+> **Upstream:** [`pi-coding-agent/examples/extensions/plan-mode`](https://github.com/badlogic/pi-mono/tree/main/packages/coding-agent/examples/extensions/plan-mode)
+> (MIT, © Mario Zechner). See [`UPSTREAM.md`](./UPSTREAM.md) for the exact
+> copied commit and a recipe for diffing against future upstream changes.
+
+## Differences from upstream
+
+Not exhaustive — the full port manifest is in [`UPSTREAM.md`](./UPSTREAM.md).
+If you are considering copying this package, here is what you will be picking
+up on top of upstream `plan-mode`:
+
+- **Todo-tracking removed.** Upstream bundles a todo list with plan mode; this
+  port drops it (breaking change vs. upstream).
+- **State snapshots persist across restarts.** The model, thinking level, and
+  active tool set are snapshotted into the session entry log when plan mode
+  turns on and restored when it turns off, surviving `/reload`, `/resume`,
+  and `/fork`. Upstream restores only within the live session.
+- **Warn instead of silently no-op** when disabling plan mode without a
+  captured snapshot (e.g. a session that started already in plan mode).
+- **`Shift+Tab` as a second toggle shortcut** alongside upstream's
+  `Ctrl+Alt+P` (requires removing `Shift+Tab` from `app.thinking.cycle` in
+  `~/.pi/agent/keybindings.json`).
+- **`need_user_attention` / `user_attention_resolved` event emission** so
+  other extensions (e.g. `pi-cmux-notifications`) can react to plan-mode
+  transitions.
+- **Tool list printed on exit** so you see the tools you get back when
+  plan mode turns off.
+- **Strictness-compliance edits** for this repo's `@tsconfig/strictest`
+  layering (no behaviour change).
 
 ## Features
 

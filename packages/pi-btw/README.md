@@ -1,24 +1,9 @@
 # pi-btw
 
 > **Upstream:** [`dbachelder/pi-btw`](https://github.com/dbachelder/pi-btw)
->
-> This package is a copy of the upstream `pi-btw` extension (v0.4.0,
-> MIT, by Dan Bachelder) ported into this workspace as `pi-btw` for
-> easier local experimentation. The behaviour is identical; any changes
-> made here should be kept in sync with the upstream via a diff against
-> the link above.
->
-> Two classes of modification versus upstream:
->
-> 1. Peer-dependency imports rewritten from `@earendil-works/pi-*` to
->    `@mariozechner/pi-*` to match this workspace's convention.
-> 2. A set of strictness-compliance edits (non-null assertions,
->    optional chaining, conditional spreads for optional fields,
->    one local guard, and a `.js` extension on the test's relative
->    import) to satisfy this repo's `@tsconfig/strictest` layering
->    (`noUncheckedIndexedAccess`, `exactOptionalPropertyTypes`).
->    No behaviour changes — upstream's 50/50 vitest suite still
->    passes unchanged.
+> (v0.4.0, MIT, by Dan Bachelder). See [`UPSTREAM.md`](./UPSTREAM.md) for the
+> exact copied commit and a recipe for diffing against future upstream
+> changes.
 
 A pi extension that adds a `/btw` side-conversation channel. `/btw` opens a
 real pi sub-session with coding-tool access that runs immediately even while
@@ -72,6 +57,34 @@ session stays visible underneath.
 - `Esc` dismisses BTW immediately while the overlay is focused.
 - The BTW overlay opens top-centered so the main session stays visible
   underneath it.
+
+## Differences from upstream
+
+Not exhaustive — the full port manifest is in [`UPSTREAM.md`](./UPSTREAM.md).
+If you are considering copying this package, here is what you will be picking
+up on top of upstream `pi-btw` v0.4.0:
+
+- **macOS-friendly overlay shortcuts.** Focus toggle moved from `Alt+/` /
+  `Ctrl+Alt+W` to `Ctrl+\` (works on cmux and other kitty-protocol terminals
+  without Option-as-Meta setup). Added `Ctrl+L` to clear the BTW thread in
+  place without dismissing the overlay. Added `Ctrl+B` / `Ctrl+F` as
+  MacBook-friendly page-scroll keys alongside `PgUp` / `PgDn`.
+- **Visual focus indicator.** The composer prompt glyph is replaced with a
+  focus-state marker: a bright accent `▶` when BTW has keyboard focus, a dim
+  `>` when the main editor does. The overlay frame also changes colour to
+  match. Makes it obvious which composer receives your keystrokes when the
+  overlay is parked open.
+- **Hint line drift guard.** The on-screen hint below the composer is
+  covered by a regression test that fails if the hint string stops matching
+  the real key bindings.
+- **Workspace housekeeping** (no behaviour change): peer-dependency imports
+  rewritten from `@earendil-works/pi-*` to `@mariozechner/pi-*`;
+  strictness-compliance edits for `@tsconfig/strictest`
+  (`noUncheckedIndexedAccess`, `exactOptionalPropertyTypes`); `.js`
+  extension on the test's relative import for `nodenext` resolution.
+
+Upstream's 50/50 vitest suite still passes unchanged. The new behaviour is
+covered by additional local tests.
 
 ## Why
 

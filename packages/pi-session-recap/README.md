@@ -1,12 +1,9 @@
 # pi-session-recap
 
 > **Upstream:** [`tmustier/pi-extensions/session-recap`](https://github.com/tmustier/pi-extensions/tree/main/session-recap)
->
-> This package is a copy of the upstream `session-recap` extension (v0.1.1,
-> MIT, by Thomas Mustier) ported into this workspace as `pi-session-recap`
-> for easier local experimentation. The behaviour is identical; any changes
-> made here should be kept in sync with the upstream via a diff against the
-> link above.
+> (v0.1.1, MIT, © Thomas Mustier). See [`UPSTREAM.md`](./UPSTREAM.md) for the
+> exact copied commit and a recipe for diffing against future upstream
+> changes.
 
 Claude-Code-style session recap for pi. When you switch focus away from a pi
 session and come back, a one-line recap appears above the editor so you can
@@ -14,6 +11,36 @@ re-enter flow without re-reading scrollback.
 
 Built for multi-clauding / multi-pi workflows where several agent sessions run
 in parallel tabs.
+
+## Differences from upstream
+
+Not exhaustive — the full port manifest is in [`UPSTREAM.md`](./UPSTREAM.md).
+If you are considering copying this package, here is what you will be picking
+up on top of upstream `session-recap` v0.1.1:
+
+- **User-level config file** at `~/.pi/agent/pi-session-recap.json`, owned by
+  the extension, with a one-time migration from legacy locations. Lets you
+  set a persistent `recap-model` preference (among other things) without
+  passing CLI flags every session.
+- **`/recap` subcommands.** `/recap help` and `/recap status` added locally.
+  `/recap` subcommand output renders chromeless (no default message shell).
+- **Default idle timeout raised** from upstream's 45s to 180s (via an
+  intermediate bump to 120s). Upstream-friendly override still works via
+  `--recap-idle-seconds`.
+- **Recap-model override.** User-level settings can pin a recap model
+  regardless of the session's active model; still falls back to
+  session-active + `reasoning: "minimal"` when unset.
+- **Prompt tuning.** Leads with the goal, drops the `recap:` prefix, and
+  adds a Skip rule so uneventful turns produce no recap at all.
+- **Widget / status keys prefixed with the package name** so multiple
+  extensions registering the same generic key no longer clash in the TUI.
+- **Flag key hygiene.** `pi.getFlag(...)` called with bare keys (no `--`
+  prefix) to match the post-0.70 pi API contract.
+- **`helpers.ts` split out** so the pure functions are unit-testable without
+  `pi-tui` / `pi-ai` / stdin. Upstream keeps everything in a single file.
+- **Strictness-compliance edits** for this repo's `@tsconfig/strictest`
+  layering (`exactOptionalPropertyTypes`, `noUncheckedIndexedAccess`; no
+  behaviour change).
 
 ## How it triggers
 

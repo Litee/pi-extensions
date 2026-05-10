@@ -22,25 +22,11 @@ below to diff against upstream and pick up future changes.
 Upstream layout is `extensions/btw.ts`; locally it lives at `src/index.ts`
 to match this workspace's per-package convention.
 
-Local port intentionally diverges from upstream:
-
-- Peer-dependency imports rewritten from `@earendil-works/pi-*` to
-  `@mariozechner/pi-*` to match this workspace's convention (three lines
-  in `src/index.ts`, one in `test/btw.runtime.test.ts`).
-- Strictness-compliance edits to satisfy this repo's `@tsconfig/strictest`
-  layering (`noUncheckedIndexedAccess`, `exactOptionalPropertyTypes`):
-  ~5 fix sites in `src/index.ts` and ~31 in `test/btw.runtime.test.ts` —
-  non-null assertions at indexed-access sites, optional chaining,
-  conditional spreads for `exactOptionalPropertyTypes`-guarded optional
-  fields, and two local `if (!x) continue;` guards.
-- Test's relative import switched from `"../src"` to `"../src/index.js"`
-  to satisfy this repo's `nodenext` module resolution (matches
-  `pi-plan-mode` / `pi-session-recap` convention).
-- Top-of-file JSDoc in `src/index.ts` and `README.md` attribution block
-  point back to upstream as the design-of-record.
-
-No behaviour changes vs. upstream. Upstream's 50/50 vitest suite still
-passes unchanged.
+For the list of intentional local divergences from upstream (macOS shortcuts,
+focus indicator, dependency rewires, strictness edits) see the **Differences
+from upstream** section in [`README.md`](./README.md). That is the canonical
+location; this file stays focused on which upstream commit was copied and
+how to diff against future upstream work.
 
 ## How to check for upstream changes
 

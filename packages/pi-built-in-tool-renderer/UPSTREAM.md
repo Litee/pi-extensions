@@ -17,15 +17,12 @@ diff against upstream and pick up future changes.
 
 Ported in local commit `6eb59e7` (`feat(packages): add pi-plan-mode and pi-built-in-tool-renderer`, 2026-05-06).
 
-The local port intentionally diverges from upstream in the bash renderer:
-- Uses `context.isError` as the authoritative non-zero-exit signal (instead of
-  regex-matching stdout).
-- Parses the real `Command exited with code N` / `Command timed out after Ns`
-  / `Command aborted` sentinels for the failure label.
-- Shows elapsed time inline, ticking every second while the command runs.
-
-Renderers for `grep` / `ls` / `find` were added locally in `6ed90df`; they do
-not exist in upstream.
+For the list of intentional local divergences from upstream (bash renderer
+extensions, grep / ls / find renderers, shell-preservation fix, expanded
+bash view) see the **Differences from upstream** section in
+[`README.md`](./README.md). That is the canonical location; this file stays
+focused on which upstream commit was copied and how to diff against future
+upstream work.
 
 ## How to check for upstream changes
 

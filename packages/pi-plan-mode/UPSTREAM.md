@@ -21,10 +21,16 @@ them in different PRs.
 | `src/utils.ts` | [`dee3d8c`](https://github.com/badlogic/pi-mono/commit/dee3d8c6a85f5f039addc34b5242f531d0c3ec50) | 2026-04-15 | `chore(coding-agent): replace exa with eza in plan-mode extension (#3240)` |
 
 Ported in local commit `6eb59e7` (`feat(packages): add pi-plan-mode and pi-built-in-tool-renderer`, 2026-05-06).
-Local port applies narrow strict-tsconfig patches only.
 
 `src/tool-snapshot.ts` is **not** from upstream; it was added locally in commit
 `b16db13` (`feat(plan-mode): persist model/thinking/tool snapshots across restarts`).
+
+For the list of intentional local divergences from upstream (todo-tracking
+removed, cross-restart snapshot persistence, `Shift+Tab` alt shortcut,
+user-attention event emission, etc.) see the **Differences from upstream**
+section in [`README.md`](./README.md). That is the canonical location; this
+file stays focused on which upstream commits were copied and how to diff
+against future upstream work.
 
 ## How to check for upstream changes
 

@@ -2,15 +2,31 @@
 
 Pi extension that re-registers the built-in `read`, `bash`, `edit`, and `write`
 tools with compact custom renderers while delegating execution to the originals.
+Also adds renderers for `grep`, `ls`, and `find` (no upstream equivalent).
 
-> **Source:** derived from
-> [`pi-coding-agent/examples/extensions/built-in-tool-renderer.ts`](https://github.com/badlogic/pi-mono/blob/main/packages/coding-agent/examples/extensions/built-in-tool-renderer.ts)
-> (MIT, © Mario Zechner). The `read` / `edit` / `write` renderers are copied
-> as-is. The `bash` renderer has been extended to (a) use `context.isError`
-> (the authoritative non-zero-exit signal) instead of a regex match against
-> stdout, (b) parse the real `Command exited with code N` message for the
-> exit code, and (c) display the execution duration inline on the status
-> line (ticking every second while the command is running).
+> **Upstream:** [`pi-coding-agent/examples/extensions/built-in-tool-renderer.ts`](https://github.com/badlogic/pi-mono/blob/main/packages/coding-agent/examples/extensions/built-in-tool-renderer.ts)
+> (MIT, © Mario Zechner). See [`UPSTREAM.md`](./UPSTREAM.md) for the exact
+> copied commit and a recipe for diffing against future upstream changes.
+
+## Differences from upstream
+
+Not exhaustive — the full port manifest is in [`UPSTREAM.md`](./UPSTREAM.md).
+If you are considering copying this package, here is what you will be picking
+up on top of the upstream example:
+
+- **`bash` renderer extensions.** Uses `context.isError` (the authoritative
+  non-zero-exit signal) instead of regex-matching stdout; parses the real
+  `Command exited with code N` / `Command timed out after Ns` / `Command
+  aborted` sentinels for the failure label; displays the execution duration
+  inline on the status line, ticking every second while the command is
+  running.
+- **Renderers for `grep`, `ls`, and `find`.** Added locally; no upstream
+  equivalent. Same collapsed / expanded pattern as the other renderers.
+- **Shell preservation fix.** Removed an erroneous `renderShell: self` on the
+  edit-tool re-registration (upstream had the same line in the example at
+  copy time, since fixed there).
+- **Expanded bash view.** Shows the full command verbatim instead of
+  truncating to a single line.
 
 ## What it does
 
