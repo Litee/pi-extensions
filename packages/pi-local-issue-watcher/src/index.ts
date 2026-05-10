@@ -36,6 +36,7 @@ import { join } from "node:path";
 
 import type { ExtensionAPI } from "@mariozechner/pi-coding-agent";
 import { Box, Text } from "@mariozechner/pi-tui";
+import { PollScheduler } from "pi-watcher-core/poll-scheduler";
 
 import { changedPaths, diffSnapshots } from "./diff.js";
 import {
@@ -429,7 +430,14 @@ interface Runtime {
 	paused: boolean;
 	/** Most recent snapshot used as the diff baseline across polls. */
 	snapshot: Snapshot;
-	timer: ReturnType<typeof setInterval> | null;
+	/**
+	 * Back-off-aware poll scheduler (pi-watcher-core). Configured with
+	 * baseMs === maxMs === idleMaxMs so the effective interval never
+	 * changes — this watcher has a flat 60s cadence. PollScheduler is
+	 * still used (over raw setInterval) for its re-entry guard, which
+	 * prevents a slow filesystem scan from being re-entered by the timer.
+	 */
+	scheduler: PollScheduler;
 	pi: Pick<ExtensionAPI, "sendMessage" | "appendEntry">;
 	/** Set once `session_start` fires; `null` before that. */
 	ui:
@@ -455,7 +463,11 @@ function makeRuntime(dbRoot: string, pi: Runtime["pi"]): Runtime {
 		dbRoot,
 		paused: false,
 		snapshot: {},
-		timer: null,
+		scheduler: new PollScheduler({
+			baseMs: POLL_INTERVAL_MS,
+			maxMs: POLL_INTERVAL_MS,
+			idleMaxMs: POLL_INTERVAL_MS,
+		}),
 		pi,
 		ui: null,
 		parseFailureToastState: { hasToasted: false },
@@ -482,17 +494,11 @@ function refreshStatusLine(
 }
 
 function startPolling(rt: Runtime): void {
-	if (rt.timer !== null) return;
-	rt.timer = setInterval(() => {
-		void pollOnce(rt);
-	}, POLL_INTERVAL_MS);
+	rt.scheduler.start(() => pollOnce(rt));
 }
 
 function stopPolling(rt: Runtime): void {
-	if (rt.timer !== null) {
-		clearInterval(rt.timer);
-		rt.timer = null;
-	}
+	rt.scheduler.stop();
 }
 
 async function pollOnce(rt: Runtime): Promise<void> {
