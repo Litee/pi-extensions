@@ -1,0 +1,14 @@
+{
+  "name": "pi-archon-workflow-watcher",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Pi extension that polls archon workflow status and injects state-change notifications into chat as 'pi-archon-workflow-watcher' custom messages.",
+  "type": "module",
+  "keywords": ["pi-package"],
+  "pi": {
+    "extensions": ["./src/index.ts"]
+  },
+  "peerDependencies": {
+    "@mariozechner/pi-coding-agent": "*"
+  }
+}
