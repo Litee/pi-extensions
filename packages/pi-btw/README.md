@@ -58,11 +58,26 @@ session stays visible underneath.
 - The BTW overlay opens top-centered so the main session stays visible
   underneath it.
 
+## Why
+
+Sometimes you want to:
+
+- ask a clarifying question while the main agent keeps working,
+- think through next steps without derailing the current turn,
+- explore an idea, then inject it back once it's ready.
+
+## Included skill
+
+This package also ships a small `btw` skill (see `skills/btw/SKILL.md`) so pi
+can better recognize when a side-conversation workflow is appropriate. It
+helps with discoverability and guidance, but is not required for the
+extension itself to work.
+
 ## Differences from upstream
 
-Not exhaustive — the full port manifest is in [`UPSTREAM.md`](./UPSTREAM.md).
-If you are considering copying this package, here is what you will be picking
-up on top of upstream `pi-btw` v0.4.0:
+Not exhaustive — just the highlights that matter if you are considering
+copying this package. Here is what you will be picking up on top of upstream
+`pi-btw` v0.4.0:
 
 - **macOS-friendly overlay shortcuts.** Focus toggle moved from `Alt+/` /
   `Ctrl+Alt+W` to `Ctrl+\` (works on cmux and other kitty-protocol terminals
@@ -85,21 +100,6 @@ up on top of upstream `pi-btw` v0.4.0:
 
 Upstream's 50/50 vitest suite still passes unchanged. The new behaviour is
 covered by additional local tests.
-
-## Why
-
-Sometimes you want to:
-
-- ask a clarifying question while the main agent keeps working,
-- think through next steps without derailing the current turn,
-- explore an idea, then inject it back once it's ready.
-
-## Included skill
-
-This package also ships a small `btw` skill (see `skills/btw/SKILL.md`) so pi
-can better recognize when a side-conversation workflow is appropriate. It
-helps with discoverability and guidance, but is not required for the
-extension itself to work.
 
 ## Attribution
 

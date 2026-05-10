@@ -8,26 +8,6 @@ Also adds renderers for `grep`, `ls`, and `find` (no upstream equivalent).
 > (MIT, © Mario Zechner). See [`UPSTREAM.md`](./UPSTREAM.md) for the exact
 > copied commit and a recipe for diffing against future upstream changes.
 
-## Differences from upstream
-
-Not exhaustive — the full port manifest is in [`UPSTREAM.md`](./UPSTREAM.md).
-If you are considering copying this package, here is what you will be picking
-up on top of the upstream example:
-
-- **`bash` renderer extensions.** Uses `context.isError` (the authoritative
-  non-zero-exit signal) instead of regex-matching stdout; parses the real
-  `Command exited with code N` / `Command timed out after Ns` / `Command
-  aborted` sentinels for the failure label; displays the execution duration
-  inline on the status line, ticking every second while the command is
-  running.
-- **Renderers for `grep`, `ls`, and `find`.** Added locally; no upstream
-  equivalent. Same collapsed / expanded pattern as the other renderers.
-- **Shell preservation fix.** Removed an erroneous `renderShell: self` on the
-  edit-tool re-registration (upstream had the same line in the example at
-  copy time, since fixed there).
-- **Expanded bash view.** Shows the full command verbatim instead of
-  truncating to a single line.
-
 ## What it does
 
 Each built-in tool is re-registered under the same name, which replaces the
@@ -67,3 +47,23 @@ The renderers are straightforward; edit `src/index.ts` and adjust the
 
 See the [pi extensions docs](https://github.com/badlogic/pi-mono/blob/main/packages/coding-agent/docs/extensions.md)
 for the full rendering API.
+
+## Differences from upstream
+
+Not exhaustive — just the highlights that matter if you are considering
+copying this package. Here is what you will be picking up on top of the
+upstream example:
+
+- **`bash` renderer extensions.** Uses `context.isError` (the authoritative
+  non-zero-exit signal) instead of regex-matching stdout; parses the real
+  `Command exited with code N` / `Command timed out after Ns` / `Command
+  aborted` sentinels for the failure label; displays the execution duration
+  inline on the status line, ticking every second while the command is
+  running.
+- **Renderers for `grep`, `ls`, and `find`.** Added locally; no upstream
+  equivalent. Same collapsed / expanded pattern as the other renderers.
+- **Shell preservation fix.** Removed an erroneous `renderShell: self` on the
+  edit-tool re-registration (upstream had the same line in the example at
+  copy time, since fixed there).
+- **Expanded bash view.** Shows the full command verbatim instead of
+  truncating to a single line.
