@@ -8,8 +8,12 @@ import {
 
 function makeLabel(run: ArchonRun): string {
 	const name = run.workflowName ?? run.id;
-	const branch = run.branch ? ` (${run.branch})` : "";
-	return `${name}${branch}`;
+	// Show just the last path segment of working_path as location context,
+	// e.g. "/Volumes/work/my-repo" → "my-repo".
+	const loc = run.workingPath
+		? ` (${run.workingPath.replace(/\/+$/, "").split("/").pop() ?? run.workingPath})`
+		: "";
+	return `${name}${loc}`;
 }
 
 export function detectChanges(
@@ -26,7 +30,7 @@ export function detectChanges(
 			runId: id,
 			eventType: "new_run",
 			workflowName: run.workflowName ?? id,
-			branch: run.branch ?? "",
+			workingPath: run.workingPath ?? "",
 			previousStatus: "",
 			newStatus: run.status,
 			summary: `${label}: new run — ${run.status}`,
@@ -47,7 +51,7 @@ export function detectChanges(
 			runId: id,
 			eventType: "status_changed",
 			workflowName: run.workflowName ?? id,
-			branch: run.branch ?? "",
+			workingPath: run.workingPath ?? "",
 			previousStatus: prev.status,
 			newStatus: run.status,
 			summary: `${label}: ${prev.status} → ${run.status}`,
@@ -66,7 +70,7 @@ export function detectChanges(
 			runId: id,
 			eventType: "run_removed",
 			workflowName: run.workflowName ?? id,
-			branch: run.branch ?? "",
+			workingPath: run.workingPath ?? "",
 			previousStatus: run.status,
 			newStatus: "",
 			summary: `${label}: run disappeared (was ${run.status})`,

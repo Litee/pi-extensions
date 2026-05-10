@@ -1,4 +1,7 @@
 import { execFile } from "node:child_process";
+import { existsSync, readdirSync } from "node:fs";
+import { homedir } from "node:os";
+import { join } from "node:path";
 
 import type { ArchonRun } from "./types.js";
 
@@ -15,6 +18,9 @@ export class ArchonCliError extends Error {
 		this.name = "ArchonCliError";
 	}
 }
+
+/** Sentinel string present in archon's stderr when not in a git repo. */
+const NOT_IN_GIT_REPO_MARKER = "Not in a git repository";
 
 /**
  * Parse raw archon CLI output. The command emits pino log lines
@@ -36,16 +42,21 @@ export function parseStatusOutput(raw: string): ArchonRun[] {
 		return parsed.runs
 			.filter((r): r is Record<string, unknown> => r !== null && typeof r === "object")
 			.map((r): ArchonRun => {
-				const { workflowName, branch, startedAt, lastActivityAt, ...rest } = r;
 				const run: ArchonRun = {
-					...rest,
+					...r,
 					id: typeof r["id"] === "string" ? r["id"] : "",
 					status: typeof r["status"] === "string" ? r["status"] : "",
 				};
-				if (typeof workflowName === "string") run.workflowName = workflowName;
-				if (typeof branch === "string") run.branch = branch;
-				if (typeof startedAt === "string") run.startedAt = startedAt;
-				if (typeof lastActivityAt === "string") run.lastActivityAt = lastActivityAt;
+				// Normalise snake_case fields from the archon DB to camelCase.
+				// The JSON output uses snake_case (workflow_name, working_path, etc.).
+				const wn = r["workflow_name"] ?? r["workflowName"];
+				if (typeof wn === "string") run.workflowName = wn;
+				const wp = r["working_path"] ?? r["workingPath"];
+				if (typeof wp === "string") run.workingPath = wp;
+				const sa = r["started_at"] ?? r["startedAt"];
+				if (typeof sa === "string") run.startedAt = sa;
+				const la = r["last_activity_at"] ?? r["lastActivityAt"];
+				if (typeof la === "string") run.lastActivityAt = la;
 				return run;
 			});
 	} catch {
@@ -53,27 +64,85 @@ export function parseStatusOutput(raw: string): ArchonRun[] {
 	}
 }
 
+/**
+ * Find a git repository that archon itself created, to use as a `--cwd`
+ * fallback when the process is not running inside a git repository.
+ *
+ * Archon creates worktrees under `~/.archon/workspaces/<owner>/<repo>/`.
+ * Each workspace directory is a proper git clone, so we can pass any of
+ * them to `--cwd` and archon will accept the invocation. The global
+ * SQLite database (`~/.archon/archon.db`) is queried regardless of which
+ * repo is used as context.
+ *
+ * Returns the first workspace path found, or `null` when no workspaces
+ * exist yet (meaning no workflows have ever run, so there is nothing to
+ * report).
+ *
+ * The `home` parameter is injectable for unit tests.
+ */
+export function findArchonWorkspaceCwd(home = homedir()): string | null {
+	const workspacesDir = join(home, ".archon", "workspaces");
+	try {
+		for (const owner of readdirSync(workspacesDir, { withFileTypes: true })) {
+			if (!owner.isDirectory()) continue;
+			const ownerPath = join(workspacesDir, owner.name);
+			for (const repo of readdirSync(ownerPath, { withFileTypes: true })) {
+				if (!repo.isDirectory()) continue;
+				const repoPath = join(ownerPath, repo.name);
+				if (existsSync(join(repoPath, ".git"))) {
+					return repoPath;
+				}
+			}
+		}
+	} catch {
+		// workspacesDir doesn't exist or isn't readable — no workspaces yet.
+	}
+	return null;
+}
+
+/**
+ * Run `archon workflow status --json`, optionally with a `--cwd` override.
+ * Exported for unit tests that want to stub `execFile` behaviour.
+ */
+export function runArchonStatus(cwd?: string): Promise<ArchonRun[]> {
+	const args = ["workflow", "status", "--json"];
+	if (cwd !== undefined) args.push("--cwd", cwd);
+	return new Promise((resolve, reject) => {
+		execFile("archon", args, (err, stdout, stderr) => {
+			if (err) {
+				reject(
+					new ArchonCliError(
+						`archon workflow status failed: ${err.message}\nstderr: ${stderr}`,
+						err.code as number | null,
+					),
+				);
+				return;
+			}
+			resolve(parseStatusOutput(stdout));
+		});
+	});
+}
+
 export function createArchonClient(): ArchonClient {
 	return {
-		getWorkflowStatus(): Promise<ArchonRun[]> {
-			return new Promise((resolve, reject) => {
-				execFile(
-					"archon",
-					["workflow", "status", "--json"],
-					(err, stdout, stderr) => {
-						if (err) {
-							reject(
-								new ArchonCliError(
-									`archon workflow status failed: ${err.message}\nstderr: ${stderr}`,
-									err.code as number | null,
-								),
-							);
-							return;
-						}
-						resolve(parseStatusOutput(stdout));
-					},
-				);
-			});
+		async getWorkflowStatus(): Promise<ArchonRun[]> {
+			try {
+				return await runArchonStatus();
+			} catch (err) {
+				// When not in a git repository, retry with a known archon workspace
+				// as the --cwd context. Archon reads from its global SQLite database
+				// regardless of which repo is passed — the repo is only required as
+				// a CLI guard.
+				if ((err as Error).message.includes(NOT_IN_GIT_REPO_MARKER)) {
+					const fallbackCwd = findArchonWorkspaceCwd();
+					if (fallbackCwd !== null) {
+						return runArchonStatus(fallbackCwd);
+					}
+					// No workspaces exist yet — no workflows can be running.
+					return [];
+				}
+				throw err;
+			}
 		},
 	};
 }

@@ -23,8 +23,10 @@ export function buildStartupChatMessage(snapshot: RunSnapshot, date: Date): stri
 	const lines = [header(date), "", `${runs.length} active workflow run(s):`, ""];
 	for (const run of runs) {
 		const name = run.workflowName ?? run.id;
-		const branch = run.branch ? ` (${run.branch})` : "";
-		lines.push(`• ${name}${branch}: ${run.status}`);
+		const loc = run.workingPath
+			? ` (${run.workingPath.replace(/\/+$/, "").split("/").pop() ?? run.workingPath})`
+			: "";
+		lines.push(`• ${name}${loc}: ${run.status}`);
 	}
 	return lines.join("\n");
 }

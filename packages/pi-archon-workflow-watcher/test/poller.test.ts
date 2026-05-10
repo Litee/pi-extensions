@@ -9,7 +9,7 @@ function run(overrides: Partial<ArchonRun> & { id: string; status: string }): Ar
 		status: overrides.status,
 	};
 	if (overrides.workflowName !== undefined) base.workflowName = overrides.workflowName;
-	if (overrides.branch !== undefined) base.branch = overrides.branch;
+	if (overrides.workingPath !== undefined) base.workingPath = overrides.workingPath;
 	if (overrides.startedAt !== undefined) base.startedAt = overrides.startedAt;
 	if (overrides.lastActivityAt !== undefined) base.lastActivityAt = overrides.lastActivityAt;
 	return base;
@@ -73,7 +73,7 @@ describe("detectChanges", () => {
 	it("new_run formatted line includes the label and status", () => {
 		const events = detectChanges(
 			{},
-			{ r1: run({ id: "r1", status: "running", workflowName: "deploy", branch: "main" }) },
+			{ r1: run({ id: "r1", status: "running", workflowName: "deploy", workingPath: "/repo/main" }) },
 		);
 		expect(events[0]!.formatted).toContain("deploy");
 		expect(events[0]!.formatted).toContain("main");
@@ -235,20 +235,20 @@ describe("detectChanges", () => {
 		expect(events[0]!.formatted).toContain("r1");
 	});
 
-	it("includes branch in formatted label when present", () => {
+	it("includes workingPath basename in formatted label when present", () => {
 		const events = detectChanges(
 			{},
-			{ r1: run({ id: "r1", status: "running", workflowName: "wf", branch: "feat/x" }) },
+			{ r1: run({ id: "r1", status: "running", workflowName: "wf", workingPath: "/repo/feat-x" }) },
 		);
-		expect(events[0]!.branch).toBe("feat/x");
-		expect(events[0]!.formatted).toContain("feat/x");
+		expect(events[0]!.workingPath).toBe("/repo/feat-x");
+		expect(events[0]!.formatted).toContain("feat-x");
 	});
 
-	it("branch defaults to empty string when absent", () => {
+	it("workingPath defaults to empty string when absent", () => {
 		const events = detectChanges(
 			{},
 			{ r1: run({ id: "r1", status: "running" }) },
 		);
-		expect(events[0]!.branch).toBe("");
+		expect(events[0]!.workingPath).toBe("");
 	});
 });

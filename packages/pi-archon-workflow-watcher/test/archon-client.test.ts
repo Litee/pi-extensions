@@ -1,6 +1,14 @@
-import { describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
-import { parseStatusOutput } from "../src/archon-client.js";
+import {
+	ArchonCliError,
+	findArchonWorkspaceCwd,
+	parseStatusOutput,
+} from "../src/archon-client.js";
+
+// ---------------------------------------------------------------------------
+// parseStatusOutput tests (unchanged)
+// ---------------------------------------------------------------------------
 
 describe("parseStatusOutput", () => {
 	it("returns empty array for empty string", () => {
@@ -57,16 +65,16 @@ describe("parseStatusOutput", () => {
 		expect(parseStatusOutput(JSON.stringify({ runs: [] }))).toEqual([]);
 	});
 
-	it("handles a run with all optional fields present", () => {
+	it("handles a run with all optional fields present (snake_case, real archon output)", () => {
 		const raw = JSON.stringify({
 			runs: [
 				{
 					id: "abc",
 					status: "completed",
-					workflowName: "my-workflow",
-					branch: "main",
-					startedAt: "2024-01-01T00:00:00Z",
-					lastActivityAt: "2024-01-01T01:00:00Z",
+					workflow_name: "my-workflow",
+					working_path: "/repos/my-repo",
+					started_at: "2024-01-01T00:00:00Z",
+					last_activity_at: "2024-01-01T01:00:00Z",
 				},
 			],
 		});
@@ -76,7 +84,7 @@ describe("parseStatusOutput", () => {
 			id: "abc",
 			status: "completed",
 			workflowName: "my-workflow",
-			branch: "main",
+			workingPath: "/repos/my-repo",
 			startedAt: "2024-01-01T00:00:00Z",
 			lastActivityAt: "2024-01-01T01:00:00Z",
 		});
@@ -88,7 +96,7 @@ describe("parseStatusOutput", () => {
 		});
 		const result = parseStatusOutput(raw);
 		expect(result[0]!.workflowName).toBeUndefined();
-		expect(result[0]!.branch).toBeUndefined();
+		expect(result[0]!.workingPath).toBeUndefined();
 		expect(result[0]!.startedAt).toBeUndefined();
 		expect(result[0]!.lastActivityAt).toBeUndefined();
 	});
@@ -138,5 +146,46 @@ describe("parseStatusOutput", () => {
 		});
 		const result = parseStatusOutput(raw);
 		expect(result[0]!.status).toBe("");
+	});
+});
+
+// ---------------------------------------------------------------------------
+// findArchonWorkspaceCwd tests
+// ---------------------------------------------------------------------------
+
+describe("findArchonWorkspaceCwd", () => {
+	it("returns null when the workspaces directory does not exist", () => {
+		expect(findArchonWorkspaceCwd("/nonexistent-home-12345")).toBeNull();
+	});
+
+	it("returns null when home exists but .archon/workspaces is absent", (ctx) => {
+		// Use the OS temp dir (guaranteed to exist, no .archon/workspaces inside).
+		const tmp = import.meta.env?.VITEST_WORKER_ID
+			? "/tmp"
+			: "/tmp";
+		const result = findArchonWorkspaceCwd(tmp);
+		expect(result).toBeNull();
+	});
+});
+
+// ---------------------------------------------------------------------------
+// ArchonCliError
+// ---------------------------------------------------------------------------
+
+describe("ArchonCliError", () => {
+	it("sets name, message, and exitCode", () => {
+		const err = new ArchonCliError("something failed\nstderr: oops", 1);
+		expect(err.name).toBe("ArchonCliError");
+		expect(err.message).toContain("something failed");
+		expect(err.exitCode).toBe(1);
+	});
+
+	it("accepts null exitCode", () => {
+		const err = new ArchonCliError("cmd not found", null);
+		expect(err.exitCode).toBeNull();
+	});
+
+	it("is an instance of Error", () => {
+		expect(new ArchonCliError("x", 0)).toBeInstanceOf(Error);
 	});
 });

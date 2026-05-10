@@ -37,7 +37,7 @@ const SAMPLE_SNAPSHOT: RunSnapshot = {
 		id: "run-1",
 		status: "running",
 		workflowName: "my-wf",
-		branch: "main",
+		workingPath: "/repo/main",
 	},
 };
 
@@ -132,7 +132,7 @@ describe("rehydrateSnapshotFromSession", () => {
 				id: "r1",
 				status: "running",
 				workflowName: "wf",
-				branch: "main",
+				workingPath: "/repo/main",
 				startedAt: "2024-01-01T00:00:00Z",
 				lastActivityAt: "2024-01-01T01:00:00Z",
 				extra: "field",

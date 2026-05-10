@@ -18,7 +18,7 @@ function makeEvent(overrides: Partial<ArchonEvent> = {}): ArchonEvent {
 		runId: "r1",
 		eventType: "status_changed",
 		workflowName: "my-wf",
-		branch: "main",
+		workingPath: "/repo/main",
 		previousStatus: "running",
 		newStatus: "completed",
 		summary: "my-wf (main): running → completed",
@@ -85,7 +85,7 @@ describe("buildStartupChatMessage", () => {
 				id: "r1",
 				status: "running",
 				workflowName: "deploy",
-				branch: "main",
+				workingPath: "/repo/main",
 			},
 			r2: {
 				id: "r2",
@@ -101,12 +101,12 @@ describe("buildStartupChatMessage", () => {
 		expect(msg).toContain("paused");
 	});
 
-	it("includes branch in the run label when present", () => {
+	it("includes workingPath basename in the run label when present", () => {
 		const snapshot: RunSnapshot = {
-			r1: { id: "r1", status: "running", workflowName: "wf", branch: "feat/x" },
+			r1: { id: "r1", status: "running", workflowName: "wf", workingPath: "/repo/feat-x" },
 		};
 		const msg = buildStartupChatMessage(snapshot, FIXED_DATE);
-		expect(msg).toContain("feat/x");
+		expect(msg).toContain("feat-x");
 	});
 
 	it("uses run id as label when workflowName is absent", () => {

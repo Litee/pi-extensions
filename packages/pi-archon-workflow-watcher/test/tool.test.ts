@@ -18,7 +18,7 @@ function makeRun(
 	const run: ArchonRun = { id: overrides.id, status: overrides.status };
 	if (overrides.workflowName !== undefined)
 		run.workflowName = overrides.workflowName;
-	if (overrides.branch !== undefined) run.branch = overrides.branch;
+	if (overrides.branch !== undefined) run.workingPath = overrides.branch;
 	return run;
 }
 
@@ -72,7 +72,7 @@ describe("handleToolAction — status", () => {
 			id: "r1",
 			status: "running",
 			workflowName: "archon-assist",
-			branch: "feat/foo",
+			workingPath: "/repo/feat-foo",
 		});
 		const { rt, pi } = makeRt([run]);
 		const result = await handleToolAction(rt, { action: "status" }, pi);

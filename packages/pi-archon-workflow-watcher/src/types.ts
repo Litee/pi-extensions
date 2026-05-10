@@ -2,7 +2,8 @@ export interface ArchonRun {
 	id: string;
 	status: string;
 	workflowName?: string;
-	branch?: string;
+	/** Full filesystem path of the working directory (archon's working_path). */
+	workingPath?: string;
 	startedAt?: string;
 	lastActivityAt?: string;
 	[key: string]: unknown;
@@ -20,7 +21,7 @@ export interface ArchonEvent {
 	runId: string;
 	eventType: ArchonEventType;
 	workflowName: string;
-	branch: string;
+	workingPath: string;
 	previousStatus: string;
 	newStatus: string;
 	summary: string;
