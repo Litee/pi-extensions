@@ -22,11 +22,10 @@ below to diff against upstream and pick up future changes.
 Upstream layout is `extensions/btw.ts`; locally it lives at `src/index.ts`
 to match this workspace's per-package convention.
 
-For the list of intentional local divergences from upstream (macOS shortcuts,
-focus indicator, dependency rewires, strictness edits) see the **Differences
-from upstream** section in [`README.md`](./README.md). That is the canonical
-location; this file stays focused on which upstream commit was copied and
-how to diff against future upstream work.
+For the list of intentional local divergences from upstream, see the
+**Differences from upstream** section in [`README.md`](./README.md). That is
+the canonical location; this file stays focused on which upstream commit was
+copied and how to diff against future upstream work.
 
 ## How to check for upstream changes
 

@@ -22,12 +22,10 @@ Ported in local commit `e20c62b` (`feat(pi-session-recap): port session-recap fr
 ~/.pi/agent/pi-session-recap.json`). `src/helpers.ts` was also split out
 locally; it does not exist upstream.
 
-For the list of intentional local divergences from upstream (user-level
-config file, `/recap` subcommands, raised idle timeout, recap-model
-override, prompt tuning, key-prefix hygiene, etc.) see the **Differences
-from upstream** section in [`README.md`](./README.md). That is the canonical
-location; this file stays focused on which upstream commit was copied and
-how to diff against future upstream work.
+For the list of intentional local divergences from upstream, see the
+**Differences from upstream** section in [`README.md`](./README.md). That is
+the canonical location; this file stays focused on which upstream commit was
+copied and how to diff against future upstream work.
 
 ## How to check for upstream changes
 

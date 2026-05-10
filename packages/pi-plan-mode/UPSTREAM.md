@@ -25,12 +25,10 @@ Ported in local commit `6eb59e7` (`feat(packages): add pi-plan-mode and pi-built
 `src/tool-snapshot.ts` is **not** from upstream; it was added locally in commit
 `b16db13` (`feat(plan-mode): persist model/thinking/tool snapshots across restarts`).
 
-For the list of intentional local divergences from upstream (todo-tracking
-removed, cross-restart snapshot persistence, `Shift+Tab` alt shortcut,
-user-attention event emission, etc.) see the **Differences from upstream**
-section in [`README.md`](./README.md). That is the canonical location; this
-file stays focused on which upstream commits were copied and how to diff
-against future upstream work.
+For the list of intentional local divergences from upstream, see the
+**Differences from upstream** section in [`README.md`](./README.md). That is
+the canonical location; this file stays focused on which upstream commits
+were copied and how to diff against future upstream work.
 
 ## How to check for upstream changes
 
