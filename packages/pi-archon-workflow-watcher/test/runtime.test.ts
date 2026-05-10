@@ -5,6 +5,7 @@ import {
 	ERROR_THRESHOLD,
 	POLL_INTERVAL_MAX_MS,
 	POLL_INTERVAL_MS,
+	STATUS_KEY,
 	bumpIdleInterval,
 	makeRuntime,
 	pollOnce,
@@ -330,15 +331,22 @@ describe("refreshStatus", () => {
 		expect(text).toContain("archon-watcher");
 	});
 
-	it("uses theme.fg for accent color when ui.theme is present", () => {
+	it("uses theme.fg for accent color when ui.theme is present (only when runs are active)", () => {
 		const pi = makePi();
 		const setStatus = vi.fn();
 		const fg = vi.fn((_color: string, text: string) => `<fg:${_color}>${text}</fg>`);
 		const rt = makeRuntime(pi as never, makeClient([]));
 		rt.ui = { setStatus, theme: { fg } };
+		// With an empty snapshot, refreshStatus should clear the row — not set it.
+		refreshStatus(rt);
+		expect(setStatus).toHaveBeenCalledWith(STATUS_KEY, undefined);
+		expect(fg).not.toHaveBeenCalled();
+
+		// Seed an active run and confirm the status row is now set with accent color.
+		rt.snapshot = { r1: { id: "r1", status: "running" } };
 		refreshStatus(rt);
 		expect(fg).toHaveBeenCalledWith("accent", expect.any(String));
-		const text = (setStatus.mock.calls[0] as [string, string])[1];
+		const text = (setStatus.mock.calls[1] as [string, string])[1];
 		expect(text).toContain("<fg:accent>");
 	});
 

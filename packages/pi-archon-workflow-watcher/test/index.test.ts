@@ -237,9 +237,25 @@ describe("session_start — active (not paused)", () => {
 		expect(stateCalls.length).toBeGreaterThanOrEqual(1);
 	});
 
-	it("pins the status line via ui.setStatus", async () => {
+	it("does not pin a status line when there are no active runs", async () => {
 		const pi = makePi();
 		createExtensionWithClient(pi as never, makeClient([]));
+		const ctx = makeFakeCtx([runningRunstate()]);
+		await pi.sessionStartHandler!({}, ctx);
+
+		const statusCalls = ctx.ui.setStatus.mock.calls as Array<
+			[string, string | undefined]
+		>;
+		const ours = statusCalls.filter(([k]) => k === "pi-archon-workflow-watcher");
+		// May be called to clear (undefined) but must never be called with a string.
+		const setsString = ours.some(([, v]) => typeof v === "string");
+		expect(setsString).toBe(false);
+	});
+
+	it("pins the status line via ui.setStatus when runs are active", async () => {
+		const pi = makePi();
+		const run = makeRun({ id: "r1", status: "running", workflowName: "archon-assist" });
+		createExtensionWithClient(pi as never, makeClient([run]));
 		const ctx = makeFakeCtx([runningRunstate()]);
 		await pi.sessionStartHandler!({}, ctx);
 
@@ -481,7 +497,7 @@ describe("/archon-watcher command", () => {
 		expect(lastData.paused).toBe(false);
 	});
 
-	it("'resume' refreshes the status line (sets a non-null string)", async () => {
+	it("'resume' clears the status line when no runs are active", async () => {
 		const pi = makePi();
 		createExtensionWithClient(pi as never, makeClient([]));
 		const cmd = pi.commands.get("archon-watcher")!;
@@ -494,10 +510,9 @@ describe("/archon-watcher command", () => {
 			[string, string | undefined]
 		>;
 		const ours = statusCalls.filter(([k]) => k === "pi-archon-workflow-watcher");
-		expect(ours.length).toBeGreaterThanOrEqual(1);
-		const lastValue = ours[ours.length - 1]![1];
-		expect(typeof lastValue).toBe("string");
-		expect(lastValue).toContain("archon-watcher");
+		// With no active runs the status row must be cleared (undefined), never set.
+		const setsString = ours.some(([, v]) => typeof v === "string");
+		expect(setsString).toBe(false);
 	});
 
 	it("'status' fetches current status and sends a chat message", async () => {

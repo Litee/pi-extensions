@@ -33,7 +33,6 @@ import {
 import {
 	buildChangeChatMessage,
 	buildStartupChatMessage,
-	buildStatusLine,
 } from "./format.js";
 import {
 	rehydrateRunStateFromSession,
@@ -53,12 +52,7 @@ import {
 	type Runtime,
 	type UiSurface,
 } from "./runtime.js";
-import { TERMINAL_STATUSES, type ArchonRun, type RunSnapshot } from "./types.js";
-
-/** Colorize text with theme accent, falling back to plain text. */
-function colorize(theme: UiSurface["theme"], text: string): string {
-	return theme?.fg ? theme.fg("accent", text) : text;
-}
+import { type ArchonRun, type RunSnapshot } from "./types.js";
 
 /**
  * Wire up the extension with a concrete or injected ArchonClient.
@@ -161,13 +155,8 @@ export function createExtensionWithClient(
 		writeSnapshot(pi, current);
 		startPolling(rt);
 
-		// Pin status line using rt.ui (set above)
-		const runCount = Object.keys(current).length;
-		const activeCount = Object.values(current).filter(
-			(r) => !TERMINAL_STATUSES.has(r.status),
-		).length;
-		const statusText = buildStatusLine({ paused: false, runCount, activeCount });
-		rt.ui?.setStatus?.(STATUS_KEY, colorize(rt.ui.theme, statusText));
+		// Pin status line only when there are active runs.
+		refreshStatus(rt);
 	});
 
 	pi.on("session_shutdown", async () => {
@@ -232,21 +221,8 @@ export function createExtensionWithClient(
 					rt.paused = false;
 					writeRunState(pi, false);
 					startPolling(rt);
-					// Set status via the command ctx UI.
-					const runCount = Object.keys(rt.snapshot).length;
-					const activeCount = Object.values(rt.snapshot).filter(
-						(r) => !TERMINAL_STATUSES.has(r.status),
-					).length;
-					const statusText = buildStatusLine({
-						paused: false,
-						runCount,
-						activeCount,
-					});
-					ui?.setStatus?.(STATUS_KEY, statusText);
-					// Also refresh rt.ui if it differs from the command ctx UI.
-					if (rt.ui !== null && rt.ui !== ui) {
-						refreshStatus(rt);
-					}
+					// refreshStatus handles the no-active-runs case by clearing the row.
+					refreshStatus(rt);
 					ui?.notify?.("archon-workflow-watcher: resumed", "info");
 					return;
 				}

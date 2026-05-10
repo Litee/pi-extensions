@@ -93,14 +93,16 @@ function colorize(theme: UiSurface["theme"], text: string): string {
  * Safe to call with no UI.
  */
 export function refreshStatus(rt: Runtime): void {
-	if (rt.paused) {
-		rt.ui?.setStatus?.(STATUS_KEY, undefined);
-		return;
-	}
 	const runCount = Object.keys(rt.snapshot).length;
 	const activeCount = Object.values(rt.snapshot).filter(
 		(r) => !TERMINAL_STATUSES.has(r.status),
 	).length;
+	// Clear the status row when paused or when there are no active runs —
+	// no visual noise when the extension is idle.
+	if (rt.paused || activeCount === 0) {
+		rt.ui?.setStatus?.(STATUS_KEY, undefined);
+		return;
+	}
 	const text = buildStatusLine({ paused: false, runCount, activeCount });
 	rt.ui?.setStatus?.(STATUS_KEY, colorize(rt.ui.theme, text));
 }
