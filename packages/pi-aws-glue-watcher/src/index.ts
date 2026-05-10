@@ -39,7 +39,7 @@ import { GlueWidget } from "./ui/glue-widget.js";
  */
 export function createExtensionWithClient(pi: ExtensionAPI, client: GlueClient): void {
 	const rt: Runtime = makeRuntime(pi, client);
-	rt.widget = new GlueWidget(pi, () => rt.watches, () => rt.pollIntervalMs);
+	rt.widget = new GlueWidget(pi, () => rt.watches, () => rt.scheduler.intervalMs);
 
 	pi.on("session_start", async (_event, ctx) => {
 		const anyCtx = ctx as unknown as { hasUI?: boolean; ui?: UiSurface };

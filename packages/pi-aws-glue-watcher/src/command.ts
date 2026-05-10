@@ -98,7 +98,7 @@ export async function runGlueWatcherCommand(
 			addToolToActive(pi);
 			writeState(rt.pi, rt);
 			const activeWatches = Object.values(rt.watches).filter((w) => !w.terminal);
-			if (!rt.paused && activeWatches.length > 0 && rt.timer === null) startPolling(rt);
+			if (!rt.paused && activeWatches.length > 0 && !rt.scheduler.isRunning) startPolling(rt);
 			refreshStatus(rt);
 			if (rt.displayMode === "widget") rt.widget?.show(ctx);
 			else rt.widget?.hide(ctx);
@@ -155,7 +155,7 @@ export async function runGlueWatcherCommand(
 							writeState(rt.pi, rt);
 							rt.pi.events.emit("glue:change", {});
 						},
-						() => rt.pollIntervalMs,
+						() => rt.scheduler.intervalMs,
 						() => toggleDisplayMode(rt, ctx),
 						() => rt.displayMode,
 					);
@@ -177,7 +177,7 @@ export async function runGlueWatcherCommand(
 					: "enabled, active"
 				: "disabled";
 			ui?.notify?.(
-				`glue-watcher: ${stateDesc} | ${ids.length} watch(es) (${active} active) | poll: ${Math.round(rt.pollIntervalMs / 1000)}s`,
+				`glue-watcher: ${stateDesc} | ${ids.length} watch(es) (${active} active) | poll: ${Math.round(rt.scheduler.intervalMs / 1000)}s`,
 				"info",
 			);
 			return;

@@ -207,7 +207,7 @@ export async function handleToolAction(
 
 			rt.watches[watchId] = watch;
 			writeState(rt.pi, rt);
-			if (!rt.paused && rt.timer === null) startPolling(rt);
+			if (!rt.paused && !rt.scheduler.isRunning) startPolling(rt);
 			rt.pi.events.emit("glue:change", {});
 			refreshStatus(rt);
 
@@ -272,9 +272,9 @@ export async function handleToolAction(
 			rt.paused = false;
 			writeState(rt.pi, rt);
 			const activeWatches = Object.values(rt.watches).filter((w) => !w.terminal);
-			if (rt.enabled && activeWatches.length > 0 && rt.timer === null) startPolling(rt);
+			if (rt.enabled && activeWatches.length > 0 && !rt.scheduler.isRunning) startPolling(rt);
 			refreshStatus(rt);
-			const message = `glue-watcher: resumed. Polling ${Object.keys(rt.watches).length} watch(es) every ${Math.round(rt.pollIntervalMs / 1000)}s.`;
+			const message = `glue-watcher: resumed. Polling ${Object.keys(rt.watches).length} watch(es) every ${Math.round(rt.scheduler.intervalMs / 1000)}s.`;
 			return { content: toolText(message), details: { action: "resume", ok: true, message } };
 		}
 
@@ -287,7 +287,7 @@ export async function handleToolAction(
 			const message = [
 				`glue-watcher: ${statusLabel} | ${enabledLabel}`,
 				`  watches: ${ids.length} total (${activeCount} active, ${terminalCount} terminal)`,
-				`  poll interval: ${Math.round(rt.pollIntervalMs / 1000)}s`,
+				`  poll interval: ${Math.round(rt.scheduler.intervalMs / 1000)}s`,
 			].join("\n");
 			return { content: toolText(message), details: { action: "status", ok: true, message } };
 		}
