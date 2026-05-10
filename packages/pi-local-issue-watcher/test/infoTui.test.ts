@@ -1,19 +1,21 @@
 /**
- * Regression tests for the `/local-issue-watcher browse` TUI
- * (tracker issues #0025, #0026).
+ * Shell-level regression tests for the `/local-issue-watcher browse`
+ * TUI (tracker issues #0025, #0026).
  *
  * `src/infoTui.ts` is excluded from coverage because its rendering is
- * only meaningful under a live pi-tui runtime, but the input-routing
- * behaviour it owns is a release-blocker — #0026 was "detail view has
- * no escape, user must SIGKILL pi to recover". These tests pin the
- * behaviour against exactly the keystrokes that went unhandled in the
- * wild:
+ * only meaningful under a live pi-tui runtime. The pure key-dispatch
+ * table is unit-tested in `infoTuiKeys.test.ts` and the substring
+ * filter in `infoTuiFilter.test.ts`; the cases here exist to pin the
+ * integration between those helpers and the live SelectList / Input /
+ * mode-state machine against the exact keystrokes that went
+ * unhandled in the wild:
  *
  *   - Esc in detail mode flips back to list mode
  *   - Left-Arrow in detail mode flips back to list mode
  *   - Ctrl-C in detail mode closes the widget (emergency exit)
  *   - Esc in list mode closes the widget (pre-existing; regression guard)
  *   - Printable keys in detail mode are swallowed (regression guard)
+ *   - Empty-state branch has its own close path (not routed via dispatchKey)
  *
  * Strategy: stub out the handful of pi-tui component classes the
  * factory instantiates, keep the real `matchesKey` implementation
@@ -341,37 +343,29 @@ describe("makeInfoTuiPicker — detail-mode input routing (#0026 regression)", (
 		expect(done).toHaveBeenCalledWith(undefined);
 	});
 
-	it.each([
-		["q", "letter q"],
-		["j", "letter j"],
-		["/", "slash"],
-		["Z", "capital Z"],
-	])(
-		"detail mode swallows printable key %j (%s) without exiting",
-		async (key) => {
-			const { handle, done } = await setupPicker([
-				makeRow("0001", "first issue"),
-			]);
+	it("detail mode swallows a printable key without exiting, then Esc+char reaches search input", async () => {
+		// Integration regression: the pure `dispatchKey` matrix is
+		// covered in `infoTuiKeys.test.ts`; this case proves the shell
+		// actually wires `ignore` → no-op and `filter-input` → searchInput
+		// after a detail-mode exit.
+		const { handle, done } = await setupPicker([
+			makeRow("0001", "first issue"),
+		]);
 
-			handle.handleInput("\r"); // enter detail mode
+		handle.handleInput("\r"); // enter detail mode
 
-			const searchInput = FakeInput.instances[0];
-			const beforeValue = searchInput!.getValue();
+		const searchInput = FakeInput.instances[0];
+		const beforeValue = searchInput!.getValue();
 
-			handle.handleInput(key);
+		handle.handleInput("q");
 
-			expect(done).not.toHaveBeenCalled();
-			// Printable keys must NOT leak into the search input while
-			// the detail view is open.
-			expect(searchInput!.getValue()).toBe(beforeValue);
+		expect(done).not.toHaveBeenCalled();
+		expect(searchInput!.getValue()).toBe(beforeValue);
 
-			// Follow-up Esc proves we are still in detail mode: we flip
-			// back, then a printable char should reach the search input.
-			handle.handleInput("\x1b");
-			handle.handleInput("a");
-			expect(searchInput!.getValue()).toBe(`${beforeValue}a`);
-		},
-	);
+		handle.handleInput("\x1b"); // back to list
+		handle.handleInput("a");
+		expect(searchInput!.getValue()).toBe(`${beforeValue}a`);
+	});
 });
 
 describe("makeInfoTuiPicker — empty-state input routing", () => {

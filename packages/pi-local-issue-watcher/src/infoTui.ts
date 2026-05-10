@@ -43,6 +43,8 @@ import type { ExtensionAPI } from "@mariozechner/pi-coding-agent";
 import { matchesKey } from "@mariozechner/pi-tui";
 
 import { formatPreview, type InfoPicker, type InfoRow } from "./infoHandler.js";
+import { filterItemsBySubstring } from "./infoTuiFilter.js";
+import { dispatchKey } from "./infoTuiKeys.js";
 
 /** Slash-command `ctx` shape — the second arg that pi passes to a `registerCommand` handler. */
 type CommandCtx = Parameters<
@@ -186,17 +188,18 @@ export function makeInfoTuiPicker(ctx: CommandCtx): InfoPicker {
 			// Override SelectList.setFilter: the stock implementation matches
 			// `value.toLowerCase().startsWith(filter)` which is wrong for us
 			// (value is the absolute file path, not the user-visible text).
-			// We want a case-insensitive SUBSTRING match over the label
-			// (which contains skill + id + title). Runtime patching via
-			// `any`-cast because `filteredItems` / `selectedIndex` are
-			// marked private in the upstream type but are real runtime
-			// fields that SelectList.render() reads on every frame.
-			// eslint-disable-next-line @typescript-eslint/no-explicit-any -- intentional runtime override, see comment above
+			// The actual substring logic lives in `filterItemsBySubstring`
+			// (pure + covered); this assignment is the single scoped `any`
+			// site that patches the upstream component's private fields
+			// (`filteredItems` / `selectedIndex`) which `SelectList.render()`
+			// reads on every frame.
+			// eslint-disable-next-line @typescript-eslint/no-explicit-any -- scoped private-field patch, see comment above
 			const slInternal = selectList as any;
-			slInternal.setFilter = (filter: string) => {
-				const needle = filter.toLowerCase();
-				slInternal.filteredItems = items.filter((it) =>
-					it.label.toLowerCase().includes(needle),
+			slInternal.setFilter = (filter: string): void => {
+				slInternal.filteredItems = filterItemsBySubstring(
+					items,
+					filter,
+					(it) => it.label,
 				);
 				slInternal.selectedIndex = 0;
 			};
@@ -250,15 +253,10 @@ export function makeInfoTuiPicker(ctx: CommandCtx): InfoPicker {
 			};
 
 			// ---------------------------------------------------------
-			// Input routing
+			// Input routing — the decision table lives in `dispatchKey`
+			// (pure + covered); this shell translates actions into
+			// concrete SelectList / Input / done() calls.
 			// ---------------------------------------------------------
-			const isListNavKey = (data: string): boolean => {
-				// CSI sequences: arrow keys, Home, End, PageUp, PageDown.
-				if (data.startsWith("\u001b[")) return true;
-				// Enter (both CR and LF variants).
-				if (data === "\r" || data === "\n") return true;
-				return false;
-			};
 
 			return {
 				render: (w: number) =>
@@ -273,48 +271,27 @@ export function makeInfoTuiPicker(ctx: CommandCtx): InfoPicker {
 					detailContainer.invalidate();
 				},
 				handleInput: (data: string) => {
-					// #0026: emergency-exit contract — Ctrl-C must ALWAYS
-					// close the widget, regardless of mode. The previous
-					// implementation only flipped mode on Ctrl-C in detail
-					// view (and relied on literal `\u0003` byte matching),
-					// which wedged the TUI when Kitty-encoded Ctrl-C was in
-					// play and the user had no other way out. Widget-level
-					// close is a safety net; the normal detail-mode path is
-					// Esc / Left → back to list.
-					if (matchesKey(data, "ctrl+c")) {
-						done(undefined);
-						return;
-					}
-
-					if (mode === "detail") {
-						// Esc or Left-Arrow → back to list. `matchesKey`
-						// handles both legacy byte forms (`\x1b`, `\x1b[D`)
-						// and the Kitty-encoded CSI variants the prior
-						// literal-equality checks missed (see #0026).
-						if (matchesKey(data, "escape") || matchesKey(data, "left")) {
+					const action = dispatchKey(mode, data, matchesKey);
+					switch (action.kind) {
+						case "quit":
+							done(undefined);
+							return;
+						case "back-to-list":
 							mode = "list";
 							tui.requestRender();
-						}
-						// All other input in detail mode is swallowed — the
-						// preview is read-only.
-						return;
+							return;
+						case "list-nav":
+							selectList.handleInput(data);
+							tui.requestRender();
+							return;
+						case "filter-input":
+							searchInput.handleInput(data);
+							selectList.setFilter(searchInput.getValue());
+							tui.requestRender();
+							return;
+						case "ignore":
+							return;
 					}
-
-					// mode === "list" — unchanged routing from pre-#0025.
-					if (matchesKey(data, "escape")) {
-						done(undefined);
-						return;
-					}
-					if (isListNavKey(data)) {
-						selectList.handleInput(data);
-						tui.requestRender();
-						return;
-					}
-					// Everything else — typed chars, backspace, Ctrl-W, Ctrl-U,
-					// paste bursts — goes to the search box, then re-filter.
-					searchInput.handleInput(data);
-					selectList.setFilter(searchInput.getValue());
-					tui.requestRender();
 				},
 			};
 		});
