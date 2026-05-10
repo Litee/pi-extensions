@@ -1,0 +1,14 @@
+{
+  "name": "pi-claude-code-import-commands",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Pi extension that imports Claude Code slash commands (~/.claude/commands and project-local .claude/commands) into pi as prompt templates.",
+  "type": "module",
+  "keywords": ["pi-package"],
+  "pi": {
+    "extensions": ["./src/index.ts"]
+  },
+  "peerDependencies": {
+    "@mariozechner/pi-coding-agent": "*"
+  }
+}
