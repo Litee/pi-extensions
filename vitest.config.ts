@@ -73,13 +73,7 @@ export default defineConfig({
 				// of strict-tsconfig patches) from the upstream pi-mono example.
 				// All pure logic (allow/deny lists, plan extraction, [DONE:n]
 				// tracking) lives in utils.ts and is covered there.
-				// pi-built-in-tool-renderer/index.ts is a set of Text-returning
-				// renderCall / renderResult overrides for the four built-in tools,
-				// copied verbatim from the upstream pi-mono example. Exercising
-				// the renderers requires a live theme + tool runtime; the smoke
-				// test in test/index.test.ts confirms the wiring is intact.
-				"**/pi-built-in-tool-renderer/src/index.ts",
-				// pi-btw/src/index.ts is a copy of dbachelder/pi-btw's extensions/btw.ts
+// pi-btw/src/index.ts is a copy of dbachelder/pi-btw's extensions/btw.ts
 				// (MIT, © Dan Bachelder). The file is end-to-end TUI wiring:
 				// overlay rendering, slash-command dispatch, focus/keybinding
 				// handling, sub-session lifecycle orchestration, and error toasts.
