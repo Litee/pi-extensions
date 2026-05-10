@@ -38,11 +38,6 @@ export default defineConfig({
 				// is exercised through an injectable completion hook.
 				"**/namesCompletion.ts",
 				"**/namesCompletion.ts",
-				// pi-skills-browser/index.ts is TUI wiring: a /skills command handler
-				// that builds a custom component via ctx.ui.custom. All pure logic
-				// (token estimation, filtering, sorting) lives in helpers.ts and is
-				// fully covered there.
-				"**/pi-skills-browser/src/index.ts",
 				// pi-claude-code-skills-import/src/index.ts: session_start handler
 				// + cc-skills-info command registration. All testable logic
 				// (handleCcSkills, discovery, collisions) is exported and fully

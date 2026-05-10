@@ -11,6 +11,10 @@
  *   type anything   Filter by skill name (case-insensitive substring)
  *   ⌫ Backspace     Remove last character from the filter query
  *   Esc             Close
+ *
+ * This file is intentionally a thin shell — all testable logic lives in
+ * `helpers.ts` (filter/sort/token estimate), `viewport.ts` (window + scroll
+ * percent), `row.ts` (row rendering), and `keys.ts` (keypress dispatch).
  */
 
 import type { ExtensionAPI } from "@mariozechner/pi-coding-agent";
@@ -19,16 +23,14 @@ import { matchesKey, truncateToWidth } from "@mariozechner/pi-tui";
 import {
 	estimateDescriptionTokens,
 	filterAndSort,
-	formatTokens,
 	type SkillEntry,
 	type SortMode,
 } from "./helpers.js";
+import { dispatchKey } from "./keys.js";
+import { TOKEN_COL_WIDTH, buildRowLine, computeNameColWidth } from "./row.js";
+import { computeScrollPercent, computeWindow } from "./viewport.js";
 
 const MAX_VISIBLE_ROWS = 15;
-// Token badge column: wide enough for "[9.9k tok]" plus a leading space
-const TOKEN_COL_WIDTH = 12;
-// Arrow + space prefix per row
-const ARROW_COL_WIDTH = 2;
 
 export default function skillsBrowserExtension(pi: ExtensionAPI) {
 	pi.registerCommand("skills", {
@@ -123,56 +125,40 @@ export default function skillsBrowserExtension(pi: ExtensionAPI) {
 					lines.push("");
 
 					// ── Skill list ──
-					const nameColWidth = Math.max(4, width - ARROW_COL_WIDTH - TOKEN_COL_WIDTH);
+					const nameColWidth = computeNameColWidth(width);
 
 					if (filtered.length === 0) {
 						lines.push(
 							truncateToWidth(theme.fg("warning", "  No skills match your filter"), width),
 						);
 					} else {
-						// Window the list so we always show at most MAX_VISIBLE_ROWS rows and
-						// keep the selected row roughly in the middle of the viewport.
-						const windowStart = Math.max(
-							0,
-							Math.min(
-								selectedIndex - Math.floor(MAX_VISIBLE_ROWS / 2),
-								Math.max(0, filtered.length - MAX_VISIBLE_ROWS),
-							),
+						const { start, end } = computeWindow(
+							selectedIndex,
+							filtered.length,
+							MAX_VISIBLE_ROWS,
 						);
-						const windowEnd = Math.min(filtered.length, windowStart + MAX_VISIBLE_ROWS);
 
-						for (let i = windowStart; i < windowEnd; i++) {
+						for (let i = start; i < end; i++) {
 							const skill = filtered[i]!;
 							const isSelected = i === selectedIndex;
-
-							const arrow = isSelected ? theme.fg("accent", "> ") : "  ";
-
-							// Truncate the plain name first so we can measure its visible width
-							// without ANSI codes, then apply colours.
-							const plainName =
-								skill.name.length > nameColWidth
-									? `${skill.name.slice(0, nameColWidth - 1)}…`
-									: skill.name;
-							const padding = " ".repeat(Math.max(0, nameColWidth - plainName.length));
-							const styledName = isSelected ? theme.fg("accent", plainName) : plainName;
-
-							const badge = `[${formatTokens(skill.tokens)} tok]`;
-							const paddedBadge = badge.padStart(TOKEN_COL_WIDTH);
-							const styledBadge = isSelected
-								? theme.fg("accent", paddedBadge)
-								: theme.fg("dim", paddedBadge);
-
 							lines.push(
-								truncateToWidth(`${arrow}${styledName}${padding}${styledBadge}`, width),
+								truncateToWidth(
+									buildRowLine(skill, isSelected, nameColWidth, TOKEN_COL_WIDTH, theme),
+									width,
+								),
 							);
 						}
 
 						// Show a scroll hint when the list is taller than the viewport.
 						if (filtered.length > MAX_VISIBLE_ROWS) {
-							const pct = Math.round((selectedIndex / (filtered.length - 1)) * 100);
+							const pct = computeScrollPercent(selectedIndex, filtered.length);
+							const pctLabel = pct === null ? "" : `  (${pct}%)`;
 							lines.push(
 								truncateToWidth(
-									theme.fg("dim", `  ··· ${filtered.length - MAX_VISIBLE_ROWS} more  (${pct}%)`),
+									theme.fg(
+										"dim",
+										`  ··· ${filtered.length - MAX_VISIBLE_ROWS} more${pctLabel}`,
+									),
 									width,
 								),
 							);
@@ -203,52 +189,41 @@ export default function skillsBrowserExtension(pi: ExtensionAPI) {
 					render,
 					invalidate,
 					handleInput(data: string) {
+						// Escape closes the overlay; handled before the pure dispatcher
+						// because it terminates the ctx.ui.custom promise via done().
 						if (matchesKey(data, "escape")) {
 							done(undefined);
 							return;
 						}
 
-						if (matchesKey(data, "up")) {
-							selectedIndex = Math.max(0, selectedIndex - 1);
-							invalidate();
-							tui.requestRender();
-							return;
+						const action = dispatchKey(data, matchesKey);
+						switch (action.kind) {
+							case "up":
+								selectedIndex = Math.max(0, selectedIndex - 1);
+								break;
+							case "down": {
+								const len = getFiltered().length;
+								selectedIndex = Math.min(Math.max(0, len - 1), selectedIndex + 1);
+								break;
+							}
+							case "toggle-sort":
+								sortMode = sortMode === "name" ? "tokens" : "name";
+								selectedIndex = 0;
+								break;
+							case "backspace":
+								query = query.slice(0, -1);
+								selectedIndex = 0;
+								break;
+							case "filter-char":
+								query += action.char;
+								selectedIndex = 0;
+								break;
+							case "ignore":
+								return;
 						}
 
-						if (matchesKey(data, "down")) {
-							const len = getFiltered().length;
-							selectedIndex = Math.min(Math.max(0, len - 1), selectedIndex + 1);
-							invalidate();
-							tui.requestRender();
-							return;
-						}
-
-						// "s" toggles sort mode — intentionally NOT added to the filter query.
-						if (matchesKey(data, "s")) {
-							sortMode = sortMode === "name" ? "tokens" : "name";
-							selectedIndex = 0;
-							invalidate();
-							tui.requestRender();
-							return;
-						}
-
-						// Backspace / Delete → remove last filter character.
-						if (matchesKey(data, "backspace") || matchesKey(data, "delete")) {
-							query = query.slice(0, -1);
-							selectedIndex = 0;
-							invalidate();
-							tui.requestRender();
-							return;
-						}
-
-						// Printable character (excluding "s" already handled above) → filter.
-						if (data.length === 1 && data.charCodeAt(0) >= 32 && data.charCodeAt(0) < 127) {
-							query += data;
-							selectedIndex = 0;
-							invalidate();
-							tui.requestRender();
-							return;
-						}
+						invalidate();
+						tui.requestRender();
 					},
 				};
 			});
