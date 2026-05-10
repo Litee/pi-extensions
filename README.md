@@ -22,6 +22,14 @@ Personal collection of extensions for Pi Agent.
 | [`pi-thinking-level-control`](packages/pi-thinking-level-control) | Separate `ctrl+]` / `ctrl+[` shortcuts for stepping thinking level up/down one rung at a time. No-op at the extremes; `xhigh` is clamped to `high` on decrease. |
 | [`pi-tools`](packages/pi-tools) | Registers a `/tools` command that lists every tool available in a pi session (builtin / sdk / extension / skill), with per-tool description, parameter schema, active/inactive state, and a compact `chars/4` token estimate. Supports `/tools <name>` to jump directly to a tool and `/tools --all` to dump all at once; press `t` in any view to toggle a tool on/off (persisted to session). |
 
+## Shared libraries
+
+Workspace packages that are **not** pi extensions — they expose no `registerExtension` default export and are never loaded by pi directly. They exist only to be imported by the extension packages above.
+
+| Package | Description |
+|---------|-------------|
+| [`pi-watcher-core`](packages/pi-watcher-core) | Shared library consumed by the `*-watcher` extensions. Provides back-off-aware `PollScheduler`, session-log persistence with malformed-entry tolerance, a `makeWatcherErrors` taxonomy factory, a sanitizing error classifier, an aggregated-error formatter, and TUI status-line / message-renderer helpers. Depend on it via the workspace: `"pi-watcher-core": "*"`. Do **not** list this package in a pi install command — it has no extension entry point. |
+
 ## Development
 
 ```bash

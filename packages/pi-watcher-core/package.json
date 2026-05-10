@@ -1,0 +1,27 @@
+{
+  "name": "pi-watcher-core",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Generic polling, back-off, persistence, and error-taxonomy primitives for pi watcher extensions.",
+  "type": "module",
+  "keywords": ["pi-package"],
+  "exports": {
+    "./poll-scheduler": "./src/poll-scheduler.ts",
+    "./persistence": "./src/persistence.ts",
+    "./errors": "./src/errors.ts",
+    "./classify-error": "./src/classify-error.ts",
+    "./format-aggregated-errors": "./src/format-aggregated-errors.ts",
+    "./status-line": "./src/status-line.ts",
+    "./renderer": "./src/renderer.ts",
+    ".": "./src/lib.ts"
+  },
+  "peerDependencies": {
+    "@mariozechner/pi-coding-agent": "*",
+    "@mariozechner/pi-tui": "*"
+  },
+  "scripts": {
+    "clean": "echo 'nothing to clean'",
+    "build": "echo 'nothing to build'",
+    "check": "echo 'nothing to check'"
+  }
+}
