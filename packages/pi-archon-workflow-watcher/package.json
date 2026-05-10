@@ -11,5 +11,8 @@
   "peerDependencies": {
     "@mariozechner/pi-coding-agent": "*",
     "typebox": "*"
+  },
+  "dependencies": {
+    "pi-watcher-core": "*"
   }
 }

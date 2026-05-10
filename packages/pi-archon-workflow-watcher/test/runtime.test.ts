@@ -6,12 +6,9 @@ import {
 	POLL_INTERVAL_MAX_MS,
 	POLL_INTERVAL_MS,
 	STATUS_KEY,
-	bumpIdleInterval,
 	makeRuntime,
 	pollOnce,
 	refreshStatus,
-	resetIntervalAfterUpdate,
-	setPollInterval,
 	startPolling,
 	stopPolling,
 } from "../src/runtime.js";
@@ -58,13 +55,15 @@ function makeClient(runs: ArchonRun[] | Error): ArchonClient {
 // ---------------------------------------------------------------------------
 
 describe("makeRuntime", () => {
-	it("initialises with empty snapshot, not paused, no timer", () => {
+	it("initialises with empty snapshot, not paused, scheduler stopped", () => {
 		const pi = makePi();
 		const client = makeClient([]);
 		const rt = makeRuntime(pi as never, client);
 		expect(rt.snapshot).toEqual({});
 		expect(rt.paused).toBe(false);
-		expect(rt.timer).toBeNull();
+		expect(rt.scheduler.isRunning).toBe(false);
+		expect(rt.scheduler.intervalMs).toBe(POLL_INTERVAL_MS);
+		expect(rt.scheduler.idleIntervalMs).toBe(POLL_INTERVAL_MS);
 		expect(rt.consecutiveErrors).toBe(0);
 	});
 });
@@ -81,27 +80,27 @@ describe("startPolling / stopPolling", () => {
 		vi.useRealTimers();
 	});
 
-	it("startPolling sets a timer", () => {
+	it("startPolling makes the scheduler run", () => {
 		const rt = makeRuntime(makePi() as never, makeClient([]));
 		startPolling(rt);
-		expect(rt.timer).not.toBeNull();
+		expect(rt.scheduler.isRunning).toBe(true);
 		stopPolling(rt);
 	});
 
-	it("startPolling is idempotent (second call does not start a second timer)", () => {
+	it("startPolling is idempotent (second call does not restart the scheduler)", () => {
 		const rt = makeRuntime(makePi() as never, makeClient([]));
 		startPolling(rt);
-		const firstTimer = rt.timer;
+		const firstTimer = rt.scheduler.timer;
 		startPolling(rt); // second call
-		expect(rt.timer).toBe(firstTimer);
+		expect(rt.scheduler.timer).toBe(firstTimer);
 		stopPolling(rt);
 	});
 
-	it("stopPolling clears the timer", () => {
+	it("stopPolling stops the scheduler", () => {
 		const rt = makeRuntime(makePi() as never, makeClient([]));
 		startPolling(rt);
 		stopPolling(rt);
-		expect(rt.timer).toBeNull();
+		expect(rt.scheduler.isRunning).toBe(false);
 	});
 
 	it("stopPolling is safe to call when already stopped", () => {
@@ -374,78 +373,73 @@ describe("refreshStatus", () => {
 	});
 });
 
-describe("idle back-off: setPollInterval / bumpIdleInterval / resetIntervalAfterUpdate", () => {
-	it("setPollInterval is a no-op when the value has not changed", () => {
-		const pi = makePi();
-		const rt = makeRuntime(pi as never, makeClient([]));
-		expect(rt.pollIntervalMs).toBe(POLL_INTERVAL_MS);
-		setPollInterval(rt, POLL_INTERVAL_MS);
-		expect(rt.pollIntervalMs).toBe(POLL_INTERVAL_MS);
-		expect(rt.timer).toBeNull();
-	});
-
-	it("setPollInterval updates the interval and restarts the timer when running", () => {
-		vi.useFakeTimers();
-		const pi = makePi();
-		const rt = makeRuntime(pi as never, makeClient([]));
-		startPolling(rt);
-		expect(rt.timer).not.toBeNull();
-		setPollInterval(rt, 30_000);
-		expect(rt.pollIntervalMs).toBe(30_000);
-		expect(rt.timer).not.toBeNull();
-		stopPolling(rt);
-		vi.useRealTimers();
-	});
-
-	it("bumpIdleInterval doubles the idle interval on each call", () => {
-		const pi = makePi();
-		const rt = makeRuntime(pi as never, makeClient([]));
-		expect(rt.idleIntervalMs).toBe(POLL_INTERVAL_MS);
-		bumpIdleInterval(rt);
-		expect(rt.idleIntervalMs).toBe(POLL_INTERVAL_MS * 2);
-		bumpIdleInterval(rt);
-		expect(rt.idleIntervalMs).toBe(POLL_INTERVAL_MS * 4);
-	});
-
-	it("bumpIdleInterval caps at POLL_INTERVAL_MAX_MS", () => {
-		const pi = makePi();
-		const rt = makeRuntime(pi as never, makeClient([]));
-		rt.idleIntervalMs = POLL_INTERVAL_MAX_MS;
-		bumpIdleInterval(rt);
-		expect(rt.idleIntervalMs).toBe(POLL_INTERVAL_MAX_MS);
-	});
-
-	it("resetIntervalAfterUpdate resets both idleIntervalMs and pollIntervalMs", () => {
-		const pi = makePi();
-		const rt = makeRuntime(pi as never, makeClient([]));
-		rt.idleIntervalMs = POLL_INTERVAL_MAX_MS;
-		rt.pollIntervalMs = POLL_INTERVAL_MAX_MS;
-		resetIntervalAfterUpdate(rt);
-		expect(rt.idleIntervalMs).toBe(POLL_INTERVAL_MS);
-		expect(rt.pollIntervalMs).toBe(POLL_INTERVAL_MS);
-	});
-
-	it("pollOnce calls bumpIdleInterval when no changes detected", async () => {
+describe("idle back-off via PollScheduler", () => {
+	it("pollOnce calls noteSuccess(false) when no changes detected — idle base doubles", async () => {
 		const pi = makePi();
 		const rt = makeRuntime(pi as never, makeClient([]));
 		rt.watchedIds.add("r1");
-		const initialIdle = rt.idleIntervalMs;
+		const initialIdle = rt.scheduler.idleIntervalMs;
 		await pollOnce(rt);
-		expect(rt.idleIntervalMs).toBe(initialIdle * 2);
+		expect(rt.scheduler.idleIntervalMs).toBe(initialIdle * 2);
+		expect(rt.scheduler.intervalMs).toBe(initialIdle * 2);
 	});
 
-	it("pollOnce calls resetIntervalAfterUpdate when changes are detected", async () => {
+	it("pollOnce calls noteSuccess(true) when changes detected — interval snaps back to base", async () => {
 		const pi = makePi();
 		const run = makeRun({ id: "r1", status: "running" });
 		const rt = makeRuntime(pi as never, makeClient([run]));
 		// Seed an old snapshot with different status to trigger a change
 		rt.snapshot = { r1: makeRun({ id: "r1", status: "paused" }) };
 		rt.watchedIds.add("r1");
-		rt.idleIntervalMs = POLL_INTERVAL_MAX_MS;
-		rt.pollIntervalMs = POLL_INTERVAL_MAX_MS;
+		rt.scheduler.forceInterval(POLL_INTERVAL_MAX_MS);
+		// Drive idle base up so the reset is observable.
+		rt.scheduler.noteSuccess(false);
+		rt.scheduler.noteSuccess(false);
+		expect(rt.scheduler.idleIntervalMs).toBeGreaterThan(POLL_INTERVAL_MS);
 		await pollOnce(rt);
-		expect(rt.idleIntervalMs).toBe(POLL_INTERVAL_MS);
-		expect(rt.pollIntervalMs).toBe(POLL_INTERVAL_MS);
+		expect(rt.scheduler.idleIntervalMs).toBe(POLL_INTERVAL_MS);
+		expect(rt.scheduler.intervalMs).toBe(POLL_INTERVAL_MS);
+	});
+
+	it("idle back-off caps at POLL_INTERVAL_MAX_MS", () => {
+		const pi = makePi();
+		const rt = makeRuntime(pi as never, makeClient([]));
+		for (let i = 0; i < 30; i++) rt.scheduler.noteSuccess(false);
+		expect(rt.scheduler.idleIntervalMs).toBe(POLL_INTERVAL_MAX_MS);
+	});
+});
+
+describe("PollScheduler re-entry guard", () => {
+	beforeEach(() => { vi.useFakeTimers(); });
+	afterEach(() => { vi.useRealTimers(); });
+
+	it("timer does not re-enter pollOnce while the previous tick is still awaiting", async () => {
+		// Build a client whose getWorkflowStatus parks on a controllable promise.
+		let resolve!: (v: ArchonRun[]) => void;
+		const pending = new Promise<ArchonRun[]>((r) => { resolve = r; });
+		const getWorkflowStatus = vi.fn().mockImplementation(() => pending);
+		const client: ArchonClient = { getWorkflowStatus };
+		const pi = makePi();
+		const rt = makeRuntime(pi as never, client);
+		rt.watchedIds.add("r1");
+		startPolling(rt);
+
+		// First tick kicks off after baseMs, then parks on `pending`.
+		await vi.advanceTimersByTimeAsync(POLL_INTERVAL_MS);
+		expect(getWorkflowStatus).toHaveBeenCalledTimes(1);
+
+		// Advance through multiple would-be intervals while tick is still parked.
+		// The setTimeout chain only schedules the next tick AFTER the current
+		// tick's promise resolves, so no second call must occur.
+		await vi.advanceTimersByTimeAsync(POLL_INTERVAL_MS * 5);
+		expect(getWorkflowStatus).toHaveBeenCalledTimes(1);
+
+		// Resolve the parked tick and let the chain schedule the next one.
+		resolve([]);
+		await vi.advanceTimersByTimeAsync(0); // flush microtasks
+		await vi.advanceTimersByTimeAsync(POLL_INTERVAL_MS * 2);
+		expect(getWorkflowStatus.mock.calls.length).toBeGreaterThanOrEqual(2);
+		stopPolling(rt);
 	});
 });
 

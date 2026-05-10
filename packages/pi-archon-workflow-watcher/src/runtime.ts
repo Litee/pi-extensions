@@ -6,6 +6,7 @@
  */
 
 import type { ExtensionAPI } from "@mariozechner/pi-coding-agent";
+import { PollScheduler } from "pi-watcher-core/poll-scheduler";
 
 import type { ArchonClient } from "./archon-client.js";
 import { buildChangeChatMessage, buildStatusLine } from "./format.js";
@@ -66,11 +67,14 @@ export interface Runtime {
 	 */
 	watchedIds: Set<string>;
 	paused: boolean;
-	/** Effective poll interval (ms). Grows on idle, resets on update. */
-	pollIntervalMs: number;
-	/** Idle back-off base (ms). Separate from pollIntervalMs. */
-	idleIntervalMs: number;
-	timer: ReturnType<typeof setInterval> | null;
+	/**
+	 * Back-off-aware poll scheduler (pi-watcher-core). Owns the timer,
+	 * effective interval, and idle-doubling state machine. Replaces the
+	 * former `pollIntervalMs` / `idleIntervalMs` / `timer` triple and the
+	 * `bumpIdleInterval` / `resetIntervalAfterUpdate` / `setPollInterval`
+	 * helpers.
+	 */
+	scheduler: PollScheduler;
 	ui: UiSurface | null;
 	consecutiveErrors: number;
 }
@@ -82,9 +86,11 @@ export function makeRuntime(pi: Runtime["pi"], client: ArchonClient): Runtime {
 		snapshot: {},
 		watchedIds: new Set(),
 		paused: false,
-		pollIntervalMs: POLL_INTERVAL_MS,
-		idleIntervalMs: POLL_INTERVAL_MS,
-		timer: null,
+		scheduler: new PollScheduler({
+			baseMs: POLL_INTERVAL_MS,
+			maxMs: POLL_INTERVAL_MAX_MS,
+			idleMaxMs: POLL_INTERVAL_MAX_MS,
+		}),
 		ui: null,
 		consecutiveErrors: 0,
 	};
@@ -121,38 +127,19 @@ export function refreshStatus(rt: Runtime): void {
 // Poll loop
 // ---------------------------------------------------------------------------
 
+/**
+ * Start the poll loop. No-op if already running. The internal PollScheduler
+ * guarantees the next tick is only scheduled after the previous tick
+ * resolves, so a slow `getWorkflowStatus` call can never be re-entered by
+ * the timer.
+ */
 export function startPolling(rt: Runtime): void {
-	if (rt.timer !== null) return;
-	rt.timer = setInterval(() => {
-		void pollOnce(rt);
-	}, rt.pollIntervalMs);
+	rt.scheduler.start(() => pollOnce(rt));
 }
 
-/** Change the running interval; restart the timer only when the value changed. */
-export function setPollInterval(rt: Runtime, nextMs: number): void {
-	if (rt.pollIntervalMs === nextMs) return;
-	rt.pollIntervalMs = nextMs;
-	stopPolling(rt);
-	if (!rt.paused) startPolling(rt);
-}
-
-/** Double the idle base (cap {@link POLL_INTERVAL_MAX_MS}) after a quiet poll. */
-export function bumpIdleInterval(rt: Runtime): void {
-	rt.idleIntervalMs = Math.min(rt.idleIntervalMs * 2, POLL_INTERVAL_MAX_MS);
-	setPollInterval(rt, rt.idleIntervalMs);
-}
-
-/** Reset both the idle base and effective interval after a poll with updates. */
-export function resetIntervalAfterUpdate(rt: Runtime): void {
-	rt.idleIntervalMs = POLL_INTERVAL_MS;
-	setPollInterval(rt, POLL_INTERVAL_MS);
-}
-
+/** Stop the poll loop. No-op if already stopped. */
 export function stopPolling(rt: Runtime): void {
-	if (rt.timer !== null) {
-		clearInterval(rt.timer);
-		rt.timer = null;
-	}
+	rt.scheduler.stop();
 }
 
 /**
@@ -225,9 +212,9 @@ export async function pollOnce(rt: Runtime): Promise<void> {
 				rt.watchedIds.delete(event.runId);
 			}
 		}
-		resetIntervalAfterUpdate(rt);
+		rt.scheduler.noteSuccess(true);
 	} else {
-		bumpIdleInterval(rt);
+		rt.scheduler.noteSuccess(false);
 	}
 
 	rt.snapshot = current;

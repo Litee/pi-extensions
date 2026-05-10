@@ -99,8 +99,8 @@ describe("handleToolAction — status", () => {
 		expect(rt.watchedIds.has("r1")).toBe(true);
 		expect(rt.snapshot["r1"]).toBeDefined();
 		// timer started because not paused
-		expect(rt.timer).not.toBeNull();
-		clearInterval(rt.timer!);
+		expect(rt.scheduler.isRunning).toBe(true);
+		rt.scheduler.stop();
 		vi.useRealTimers();
 	});
 
@@ -161,9 +161,9 @@ describe("handleToolAction — remove", () => {
 		// Start the timer manually
 		const { startPolling } = await import("../src/runtime.js");
 		startPolling(rt);
-		expect(rt.timer).not.toBeNull();
+		expect(rt.scheduler.isRunning).toBe(true);
 		await handleToolAction(rt, { action: "remove", runId: "r1" }, pi);
-		expect(rt.timer).toBeNull();
+		expect(rt.scheduler.isRunning).toBe(false);
 		vi.useRealTimers();
 	});
 });
@@ -179,7 +179,7 @@ describe("handleToolAction — pause", () => {
 		rt.paused = false;
 		const result = await handleToolAction(rt, { action: "pause" }, pi);
 		expect(rt.paused).toBe(true);
-		expect(rt.timer).toBeNull();
+		expect(rt.scheduler.isRunning).toBe(false);
 		expect(result.details.ok).toBe(true);
 		expect(result.content[0]!.text).toContain("paused");
 		vi.useRealTimers();
@@ -209,11 +209,11 @@ describe("handleToolAction — resume", () => {
 		rt.watchedIds.add("r1"); // timer only starts when watchedIds is non-empty
 		const result = await handleToolAction(rt, { action: "resume" }, pi);
 		expect(rt.paused).toBe(false);
-		expect(rt.timer).not.toBeNull();
+		expect(rt.scheduler.isRunning).toBe(true);
 		expect(result.details.ok).toBe(true);
 		expect(result.content[0]!.text).toContain("resumed");
 		// cleanup
-		clearInterval(rt.timer!);
+		rt.scheduler.stop();
 		vi.useRealTimers();
 	});
 
@@ -228,7 +228,7 @@ describe("handleToolAction — resume", () => {
 		);
 		expect(runstateCall).toBeDefined();
 		expect((runstateCall![1] as { paused: boolean }).paused).toBe(false);
-		clearInterval(rt.timer!);
+		rt.scheduler.stop();
 		vi.useRealTimers();
 	});
 
@@ -240,7 +240,7 @@ describe("handleToolAction — resume", () => {
 		expect(result.content[0]!.text).toContain(
 			`${Math.round(POLL_INTERVAL_MS / 1000)}s`,
 		);
-		clearInterval(rt.timer!);
+		rt.scheduler.stop();
 		vi.useRealTimers();
 	});
 });
