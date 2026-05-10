@@ -30,6 +30,7 @@ import {
 	createArchonClient,
 	type ArchonClient,
 } from "./archon-client.js";
+import { addToolToActive, registerToolIfNeeded } from "./tool.js";
 import {
 	buildChangeChatMessage,
 	buildStartupChatMessage,
@@ -90,6 +91,10 @@ export function createExtensionWithClient(
 		}
 
 		rt.paused = false;
+
+		// Register the archon_watcher tool (once-only guard inside).
+		registerToolIfNeeded(pi, rt);
+		addToolToActive(pi);
 
 		// Seed initial snapshot from archon workflow status (errors are not fatal)
 		let initialRuns: ArchonRun[] = [];
@@ -275,3 +280,4 @@ export {
 	rehydrateRunStateFromSession,
 } from "./persistence.js";
 export { POLL_INTERVAL_MS, POLL_INTERVAL_MAX_MS, ERROR_THRESHOLD } from "./runtime.js";
+export { handleToolAction, registerToolIfNeeded, resetToolRegisteredForTests } from "./tool.js";

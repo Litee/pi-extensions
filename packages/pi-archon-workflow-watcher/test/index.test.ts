@@ -6,6 +6,7 @@ import {
 	POLL_INTERVAL_MS,
 	RUNSTATE_ENTRY_TYPE,
 	STATE_ENTRY_TYPE,
+	resetToolRegisteredForTests,
 } from "../src/index.js";
 import type { ArchonRun } from "../src/types.js";
 
@@ -20,6 +21,9 @@ interface StubPi {
 	on: ReturnType<typeof vi.fn>;
 	registerCommand: ReturnType<typeof vi.fn>;
 	registerMessageRenderer: ReturnType<typeof vi.fn>;
+	registerTool: ReturnType<typeof vi.fn>;
+	getActiveTools: ReturnType<typeof vi.fn>;
+	setActiveTools: ReturnType<typeof vi.fn>;
 	sendMessage: ReturnType<typeof vi.fn>;
 	appendEntry: ReturnType<typeof vi.fn>;
 	readonly sessionStartHandler: ((...args: unknown[]) => Promise<unknown>) | undefined;
@@ -60,6 +64,10 @@ function makePi(): StubPi {
 		},
 	);
 	const registerMessageRenderer = vi.fn();
+	const registerTool = vi.fn();
+	let activeTools: string[] = [];
+	const getActiveTools = vi.fn(() => [...activeTools]);
+	const setActiveTools = vi.fn((tools: string[]) => { activeTools = tools; });
 	const sendMessage = vi.fn();
 	const appendEntry = vi.fn();
 
@@ -67,6 +75,9 @@ function makePi(): StubPi {
 		on,
 		registerCommand,
 		registerMessageRenderer,
+		registerTool,
+		getActiveTools,
+		setActiveTools,
 		sendMessage,
 		appendEntry,
 		get sessionStartHandler() {
@@ -159,6 +170,9 @@ function pausedRunstate() {
 // ---------------------------------------------------------------------------
 
 describe("createExtensionWithClient — wiring", () => {
+	beforeEach(() => { resetToolRegisteredForTests(); });
+	afterEach(() => { resetToolRegisteredForTests(); });
+
 	it("subscribes to session_start and session_shutdown", () => {
 		const pi = makePi();
 		createExtensionWithClient(pi as never, makeClient([]));
@@ -203,6 +217,8 @@ describe("POLL_INTERVAL_MS", () => {
 // ---------------------------------------------------------------------------
 
 describe("session_start — active (not paused)", () => {
+	beforeEach(() => { resetToolRegisteredForTests(); });
+	afterEach(() => { resetToolRegisteredForTests(); });
 	it("emits a startup chat message via sendMessage", async () => {
 		const pi = makePi();
 		const client = makeClient([makeRun({ id: "r1", status: "running" })]);
@@ -347,6 +363,8 @@ describe("session_start — active (not paused)", () => {
 // ---------------------------------------------------------------------------
 
 describe("session_start — paused", () => {
+	beforeEach(() => { resetToolRegisteredForTests(); });
+	afterEach(() => { resetToolRegisteredForTests(); });
 	it("does NOT fetch workflow status when paused", async () => {
 		const pi = makePi();
 		const client = makeClient([]);
@@ -576,6 +594,7 @@ describe("/archon-watcher command", () => {
 
 describe("polling loop integration", () => {
 	beforeEach(() => {
+		resetToolRegisteredForTests();
 		vi.useFakeTimers();
 	});
 	afterEach(() => {
