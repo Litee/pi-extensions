@@ -79,8 +79,20 @@ export default defineConfig({
 				// live pi-tui runtime; the remaining branches (overlay render
 				// paths, focus refresh, toast paths) cannot be unit-tested.
 				"**/pi-btw/src/index.ts",
+				// pi-built-in-tool-renderer/src/index.ts is pure TUI-wiring glue
+				// after the helpers.ts / renderers.ts extraction: seven
+				// `pi.registerTool({renderCall, renderResult})` calls whose
+				// callbacks only fire inside a live pi runtime. All pure logic
+				// (formatDuration, countLines, describeBashFailure, tickBashTimer,
+				// renderRead/Bash/Edit/Write/Grep/Ls/Find) lives in helpers.ts +
+				// renderers.ts and is 100% covered there.
+				"**/pi-built-in-tool-renderer/src/index.ts",
 			],
-			reporter: ["text", "html"],
+			// `json-summary` makes the coverage output machine-readable so CI or
+			// review tooling (e.g. gh-action coverage comments, pi-session-recap
+			// summaries) can consume it without parsing HTML. `html` kept for
+			// local drill-down.
+			reporter: ["text", "html", "json-summary"],
 			// Fail the suite (non-zero exit) when any threshold is not met.
 			//
 			// The branch threshold sits at 85% (not 90%) because unmasking the
