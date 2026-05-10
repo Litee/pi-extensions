@@ -20,6 +20,7 @@ import {
 	filterContextMessages,
 	shouldBlockBashInPlan,
 } from "./handlers.js";
+import { readDefaultsSnapshot, resolveAgentDir, restoreDefaults } from "./settings-patch.js";
 import {
 	loadPlanModeConfig,
 	pickLatestPlanState,
@@ -66,17 +67,35 @@ export default function planModeExtension(pi: ExtensionAPI): void {
 	 */
 	async function applyPlanModeConfig(ctx: ExtensionContext): Promise<void> {
 		const config = loadPlanModeConfig();
-		if (config.model) {
-			const models = ctx.modelRegistry.getAll();
-			const model = config.provider
-				? models.find((m) => m.id === config.model && m.provider === config.provider)
-				: models.find((m) => m.id === config.model);
-			if (model) {
-				await pi.setModel(model);
+		const wantsModel = Boolean(config.model);
+		const wantsThinking = Boolean(config.thinkingLevel);
+		if (!wantsModel && !wantsThinking) return;
+
+		// Workaround for pi-coding-agent setModel/setThinkingLevel persisting to
+		// ~/.pi/agent/settings.json. Snapshot the affected default* keys before
+		// the setters run, then restore them immediately after. This keeps the
+		// in-memory session state at plan-mode values while leaving global
+		// defaults untouched for any newly-started pi sessions. Remove once
+		// upstream adds a { persist: false } option. See skill-issue
+		// pi-plan-mode#0002.
+		const agentDir = resolveAgentDir();
+		const defaultsSnapshot = readDefaultsSnapshot(agentDir);
+
+		try {
+			if (wantsModel) {
+				const models = ctx.modelRegistry.getAll();
+				const model = config.provider
+					? models.find((m) => m.id === config.model && m.provider === config.provider)
+					: models.find((m) => m.id === config.model);
+				if (model) {
+					await pi.setModel(model);
+				}
 			}
-		}
-		if (config.thinkingLevel) {
-			pi.setThinkingLevel(config.thinkingLevel);
+			if (wantsThinking && config.thinkingLevel) {
+				pi.setThinkingLevel(config.thinkingLevel);
+			}
+		} finally {
+			restoreDefaults(agentDir, defaultsSnapshot);
 		}
 	}
 
@@ -96,14 +115,27 @@ export default function planModeExtension(pi: ExtensionAPI): void {
 		}
 
 		// Restore model if we have a snapshot (skipped for session-resumed plan mode).
-		if (modelSnapshot !== undefined) {
-			await pi.setModel(modelSnapshot);
+		// Workaround for pi-coding-agent setModel/setThinkingLevel persisting to
+		// ~/.pi/agent/settings.json. Remove once upstream adds a { persist: false }
+		// option. See skill-issue pi-plan-mode#0002.
+		const needsRestore = modelSnapshot !== undefined || thinkingLevelSnapshot !== undefined;
+		const agentDir = needsRestore ? resolveAgentDir() : undefined;
+		const defaultsSnapshot = agentDir ? readDefaultsSnapshot(agentDir) : undefined;
+
+		try {
+			if (modelSnapshot !== undefined) {
+				await pi.setModel(modelSnapshot);
+			}
+			if (thinkingLevelSnapshot !== undefined) {
+				pi.setThinkingLevel(thinkingLevelSnapshot);
+			}
+		} finally {
+			if (agentDir && defaultsSnapshot) {
+				restoreDefaults(agentDir, defaultsSnapshot);
+			}
+			modelSnapshot = undefined;
+			thinkingLevelSnapshot = undefined;
 		}
-		if (thinkingLevelSnapshot !== undefined) {
-			pi.setThinkingLevel(thinkingLevelSnapshot);
-		}
-		modelSnapshot = undefined;
-		thinkingLevelSnapshot = undefined;
 
 		const restored = toolSnapshot.restore(NORMAL_MODE_TOOLS);
 		pi.setActiveTools(restored);

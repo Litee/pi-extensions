@@ -1,0 +1,116 @@
+import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+import { afterEach, beforeEach, describe, expect, it } from "vitest";
+
+import { readDefaultsSnapshot, restoreDefaults } from "../src/settings-patch.js";
+
+let agentDir: string;
+
+beforeEach(() => {
+	agentDir = mkdtempSync(join(tmpdir(), "pi-plan-mode-settings-patch-"));
+});
+
+afterEach(() => {
+	rmSync(agentDir, { recursive: true, force: true });
+});
+
+function readSettings(): Record<string, unknown> {
+	return JSON.parse(readFileSync(join(agentDir, "settings.json"), "utf-8"));
+}
+
+function writeSettings(obj: Record<string, unknown>): void {
+	writeFileSync(join(agentDir, "settings.json"), JSON.stringify(obj), "utf-8");
+}
+
+describe("readDefaultsSnapshot", () => {
+	it("returns {} when settings.json does not exist", () => {
+		expect(readDefaultsSnapshot(agentDir)).toEqual({});
+	});
+
+	it("returns {} when settings.json is malformed JSON", () => {
+		writeFileSync(join(agentDir, "settings.json"), "{not valid json", "utf-8");
+		expect(readDefaultsSnapshot(agentDir)).toEqual({});
+	});
+
+	it("extracts the three default keys from a valid settings file", () => {
+		writeSettings({
+			defaultProvider: "anthropic",
+			defaultModel: "claude-sonnet-4-5",
+			defaultThinkingLevel: "medium",
+			unrelated: "left alone",
+		});
+		expect(readDefaultsSnapshot(agentDir)).toEqual({
+			defaultProvider: "anthropic",
+			defaultModel: "claude-sonnet-4-5",
+			defaultThinkingLevel: "medium",
+		});
+	});
+
+	it("omits keys that are not present in the file", () => {
+		writeSettings({ defaultModel: "claude-sonnet-4-5" });
+		expect(readDefaultsSnapshot(agentDir)).toEqual({
+			defaultModel: "claude-sonnet-4-5",
+		});
+	});
+});
+
+describe("restoreDefaults", () => {
+	it("overwrites the three keys and leaves unrelated keys untouched", () => {
+		writeSettings({
+			defaultProvider: "plan-mode-provider",
+			defaultModel: "plan-mode-model",
+			defaultThinkingLevel: "xhigh",
+			theme: "dark",
+			shellPath: "/bin/zsh",
+		});
+
+		restoreDefaults(agentDir, {
+			defaultProvider: "anthropic",
+			defaultModel: "claude-sonnet-4-5",
+			defaultThinkingLevel: "medium",
+		});
+
+		expect(readSettings()).toEqual({
+			defaultProvider: "anthropic",
+			defaultModel: "claude-sonnet-4-5",
+			defaultThinkingLevel: "medium",
+			theme: "dark",
+			shellPath: "/bin/zsh",
+		});
+	});
+
+	it("deletes keys when snapshot values are undefined", () => {
+		writeSettings({
+			defaultProvider: "plan-mode-provider",
+			defaultModel: "plan-mode-model",
+			defaultThinkingLevel: "xhigh",
+			other: "kept",
+		});
+
+		restoreDefaults(agentDir, {});
+
+		expect(readSettings()).toEqual({ other: "kept" });
+	});
+
+	it("mixes sets and deletes when the snapshot is partial", () => {
+		writeSettings({
+			defaultProvider: "plan-mode-provider",
+			defaultModel: "plan-mode-model",
+			defaultThinkingLevel: "xhigh",
+		});
+
+		restoreDefaults(agentDir, { defaultModel: "claude-sonnet-4-5" });
+
+		expect(readSettings()).toEqual({ defaultModel: "claude-sonnet-4-5" });
+	});
+
+	it("does not throw when settings.json is missing (no-op)", () => {
+		expect(() => restoreDefaults(agentDir, { defaultModel: "x" })).not.toThrow();
+	});
+
+	it("does not throw when settings.json is malformed JSON", () => {
+		writeFileSync(join(agentDir, "settings.json"), "{broken", "utf-8");
+		expect(() => restoreDefaults(agentDir, { defaultModel: "x" })).not.toThrow();
+	});
+});
