@@ -17,8 +17,15 @@ import { TERMINAL_STATUSES, type ArchonRun, type RunSnapshot } from "./types.js"
 // Constants
 // ---------------------------------------------------------------------------
 
-/** Poll interval — 15 s. */
+/** Default poll interval (ms). Minimum / base rhythm. */
 export const POLL_INTERVAL_MS = 15_000;
+
+/**
+ * Idle back-off ceiling (ms). When consecutive polls observe no updates the
+ * interval doubles from {@link POLL_INTERVAL_MS} up to this cap (5 min).
+ * Any detected update snaps the interval back to {@link POLL_INTERVAL_MS}.
+ */
+export const POLL_INTERVAL_MAX_MS = 5 * 60_000;
 
 /** customType on every chat message this extension injects. */
 export const CUSTOM_MESSAGE_TYPE = "pi-archon-workflow-watcher";
@@ -49,6 +56,10 @@ export interface Runtime {
 	client: ArchonClient;
 	snapshot: RunSnapshot;
 	paused: boolean;
+	/** Effective poll interval (ms). Grows on idle, resets on update. */
+	pollIntervalMs: number;
+	/** Idle back-off base (ms). Separate from pollIntervalMs. */
+	idleIntervalMs: number;
 	timer: ReturnType<typeof setInterval> | null;
 	ui: UiSurface | null;
 	consecutiveErrors: number;
@@ -60,6 +71,8 @@ export function makeRuntime(pi: Runtime["pi"], client: ArchonClient): Runtime {
 		client,
 		snapshot: {},
 		paused: false,
+		pollIntervalMs: POLL_INTERVAL_MS,
+		idleIntervalMs: POLL_INTERVAL_MS,
 		timer: null,
 		ui: null,
 		consecutiveErrors: 0,
@@ -100,7 +113,27 @@ export function startPolling(rt: Runtime): void {
 	if (rt.timer !== null) return;
 	rt.timer = setInterval(() => {
 		void pollOnce(rt);
-	}, POLL_INTERVAL_MS);
+	}, rt.pollIntervalMs);
+}
+
+/** Change the running interval; restart the timer only when the value changed. */
+export function setPollInterval(rt: Runtime, nextMs: number): void {
+	if (rt.pollIntervalMs === nextMs) return;
+	rt.pollIntervalMs = nextMs;
+	stopPolling(rt);
+	if (!rt.paused) startPolling(rt);
+}
+
+/** Double the idle base (cap {@link POLL_INTERVAL_MAX_MS}) after a quiet poll. */
+export function bumpIdleInterval(rt: Runtime): void {
+	rt.idleIntervalMs = Math.min(rt.idleIntervalMs * 2, POLL_INTERVAL_MAX_MS);
+	setPollInterval(rt, rt.idleIntervalMs);
+}
+
+/** Reset both the idle base and effective interval after a poll with updates. */
+export function resetIntervalAfterUpdate(rt: Runtime): void {
+	rt.idleIntervalMs = POLL_INTERVAL_MS;
+	setPollInterval(rt, POLL_INTERVAL_MS);
 }
 
 export function stopPolling(rt: Runtime): void {
@@ -168,6 +201,9 @@ export async function pollOnce(rt: Runtime): Promise<void> {
 			},
 			{ deliverAs: "followUp", triggerTurn },
 		);
+		resetIntervalAfterUpdate(rt);
+	} else {
+		bumpIdleInterval(rt);
 	}
 
 	rt.snapshot = current;

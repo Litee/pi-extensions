@@ -3,10 +3,14 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { ArchonClient } from "../src/archon-client.js";
 import {
 	ERROR_THRESHOLD,
+	POLL_INTERVAL_MAX_MS,
 	POLL_INTERVAL_MS,
+	bumpIdleInterval,
 	makeRuntime,
 	pollOnce,
 	refreshStatus,
+	resetIntervalAfterUpdate,
+	setPollInterval,
 	startPolling,
 	stopPolling,
 } from "../src/runtime.js";
@@ -343,5 +347,78 @@ describe("refreshStatus", () => {
 		const rt = makeRuntime(pi as never, makeClient([]));
 		rt.ui = null;
 		expect(() => refreshStatus(rt)).not.toThrow();
+	});
+});
+
+describe("idle back-off: setPollInterval / bumpIdleInterval / resetIntervalAfterUpdate", () => {
+	it("setPollInterval is a no-op when the value has not changed", () => {
+		const pi = makePi();
+		const rt = makeRuntime(pi as never, makeClient([]));
+		expect(rt.pollIntervalMs).toBe(POLL_INTERVAL_MS);
+		setPollInterval(rt, POLL_INTERVAL_MS);
+		expect(rt.pollIntervalMs).toBe(POLL_INTERVAL_MS);
+		expect(rt.timer).toBeNull();
+	});
+
+	it("setPollInterval updates the interval and restarts the timer when running", () => {
+		vi.useFakeTimers();
+		const pi = makePi();
+		const rt = makeRuntime(pi as never, makeClient([]));
+		startPolling(rt);
+		expect(rt.timer).not.toBeNull();
+		setPollInterval(rt, 30_000);
+		expect(rt.pollIntervalMs).toBe(30_000);
+		expect(rt.timer).not.toBeNull();
+		stopPolling(rt);
+		vi.useRealTimers();
+	});
+
+	it("bumpIdleInterval doubles the idle interval on each call", () => {
+		const pi = makePi();
+		const rt = makeRuntime(pi as never, makeClient([]));
+		expect(rt.idleIntervalMs).toBe(POLL_INTERVAL_MS);
+		bumpIdleInterval(rt);
+		expect(rt.idleIntervalMs).toBe(POLL_INTERVAL_MS * 2);
+		bumpIdleInterval(rt);
+		expect(rt.idleIntervalMs).toBe(POLL_INTERVAL_MS * 4);
+	});
+
+	it("bumpIdleInterval caps at POLL_INTERVAL_MAX_MS", () => {
+		const pi = makePi();
+		const rt = makeRuntime(pi as never, makeClient([]));
+		rt.idleIntervalMs = POLL_INTERVAL_MAX_MS;
+		bumpIdleInterval(rt);
+		expect(rt.idleIntervalMs).toBe(POLL_INTERVAL_MAX_MS);
+	});
+
+	it("resetIntervalAfterUpdate resets both idleIntervalMs and pollIntervalMs", () => {
+		const pi = makePi();
+		const rt = makeRuntime(pi as never, makeClient([]));
+		rt.idleIntervalMs = POLL_INTERVAL_MAX_MS;
+		rt.pollIntervalMs = POLL_INTERVAL_MAX_MS;
+		resetIntervalAfterUpdate(rt);
+		expect(rt.idleIntervalMs).toBe(POLL_INTERVAL_MS);
+		expect(rt.pollIntervalMs).toBe(POLL_INTERVAL_MS);
+	});
+
+	it("pollOnce calls bumpIdleInterval when no changes detected", async () => {
+		const pi = makePi();
+		const rt = makeRuntime(pi as never, makeClient([]));
+		const initialIdle = rt.idleIntervalMs;
+		await pollOnce(rt);
+		expect(rt.idleIntervalMs).toBe(initialIdle * 2);
+	});
+
+	it("pollOnce calls resetIntervalAfterUpdate when changes are detected", async () => {
+		const pi = makePi();
+		const run = makeRun({ id: "r1", status: "running" });
+		const rt = makeRuntime(pi as never, makeClient([run]));
+		// Seed an old snapshot with different status to trigger a change
+		rt.snapshot = { r1: makeRun({ id: "r1", status: "paused" }) };
+		rt.idleIntervalMs = POLL_INTERVAL_MAX_MS;
+		rt.pollIntervalMs = POLL_INTERVAL_MAX_MS;
+		await pollOnce(rt);
+		expect(rt.idleIntervalMs).toBe(POLL_INTERVAL_MS);
+		expect(rt.pollIntervalMs).toBe(POLL_INTERVAL_MS);
 	});
 });

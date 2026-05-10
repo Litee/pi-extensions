@@ -112,11 +112,16 @@ export function createExtensionWithClient(
 			if (run.id) current[run.id] = run;
 		}
 
-		// Diff against persisted baseline and emit appropriate startup message
+		// Diff against persisted baseline and emit appropriate startup message.
+		// Suppress all startup messages when there are no active runs — we don't
+		// want to inject "No active workflow runs" noise on every session start.
 		const baseline = rehydrateSnapshotFromSession(sessionCtx);
+		const hasActiveRuns = Object.keys(current).length > 0;
 		if (baseline !== null) {
 			const events = detectChanges(baseline.snapshot, current);
 			if (events.length > 0) {
+				// Real changes since last session — always emit regardless of
+				// whether runs are currently active.
 				const triggerTurn = events.some((e) => e.shouldTriggerTurn);
 				emit(
 					{
@@ -127,9 +132,8 @@ export function createExtensionWithClient(
 					},
 					{ deliverAs: "followUp", triggerTurn },
 				);
-			} else {
-				// No diff — emit a short informational summary so the LLM can see the
-				// current state without triggering a turn.
+			} else if (hasActiveRuns) {
+				// No diff, but runs are active — brief summary, no turn trigger.
 				emit(
 					{
 						customType: CUSTOM_MESSAGE_TYPE,
@@ -139,8 +143,9 @@ export function createExtensionWithClient(
 					{ deliverAs: "followUp", triggerTurn: false },
 				);
 			}
-		} else {
-			// No prior baseline — emit startup summary.
+			// else: no changes and no active runs — stay silent.
+		} else if (hasActiveRuns) {
+			// No prior baseline but runs are active — emit startup summary.
 			emit(
 				{
 					customType: CUSTOM_MESSAGE_TYPE,
@@ -149,6 +154,7 @@ export function createExtensionWithClient(
 				},
 				{ deliverAs: "followUp", triggerTurn: false },
 			);
+			// else: no prior baseline and no active runs — stay silent.
 		}
 
 		rt.snapshot = current;
@@ -292,4 +298,4 @@ export {
 	rehydrateSnapshotFromSession,
 	rehydrateRunStateFromSession,
 } from "./persistence.js";
-export { POLL_INTERVAL_MS, ERROR_THRESHOLD } from "./runtime.js";
+export { POLL_INTERVAL_MS, POLL_INTERVAL_MAX_MS, ERROR_THRESHOLD } from "./runtime.js";

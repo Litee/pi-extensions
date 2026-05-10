@@ -309,7 +309,7 @@ describe("session_start — active (not paused)", () => {
 		expect(opts.triggerTurn).toBe(false);
 	});
 
-	it("gracefully handles archon CLI errors at session_start (still emits startup message)", async () => {
+	it("gracefully handles archon CLI errors at session_start (stays silent, no active runs)", async () => {
 		const pi = makePi();
 		const warnSpy = vi.spyOn(console, "warn").mockImplementation(() => {});
 		createExtensionWithClient(
@@ -321,8 +321,8 @@ describe("session_start — active (not paused)", () => {
 		await new Promise<void>((r) => setImmediate(r));
 		warnSpy.mockRestore();
 
-		// Still emits a startup message (empty snapshot)
-		expect(pi.sendMessage).toHaveBeenCalled();
+		// CLI error means empty snapshot — no active runs, so no startup message
+		expect(pi.sendMessage).not.toHaveBeenCalled();
 	});
 });
 
