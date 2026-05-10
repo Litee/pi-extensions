@@ -1,14 +1,13 @@
 # pi-btw
 
-> **Upstream:** [`dbachelder/pi-btw`](https://github.com/dbachelder/pi-btw)
-> (v0.4.0, MIT, by Dan Bachelder). See [`UPSTREAM.md`](./UPSTREAM.md) for the
-> exact copied commit and a recipe for diffing against future upstream
-> changes.
-
 A pi extension that adds a `/btw` side-conversation channel. `/btw` opens a
 real pi sub-session with coding-tool access that runs immediately even while
 the main agent is still busy, rendered in a dedicated overlay so the main
 session stays visible underneath.
+
+Use it when you want to ask a clarifying question, think through next steps,
+or explore an idea without derailing the current turn — and optionally
+inject the result back into the main agent when you are ready.
 
 ## What it does
 
@@ -28,6 +27,9 @@ session stays visible underneath.
   agent.
 - Optionally saves an individual BTW exchange as a visible session note with
   `--save`.
+- Ships a small `btw` skill (`skills/btw/SKILL.md`) so pi can better
+  recognize when a side-conversation workflow is appropriate. Helps with
+  discoverability; not required for the extension itself.
 
 ## Commands
 
@@ -42,7 +44,7 @@ session stays visible underneath.
 | `/btw:model [<provider> <id> [responses-api] \| clear]` | Show / set / clear a BTW-only model override. |
 | `/btw:thinking [<level> \| clear]` | Show / set / clear a BTW-only thinking-level override for normal BTW chat. |
 
-## Overlay controls
+## Keybindings
 
 - `Ctrl+\` toggles focus between the BTW overlay and the main editor
   without closing the overlay.
@@ -51,27 +53,22 @@ session stays visible underneath.
 - `Ctrl+F` / `Ctrl+B` scroll the transcript forward / back by a page
   (MacBook-friendly alternative to `PgUp` / `PgDn`; follows the less/vim
   convention of forward = down, back = up).
+- `Esc` dismisses BTW immediately while the overlay is focused.
 - The composer's prompt glyph tracks keyboard focus: a bright `▶` when
   BTW is receiving your input, a dim `>` when the main editor owns focus.
   The overlay frame also brightens to accent colour when BTW is focused.
-- `Esc` dismisses BTW immediately while the overlay is focused.
 - The BTW overlay opens top-centered so the main session stays visible
   underneath it.
 
-## Why
+## Attribution
 
-Sometimes you want to:
-
-- ask a clarifying question while the main agent keeps working,
-- think through next steps without derailing the current turn,
-- explore an idea, then inject it back once it's ready.
-
-## Included skill
-
-This package also ships a small `btw` skill (see `skills/btw/SKILL.md`) so pi
-can better recognize when a side-conversation workflow is appropriate. It
-helps with discoverability and guidance, but is not required for the
-extension itself to work.
+This package is a verbatim port of
+[`dbachelder/pi-btw`](https://github.com/dbachelder/pi-btw) (MIT,
+© Dan Bachelder). For the full list of behaviours, design notes, and
+upstream screenshots, see the upstream
+[`README.md`](https://github.com/dbachelder/pi-btw/blob/main/README.md).
+See [`UPSTREAM.md`](./UPSTREAM.md) for the exact copied commit and a
+recipe for diffing against future upstream changes.
 
 ## Differences from upstream
 
@@ -100,14 +97,6 @@ copying this package. Here is what you will be picking up on top of upstream
 
 Upstream's 50/50 vitest suite still passes unchanged. The new behaviour is
 covered by additional local tests.
-
-## Attribution
-
-This package is a verbatim port of
-[`dbachelder/pi-btw`](https://github.com/dbachelder/pi-btw) (MIT,
-© Dan Bachelder). For the full list of behaviours, design notes, and
-upstream screenshots, see the upstream
-[`README.md`](https://github.com/dbachelder/pi-btw/blob/main/README.md).
 
 ## License
 

@@ -3,6 +3,8 @@
   "version": "0.1.1",
   "private": true,
   "description": "Pi extension that shows a one-line Claude-Code-style recap above the editor when you refocus a pi session (copy of https://github.com/tmustier/pi-extensions/tree/main/session-recap).",
+  "license": "MIT",
+  "author": "Thomas Mustier (upstream); ported by Andrey Lipatkin",
   "type": "module",
   "keywords": ["pi-package"],
   "pi": {

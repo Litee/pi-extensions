@@ -3,6 +3,8 @@
   "version": "0.1.0",
   "private": true,
   "description": "Pi extension that adds a read-only 'plan mode' — restricts tools to read/bash/grep/find/ls/ask_user_question and allowlists bash to read-only commands.",
+  "license": "MIT",
+  "author": "Mario Zechner (upstream); ported by Andrey Lipatkin",
   "type": "module",
   "keywords": ["pi-package"],
   "pi": {

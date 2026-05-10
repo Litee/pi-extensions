@@ -3,6 +3,8 @@
   "version": "0.1.0",
   "private": true,
   "description": "Pi extension that re-registers the built-in read/bash/edit/write tools with compact custom renderCall / renderResult functions while delegating execute() to the originals. Demonstrates how to override rendering of built-in tools without changing their behaviour.",
+  "license": "MIT",
+  "author": "Mario Zechner (upstream); ported by Andrey Lipatkin",
   "type": "module",
   "keywords": ["pi-package"],
   "pi": {
