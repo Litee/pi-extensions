@@ -50,7 +50,10 @@ import {
 	stopPolling,
 	type Runtime,
 	type UiSurface,
+	type ApprovalDialogParams,
+	type ApprovalResult,
 } from "./runtime.js";
+import { createApprovalDialog } from "./approval-dialog.js";
 import { type ArchonRun, type RunSnapshot } from "./types.js";
 
 /**
@@ -67,6 +70,20 @@ export function createExtensionWithClient(
 		const anyCtx = ctx as unknown as { hasUI?: boolean; ui?: UiSurface };
 		const hasUI = anyCtx.hasUI ?? anyCtx.ui?.hasUI ?? anyCtx.ui !== undefined;
 		rt.ui = hasUI ? ((anyCtx.ui as UiSurface) ?? null) : null;
+
+		// Wire up TUI approval dialog if a UI with custom() is available.
+		if (rt.ui !== null) {
+			const uiCtx = anyCtx.ui as { custom?: (...args: unknown[]) => unknown };
+			if (typeof uiCtx.custom === "function") {
+				rt.ui.showApprovalDialog = (params: ApprovalDialogParams): Promise<ApprovalResult> => {
+					return uiCtx.custom!(
+						(tui: { requestRender(): void }, theme: Parameters<typeof createApprovalDialog>[3], _kb: unknown, done: (r: ApprovalResult) => void) =>
+							createApprovalDialog(params, done, tui, theme),
+						{ overlay: true, overlayOptions: { width: "70%", maxHeight: "80%", anchor: "center" } },
+					) as Promise<ApprovalResult>;
+				};
+			}
+		}
 
 		/**
 		 * Defer every pi.sendMessage emitted during session_start to the next

@@ -82,6 +82,7 @@ export function parseStatusOutput(raw: string): ArchonRun[] {
 						const ap = approval as Record<string, unknown>;
 						if (typeof ap["nodeId"] === "string") run.approvalNodeId = ap["nodeId"];
 						if (typeof ap["message"] === "string") run.approvalMessage = ap["message"];
+						if (typeof ap["type"] === "string") run.approvalType = ap["type"];
 					}
 				}
 				return run;

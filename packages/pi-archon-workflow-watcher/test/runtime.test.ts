@@ -465,3 +465,104 @@ describe("pollOnce — db-locked handling", () => {
 		expect(rt.consecutiveErrors).toBe(1);
 	});
 });
+
+// ---------------------------------------------------------------------------
+// pollOnce — approval gate dialog routing
+// ---------------------------------------------------------------------------
+
+describe("pollOnce — approval gate dialog routing", () => {
+	it("calls showApprovalDialog and approves when approvalType is 'approval'", async () => {
+		const pi = makePi();
+		const run: ArchonRun = {
+			id: "r1",
+			status: "paused",
+			workflowName: "pi-extension-feature",
+			approvalNodeId: "plan-gate",
+			approvalMessage: "Review the plan above.",
+			approvalType: "approval",
+		};
+		const rt = makeRuntime(pi as never, makeClient([run]));
+		rt.watchedIds.add("r1");
+		// Seed snapshot so a paused→paused change won't fire; start from running.
+		rt.snapshot = { r1: { id: "r1", status: "running" } };
+
+		const dialogResults: unknown[] = [];
+		let approvedWith: string[] | null = null;
+		rt.ui = {
+			showApprovalDialog: async (params) => {
+				dialogResults.push(params);
+				return { decision: "approve" as const };
+			},
+		};
+
+		// Intercept execFile via module-level mock — instead, verify via a wrapper.
+		// We can't easily mock execFile here, so we verify showApprovalDialog was
+		// called with the right params and that sendMessage was NOT called for it.
+		await pollOnce(rt);
+
+		expect(dialogResults).toHaveLength(1);
+		expect((dialogResults[0] as { nodeId: string }).nodeId).toBe("plan-gate");
+		expect((dialogResults[0] as { runId: string }).runId).toBe("r1");
+		// sendMessage should NOT have been called (approval gates skip chat).
+		expect(pi.sendMessage).not.toHaveBeenCalled();
+	});
+
+	it("does NOT call showApprovalDialog when approvalType is 'interactive_loop'", async () => {
+		const pi = makePi();
+		const run: ArchonRun = {
+			id: "r1",
+			status: "paused",
+			workflowName: "pi-extension-feature",
+			approvalNodeId: "formulate",
+			approvalMessage: "Answer the questions above…",
+			approvalType: "interactive_loop",
+		};
+		const rt = makeRuntime(pi as never, makeClient([run]));
+		rt.watchedIds.add("r1");
+		rt.snapshot = { r1: { id: "r1", status: "running" } };
+
+		let dialogCalled = false;
+		rt.ui = {
+			showApprovalDialog: async () => {
+				dialogCalled = true;
+				return null;
+			},
+		};
+
+		await pollOnce(rt);
+
+		expect(dialogCalled).toBe(false);
+		// Chat message IS sent for interactive_loop pauses (LLM relays them).
+		expect(pi.sendMessage).toHaveBeenCalledOnce();
+		const msg = pi.sendMessage.mock.calls[0];
+		expect(msg[1]).toMatchObject({ triggerTurn: true });
+	});
+
+	it("sends chat message for non-approval events even when some use dialog", async () => {
+		const pi = makePi();
+		// r1 = approval gate (→ dialog), r2 = completed (→ chat)
+		const r1: ArchonRun = {
+			id: "r1", status: "paused",
+			workflowName: "wf", approvalType: "approval",
+			approvalNodeId: "commit-gate", approvalMessage: "Diff looks good?",
+		};
+		const r2: ArchonRun = { id: "r2", status: "completed", workflowName: "wf2" };
+		const rt = makeRuntime(pi as never, makeClient([r1, r2]));
+		rt.watchedIds.add("r1");
+		rt.watchedIds.add("r2");
+		rt.snapshot = {
+			r1: { id: "r1", status: "running" },
+			r2: { id: "r2", status: "running" },
+		};
+		rt.ui = { showApprovalDialog: async () => ({ decision: "approve" as const }) };
+
+		await pollOnce(rt);
+
+		// Dialog for r1
+		// Chat for r2 (completed → triggerTurn)
+		expect(pi.sendMessage).toHaveBeenCalledOnce();
+		const content = pi.sendMessage.mock.calls[0][0].content as string;
+		expect(content).toContain("wf2");
+		expect(content).not.toContain("commit-gate");
+	});
+});

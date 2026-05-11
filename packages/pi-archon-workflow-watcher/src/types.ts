@@ -10,6 +10,8 @@ export interface ArchonRun {
 	approvalNodeId?: string;
 	/** First meaningful line of the gate message when status is "paused". */
 	approvalMessage?: string;
+	/** "approval" for approval nodes, "interactive_loop" for loop gates. */
+	approvalType?: string;
 	[key: string]: unknown;
 }
 

@@ -62,7 +62,20 @@ export interface UiSurface {
 	setStatus?: (key: string, text: string | undefined) => void;
 	theme?: { fg?: (color: string, text: string) => string };
 	hasUI?: boolean;
+	showApprovalDialog?: (params: ApprovalDialogParams) => Promise<ApprovalResult>;
 }
+
+export interface ApprovalDialogParams {
+	runId: string;
+	workflowName: string;
+	nodeId: string;
+	message: string;
+}
+
+export type ApprovalResult =
+	| { decision: "approve" }
+	| { decision: "reject"; feedback: string }
+	| null;
 
 /** Mutable per-process runtime. One instance per extension activation. */
 export interface Runtime {
@@ -135,9 +148,30 @@ export function refreshStatus(rt: Runtime): void {
 	rt.ui?.setStatus?.(STATUS_KEY, colorize(rt.ui.theme, text));
 }
 
-// ---------------------------------------------------------------------------
-// Poll loop
-// ---------------------------------------------------------------------------
+/**
+ * Handle an approval-type pause by opening a TUI dialog.
+ * Fires `archon workflow approve/reject` based on the human's decision.
+ * Called fire-and-forget from pollOnce.
+ */
+async function handleApprovalDialog(rt: Runtime, run: ArchonRun): Promise<void> {
+	if (!run.id || !rt.ui?.showApprovalDialog) return;
+	const result = await rt.ui.showApprovalDialog({
+		runId: run.id,
+		workflowName: run.workflowName ?? run.id,
+		nodeId: run.approvalNodeId ?? "approval",
+		message: run.approvalMessage ?? "",
+	});
+	if (!result) return; // dismissed without action
+
+	await new Promise<void>((resolve) => {
+		const args =
+			result.decision === "approve"
+				? ["workflow", "approve", run.id!, "approved"]
+				: ["workflow", "reject", run.id!, result.feedback];
+		execFile("archon", args, () => resolve());
+	});
+}
+
 
 /**
  * Start the poll loop. No-op if already running. The internal PollScheduler
@@ -208,17 +242,40 @@ export async function pollOnce(rt: Runtime): Promise<void> {
 	const events = detectChanges(rt.snapshot, current);
 
 	if (events.length > 0) {
-		const triggerTurn = events.some((e) => e.shouldTriggerTurn);
-		rt.pi.sendMessage(
-			{
-				customType: CUSTOM_MESSAGE_TYPE,
-				content: buildChangeChatMessage(events, new Date()),
-				display: true,
-				details: { events },
-			},
-			{ deliverAs: "followUp", triggerTurn },
+		// For approval-type pauses with a UI, open the TUI dialog instead of
+		// sending a chat message (LLM bypassed entirely for those events).
+		const approvalEvents = events.filter(
+			(e) =>
+				e.newStatus === "paused" &&
+				current[e.runId]?.approvalType === "approval" &&
+				rt.ui?.showApprovalDialog !== undefined,
 		);
-		// Fire a desktop notification for runs that just paused (need human input).
+		const approvalRunIds = new Set(approvalEvents.map((e) => e.runId));
+
+		// Remaining events go to the chat message.
+		const chatEvents = events.filter((e) => !approvalRunIds.has(e.runId));
+
+		// Fire TUI dialogs (non-blocking — don't await, poll loop continues).
+		for (const event of approvalEvents) {
+			const run = current[event.runId];
+			if (run) void handleApprovalDialog(rt, run);
+		}
+
+		if (chatEvents.length > 0) {
+			// triggerTurn only for non-approval paused/terminal events.
+			const triggerTurn = chatEvents.some((e) => e.shouldTriggerTurn);
+			rt.pi.sendMessage(
+				{
+					customType: CUSTOM_MESSAGE_TYPE,
+					content: buildChangeChatMessage(chatEvents, new Date()),
+					display: true,
+					details: { events: chatEvents },
+				},
+				{ deliverAs: "followUp", triggerTurn },
+			);
+		}
+
+		// cmux desktop notification for paused events (all types).
 		for (const event of events) {
 			if (event.newStatus === "paused") {
 				notifyViaCmux(
@@ -228,6 +285,7 @@ export async function pollOnce(rt: Runtime): Promise<void> {
 				);
 			}
 		}
+
 		// Auto-remove runs that have ended (disappeared from active list).
 		for (const event of events) {
 			if (event.eventType === "run_removed") {

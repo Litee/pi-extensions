@@ -203,6 +203,17 @@ describe("parseStatusOutput — approval metadata", () => {
 		expect(runs[0]!.approvalMessage).toBe("Review the plan.");
 	});
 
+	it("normalizes metadata.approval.type to approvalType", () => {
+		const raw = JSON.stringify({
+			runs: [{
+				id: "r1", status: "paused",
+				metadata: { approval: { nodeId: "plan-gate", message: "msg", type: "approval" } },
+			}],
+		});
+		const runs = parseStatusOutput(raw);
+		expect(runs[0]!.approvalType).toBe("approval");
+	});
+
 	it("handles missing metadata.approval gracefully", () => {
 		const raw = JSON.stringify({ runs: [{ id: "r1", status: "running" }] });
 		const runs = parseStatusOutput(raw);
