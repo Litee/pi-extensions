@@ -7,7 +7,7 @@
  * the piece wired into `pi.registerCommand` by index.ts.
  */
 
-import type { ExtensionAPI } from "@mariozechner/pi-coding-agent";
+import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
 
 import type { GlueClient } from "./glue-client.js";
 import { writeState } from "./persistence.js";

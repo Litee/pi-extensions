@@ -7,7 +7,7 @@
  * `matchesKey` predicate, making it trivially unit-testable.
  */
 
-import type { KeyId } from "@mariozechner/pi-tui";
+import type { KeyId } from "@earendil-works/pi-tui";
 
 export type KeyMatcher = (data: string, key: KeyId) => boolean;
 

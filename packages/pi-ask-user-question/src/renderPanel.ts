@@ -10,7 +10,7 @@
  * cannot: the `Editor` component for free-text modes, the `Markdown`
  * preview cache + side-by-side layout, and the separator/overall frame.
  *
- * No imports from `@mariozechner/pi-tui` are allowed here.
+ * No imports from `@earendil-works/pi-tui` are allowed here.
  */
 
 import type { DialogState } from "./controller.js";

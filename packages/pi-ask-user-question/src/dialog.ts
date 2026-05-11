@@ -16,9 +16,9 @@
  * highlighter, etc.), which we intentionally do not mock.
  */
 
-import { getMarkdownTheme } from "@mariozechner/pi-coding-agent";
-import type { ExtensionContext, Theme } from "@mariozechner/pi-coding-agent";
-import type { KeybindingsManager, TUI } from "@mariozechner/pi-tui";
+import { getMarkdownTheme } from "@earendil-works/pi-coding-agent";
+import type { ExtensionContext, Theme } from "@earendil-works/pi-coding-agent";
+import type { KeybindingsManager, TUI } from "@earendil-works/pi-tui";
 import {
 	Editor,
 	type EditorTheme,
@@ -27,7 +27,7 @@ import {
 	matchesKey,
 	truncateToWidth,
 	visibleWidth,
-} from "@mariozechner/pi-tui";
+} from "@earendil-works/pi-tui";
 
 import { DialogController } from "./controller.js";
 import type { Result } from "./format.js";

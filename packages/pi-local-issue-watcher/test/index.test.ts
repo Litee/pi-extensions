@@ -1265,13 +1265,16 @@ describe("run-state persistence", () => {
 		const pi1 = makeFakePi();
 		extensionWithDbRoot(pi1, dbRoot);
 		await pi1.commands.get("local-issue-watcher")!.handler("pause", makeFakeCtx());
-		const persistedEntries = (pi1.appendEntry.mock.calls as Array<[string, unknown]>)
+		const persistedEntries = pi1.appendEntry.mock.calls
 			.filter((c) => c[0] === RUNSTATE_ENTRY_TYPE)
-			.map(([t, d]) => ({
-				type: "custom",
-				customType: t,
-				data: d,
-			}));
+			.map((c: unknown[]) => {
+				const [t, d] = c as [string, unknown];
+				return {
+					type: "custom",
+					customType: t,
+					data: d,
+				};
+			});
 		expect(persistedEntries.length).toBeGreaterThanOrEqual(1);
 
 		// Simulate plugin reload: brand-new extension, brand-new runtime, but

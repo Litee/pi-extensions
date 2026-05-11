@@ -1,7 +1,7 @@
 import { readFileSync } from "node:fs";
 import { join, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
-import type { ExtensionAPI } from "@mariozechner/pi-coding-agent";
+import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const GUIDELINES = readFileSync(join(__dirname, "../assets/PROMPT.md"), "utf-8");

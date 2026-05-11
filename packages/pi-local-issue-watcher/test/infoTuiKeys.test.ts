@@ -9,7 +9,7 @@ import { describe, expect, it } from "vitest";
 import { dispatchKey, isListNavKey } from "../src/infoTuiKeys.js";
 
 /**
- * Stand-in for `matchesKey` from `@mariozechner/pi-tui` sized to what
+ * Stand-in for `matchesKey` from `@earendil-works/pi-tui` sized to what
  * `dispatchKey` actually asks about: `escape`, `ctrl+c`, `left`.
  * Accepts both the legacy byte forms and a couple of Kitty-encoded
  * CSI variants so the tests double as a regression guard for #0026.

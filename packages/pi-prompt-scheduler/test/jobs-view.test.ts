@@ -11,7 +11,7 @@ import { join } from "node:path";
 
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
-import type { Theme } from "@mariozechner/pi-coding-agent";
+import type { Theme } from "@earendil-works/pi-coding-agent";
 import type { CronScheduler } from "../src/scheduler.js";
 import { CronStorage } from "../src/storage.js";
 import type { CronJob } from "../src/types.js";

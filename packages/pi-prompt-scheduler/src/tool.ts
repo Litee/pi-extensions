@@ -5,8 +5,8 @@
  * Any upstream fixes should be pulled via a diff against the link above.
  */
 
-import type { ToolDefinition } from "@mariozechner/pi-coding-agent";
-import { Text } from "@mariozechner/pi-tui";
+import type { ToolDefinition } from "@earendil-works/pi-coding-agent";
+import { Text } from "@earendil-works/pi-tui";
 import { nanoid } from "nanoid";
 import { CronScheduler } from "./scheduler.js";
 import type { JobScope } from "./settings.js";

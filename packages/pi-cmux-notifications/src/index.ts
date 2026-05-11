@@ -32,7 +32,7 @@
  * `cmuxAvailable`), so loading this extension in a plain terminal is safe.
  */
 
-import type { ExtensionAPI } from "@mariozechner/pi-coding-agent";
+import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
 
 import {
 	clearProgress,

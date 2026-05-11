@@ -7,17 +7,17 @@
  *
  * The level ladder is derived dynamically from the active model's supported
  * thinking levels at shortcut-press time (via getSupportedThinkingLevels from
- * @mariozechner/pi-ai), so models that support "xhigh" (e.g. Opus) step all
+ * @earendil-works/pi-ai), so models that support "xhigh" (e.g. Opus) step all
  * the way up to xhigh while others stop at "high".
  *
  *   - ctrl+]  → step up one rung (no-op at the top)
  *   - ctrl+[  → step down one rung (no-op at "off")
  */
 
-import type { ExtensionAPI } from "@mariozechner/pi-coding-agent";
-import { getSupportedThinkingLevels } from "@mariozechner/pi-ai";
-import type { ThinkingLevel } from "@mariozechner/pi-agent-core";
-import { Key } from "@mariozechner/pi-tui";
+import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
+import { getSupportedThinkingLevels } from "@earendil-works/pi-ai";
+import type { ThinkingLevel } from "@earendil-works/pi-agent-core";
+import { Key } from "@earendil-works/pi-tui";
 
 /** Fallback used when ctx.model is undefined (shouldn't happen at shortcut time). */
 const FALLBACK_LEVELS = ["off", "minimal", "low", "medium", "high"] as const;

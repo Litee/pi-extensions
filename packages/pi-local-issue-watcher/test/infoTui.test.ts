@@ -19,7 +19,7 @@
  *
  * Strategy: stub out the handful of pi-tui component classes the
  * factory instantiates, keep the real `matchesKey` implementation
- * exported by `@mariozechner/pi-tui`, and drive the returned handle's
+ * exported by `@earendil-works/pi-tui`, and drive the returned handle's
  * `handleInput(data)` directly. The stubs track instances on static
  * fields so tests can reach through to the search input's buffered
  * value to verify we really are routing to it (i.e. we are in list
@@ -28,7 +28,7 @@
 
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
-import type { ExtensionCommandContext } from "@mariozechner/pi-coding-agent";
+import type { ExtensionCommandContext } from "@earendil-works/pi-coding-agent";
 
 // ---------------------------------------------------------------------------
 // pi-tui mock
@@ -156,10 +156,10 @@ const fakes = vi.hoisted(() => {
 
 const { FakeContainer, FakeInput, FakeSelectList, FakeText } = fakes;
 
-vi.mock("@mariozechner/pi-tui", async () => {
+vi.mock("@earendil-works/pi-tui", async () => {
 	const actual =
-		await vi.importActual<typeof import("@mariozechner/pi-tui")>(
-			"@mariozechner/pi-tui",
+		await vi.importActual<typeof import("@earendil-works/pi-tui")>(
+			"@earendil-works/pi-tui",
 		);
 	return {
 		...actual,
@@ -170,7 +170,7 @@ vi.mock("@mariozechner/pi-tui", async () => {
 	};
 });
 
-vi.mock("@mariozechner/pi-coding-agent", () => ({
+vi.mock("@earendil-works/pi-coding-agent", () => ({
 	getSelectListTheme: () => ({}),
 }));
 

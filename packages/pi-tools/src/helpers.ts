@@ -5,7 +5,7 @@
  * without pulling in the pi-tui/pi-coding-agent runtime.
  */
 
-import type { ToolInfo } from "@mariozechner/pi-coding-agent";
+import type { ToolInfo } from "@earendil-works/pi-coding-agent";
 
 /**
  * Collapse whitespace and truncate `text` to at most `max` visible

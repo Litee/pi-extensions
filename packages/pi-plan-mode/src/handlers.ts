@@ -6,8 +6,8 @@
  * wires these into `pi.on("tool_call" | "context" | "before_agent_start")`.
  */
 
-import type { AgentMessage } from "@mariozechner/pi-agent-core";
-import type { TextContent } from "@mariozechner/pi-ai";
+import type { AgentMessage } from "@earendil-works/pi-agent-core";
+import type { TextContent } from "@earendil-works/pi-ai";
 import { isSafeCommand } from "./utils.js";
 
 /** Custom-type sentinel used for the plan-mode system message. */

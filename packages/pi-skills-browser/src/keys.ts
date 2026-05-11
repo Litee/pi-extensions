@@ -1,4 +1,4 @@
-import type { KeyId } from "@mariozechner/pi-tui";
+import type { KeyId } from "@earendil-works/pi-tui";
 
 /**
  * Pure keypress dispatcher for the skills browser.

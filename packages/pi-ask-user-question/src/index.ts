@@ -20,7 +20,7 @@
  *  - The only API touched at load time is `pi.registerTool({...})`.
  */
 
-import type { ExtensionAPI } from "@mariozechner/pi-coding-agent";
+import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
 
 import { MAX_OPTIONS, MAX_QUESTIONS, MIN_OPTIONS } from "./constants.js";
 import { runDialog } from "./dialog.js";

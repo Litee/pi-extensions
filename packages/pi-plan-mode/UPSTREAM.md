@@ -17,10 +17,10 @@ them in different PRs.
 
 | Local file | Upstream commit | Upstream commit date | Upstream commit subject |
 |---|---|---|---|
-| `src/index.ts` | [`39ee5fe`](https://github.com/badlogic/pi-mono/commit/39ee5fee92c5c4c004fb117382411487ed30fadc) | 2026-01-15 | `fix(plan-mode): change shortcut from Shift+P to Ctrl+Alt+P (#746)` |
+| `src/index.ts` | [`3e5ad67`](https://github.com/badlogic/pi-mono/commit/3e5ad67e0f325d4888f82f9b82966218eb4407f5) | 2026-05-07 | `chore: migrate pi packages to earendil works scope` |
 | `src/utils.ts` | [`dee3d8c`](https://github.com/badlogic/pi-mono/commit/dee3d8c6a85f5f039addc34b5242f531d0c3ec50) | 2026-04-15 | `chore(coding-agent): replace exa with eza in plan-mode extension (#3240)` |
 
-Ported in local commit `6eb59e7` (`feat(packages): add pi-plan-mode and pi-built-in-tool-renderer`, 2026-05-06).
+Originally ported in local commit `6eb59e7` (`feat(packages): add pi-plan-mode and pi-built-in-tool-renderer`, 2026-05-06) from upstream `39ee5fe`/`dee3d8c`. `index.ts` re-synced to `3e5ad67` alongside the repo-wide `@mariozechner` → `@earendil-works` namespace migration; `utils.ts` untouched upstream since `dee3d8c`.
 
 `src/tool-snapshot.ts` is **not** from upstream; it was added locally in commit
 `b16db13` (`feat(plan-mode): persist model/thinking/tool snapshots across restarts`).
@@ -35,7 +35,7 @@ were copied and how to diff against future upstream work.
 ```bash
 UP=$(mktemp -d)/pi-mono
 git clone --quiet https://github.com/badlogic/pi-mono.git "$UP"
-git -C "$UP" log --follow 39ee5fe..origin/HEAD -- \
+git -C "$UP" log --follow 3e5ad67..origin/HEAD -- \
     packages/coding-agent/examples/extensions/plan-mode/index.ts
 git -C "$UP" log --follow dee3d8c..origin/HEAD -- \
     packages/coding-agent/examples/extensions/plan-mode/utils.ts

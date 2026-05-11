@@ -5,7 +5,7 @@
  * Any upstream fixes should be pulled via a diff against the link above.
  */
 
-import type { ExtensionAPI, ExtensionContext } from "@mariozechner/pi-coding-agent";
+import type { ExtensionAPI, ExtensionContext } from "@earendil-works/pi-coding-agent";
 import { Cron } from "croner";
 import type { CronStorage } from "./storage.js";
 import { runSubagentOnce, type SubagentResult } from "./subagent.js";

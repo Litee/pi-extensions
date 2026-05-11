@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import type { ExtensionAPI, ExtensionCommandContext, ExtensionContext, RegisteredCommand, CreateAgentSessionOptions } from "@mariozechner/pi-coding-agent";
+import type { ExtensionAPI, ExtensionCommandContext, ExtensionContext, RegisteredCommand, CreateAgentSessionOptions } from "@earendil-works/pi-coding-agent";
 import btwExtension from "../src/index.js";
 
 type MockSessionOptions = {
@@ -30,19 +30,14 @@ type BtwOverlayComponent = {
   input?: {
     onSubmit?: (text: string) => void;
     onEscape?: () => void;
-    setValue: (value: string) => void;
-    getValue: () => string;
-    handleInput: (data: string) => void;
-    focused?: boolean;
+    setValue?: (value: string) => void;
+    getValue?: () => string;
+    handleInput?: (data: string) => void;
   };
   [key: string]: unknown;
 };
 
-type SeedMessage = {
-  role: string;
-  content: Array<{ type: string; text?: string; thinking?: string }>;
-  timestamp?: number;
-};
+type SeedMessage = { role: string; content: Array<{ type: string; text?: string }> | string };
 
 type MockSession = {
   agent: { state: { messages: SeedMessage[] } };
@@ -72,8 +67,8 @@ const { promptStreamMock, createAgentSessionMock, sessionManagerInMemoryMock, su
   }>,
 }));
 
-vi.mock("@mariozechner/pi-coding-agent", async () => {
-  const actual = await vi.importActual<typeof import("@mariozechner/pi-coding-agent")>("@mariozechner/pi-coding-agent");
+vi.mock("@earendil-works/pi-coding-agent", async () => {
+  const actual = await vi.importActual<typeof import("@earendil-works/pi-coding-agent")>("@earendil-works/pi-coding-agent");
   return {
     ...actual,
     createAgentSession: createAgentSessionMock,
@@ -89,7 +84,7 @@ type SessionEntry = CustomEntry | { type: string; role?: string; customType?: st
 
 type StreamContext = {
   systemPrompt: string;
-  messages: Array<{ role: string; content: Array<{ type: string; text?: string; thinking?: string }>; timestamp?: number }>;
+  messages: Array<{ role: string; content: Array<{ type: string; text?: string; thinking?: string }> }>;
 };
 
 type PromptStreamEvent =
@@ -167,8 +162,8 @@ const tuiMocks = vi.hoisted(() => {
   return { FakeInput, FakeContainer, FakeText, FakeSpacer, FakeBox };
 });
 
-vi.mock("@mariozechner/pi-tui", async () => {
-  const actual = await vi.importActual<typeof import("@mariozechner/pi-tui")>("@mariozechner/pi-tui");
+vi.mock("@earendil-works/pi-tui", async () => {
+  const actual = await vi.importActual<typeof import("@earendil-works/pi-tui")>("@earendil-works/pi-tui");
   return {
     ...actual,
     Container: tuiMocks.FakeContainer,
@@ -383,7 +378,7 @@ function createMockAgentSession(options: MockSessionOptions) {
       };
       const context: StreamContext = {
         systemPrompt: buildMockSystemPrompt(options),
-        messages: [...stateMessages.map((message) => structuredClone(message)), userMessage],
+        messages: [...stateMessages.map((message) => structuredClone(message)), userMessage] as StreamContext["messages"],
       };
       record.promptCalls.push({ text, context });
 
@@ -768,15 +763,15 @@ describe("btw runtime behavior", () => {
     expect(options.model).toBe(harness.baseCtx.model);
     expect(options.modelRegistry).toBe(harness.baseCtx.modelRegistry);
     expect(options.tools).toEqual(["read", "bash", "edit", "write"]);
-    expect(options.resourceLoader!.getAppendSystemPrompt?.()?.[0]).toContain(
+    expect(options.resourceLoader!.getAppendSystemPrompt()[0]).toContain(
       "You are having an aside conversation with the user, separate from their main working session.",
     );
 
-    const subSession = subSessionRecords[0]!.session;
+    const subSession = subSessionRecords[0]?.session;
     expect(subSession).toBeDefined();
-    expect(subSession.bindExtensions).not.toHaveBeenCalled();
-    expect((subSession.getActiveToolNames as unknown as () => string[])()).toEqual(["read", "bash", "edit", "write"]);
-    expect(subSession.prompt).toHaveBeenCalledWith("first question", { source: "extension" });
+    expect(subSession!.bindExtensions).not.toHaveBeenCalled();
+    expect((subSession!.getActiveToolNames as () => string[])()).toEqual(["read", "bash", "edit", "write"]);
+    expect(subSession!.prompt).toHaveBeenCalledWith("first question", { source: "extension" });
   });
 
   it("uses BTW-specific model and thinking overrides for BTW prompts", async () => {
@@ -1066,10 +1061,10 @@ describe("btw runtime behavior", () => {
     await harness.command("btw", "");
 
     const overlay = harness.latestOverlayComponent();
-    overlay.input!.setValue("draft follow-up");
-    overlay.input!.handleInput("\x03");
+    overlay.input!.setValue!("draft follow-up");
+    overlay.input!.handleInput!("\x03");
 
-    expect(overlay.input!.getValue()).toBe("");
+    expect(overlay.input!.getValue!()).toBe("");
     expect(harness.overlayHandles.at(-1)?.hideCalls).toBe(0);
   });
 
@@ -1082,8 +1077,8 @@ describe("btw runtime behavior", () => {
     await harness.command("btw", "");
 
     const overlay = harness.latestOverlayComponent();
-    overlay.input!.setValue("");
-    overlay.input!.handleInput("\x03");
+    overlay.input!.setValue!("");
+    overlay.input!.handleInput!("\x03");
     await flushAsyncWork();
 
     expect(harness.overlayHandles.at(-1)?.hideCalls).toBe(1);
@@ -1098,8 +1093,8 @@ describe("btw runtime behavior", () => {
     await harness.command("btw", "");
 
     const overlay = harness.latestOverlayComponent();
-    overlay.input!.setValue("draft follow-up");
-    overlay.input!.handleInput("\x1b");
+    overlay.input!.setValue!("draft follow-up");
+    overlay.input!.handleInput!("\x1b");
     await flushAsyncWork();
 
     expect(harness.overlayHandles.at(-1)?.hideCalls).toBe(1);
@@ -1436,7 +1431,7 @@ describe("btw runtime behavior", () => {
     await harness.command("btw", "first question");
 
     const overlay = harness.latestOverlayComponent();
-    overlay.input!.setValue("follow-up question");
+    overlay.input!.setValue!("follow-up question");
     overlay.input!.onSubmit?.("follow-up question");
     await flushAsyncWork();
 
@@ -1531,7 +1526,7 @@ describe("btw runtime behavior", () => {
     const overlay = harness.latestOverlayComponent();
     expect(harness.overlayHandles.at(-1)?.isFocused()).toBe(true);
     expect(overlay.focused).toBe(true);
-    expect(overlay.input!.focused).toBe(true);
+    expect((overlay.input as { focused?: boolean } | undefined)?.focused).toBe(true);
   });
 
   it("forwards terminal input from the focused overlay to the embedded BTW input", async () => {
@@ -1996,8 +1991,7 @@ describe("btw runtime behavior", () => {
       {
         role: "user",
         content: [{ type: "text", text: "second question" }],
-        timestamp: Date.now(),
-      },
+              },
       makeAssistantMessage("Second answer"),
     );
 
@@ -2086,8 +2080,7 @@ describe("btw runtime behavior", () => {
       {
         role: "user",
         content: [{ type: "text", text: "second question" }],
-        timestamp: Date.now(),
-      },
+              },
       makeAssistantMessage("Second answer"),
     );
 

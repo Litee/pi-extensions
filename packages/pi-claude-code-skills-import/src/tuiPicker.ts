@@ -1,10 +1,10 @@
-import type { ExtensionAPI } from "@mariozechner/pi-coding-agent";
+import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
 
 import type { CcSkillsPicker } from "./index.js";
 import { decoratePickerValue } from "./pickerValue.js";
 
 /**
- * TUI-backed picker for `/cc-skills-info`. Lazily imports `@mariozechner/pi-tui` so
+ * TUI-backed picker for `/cc-skills-info`. Lazily imports `@earendil-works/pi-tui` so
  * the rest of the package is loadable in unit tests without a live TUI
  * runtime.
  *
@@ -18,8 +18,8 @@ export function makeTuiPicker(
 ): CcSkillsPicker {
 	return async ({ items, onToggle, collisions, skills }) => {
 		const [{ getSettingsListTheme }, { Container, SettingsList, Text }] = await Promise.all([
-			import("@mariozechner/pi-coding-agent"),
-			import("@mariozechner/pi-tui"),
+			import("@earendil-works/pi-coding-agent"),
+			import("@earendil-works/pi-tui"),
 		]);
 
 		await ctx.ui.custom((tui, _theme, _kb, done) => {
@@ -86,7 +86,7 @@ export function makeTuiPicker(
 				render: (w: number) => container.render(w),
 				invalidate: () => container.invalidate(),
 				handleInput: (data: string) => {
-					// eslint-disable-next-line @typescript-eslint/no-explicit-any, @typescript-eslint/no-unsafe-member-access, @typescript-eslint/no-unsafe-call -- SettingsList internals: no public handleInput in @mariozechner/pi-tui
+					// eslint-disable-next-line @typescript-eslint/no-explicit-any, @typescript-eslint/no-unsafe-member-access, @typescript-eslint/no-unsafe-call -- SettingsList internals: no public handleInput in @earendil-works/pi-tui
 					(settingsList as any).handleInput?.(data);
 					tui.requestRender();
 				},

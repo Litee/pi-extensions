@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from "vitest";
 
-import type { ExtensionAPI, ExtensionContext, Theme, ToolDefinition } from "@mariozechner/pi-coding-agent";
+import type { ExtensionAPI, ExtensionContext, Theme, ToolDefinition } from "@earendil-works/pi-coding-agent";
 import createExtension, { type RunDialogFn } from "../src/index.js";
 import type { TParams } from "../src/schema.js";
 
@@ -35,7 +35,7 @@ function makeCtx(hasUI: boolean) {
 			custom: vi.fn(),
 		},
 		cwd: "/tmp",
-	} as unknown; // loose — we only pass it through
+	} as unknown as ExtensionContext; // loose — we only pass it through
 }
 
 describe("default export — tool registration", () => {
@@ -64,9 +64,9 @@ describe("tool.execute() — non-interactive short-circuit", () => {
 		const run = vi.fn<RunDialogFn>();
 		createExtension(pi.api, { runDialog: run });
 		const ctx = makeCtx(false);
-		const result = await pi.tool.execute("tc-1", validParams, undefined, undefined, ctx as ExtensionContext);
+		const result = await pi.tool.execute("tc-1", validParams, undefined, undefined, ctx);
 		expect(run).not.toHaveBeenCalled();
-		expect((result.content[0] as { text?: string })?.text).toMatch(/UI not available/);
+		expect((result.content[0] as { text?: string } | undefined)?.text).toMatch(/UI not available/);
 		expect(result.details).toMatchObject({ cancelled: true, error: expect.stringMatching(/UI not available/) as unknown });
 	});
 });
@@ -83,10 +83,10 @@ describe("tool.execute() — validation failures", () => {
 				{ question: "Pick", options: [{ label: "Other" }, { label: "B" }] },
 			],
 		};
-		const result = await pi.tool.execute("tc-2", bad, undefined, undefined, ctx as ExtensionContext);
+		const result = await pi.tool.execute("tc-2", bad, undefined, undefined, ctx);
 		expect(run).not.toHaveBeenCalled();
 		expect(result.details).toMatchObject({ cancelled: true });
-		expect((result.content[0] as { text?: string })?.text).toContain("reserved");
+		expect((result.content[0] as { text?: string } | undefined)?.text).toContain("reserved");
 	});
 
 	it("returns a validator message even when questions field is missing entirely", async () => {
@@ -99,10 +99,10 @@ describe("tool.execute() — validation failures", () => {
 			{ questions: undefined as unknown as TParams["questions"] },
 			undefined,
 			undefined,
-			ctx as ExtensionContext,
+			ctx,
 		);
 		expect(run).not.toHaveBeenCalled();
-		expect((result.content[0] as { text?: string })?.text).toMatch(/questions/);
+		expect((result.content[0] as { text?: string } | undefined)?.text).toMatch(/questions/);
 	});
 });
 
@@ -115,12 +115,12 @@ describe("tool.execute() — happy path", () => {
 		});
 		createExtension(pi.api, { runDialog: run });
 		const ctx = makeCtx(true);
-		const result = await pi.tool.execute("tc-4", validParams, undefined, undefined, ctx as ExtensionContext);
+		const result = await pi.tool.execute("tc-4", validParams, undefined, undefined, ctx);
 
 		expect(run).toHaveBeenCalledTimes(1);
 		expect(run.mock.calls[0]?.[0]).toBe(ctx);
 		expect(run.mock.calls[0]?.[1]).toEqual(validParams.questions);
-		expect((result.content[0] as { text?: string })?.text).toMatch(/Q1 \(Pick one\): selected 2\. B/);
+		expect((result.content[0] as { text?: string } | undefined)?.text).toMatch(/Q1 \(Pick one\): selected 2\. B/);
 		expect(result.details).toMatchObject({ cancelled: false });
 	});
 
@@ -133,8 +133,8 @@ describe("tool.execute() — happy path", () => {
 		});
 		createExtension(pi.api, { runDialog: run });
 		const ctx = makeCtx(true);
-		const result = await pi.tool.execute("tc-5", validParams, undefined, undefined, ctx as ExtensionContext);
-		expect((result.content[0] as { text?: string })?.text).toContain("User cancelled the questionnaire. Chat: want to rethink");
+		const result = await pi.tool.execute("tc-5", validParams, undefined, undefined, ctx);
+		expect((result.content[0] as { text?: string } | undefined)?.text).toContain("User cancelled the questionnaire. Chat: want to rethink");
 	});
 
 	it("propagates errors from runDialog", async () => {
@@ -142,23 +142,23 @@ describe("tool.execute() — happy path", () => {
 		const run = vi.fn<RunDialogFn>().mockRejectedValue(new Error("tui crashed"));
 		createExtension(pi.api, { runDialog: run });
 		const ctx = makeCtx(true);
-		await expect(pi.tool.execute("tc-6", validParams, undefined, undefined, ctx as ExtensionContext)).rejects.toThrow(/tui crashed/);
+		await expect(pi.tool.execute("tc-6", validParams, undefined, undefined, ctx)).rejects.toThrow(/tui crashed/);
 	});
 });
 
 describe("tool.renderCall / tool.renderResult", () => {
-	function makeTheme() {
+	function makeTheme(): Theme {
 		return {
 			fg: (_c: string, t: string) => t,
 			bold: (t: string) => t,
 			bg: (_c: string, t: string) => t,
-		};
+		} as unknown as Theme;
 	}
 
 	it("renderCall produces a Text component describing the questions", () => {
 		const pi = makeFakePi();
 		createExtension(pi.api);
-		const comp = pi.tool.renderCall!(validParams, makeTheme() as unknown as Theme, {} as never);
+		const comp = pi.tool.renderCall!(validParams, makeTheme(), {} as never);
 		expect(typeof comp.render).toBe("function");
 		const out = comp.render(80)[0] ?? "";
 		expect(out).toContain("ask_user_question");
@@ -168,7 +168,7 @@ describe("tool.renderCall / tool.renderResult", () => {
 	it("renderResult turns a success payload into a Text component with the summary", () => {
 		const pi = makeFakePi();
 		createExtension(pi.api);
-		const theme = makeTheme() as unknown as Theme;
+		const theme = makeTheme();
 		const comp = pi.tool.renderResult!(
 			{ content: [{ type: "text", text: "ok" }], details: { answers: [], cancelled: false } },
 			{ expanded: false, isPartial: false },

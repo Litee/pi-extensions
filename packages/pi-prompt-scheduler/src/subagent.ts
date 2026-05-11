@@ -13,7 +13,7 @@
  * No subprocess, no extension recursion (noExtensions: true), no persistence.
  */
 
-import type { Api, Model } from "@mariozechner/pi-ai";
+import type { Api, Model } from "@earendil-works/pi-ai";
 import {
   type AgentSession,
   type AgentSessionEvent,
@@ -23,7 +23,7 @@ import {
   getAgentDir,
   SessionManager,
   SettingsManager,
-} from "@mariozechner/pi-coding-agent";
+} from "@earendil-works/pi-coding-agent";
 
 const DEFAULT_TOOL_NAMES = ["bash", "read", "edit", "write", "grep", "find", "ls"];
 

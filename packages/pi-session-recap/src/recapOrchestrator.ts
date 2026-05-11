@@ -9,8 +9,8 @@
  * See src/index.ts for upstream attribution.
  */
 
-import type { completeSimple as completeSimpleFn, getModel as getModelFn } from "@mariozechner/pi-ai";
-import type { ExtensionContext } from "@mariozechner/pi-coding-agent";
+import type { completeSimple as completeSimpleFn, getModel as getModelFn } from "@earendil-works/pi-ai";
+import type { ExtensionContext } from "@earendil-works/pi-coding-agent";
 
 import {
 	buildRecentTranscript,

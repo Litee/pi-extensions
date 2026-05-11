@@ -1,6 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
-import type { ExtensionAPI } from "@mariozechner/pi-coding-agent";
+import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
 import type { GlueClient, JobRunResponse, WorkflowRunResponse } from "../src/glue-client.js";
 import { makeRuntime, POLL_ERROR_THRESHOLD, POLL_INTERVAL_MS, pollOnce } from "../src/runtime.js";
 import {

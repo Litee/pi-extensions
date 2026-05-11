@@ -20,7 +20,7 @@
  *
  * The existing `test/index.test.ts` suite never mocks `completeSimple`,
  * so the prompt is otherwise entirely uncovered. This file lives apart
- * from that one because `vi.mock("@mariozechner/pi-ai", …)` is hoisted
+ * from that one because `vi.mock("@earendil-works/pi-ai", …)` is hoisted
  * to module scope and would leak into unrelated tests if colocated.
  */
 
@@ -30,15 +30,15 @@ import { join } from "node:path";
 
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
-// Hoisted: every import of `@mariozechner/pi-ai` in this file's module graph
+// Hoisted: every import of `@earendil-works/pi-ai` in this file's module graph
 // resolves to these mocks. `completeSimple` captures its args via a vi.fn;
 // `getModel` is unused on the no-override path this suite exercises.
-vi.mock("@mariozechner/pi-ai", () => ({
+vi.mock("@earendil-works/pi-ai", () => ({
 	completeSimple: vi.fn(),
 	getModel: vi.fn(() => undefined),
 }));
 
-import { completeSimple } from "@mariozechner/pi-ai";
+import { completeSimple } from "@earendil-works/pi-ai";
 
 import createExtension from "../src/index.js";
 

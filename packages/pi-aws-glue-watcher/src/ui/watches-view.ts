@@ -7,8 +7,8 @@
  * glues them together with confirm-mode state and the outer render.
  */
 
-import type { Component } from "@mariozechner/pi-tui";
-import { matchesKey } from "@mariozechner/pi-tui";
+import type { Component } from "@earendil-works/pi-tui";
+import { matchesKey } from "@earendil-works/pi-tui";
 
 import type { WatchMap } from "../types.js";
 import { formatElapsed } from "./glue-widget.js";

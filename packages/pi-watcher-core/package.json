@@ -16,8 +16,8 @@
     ".": "./src/lib.ts"
   },
   "peerDependencies": {
-    "@mariozechner/pi-coding-agent": "*",
-    "@mariozechner/pi-tui": "*"
+    "@earendil-works/pi-coding-agent": "*",
+    "@earendil-works/pi-tui": "*"
   },
   "scripts": {
     "clean": "echo 'nothing to clean'",

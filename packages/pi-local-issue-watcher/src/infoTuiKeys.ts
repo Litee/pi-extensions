@@ -46,7 +46,7 @@ export function isListNavKey(data: string): boolean {
  *     - Esc or Left              → back-to-list
  *     - anything else            → ignore (read-only preview)
  *
- * `matchesKey` is injected so we can reuse `@mariozechner/pi-tui`'s
+ * `matchesKey` is injected so we can reuse `@earendil-works/pi-tui`'s
  * implementation in production while keeping this module free of
  * TUI imports for testability.
  */

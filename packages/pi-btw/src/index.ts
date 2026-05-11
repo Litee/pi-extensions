@@ -6,7 +6,7 @@
  *
  * Two classes of modification versus upstream:
  *   1. Peer-dependency scope rewritten from `@earendil-works/pi-*` to
- *      `@mariozechner/pi-*` to match this workspace's convention.
+ *      `@earendil-works/pi-*` to match this workspace's convention.
  *   2. Strictness-compliance edits (non-null assertions, optional chaining,
  *      conditional spreads for optional fields, one local guard) to satisfy
  *      this repo's `@tsconfig/strictest` layering. No behaviour changes.
@@ -29,8 +29,8 @@ import {
   type ExtensionCommandContext,
   type ExtensionContext,
   type ResourceLoader,
-} from "@mariozechner/pi-coding-agent";
-import { type AssistantMessage, type Api, type Message, type Model, type ThinkingLevel as AiThinkingLevel, type UserMessage } from "@mariozechner/pi-ai";
+} from "@earendil-works/pi-coding-agent";
+import { type AssistantMessage, type Api, type Message, type Model, type ThinkingLevel as AiThinkingLevel, type UserMessage } from "@earendil-works/pi-ai";
 import {
   Box,
   Container,
@@ -45,7 +45,7 @@ import {
   type KeybindingsManager,
   type OverlayHandle,
   type TUI,
-} from "@mariozechner/pi-tui";
+} from "@earendil-works/pi-tui";
 
 const BTW_MESSAGE_TYPE = "btw-note";
 const BTW_ENTRY_TYPE = "btw-thread-entry";

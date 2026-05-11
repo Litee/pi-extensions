@@ -14,7 +14,7 @@
  * This file is strictly session/lifecycle wiring.
  */
 
-import type { ExtensionAPI } from "@mariozechner/pi-coding-agent";
+import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
 
 import { createGlueClient, type GlueClient } from "./glue-client.js";
 import { buildStartupChatMessage } from "./format.js";

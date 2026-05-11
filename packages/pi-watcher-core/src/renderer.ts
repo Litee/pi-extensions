@@ -7,8 +7,8 @@
  *   - `createWatcherMessageRenderer` — factory for a collapse/expand message renderer.
  */
 
-import { getMarkdownTheme, keyHint, Theme } from "@mariozechner/pi-coding-agent";
-import { Box, Markdown, Spacer, Text, type Component } from "@mariozechner/pi-tui";
+import { getMarkdownTheme, keyHint, Theme } from "@earendil-works/pi-coding-agent";
+import { Box, Markdown, Spacer, Text, type Component } from "@earendil-works/pi-tui";
 
 // ---------------------------------------------------------------------------
 // Shared timestamp helper

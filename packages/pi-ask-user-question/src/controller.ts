@@ -8,7 +8,7 @@
  * so the TUI glue in `dialog.ts` only needs to translate keystrokes — and
  * tests can drive the same methods directly.
  *
- * No imports from `@mariozechner/pi-tui` or `@mariozechner/pi-coding-agent`
+ * No imports from `@earendil-works/pi-tui` or `@earendil-works/pi-coding-agent`
  * are allowed in this file. Keeping those dependencies out is what lets us
  * unit-test the whole interaction model deterministically.
  */

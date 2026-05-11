@@ -5,7 +5,7 @@
  * dependency on pi-tui assembly or command/tool registration.
  */
 
-import type { ExtensionAPI } from "@mariozechner/pi-coding-agent";
+import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
 import { classifyWatcherError } from "pi-watcher-core/classify-error";
 import { PollScheduler } from "pi-watcher-core/poll-scheduler";
 

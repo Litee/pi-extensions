@@ -39,9 +39,9 @@
  *     `pi.setActiveTools`, `pi.appendEntry`, `pi.on`, and the `ctx.ui.*` dialog helpers.
  */
 
-import type { ExtensionAPI, ExtensionCommandContext, ExtensionContext, ToolInfo } from "@mariozechner/pi-coding-agent";
-import { DynamicBorder, getMarkdownTheme, getSelectListTheme } from "@mariozechner/pi-coding-agent";
-import { Container, Markdown, matchesKey, type SelectItem, SelectList, Text } from "@mariozechner/pi-tui";
+import type { ExtensionAPI, ExtensionCommandContext, ExtensionContext, ToolInfo } from "@earendil-works/pi-coding-agent";
+import { DynamicBorder, getMarkdownTheme, getSelectListTheme } from "@earendil-works/pi-coding-agent";
+import { Container, Markdown, matchesKey, type SelectItem, SelectList, Text } from "@earendil-works/pi-tui";
 
 import { pickSavedTools, TOOLS_CONFIG_CUSTOM_TYPE, type ToolsState } from "./branchState.js";
 import { getToolArgumentCompletions } from "./completions.js";

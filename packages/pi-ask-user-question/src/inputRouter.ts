@@ -24,7 +24,7 @@
  *          multi-select.
  *        - Enter / Esc map to the controller's primary / cancel actions.
  *
- * No imports from `@mariozechner/pi-tui` are allowed here.
+ * No imports from `@earendil-works/pi-tui` are allowed here.
  */
 
 import type { DialogState } from "./controller.js";

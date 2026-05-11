@@ -39,8 +39,8 @@
  * the deliverable.
  */
 
-import type { ExtensionAPI } from "@mariozechner/pi-coding-agent";
-import { matchesKey } from "@mariozechner/pi-tui";
+import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
+import { matchesKey } from "@earendil-works/pi-tui";
 
 import { formatPreview, type InfoPicker, type InfoRow } from "./infoHandler.js";
 import { filterItemsBySubstring } from "./infoTuiFilter.js";
@@ -54,7 +54,7 @@ type CommandCtx = Parameters<
 /**
  * Build the production `InfoPicker` used by the registered
  * `/local-issue-watcher browse` slash command. Lazily imports
- * `@mariozechner/pi-tui` + `@mariozechner/pi-coding-agent` so this
+ * `@earendil-works/pi-tui` + `@earendil-works/pi-coding-agent` so this
  * module stays importable in unit tests that never spin up a TUI.
  *
  * Two-mode rendering:
@@ -96,8 +96,8 @@ export function makeInfoTuiPicker(ctx: CommandCtx): InfoPicker {
 	return async ({ rows, summary }) => {
 		const [{ getSelectListTheme }, { Container, Input, SelectList, Text }] =
 			await Promise.all([
-				import("@mariozechner/pi-coding-agent"),
-				import("@mariozechner/pi-tui"),
+				import("@earendil-works/pi-coding-agent"),
+				import("@earendil-works/pi-tui"),
 			]);
 
 		await ctx.ui.custom((tui, _theme, _kb, done) => {
@@ -193,7 +193,7 @@ export function makeInfoTuiPicker(ctx: CommandCtx): InfoPicker {
 			// site that patches the upstream component's private fields
 			// (`filteredItems` / `selectedIndex`) which `SelectList.render()`
 			// reads on every frame.
-			// eslint-disable-next-line @typescript-eslint/no-explicit-any, @typescript-eslint/no-unsafe-assignment -- SelectList internals: no public filter API in @mariozechner/pi-tui
+			// eslint-disable-next-line @typescript-eslint/no-explicit-any, @typescript-eslint/no-unsafe-assignment -- SelectList internals: no public filter API in @earendil-works/pi-tui
 			const slInternal = selectList as any;
 			// eslint-disable-next-line @typescript-eslint/no-unsafe-member-access
 			slInternal.setFilter = (filter: string): void => {

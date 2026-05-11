@@ -90,7 +90,7 @@ copying this package. Here is what you will be picking up on top of upstream
   covered by a regression test that fails if the hint string stops matching
   the real key bindings.
 - **Workspace housekeeping** (no behaviour change): peer-dependency imports
-  rewritten from `@earendil-works/pi-*` to `@mariozechner/pi-*`;
+  rewritten from `@earendil-works/pi-*` to `@earendil-works/pi-*`;
   strictness-compliance edits for `@tsconfig/strictest`
   (`noUncheckedIndexedAccess`, `exactOptionalPropertyTypes`); `.js`
   extension on the test's relative import for `nodenext` resolution.

@@ -1,4 +1,4 @@
-import type { SessionEntry } from "@mariozechner/pi-coding-agent";
+import type { SessionEntry } from "@earendil-works/pi-coding-agent";
 
 /** Shape of the `tools-config` custom entry payload persisted by pi-tools. */
 export interface ToolsState {

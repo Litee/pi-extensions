@@ -6,8 +6,8 @@
  * cover with a fake theme in unit tests.
  */
 
-import type { AgentToolResult } from "@mariozechner/pi-agent-core";
-import { Text, truncateToWidth } from "@mariozechner/pi-tui";
+import type { AgentToolResult } from "@earendil-works/pi-agent-core";
+import { Text, truncateToWidth } from "@earendil-works/pi-tui";
 
 import type { Result } from "./format.js";
 import type { TParams } from "./schema.js";

@@ -1,4 +1,4 @@
-import type { ToolInfo } from "@mariozechner/pi-coding-agent";
+import type { ToolInfo } from "@earendil-works/pi-coding-agent";
 import { describe, expect, it } from "vitest";
 
 import { COMPLETION_DESC_WIDTH, getToolArgumentCompletions } from "../src/completions.js";

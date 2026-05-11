@@ -29,7 +29,7 @@
 import { copyFileSync, existsSync, mkdirSync, readFileSync, renameSync, unlinkSync, writeFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 
-import { getAgentDir } from "@mariozechner/pi-coding-agent";
+import { getAgentDir } from "@earendil-works/pi-coding-agent";
 
 /** File name for the extension's own user-level config, under `<agentDir>/`. */
 export const CONFIG_FILENAME = "pi-session-recap.json";

@@ -20,9 +20,9 @@
  * delegating to the orchestrator + command dispatch.
  */
 
-import { completeSimple, getModel } from "@mariozechner/pi-ai";
-import { getAgentDir, type ExtensionAPI, type ExtensionContext } from "@mariozechner/pi-coding-agent";
-import { Text } from "@mariozechner/pi-tui";
+import { completeSimple, getModel } from "@earendil-works/pi-ai";
+import { getAgentDir, type ExtensionAPI, type ExtensionContext } from "@earendil-works/pi-coding-agent";
+import { Text } from "@earendil-works/pi-tui";
 
 import { feedFocusBytes } from "./focusParser.js";
 import { buildStatusLine, type DisabledFlag, splitModel, type StatusLineOptions } from "./helpers.js";

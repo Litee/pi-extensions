@@ -14,7 +14,7 @@ import type { ArchonRun } from "../src/types.js";
 // ---------------------------------------------------------------------------
 
 /**
- * Minimal ExtensionAPI stub. No imports from @mariozechner/pi-coding-agent.
+ * Minimal ExtensionAPI stub. No imports from @earendil-works/pi-coding-agent.
  */
 interface StubPi {
 	on: ReturnType<typeof vi.fn>;

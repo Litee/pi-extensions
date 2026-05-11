@@ -1,5 +1,5 @@
-import type { ToolInfo } from "@mariozechner/pi-coding-agent";
-import type { AutocompleteItem } from "@mariozechner/pi-tui";
+import type { ToolInfo } from "@earendil-works/pi-coding-agent";
+import type { AutocompleteItem } from "@earendil-works/pi-tui";
 
 import { truncate } from "./helpers.js";
 

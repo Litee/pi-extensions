@@ -55,7 +55,7 @@ import {
 	wrapTextWithAnsi,
 	visibleWidth,
 	truncateToWidth,
-} from "@mariozechner/pi-tui";
+} from "@earendil-works/pi-tui";
 
 import type { ApprovalDialogParams, ApprovalResult, DialogSection } from "./runtime.js";
 

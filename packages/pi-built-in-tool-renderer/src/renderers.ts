@@ -7,7 +7,7 @@
  * Theme / context are accepted as structural types so tests can drop in
  * plain-object stubs. The real ExtensionAPI types accept these shapes
  * structurally too (see `ToolRenderContext` in
- * `@mariozechner/pi-coding-agent`).
+ * `@earendil-works/pi-coding-agent`).
  */
 
 import { countLines, describeBashFailure, formatDuration } from "./helpers.js";
@@ -16,7 +16,7 @@ import { countLines, describeBashFailure, formatDuration } from "./helpers.js";
 // Structural detail shapes
 //
 // We deliberately do not import the nominal `BashToolDetails` etc. from
-// `@mariozechner/pi-coding-agent`: index.ts only hands us `AgentToolResult<unknown>`
+// `@earendil-works/pi-coding-agent`: index.ts only hands us `AgentToolResult<unknown>`
 // from the `pi`-supplied `renderResult` callback, and upstream's detail
 // interfaces are incompatible with `unknown` even though the runtime shape
 // matches. We redeclare the minimum subset each renderer reads.

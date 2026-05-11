@@ -34,8 +34,8 @@ import { existsSync } from "node:fs";
 import { homedir } from "node:os";
 import { join } from "node:path";
 
-import type { ExtensionAPI } from "@mariozechner/pi-coding-agent";
-import { Box, Text } from "@mariozechner/pi-tui";
+import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
+import { Box, Text } from "@earendil-works/pi-tui";
 import { PollScheduler } from "pi-watcher-core/poll-scheduler";
 
 import { changedPaths, diffSnapshots } from "./diff.js";
