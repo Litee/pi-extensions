@@ -522,6 +522,18 @@ nodes:
     bash: |
       set -euo pipefail
 
+      COMMIT_MSG_FILE="$ARTIFACTS_DIR/commit-message.txt"
+      if [ ! -f "$COMMIT_MSG_FILE" ]; then
+        echo "ERROR: $COMMIT_MSG_FILE not found — code-review node must write it."
+        exit 1
+      fi
+
+      echo "=== Staging all changes ==="
+      git add -A
+
+      echo "=== Committing ==="
+      git commit -F "$COMMIT_MSG_FILE"
+
       echo "=== Fetching origin/main ==="
       git fetch origin main
 
@@ -529,19 +541,7 @@ nodes:
       # If rebase fails, exit non-zero so the workflow surfaces the conflict.
       git rebase origin/main
 
-      echo "=== Staging all changes ==="
-      git add -A
-
-      COMMIT_MSG_FILE="$ARTIFACTS_DIR/commit-message.txt"
-      if [ ! -f "$COMMIT_MSG_FILE" ]; then
-        echo "ERROR: $COMMIT_MSG_FILE not found — code-review node must write it."
-        exit 1
-      fi
-
-      echo "=== Committing ==="
-      git commit -F "$COMMIT_MSG_FILE"
-
-      echo "=== Commit successful ==="
+      echo "=== Done ==="
       git log --oneline -3
 
   # ───────────────────────────────────────────────────────────────────────────
