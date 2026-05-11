@@ -251,4 +251,54 @@ describe("detectChanges", () => {
 		);
 		expect(events[0]!.workingPath).toBe("");
 	});
+
+	// -------------------------------------------------------------------------
+	// Paused gate context
+	// -------------------------------------------------------------------------
+
+	it("status_changed: running → paused appends approvalNodeId to formatted when present", () => {
+		const events = detectChanges(
+			{ r1: run({ id: "r1", status: "running", workflowName: "wf" }) },
+			{ r1: { id: "r1", status: "paused", workflowName: "wf", approvalNodeId: "commit-gate" } },
+		);
+		expect(events[0]!.formatted).toContain("commit-gate");
+		expect(events[0]!.shouldTriggerTurn).toBe(true);
+	});
+
+	it("status_changed: running → paused appends truncated first line of approvalMessage", () => {
+		const events = detectChanges(
+			{ r1: run({ id: "r1", status: "running", workflowName: "wf" }) },
+			{
+				r1: {
+					id: "r1", status: "paused", workflowName: "wf",
+					approvalNodeId: "plan-gate",
+					approvalMessage: "Review the plan above.\nLonger second line that should not appear.",
+				},
+			},
+		);
+		expect(events[0]!.formatted).toContain("plan-gate");
+		expect(events[0]!.formatted).toContain("Review the plan above");
+		expect(events[0]!.formatted).not.toContain("second line");
+	});
+
+	it("status_changed: running → paused truncates approvalMessage first line at 80 chars", () => {
+		const longMsg = "A".repeat(100) + "\nline2";
+		const events = detectChanges(
+			{ r1: run({ id: "r1", status: "running" }) },
+			{ r1: { id: "r1", status: "paused", approvalNodeId: "gate", approvalMessage: longMsg } },
+		);
+		const formatted = events[0]!.formatted;
+		expect(formatted).toContain("…");
+		const msgPart = formatted.split("gate:")[1] ?? "";
+		expect(msgPart.trim().length).toBeLessThanOrEqual(83);
+	});
+
+	it("status_changed: running → paused with no approvalNodeId shows plain arrow", () => {
+		const events = detectChanges(
+			{ r1: run({ id: "r1", status: "running" }) },
+			{ r1: run({ id: "r1", status: "paused" }) },
+		);
+		expect(events[0]!.formatted).toContain("→ paused");
+		expect(events[0]!.formatted).not.toContain("gate");
+	});
 });

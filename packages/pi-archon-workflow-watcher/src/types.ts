@@ -6,6 +6,10 @@ export interface ArchonRun {
 	workingPath?: string;
 	startedAt?: string;
 	lastActivityAt?: string;
+	/** Node ID of the approval gate when status is "paused". */
+	approvalNodeId?: string;
+	/** First meaningful line of the gate message when status is "paused". */
+	approvalMessage?: string;
 	[key: string]: unknown;
 }
 

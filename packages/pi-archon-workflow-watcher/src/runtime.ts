@@ -5,6 +5,7 @@
  * dependency on pi-tui assembly or command/tool registration.
  */
 
+import { execFile } from "node:child_process";
 import type { ExtensionAPI } from "@mariozechner/pi-coding-agent";
 import { PollScheduler } from "pi-watcher-core/poll-scheduler";
 
@@ -40,6 +41,17 @@ export const STATUS_KEY = "pi-archon-workflow-watcher";
  * injected.
  */
 export const ERROR_THRESHOLD = 5;
+
+/**
+ * Fire a cmux desktop notification. Fails silently — cmux may not be installed.
+ */
+function notifyViaCmux(title: string, subtitle: string, body: string): void {
+	execFile(
+		"cmux",
+		["notify", "--title", title, "--subtitle", subtitle, "--body", body],
+		() => { /* ignore errors — cmux may not be installed */ },
+	);
+}
 
 // ---------------------------------------------------------------------------
 // UI surface + runtime
@@ -206,6 +218,16 @@ export async function pollOnce(rt: Runtime): Promise<void> {
 			},
 			{ deliverAs: "followUp", triggerTurn },
 		);
+		// Fire a desktop notification for runs that just paused (need human input).
+		for (const event of events) {
+			if (event.newStatus === "paused") {
+				notifyViaCmux(
+					"Archon: input needed",
+					event.workflowName,
+					event.formatted.replace(/^• /, ""),
+				);
+			}
+		}
 		// Auto-remove runs that have ended (disappeared from active list).
 		for (const event of events) {
 			if (event.eventType === "run_removed") {

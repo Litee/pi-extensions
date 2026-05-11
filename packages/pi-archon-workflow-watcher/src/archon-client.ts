@@ -74,6 +74,16 @@ export function parseStatusOutput(raw: string): ArchonRun[] {
 				if (typeof sa === "string") run.startedAt = sa;
 				const la = r["last_activity_at"] ?? r["lastActivityAt"];
 				if (typeof la === "string") run.lastActivityAt = la;
+				// Normalize metadata.approval fields for paused runs.
+				const meta = r["metadata"];
+				if (meta !== null && typeof meta === "object") {
+					const approval = (meta as Record<string, unknown>)["approval"];
+					if (approval !== null && typeof approval === "object") {
+						const ap = approval as Record<string, unknown>;
+						if (typeof ap["nodeId"] === "string") run.approvalNodeId = ap["nodeId"];
+						if (typeof ap["message"] === "string") run.approvalMessage = ap["message"];
+					}
+				}
 				return run;
 			});
 	} catch {

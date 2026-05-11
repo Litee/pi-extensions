@@ -191,6 +191,28 @@ describe("ArchonCliError", () => {
 });
 
 // ---------------------------------------------------------------------------
+// metadata.approval normalization
+describe("parseStatusOutput — approval metadata", () => {
+	it("normalizes metadata.approval.nodeId to approvalNodeId", () => {
+		const raw = JSON.stringify({
+			runs: [{
+				id: "r1", status: "paused", workflow_name: "my-wf",
+				metadata: { approval: { nodeId: "plan-gate", message: "Review the plan." } },
+			}],
+		});
+		const runs = parseStatusOutput(raw);
+		expect(runs[0]!.approvalNodeId).toBe("plan-gate");
+		expect(runs[0]!.approvalMessage).toBe("Review the plan.");
+	});
+
+	it("handles missing metadata.approval gracefully", () => {
+		const raw = JSON.stringify({ runs: [{ id: "r1", status: "running" }] });
+		const runs = parseStatusOutput(raw);
+		expect(runs[0]!.approvalNodeId).toBeUndefined();
+		expect(runs[0]!.approvalMessage).toBeUndefined();
+	});
+});
+
 // DB_LOCKED_MARKER export
 // ---------------------------------------------------------------------------
 

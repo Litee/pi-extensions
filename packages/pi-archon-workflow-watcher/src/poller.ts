@@ -47,6 +47,18 @@ export function detectChanges(
 		const label = makeLabel(run);
 		const isTerminal = TERMINAL_STATUSES.has(run.status);
 		const shouldTriggerTurn = SHOULD_TRIGGER_STATUSES.has(run.status);
+		let pauseCtx = "";
+		if (run.status === "paused" && run.approvalNodeId) {
+			pauseCtx = ` — waiting at \`${run.approvalNodeId}\``;
+			if (run.approvalMessage) {
+				const firstLine = run.approvalMessage.split("\n")[0]?.trim() ?? "";
+				if (firstLine) {
+					const truncated = firstLine.length > 80 ? firstLine.slice(0, 80) + "…" : firstLine;
+					pauseCtx += `: ${truncated}`;
+				}
+			}
+		}
+		const formatted = `• ${label}: ${prev.status} → ${run.status}${isTerminal ? (run.status === "completed" ? " ✓" : " ✗") : ""}${pauseCtx}`;
 		events.push({
 			runId: id,
 			eventType: "status_changed",
@@ -55,7 +67,7 @@ export function detectChanges(
 			previousStatus: prev.status,
 			newStatus: run.status,
 			summary: `${label}: ${prev.status} → ${run.status}`,
-			formatted: `• ${label}: ${prev.status} → ${run.status}${isTerminal ? (run.status === "completed" ? " ✓" : " ✗") : ""}`,
+			formatted,
 			isTerminal,
 			shouldTriggerTurn,
 		});
