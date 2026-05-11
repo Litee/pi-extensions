@@ -12,6 +12,7 @@ import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
+import type { ExtensionAPI, ExtensionContext } from "@mariozechner/pi-coding-agent";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 // Mock the subagent runner: executeJobInSubagent imports runSubagentOnce,
@@ -31,7 +32,7 @@ vi.mock("../src/subagent.js", () => ({
 
 import { CronScheduler } from "../src/scheduler.js";
 import { CronStorage } from "../src/storage.js";
-import type { CronJob } from "../src/types.js";
+import type { CronChangeEvent, CronJob } from "../src/types.js";
 
 // ---------------------------------------------------------------------------
 // Fakes
@@ -103,11 +104,20 @@ afterEach(() => {
 	vi.useRealTimers();
 });
 
+/** Narrow interface for accessing private scheduler methods in tests. */
+type SchedulerPrivate = {
+	executeJob: (job: CronJob) => void;
+	executeJobInSubagent: (job: CronJob) => void;
+};
+
+/** Shorthand to cast mock.calls args to a known shape. */
+type SendMessageArgs = { customType: string; content: unknown[]; details: Record<string, unknown> };
+
 function makeScheduler(
 	sessionId: string | undefined = "sess-A",
 ): { scheduler: CronScheduler; emit: ReturnType<typeof vi.fn>; pi: ReturnType<typeof makeFakePi>["pi"] } {
 	const { pi, emit } = makeFakePi();
-	const scheduler = new CronScheduler(storage, pi as any, makeFakeCtx(sessionId) as any);
+	const scheduler = new CronScheduler(storage, pi as unknown as ExtensionAPI, makeFakeCtx(sessionId) as unknown as ExtensionContext);
 	schedulers.push(scheduler);
 	return { scheduler, emit, pi };
 }
@@ -198,10 +208,10 @@ describe("CronScheduler.addJob once/past", () => {
 
 		const errorCalls = emit.mock.calls
 			.filter(([evt]) => evt === "cron:change")
-			.map(([, payload]) => payload)
-			.filter((p: any) => p.type === "error");
+			.map(([, payload]) => payload as CronChangeEvent)
+			.filter((p): p is CronChangeEvent => p.type === "error");
 		expect(errorCalls).toHaveLength(1);
-		expect(errorCalls[0]).toMatchObject({ jobId: "past-once", error: expect.stringMatching(/past/i) });
+		expect(errorCalls[0]).toMatchObject({ jobId: "past-once", error: expect.stringMatching(/past/i) as unknown });
 	});
 });
 
@@ -281,8 +291,8 @@ describe("CronScheduler.addJob invalid expression", () => {
 
 		const errorCalls = emit.mock.calls
 			.filter(([evt]) => evt === "cron:change")
-			.map(([, payload]) => payload)
-			.filter((p: any) => p.type === "error");
+			.map(([, payload]) => payload as CronChangeEvent)
+			.filter((p): p is CronChangeEvent => p.type === "error");
 		expect(errorCalls).toHaveLength(1);
 		expect(errorCalls[0]).toMatchObject({ jobId: "bad" });
 	});
@@ -293,27 +303,27 @@ describe("CronScheduler.addJob invalid expression", () => {
 // ---------------------------------------------------------------------------
 
 describe("CronScheduler.executeJob (inline)", () => {
-	async function runInline(
+	function runInline(
 		overrides: Partial<CronJob> = {},
-	): Promise<{
+	): {
 		pi: ReturnType<typeof makeFakePi>["pi"];
 		scheduler: CronScheduler;
 		job: CronJob;
-	}> {
+	} {
 		const job = mkJob({ id: "inline", ...overrides });
 		storage.addJob(job);
 		const { scheduler, pi } = makeScheduler();
-		await (scheduler as any).executeJob(job);
+		(scheduler as unknown as SchedulerPrivate).executeJob(job);
 		return { pi, scheduler, job };
 	}
 
-	it("posts the scheduled_prompt marker, delivers the prompt as a followUp, and advances runCount", async () => {
-		const { pi, job } = await runInline({ runCount: 4 });
+	it("posts the scheduled_prompt marker, delivers the prompt as a followUp, and advances runCount", () => {
+		const { pi, job } = runInline({ runCount: 4 });
 
 		// Marker first: renderer reads from `details`; `content` is a space
 		// so nothing extra leaks into LLM context.
 		expect(pi.sendMessage).toHaveBeenCalledOnce();
-		const markerArgs = (pi.sendMessage as any).mock.calls[0]![0];
+		const markerArgs = pi.sendMessage.mock.calls[0]![0] as SendMessageArgs;
 		expect(markerArgs.customType).toBe("scheduled_prompt");
 		expect(markerArgs.details).toMatchObject({ jobId: job.id, jobName: job.name, prompt: job.prompt });
 
@@ -327,39 +337,39 @@ describe("CronScheduler.executeJob (inline)", () => {
 		expect(stored.lastRun).toBeDefined();
 	});
 
-	it("no-ops when the job has been disabled between scheduling and firing", async () => {
+	it("no-ops when the job has been disabled between scheduling and firing", () => {
 		// Seed as enabled so isLoadedFor passes, then flip to disabled before
 		// executeJob re-reads from storage.
 		storage.addJob(mkJob({ id: "stale" }));
 		const { scheduler, pi } = makeScheduler();
 		storage.updateJob("stale", { enabled: false });
 
-		await (scheduler as any).executeJob(mkJob({ id: "stale" }));
+		(scheduler as unknown as SchedulerPrivate).executeJob(mkJob({ id: "stale" }));
 
 		expect(pi.sendMessage).not.toHaveBeenCalled();
 		expect(pi.sendUserMessage).not.toHaveBeenCalled();
 	});
 
-	it("no-ops when the job has been rebound to another session", async () => {
+	it("no-ops when the job has been rebound to another session", () => {
 		storage.addJob(mkJob({ id: "rebound", session: "sess-OTHER" }));
 		const { scheduler, pi } = makeScheduler("sess-A");
 
-		await (scheduler as any).executeJob(mkJob({ id: "rebound", session: "sess-OTHER" }));
+		(scheduler as unknown as SchedulerPrivate).executeJob(mkJob({ id: "rebound", session: "sess-OTHER" }));
 
 		expect(pi.sendMessage).not.toHaveBeenCalled();
 		expect(pi.sendUserMessage).not.toHaveBeenCalled();
 	});
 
-	it("records error state when pi.sendUserMessage throws", async () => {
+	it("records error state when pi.sendUserMessage throws", () => {
 		storage.addJob(mkJob({ id: "boom" }));
 		const { pi } = makeFakePi();
-		(pi.sendUserMessage as any).mockImplementation(() => {
+		vi.mocked(pi.sendUserMessage).mockImplementation(() => {
 			throw new Error("pi exploded");
 		});
-		const scheduler = new CronScheduler(storage, pi as any, makeFakeCtx("sess-A") as any);
+		const scheduler = new CronScheduler(storage, pi as unknown as ExtensionAPI, makeFakeCtx("sess-A") as unknown as ExtensionContext);
 		schedulers.push(scheduler);
 
-		await (scheduler as any).executeJob(mkJob({ id: "boom" }));
+		(scheduler as unknown as SchedulerPrivate).executeJob(mkJob({ id: "boom" }));
 
 		expect(storage.getJob("boom")?.lastStatus).toBe("error");
 		// error is recorded via pi.appendEntry, not console
@@ -395,17 +405,17 @@ describe("CronScheduler.executeJobInSubagent", () => {
 		storage.addJob(job);
 		const { scheduler, pi } = makeScheduler();
 
-		(scheduler as any).executeJobInSubagent(job);
+		(scheduler as unknown as SchedulerPrivate).executeJobInSubagent(job);
 		await flushMicrotasks();
 
-		const startCall = (pi.sendMessage as any).mock.calls[0]![0];
+		const startCall = pi.sendMessage.mock.calls[0]![0] as SendMessageArgs;
 		expect(startCall.details).toMatchObject({ mode: "subagent_start", model: job.model });
 
 		expect(runSubagentMock).toHaveBeenCalledOnce();
 		expect(runSubagentMock.mock.calls[0]![1]).toBe(job.prompt);
 		expect(runSubagentMock.mock.calls[0]![2]).toBe(job.model);
 
-		const completionCall = (pi.sendMessage as any).mock.calls[1]![0];
+		const completionCall = pi.sendMessage.mock.calls[1]![0] as SendMessageArgs;
 		expect(completionCall.details).toMatchObject({
 			mode: "subagent_done",
 			model: job.model,
@@ -420,10 +430,10 @@ describe("CronScheduler.executeJobInSubagent", () => {
 		storage.addJob(job);
 		const { scheduler, pi } = makeScheduler();
 
-		(scheduler as any).executeJobInSubagent(job);
+		(scheduler as unknown as SchedulerPrivate).executeJobInSubagent(job);
 		await flushMicrotasks();
 
-		const completionArgs = (pi.sendMessage as any).mock.calls[1]!;
+		const completionArgs = pi.sendMessage.mock.calls[1]! as [SendMessageArgs, Record<string, unknown>?];
 		expect(completionArgs[1]).toEqual({ deliverAs: "followUp", triggerTurn: true });
 		expect(completionArgs[0].content).toEqual([{ type: "text", text: "subagent output" }]);
 	});
@@ -434,10 +444,10 @@ describe("CronScheduler.executeJobInSubagent", () => {
 		storage.addJob(job);
 		const { scheduler, pi } = makeScheduler();
 
-		(scheduler as any).executeJobInSubagent(job);
+		(scheduler as unknown as SchedulerPrivate).executeJobInSubagent(job);
 		await flushMicrotasks();
 
-		const errorCall = (pi.sendMessage as any).mock.calls[1]![0];
+		const errorCall = pi.sendMessage.mock.calls[1]![0] as SendMessageArgs;
 		expect(errorCall.details).toMatchObject({ mode: "subagent_error", error: "model broke" });
 		expect(storage.getJob("sub-err")?.lastStatus).toBe("error");
 		// Failed runs do NOT advance runCount.
@@ -451,10 +461,10 @@ describe("CronScheduler.executeJobInSubagent", () => {
 		storage.addJob(job);
 		const { scheduler, pi } = makeScheduler();
 
-		(scheduler as any).executeJobInSubagent(job);
+		(scheduler as unknown as SchedulerPrivate).executeJobInSubagent(job);
 		await flushMicrotasks();
 
-		const output = (pi.sendMessage as any).mock.calls[1]![0].details.output as string;
+		const output = (pi.sendMessage.mock.calls[1]![0] as SendMessageArgs).details["output"] as string;
 		expect(output.length).toBeLessThan(huge.length);
 		expect(output.endsWith("\u2026")).toBe(true);
 	});
@@ -473,16 +483,16 @@ describe("CronScheduler.executeJobInSubagent", () => {
 		storage.addJob(job);
 		const { scheduler, pi } = makeScheduler();
 
-		(scheduler as any).executeJobInSubagent(job);
+		(scheduler as unknown as SchedulerPrivate).executeJobInSubagent(job);
 		await Promise.resolve();
 		expect(abortSignal).toBeDefined();
 
-		const sendCountBeforeStop = (pi.sendMessage as any).mock.calls.length;
+		const sendCountBeforeStop = pi.sendMessage.mock.calls.length;
 		scheduler.stop();
 		await flushMicrotasks();
 
 		expect(abortSignal!.aborted).toBe(true);
-		expect((pi.sendMessage as any).mock.calls.length).toBe(sendCountBeforeStop);
+		expect(pi.sendMessage.mock.calls.length).toBe(sendCountBeforeStop);
 		// Storage still shows `running` — deliberately left alone after abort
 		// because pi may have been torn down.
 		expect(storage.getJob("sub-abort")?.lastStatus).toBe("running");

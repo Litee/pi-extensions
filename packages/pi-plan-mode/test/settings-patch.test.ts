@@ -16,7 +16,7 @@ afterEach(() => {
 });
 
 function readSettings(): Record<string, unknown> {
-	return JSON.parse(readFileSync(join(agentDir, "settings.json"), "utf-8"));
+	return JSON.parse(readFileSync(join(agentDir, "settings.json"), "utf-8")) as Record<string, unknown>;
 }
 
 function writeSettings(obj: Record<string, unknown>): void {

@@ -38,7 +38,7 @@ function makePi() {
 		sendMessage: vi.fn(),
 		appendEntry: vi.fn(),
 		events: { emit: vi.fn(), on: vi.fn(), off: vi.fn() },
-	} as unknown as Parameters<typeof makeRuntime>[0];
+	};
 }
 
 function makeJobRunResponse(state: string): JobRunResponse {
@@ -185,7 +185,7 @@ describe("pollOnce — error classification", () => {
 		rt.watches[watch.watchId] = watch;
 		await pollOnce(rt);
 		expect(pi.sendMessage).toHaveBeenCalledOnce();
-		const content = (pi.sendMessage as ReturnType<typeof vi.fn>).mock.calls[0]![0].content as string;
+		const content = (pi.sendMessage.mock.calls[0]![0] as { content: string }).content;
 		expect(content).not.toContain("401");
 		expect(content).toContain("authentication");
 	});

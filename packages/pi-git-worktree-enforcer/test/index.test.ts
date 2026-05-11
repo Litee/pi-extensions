@@ -53,7 +53,7 @@ describe("worktreeGuard — wiring", () => {
 	it("subscribes to tool_call and session_start", () => {
 		const pi = makeFakePi();
 		createExtension(pi as never);
-		const subscribed = pi.on.mock.calls.map((c) => c[0]);
+		const subscribed = pi.on.mock.calls.map((c) => c[0] as string);
 		expect(subscribed).toContain("tool_call");
 		expect(subscribed).toContain("session_start");
 	});

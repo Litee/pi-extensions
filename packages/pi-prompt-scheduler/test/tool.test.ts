@@ -8,6 +8,7 @@ import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
+import type { ExtensionContext, Theme } from "@mariozechner/pi-coding-agent";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import type { CronScheduler } from "../src/scheduler.js";
@@ -74,7 +75,7 @@ async function exec(
 		params,
 		new AbortController().signal,
 		() => {},
-		makeCtx(ctxOpts) as any,
+		makeCtx(ctxOpts) as unknown as ExtensionContext,
 	);
 }
 
@@ -564,9 +565,11 @@ describe("schedule_prompt tool / unknown action", () => {
 // ---------------------------------------------------------------------------
 
 describe("schedule_prompt tool / renderCall", () => {
-	const fakeTheme: any = {
+	const fakeTheme = {
 		fg: (_cat: string, s: string) => s,
-	};
+	} as unknown as Theme;
+
+	type RenderCall = (params: unknown, theme: unknown) => { text?: string };
 
 	it.each([
 		[{ action: "add", name: "foo" }, /Adding cron job: foo/],
@@ -578,8 +581,8 @@ describe("schedule_prompt tool / renderCall", () => {
 		[{ action: "cleanup" }, /cleanup cron job/],
 	])("labels %o", (params, matcher) => {
 		const tool = makeTool();
-		const rendered = (tool.renderCall as any)(params, fakeTheme);
-		expect(String((rendered).text ?? rendered)).toMatch(matcher);
+		const rendered = (tool.renderCall as unknown as RenderCall)(params, fakeTheme);
+		expect(String(rendered.text ?? "")).toMatch(matcher);
 	});
 });
 
@@ -588,14 +591,16 @@ describe("schedule_prompt tool / renderCall", () => {
 // ---------------------------------------------------------------------------
 
 describe("schedule_prompt tool / renderResult", () => {
-	const fakeTheme: any = {
+	const fakeTheme = {
 		fg: (_cat: string, s: string) => s,
 		bold: (s: string) => s,
-	};
+	} as unknown as Theme;
+
+	type RenderResult = (result: unknown, opts: unknown, theme: unknown) => { text?: string };
 
 	it("renders an error line when details.error is set", () => {
 		const tool = makeTool();
-		const rendered = (tool.renderResult as any)(
+		const rendered = (tool.renderResult as unknown as RenderResult)(
 			{
 				content: [{ type: "text", text: "ignored" }],
 				details: { action: "add", jobs: [], error: "nope" },
@@ -608,7 +613,7 @@ describe("schedule_prompt tool / renderResult", () => {
 
 	it("renders a success line for non-list actions", () => {
 		const tool = makeTool();
-		const rendered = (tool.renderResult as any)(
+		const rendered = (tool.renderResult as unknown as RenderResult)(
 			{
 				content: [{ type: "text", text: "ignored" }],
 				details: { action: "remove", jobs: [], jobName: "victim" },
@@ -621,7 +626,7 @@ describe("schedule_prompt tool / renderResult", () => {
 
 	it("renders a table row per job for list actions, including model + runs + last-run", () => {
 		const tool = makeTool();
-		const rendered = (tool.renderResult as any)(
+		const rendered = (tool.renderResult as unknown as RenderResult)(
 			{
 				content: [{ type: "text", text: "ignored" }],
 				details: {
@@ -658,7 +663,7 @@ describe("schedule_prompt tool / renderResult", () => {
 
 	it("falls back to content text when details is missing", () => {
 		const tool = makeTool();
-		const rendered = (tool.renderResult as any)(
+		const rendered = (tool.renderResult as unknown as RenderResult)(
 			{ content: [{ type: "text", text: "raw fallback" }] },
 			{},
 			fakeTheme,

@@ -48,7 +48,7 @@ describe("persistence: readDisabled / writeDisabled", () => {
 
 	it("writeDisabled persists a JSON payload with sorted disabled array", () => {
 		writeDisabled(file, new Set(["zulu", "alpha", "mike"]));
-		const payload = JSON.parse(readFileSync(file, "utf8"));
+		const payload = JSON.parse(readFileSync(file, "utf8")) as unknown;
 		expect(payload).toEqual({ disabled: ["alpha", "mike", "zulu"] });
 	});
 
@@ -104,7 +104,7 @@ describe("persistence: readDisabled / writeDisabled", () => {
 		const p = join(tmpRoot, "atomic2.json");
 		writeFileSync(p, JSON.stringify({ disabled: ["existing"] }));
 		writeDisabled(p, new Set(["next"]));
-		const parsed = JSON.parse(readFileSync(p, "utf8"));
+		const parsed = JSON.parse(readFileSync(p, "utf8")) as unknown;
 		expect(parsed).toEqual({ disabled: ["next"] });
 	});
 });

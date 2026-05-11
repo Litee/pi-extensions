@@ -3,6 +3,8 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
+import type { ExtensionAPI } from "@mariozechner/pi-coding-agent";
+
 import createExtension, { defaultStateFile, handleCcSkills } from "../src/index.js";
 import type { DiscoveredSkill } from "../src/types.js";
 
@@ -103,7 +105,7 @@ describe("extension default export", () => {
 	it("subscribes to resources_discover and registers /cc-skills-info", () => {
 		const pi = makeFakePi();
 		 
-		createExtension(pi as any);
+		createExtension(pi as unknown as ExtensionAPI);
 		expect(pi.handlers.has("resources_discover")).toBe(true);
 		expect(pi.commands.has("cc-skills-info")).toBe(true);
 	});
@@ -112,7 +114,7 @@ describe("extension default export", () => {
 		writeSkill(join(claudeDir, "skills", "alpha"), "alpha");
 		const pi = makeFakePi();
 		 
-		createExtension(pi as any);
+		createExtension(pi as unknown as ExtensionAPI);
 		const ctx = makeCtx(mkdir(tmpRoot, "project"));
 		const handler = pi.handlers.get("resources_discover")!;
 		const result = (await handler({ cwd: ctx.cwd, reason: "startup" }, ctx)) as {
@@ -132,7 +134,7 @@ describe("extension default export", () => {
 
 		const pi = makeFakePi();
 		 
-		createExtension(pi as any);
+		createExtension(pi as unknown as ExtensionAPI);
 		const ctx = makeCtx(mkdir(tmpRoot, "project"));
 		const handler = pi.handlers.get("resources_discover")!;
 		const result = (await handler({ cwd: ctx.cwd, reason: "startup" }, ctx)) as {
@@ -159,7 +161,7 @@ describe("extension default export", () => {
 		);
 		const pi = makeFakePi();
 		 
-		createExtension(pi as any);
+		createExtension(pi as unknown as ExtensionAPI);
 		const ctx = makeCtx(mkdir(tmpRoot, "project"));
 		const handler = pi.handlers.get("resources_discover")!;
 		await handler({ cwd: ctx.cwd, reason: "startup" }, ctx);
@@ -173,7 +175,7 @@ describe("extension default export", () => {
 		writeSkill(join(claudeDir, "skills", "unique"), "unique");
 		const pi = makeFakePi();
 		 
-		createExtension(pi as any);
+		createExtension(pi as unknown as ExtensionAPI);
 		const ctx = makeCtx(mkdir(tmpRoot, "project"));
 		const handler = pi.handlers.get("resources_discover")!;
 		await handler({ cwd: ctx.cwd, reason: "startup" }, ctx);
@@ -198,7 +200,7 @@ describe("extension default export", () => {
 		);
 		const pi = makeFakePi();
 		 
-		createExtension(pi as any);
+		createExtension(pi as unknown as ExtensionAPI);
 		const ctx = makeCtx(mkdir(tmpRoot, "project"));
 		const handler = pi.handlers.get("resources_discover")!;
 		await handler({ cwd: ctx.cwd, reason: "startup" }, ctx);
@@ -231,7 +233,7 @@ describe("extension default export", () => {
 		);
 		const pi = makeFakePi();
 		 
-		createExtension(pi as any);
+		createExtension(pi as unknown as ExtensionAPI);
 		const ctx = makeCtx(mkdir(tmpRoot, "project"));
 		const handler = pi.handlers.get("resources_discover")!;
 		await handler({ cwd: ctx.cwd, reason: "startup" }, ctx);
@@ -246,7 +248,7 @@ describe("extension default export", () => {
 		writeFileSync(stateFile, JSON.stringify({ disabled: [] }));
 		const pi = makeFakePi();
 		 
-		createExtension(pi as any);
+		createExtension(pi as unknown as ExtensionAPI);
 		const ctx = makeCtx(mkdir(tmpRoot, "project"));
 		const handler = pi.handlers.get("resources_discover")!;
 		await handler({ cwd: ctx.cwd, reason: "startup" }, ctx);
@@ -276,7 +278,7 @@ describe("extension default export", () => {
 		);
 		const pi = makeFakePi();
 		 
-		createExtension(pi as any);
+		createExtension(pi as unknown as ExtensionAPI);
 		const ctx = makeCtx(mkdir(tmpRoot, "project"));
 		const handler = pi.handlers.get("resources_discover")!;
 		await handler({ cwd: ctx.cwd, reason: "startup" }, ctx);

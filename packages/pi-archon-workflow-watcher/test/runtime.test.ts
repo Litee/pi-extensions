@@ -221,7 +221,7 @@ describe("pollOnce", () => {
 		// error is logged via appendEntry, not via console
 		const [type, data] = pi.appendEntry.mock.calls[0] as [string, unknown];
 		expect(type).toBe("archon-watcher:poll-error");
-		expect((data as any).message).toBe("connection refused");
+		expect((data as { message: string }).message).toBe("connection refused");
 	});
 
 	it("does not send a warning message until ERROR_THRESHOLD is reached", async () => {

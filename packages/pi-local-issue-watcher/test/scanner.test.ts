@@ -117,7 +117,7 @@ describe("scanIssueFiles", () => {
 		const onError = vi.fn();
 		scanIssueFiles(dbRoot, undefined, onError);
 
-		const paths = onError.mock.calls.map((c) => c[0]);
+		const paths = onError.mock.calls.map((c) => c[0] as string);
 		expect(paths).toEqual([
 			join(dbRoot, "skill-a", "0001-bad.json"),
 			join(dbRoot, "skill-a", "0003-bad.json"),

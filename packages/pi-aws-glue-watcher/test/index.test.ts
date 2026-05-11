@@ -593,7 +593,7 @@ describe("pollOnce — consecutive error tracking", () => {
 		// This poll pushes it to threshold — warning should fire
 		await pollOnce(rt);
 		expect(pi.sendMessage).toHaveBeenCalledTimes(1);
-		const [msg] = pi.sendMessage.mock.calls[0]!;
+		const [msg] = pi.sendMessage.mock.calls[0]! as [{ content: string }];
 		expect(msg.content).toContain("⚠");
 		expect(msg.content).toContain("aa");
 		expect(msg.content).toContain("authentication");
@@ -616,7 +616,7 @@ describe("pollOnce — consecutive error tracking", () => {
 		await pollOnce(rt);
 
 		expect(pi.sendMessage).toHaveBeenCalledTimes(1);
-		const [msg, opts] = pi.sendMessage.mock.calls[0]!;
+		const [msg, opts] = pi.sendMessage.mock.calls[0]! as [{ content: string }, { triggerTurn?: boolean } | undefined];
 		expect(msg.content).toContain("✓");
 		expect(msg.content).toContain("aa");
 		expect(msg.content).toContain(`${POLL_ERROR_THRESHOLD} consecutive error`);

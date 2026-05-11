@@ -185,8 +185,8 @@ describe("createExtensionWithClient — wiring", () => {
 		expect(pi.registerCommand).toHaveBeenCalledWith(
 			"archon-watcher",
 			expect.objectContaining({
-				description: expect.any(String),
-				handler: expect.any(Function),
+				description: expect.any(String) as unknown,
+				handler: expect.any(Function) as unknown,
 			}),
 		);
 	});

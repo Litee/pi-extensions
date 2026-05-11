@@ -1,5 +1,7 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
+import type { Api, Model } from "@mariozechner/pi-ai";
+
 vi.mock("node:fs");
 import { readFileSync } from "node:fs";
 
@@ -31,6 +33,7 @@ function makeFakePi(activeTools: string[] = []) {
 		setModel: vi.fn(() => true),
 		getThinkingLevel: vi.fn(() => "medium" as const),
 		setThinkingLevel: vi.fn(),
+		getFlag: vi.fn(() => false),
 	};
 }
 
@@ -43,12 +46,12 @@ function makeFakeCtx() {
 			select: vi.fn(() => "Stay in plan mode"),
 		},
 		hasUI: true,
-		model: { id: "claude-sonnet-4-5", provider: "anthropic" } as any,
+		model: { id: "claude-sonnet-4-5", provider: "anthropic" } as unknown as Model<Api>,
 		modelRegistry: {
-			getAll: vi.fn(() => [
-				{ id: "claude-sonnet-4-5", provider: "anthropic" },
-				{ id: "claude-opus-4-20250514", provider: "anthropic" },
-			] as any[]),
+			getAll: vi.fn((): Model<Api>[] => [
+				{ id: "claude-sonnet-4-5", provider: "anthropic" } as unknown as Model<Api>,
+				{ id: "claude-opus-4-20250514", provider: "anthropic" } as unknown as Model<Api>,
+			]),
 		},
 	};
 }
@@ -293,7 +296,7 @@ describe("plan-mode model and thinking level", () => {
 				]),
 			},
 		};
-		(pi as any).getFlag = vi.fn(() => false);
+		pi.getFlag = vi.fn(() => false);
 
 		planModeExtension(pi as never);
 
@@ -363,7 +366,7 @@ describe("plan-mode persistence across session restarts", () => {
 
 		// Assert — appendEntry called with namespaced customType and full snapshot payload.
 		expect(pi.appendEntry).toHaveBeenCalledTimes(1);
-		const [customType, data] = (pi.appendEntry as ReturnType<typeof vi.fn>).mock.calls[0]!;
+		const [customType, data] = (pi.appendEntry as ReturnType<typeof vi.fn>).mock.calls[0]! as [string, unknown];
 		expect(customType).toBe("pi-plan-mode:state");
 		expect(data).toEqual({
 			enabled: true,
@@ -394,7 +397,7 @@ describe("plan-mode persistence across session restarts", () => {
 				]),
 			},
 		};
-		(pi as any).getFlag = vi.fn(() => false);
+		pi.getFlag = vi.fn(() => false);
 		planModeExtension(pi as never);
 
 		// Act — fire session_start (restores snapshot), then toggle /plan off.
@@ -444,7 +447,7 @@ describe("plan-mode persistence across session restarts", () => {
 				]),
 			},
 		};
-		(pi as any).getFlag = vi.fn(() => false);
+		pi.getFlag = vi.fn(() => false);
 		planModeExtension(pi as never);
 
 		// Act — restore then toggle off.
@@ -495,7 +498,7 @@ describe("plan-mode persistence across session restarts", () => {
 				]),
 			},
 		};
-		(pi as any).getFlag = vi.fn(() => false);
+		pi.getFlag = vi.fn(() => false);
 		planModeExtension(pi as never);
 
 		const onCalls = pi.on.mock.calls as Array<[string, (...args: unknown[]) => unknown]>;
@@ -546,7 +549,7 @@ describe("plan-mode persistence across session restarts", () => {
 
 		// Assert — two appendEntry calls; the second (disable) must be enabled:false
 		// with no leftover snapshot fields (disablePlanMode clears them first).
-		const appendCalls = (pi.appendEntry as ReturnType<typeof vi.fn>).mock.calls as Array<[string, any]>;
+		const appendCalls = (pi.appendEntry as ReturnType<typeof vi.fn>).mock.calls as Array<[string, unknown]>;
 		expect(appendCalls).toHaveLength(2);
 
 		const [disableType, disableData] = appendCalls[1]!;
@@ -568,7 +571,7 @@ describe("plan-mode persistence across session restarts", () => {
 				]),
 			},
 		};
-		(pi as any).getFlag = vi.fn(() => false);
+		pi.getFlag = vi.fn(() => false);
 		planModeExtension(pi as never);
 
 		// Act — fire session_start.
@@ -605,7 +608,7 @@ describe("plan-mode persistence across session restarts", () => {
 				]),
 			},
 		};
-		(pi as any).getFlag = vi.fn(() => false);
+		pi.getFlag = vi.fn(() => false);
 		planModeExtension(pi as never);
 
 		// Act.
@@ -632,7 +635,7 @@ describe("plan-mode persistence across session restarts", () => {
 				]),
 			},
 		};
-		(pi as any).getFlag = vi.fn(() => true); // --plan was set
+		pi.getFlag = vi.fn(() => true); // --plan was set
 		planModeExtension(pi as never);
 
 		const onCalls = pi.on.mock.calls as Array<[string, (...args: unknown[]) => unknown]>;
@@ -661,7 +664,7 @@ describe("plan-mode persistence across session restarts", () => {
 		await handler({}, ctx);
 
 		// Assert — 4 appendEntry calls, last one is enabled:false (no snapshot).
-		const appendCalls = (pi.appendEntry as ReturnType<typeof vi.fn>).mock.calls as Array<[string, any]>;
+		const appendCalls = (pi.appendEntry as ReturnType<typeof vi.fn>).mock.calls as Array<[string, unknown]>;
 		expect(appendCalls).toHaveLength(4);
 
 		const [finalType, finalData] = appendCalls[3]!;

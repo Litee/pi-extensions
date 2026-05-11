@@ -126,7 +126,7 @@ describe("default export — wiring", () => {
 		const pi = makeFakePi();
 		createExtension(pi as never);
 
-		const subscribed = pi.on.mock.calls.map((c) => c[0]);
+		const subscribed = pi.on.mock.calls.map((c) => c[0] as string);
 		for (const evt of [
 			"session_start",
 			"session_shutdown",

@@ -158,7 +158,7 @@ describe("shouldBlockBashInPlan", () => {
 		);
 		expect(r).toEqual({
 			block: true,
-			reason: expect.stringContaining("rm -rf /tmp/foo"),
+			reason: expect.stringContaining("rm -rf /tmp/foo") as unknown,
 		});
 		expect(r?.reason).toMatch(/Plan mode: command blocked/);
 	});
@@ -174,7 +174,7 @@ describe("shouldBlockBashInPlan", () => {
 		);
 		expect(r).toEqual({
 			block: true,
-			reason: expect.stringContaining("Plan mode: command blocked"),
+			reason: expect.stringContaining("Plan mode: command blocked") as unknown,
 		});
 	});
 });

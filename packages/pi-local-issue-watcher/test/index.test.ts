@@ -183,8 +183,8 @@ describe("default export — wiring", () => {
 		expect(pi.registerCommand).toHaveBeenCalledWith(
 			"local-issue-watcher",
 			expect.objectContaining({
-				description: expect.any(String),
-				handler: expect.any(Function),
+				description: expect.any(String) as unknown,
+				handler: expect.any(Function) as unknown,
 			}),
 		);
 	});
@@ -353,7 +353,7 @@ describe("handleSessionStart", () => {
 		// New baseline persisted.
 		expect(pi.appendEntry).toHaveBeenCalledWith(
 			STATE_ENTRY_TYPE,
-			expect.objectContaining({ savedAt: expect.any(Number), snapshot: expect.any(Object) }),
+			expect.objectContaining({ savedAt: expect.any(Number) as unknown, snapshot: expect.any(Object) as unknown }),
 		);
 		expect(out.started).toBe(true);
 	});
@@ -1267,9 +1267,9 @@ describe("run-state persistence", () => {
 		await pi1.commands.get("local-issue-watcher")!.handler("pause", makeFakeCtx());
 		const persistedEntries = pi1.appendEntry.mock.calls
 			.filter((c) => c[0] === RUNSTATE_ENTRY_TYPE)
-			.map(([t, d]) => ({
+			.map(([t, d]: [string, unknown]) => ({
 				type: "custom",
-				customType: t as string,
+				customType: t,
 				data: d,
 			}));
 		expect(persistedEntries.length).toBeGreaterThanOrEqual(1);

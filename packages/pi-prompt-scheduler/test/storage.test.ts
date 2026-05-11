@@ -38,7 +38,7 @@ function makeJob(overrides: Partial<CronJob> = {}): CronJob {
 }
 
 function readStoreFile(s: CronStorage): CronStore {
-	return JSON.parse(readFileSync(s.getStorePath(), "utf-8"));
+	return JSON.parse(readFileSync(s.getStorePath(), "utf-8")) as CronStore;
 }
 
 // ---------------------------------------------------------------------------

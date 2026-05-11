@@ -3,6 +3,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
+import type { ExtensionAPI } from "@mariozechner/pi-coding-agent";
 import createExtension from "../src/index.js";
 
 type AnyHandler = (...args: unknown[]) => unknown;
@@ -58,14 +59,14 @@ describe("extension default export", () => {
 	it("subscribes to resources_discover", () => {
 		const pi = makeFakePi();
 		 
-		createExtension(pi as any);
+		createExtension(pi as unknown as ExtensionAPI);
 		expect(pi.handlers.has("resources_discover")).toBe(true);
 	});
 
 	it("resources_discover returns empty promptPaths when no commands dirs exist", async () => {
 		const pi = makeFakePi();
 		 
-		createExtension(pi as any);
+		createExtension(pi as unknown as ExtensionAPI);
 		const cwd = mkdir(tmpRoot, "project");
 		const handler = pi.handlers.get("resources_discover")!;
 		const result = (await handler(
@@ -80,7 +81,7 @@ describe("extension default export", () => {
 		writeCommand(userCmds, "my-cmd");
 		const pi = makeFakePi();
 		 
-		createExtension(pi as any);
+		createExtension(pi as unknown as ExtensionAPI);
 		const cwd = mkdir(tmpRoot, "project");
 		const handler = pi.handlers.get("resources_discover")!;
 		const result = (await handler(
@@ -96,7 +97,7 @@ describe("extension default export", () => {
 		writeCommand(projectCmds, "local-cmd");
 		const pi = makeFakePi();
 		 
-		createExtension(pi as any);
+		createExtension(pi as unknown as ExtensionAPI);
 		const handler = pi.handlers.get("resources_discover")!;
 		const result = (await handler(
 			{ cwd, reason: "startup" },
@@ -111,7 +112,7 @@ describe("extension default export", () => {
 		const projectCmds = mkdir(tmpRoot, "project/.claude/commands");
 		const pi = makeFakePi();
 		 
-		createExtension(pi as any);
+		createExtension(pi as unknown as ExtensionAPI);
 		const handler = pi.handlers.get("resources_discover")!;
 		const result = (await handler(
 			{ cwd, reason: "startup" },
@@ -124,7 +125,7 @@ describe("extension default export", () => {
 		process.env["CLAUDE_CONFIG_DIR"] = join(tmpRoot, "nonexistent");
 		const pi = makeFakePi();
 		 
-		createExtension(pi as any);
+		createExtension(pi as unknown as ExtensionAPI);
 		const cwd = mkdir(tmpRoot, "project");
 		const handler = pi.handlers.get("resources_discover")!;
 		const result = (await handler(
@@ -139,7 +140,7 @@ describe("extension default export", () => {
 		writeCommand(userCmds, "reload-test");
 		const pi = makeFakePi();
 		 
-		createExtension(pi as any);
+		createExtension(pi as unknown as ExtensionAPI);
 		const cwd = mkdir(tmpRoot, "project");
 		const handler = pi.handlers.get("resources_discover")!;
 		const result = (await handler(

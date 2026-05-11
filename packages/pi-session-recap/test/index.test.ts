@@ -21,6 +21,8 @@ import { join } from "node:path";
 import { Text } from "@mariozechner/pi-tui";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
+import type { ExtensionAPI } from "@mariozechner/pi-coding-agent";
+
 import { buildStatusLine } from "../src/helpers.js";
 import createExtension from "../src/index.js";
 
@@ -546,7 +548,7 @@ describe("orchestrator lifecycle — session replacement", () => {
 		vi.useFakeTimers();
 		try {
 			const pi = makeFakePi();
-			createExtension(pi as any);
+			createExtension(pi as unknown as ExtensionAPI);
 
 			// Branch with enough assistant words to pass hasMeaningfulActivity
 			const meaningfulEntries = [

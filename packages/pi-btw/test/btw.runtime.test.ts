@@ -1,17 +1,67 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import type { ExtensionAPI, ExtensionCommandContext, ExtensionContext, RegisteredCommand } from "@mariozechner/pi-coding-agent";
+import type { ExtensionAPI, ExtensionCommandContext, ExtensionContext, RegisteredCommand, CreateAgentSessionOptions } from "@mariozechner/pi-coding-agent";
 import btwExtension from "../src/index.js";
+
+type MockSessionOptions = {
+  resourceLoader?: {
+    getSystemPrompt?: () => string | undefined;
+    getAppendSystemPrompt?: () => string[] | undefined;
+  };
+  model?: unknown;
+  tools?: string[];
+};
+
+type MockSessionEvent = Record<string, unknown>;
+
+type BtwTranscriptEntry = { type: string; [key: string]: unknown };
+
+type BtwOverlayComponent = {
+  refresh: () => void;
+  render: (width: number) => string[];
+  transcript: { children: Array<{ text: string }> };
+  getTranscriptEntries: () => BtwTranscriptEntry[];
+  statusText: { text: string };
+  handleInput: (data: string) => void;
+  getDraft: () => string;
+  hintsTextValue: unknown;
+  focused: boolean;
+  followTranscript: boolean;
+  transcriptScrollOffset: number;
+  input?: {
+    onSubmit?: (text: string) => void;
+    onEscape?: () => void;
+    setValue?: (value: string) => void;
+    getValue?: () => string;
+    handleInput?: (data: string) => void;
+  };
+  [key: string]: unknown;
+};
+
+type SeedMessage = { role: string; content: Array<{ type: string; text?: string }> | string };
+
+type MockSession = {
+  agent: { state: { messages: SeedMessage[] } };
+  state: { messages: SeedMessage[]; model: unknown; tools: Array<{ name: string }> };
+  readonly model: unknown;
+  readonly isStreaming: boolean;
+  subscribe: ReturnType<typeof vi.fn>;
+  prompt: ReturnType<typeof vi.fn>;
+  abort: ReturnType<typeof vi.fn>;
+  dispose: ReturnType<typeof vi.fn>;
+  bindExtensions: ReturnType<typeof vi.fn>;
+  getActiveToolNames: ReturnType<typeof vi.fn>;
+};
 
 const { promptStreamMock, createAgentSessionMock, sessionManagerInMemoryMock, subSessionRecords } = vi.hoisted(() => ({
   promptStreamMock: vi.fn(),
   createAgentSessionMock: vi.fn(),
   sessionManagerInMemoryMock: vi.fn(() => ({ type: "in-memory-session" })),
   subSessionRecords: [] as Array<{
-    options: any;
-    session: any;
-    seedMessages: any[];
+    options: MockSessionOptions;
+    session: MockSession;
+    seedMessages: SeedMessage[];
     promptCalls: Array<{ text: string; context: StreamContext }>;
-    emit: (event: any) => void;
+    emit: (event: MockSessionEvent) => void;
     getListenerCount: () => number;
     getIsStreaming: () => boolean;
   }>,
@@ -262,19 +312,19 @@ function buildAssistantContent(thinking: string, answer: string) {
   return content;
 }
 
-function buildMockSystemPrompt(options: any): string {
+function buildMockSystemPrompt(options: MockSessionOptions): string {
   const systemPrompt = options.resourceLoader?.getSystemPrompt?.();
   const appendSystemPrompt = options.resourceLoader?.getAppendSystemPrompt?.() ?? [];
   return [systemPrompt, ...appendSystemPrompt].filter(Boolean).join("\n\n");
 }
 
-function createMockAgentSession(options: any) {
-  const listeners = new Set<(event: any) => void>();
-  let seedMessages: any[] = [];
-  let stateMessages: any[] = [];
+function createMockAgentSession(options: MockSessionOptions) {
+  const listeners = new Set<(event: MockSessionEvent) => void>();
+  let seedMessages: SeedMessage[] = [];
+  let stateMessages: SeedMessage[] = [];
   let isStreaming = false;
 
-  const emit = (event: any) => {
+  const emit = (event: MockSessionEvent) => {
     for (const listener of listeners) {
       listener(event);
     }
@@ -287,7 +337,7 @@ function createMockAgentSession(options: any) {
     emit,
     getListenerCount: () => listeners.size,
     getIsStreaming: () => isStreaming,
-    session: null as any,
+    session: null as unknown as MockSession,
   };
 
   const session = {
@@ -296,7 +346,7 @@ function createMockAgentSession(options: any) {
         get messages() {
           return stateMessages;
         },
-        set messages(messages: any[]) {
+        set messages(messages: SeedMessage[]) {
           seedMessages = messages.map((message) => structuredClone(message));
           stateMessages = seedMessages.map((message) => structuredClone(message));
           record.seedMessages = seedMessages;
@@ -316,7 +366,7 @@ function createMockAgentSession(options: any) {
     get isStreaming() {
       return isStreaming;
     },
-    subscribe: vi.fn((listener: (event: any) => void) => {
+    subscribe: vi.fn((listener: (event: MockSessionEvent) => void) => {
       listeners.add(listener);
       return () => listeners.delete(listener);
     }),
@@ -410,7 +460,7 @@ function createMockAgentSession(options: any) {
       listeners.clear();
     }),
     bindExtensions: vi.fn(),
-    getActiveToolNames: vi.fn(() => (options.tools ?? []) as string[]),
+    getActiveToolNames: vi.fn(() => options.tools ?? []),
   };
 
   record.session = session;
@@ -428,12 +478,12 @@ function getCustomEntries(entries: SessionEntry[], customType: string): CustomEn
   return entries.filter((entry): entry is CustomEntry => entry.type === "custom" && entry.customType === customType);
 }
 
-function transcriptText(overlay: any): string {
+function transcriptText(overlay: BtwOverlayComponent): string {
   overlay.refresh();
-  return overlay.transcript.children.map((child: any) => child.text).join("\n");
+  return overlay.transcript.children.map((child) => child.text).join("\n");
 }
 
-function transcriptEntries(overlay: any) {
+function transcriptEntries(overlay: BtwOverlayComponent): BtwTranscriptEntry[] {
   overlay.refresh();
   return overlay.getTranscriptEntries();
 }
@@ -457,7 +507,7 @@ function createHarness(
   } = {},
 ) {
   const commands = new Map<string, RegisteredCommand>();
-  const shortcuts = new Map<string, any>();
+  const shortcuts = new Map<string, { description: string; handler: (...args: unknown[]) => unknown }>();
   const handlers = new Map<string, ((...args: unknown[]) => unknown)[]>();
   const entries: SessionEntry[] = [...initialEntries];
   const notifications: Array<{ message: string; type?: string }> = [];
@@ -465,7 +515,7 @@ function createHarness(
   const sentMessages: Array<{ message: unknown; options?: unknown }> = [];
   const sentUserMessages: Array<{ content: unknown; options?: unknown }> = [];
   const overlayHandles: FakeOverlayHandle[] = [];
-  const overlays: Array<{ factoryOptions?: unknown; done?: (result: unknown) => void; component?: any }> = [];
+  const overlays: Array<{ factoryOptions?: unknown; done?: (result: unknown) => void; component?: BtwOverlayComponent }> = [];
   const tui = { requestRender: vi.fn() };
   const theme = options.theme ?? {
     fg: (_name: string, text: string) => text,
@@ -504,7 +554,10 @@ function createHarness(
     setWidget: (key: string, content: unknown, options?: unknown) => {
       widgets.push({ key, content, options });
     },
-    custom: async (factory: any, options?: any) => {
+    custom: (
+      factory: (tui: unknown, theme: unknown, kb: unknown, done: (result: unknown) => void) => BtwOverlayComponent | Promise<BtwOverlayComponent>,
+      options?: { onHandle?: (handle: FakeOverlayHandle) => void },
+    ) => {
       let done!: (result: unknown) => void;
       const resultPromise = new Promise((resolve) => {
         done = (result: unknown) => resolve(result);
@@ -512,8 +565,8 @@ function createHarness(
       const handle = new FakeOverlayHandle();
       overlayHandles.push(handle);
       options?.onHandle?.(handle);
-      const component = await factory(tui as any, theme as any, keybindings as any, done);
-      overlays.push({ factoryOptions: options, done, component });
+      const component = factory(tui, theme, keybindings, done);
+      void Promise.resolve(component).then((c) => { overlays.push({ factoryOptions: options, done, component: c }); });
       return resultPromise;
     },
     onTerminalInput: () => () => {},
@@ -542,40 +595,40 @@ function createHarness(
       const list = handlers.get(event) ?? [];
       list.push(handler);
       handlers.set(event, list);
-    }) as any,
-    registerTool: vi.fn() as any,
-    registerCommand: ((name: string, options: any) => {
+    }) as unknown as ExtensionAPI["on"],
+    registerTool: vi.fn() as unknown as ExtensionAPI["registerTool"],
+    registerCommand: ((name: string, options: { description: string; handler: (...args: unknown[]) => unknown }) => {
       commands.set(name, { name, ...options } as RegisteredCommand);
-    }) as any,
-    registerShortcut: ((shortcut: string, options: any) => {
+    }) as unknown as ExtensionAPI["registerCommand"],
+    registerShortcut: ((shortcut: string, options: { description: string; handler: (...args: unknown[]) => unknown }) => {
       shortcuts.set(shortcut, options);
-    }) as any,
-    registerFlag: vi.fn() as any,
-    getFlag: vi.fn() as any,
-    registerMessageRenderer: vi.fn() as any,
-    sendMessage: ((message: unknown, options?: unknown) => sentMessages.push({ message, options })) as any,
-    sendUserMessage: ((content: unknown, options?: unknown) => sentUserMessages.push({ content, options })) as any,
-    appendEntry: ((customType: string, data?: unknown) => entries.push({ type: "custom", customType, data })) as any,
-    setSessionName: vi.fn() as any,
-    getSessionName: vi.fn() as any,
-    setLabel: vi.fn() as any,
-    exec: vi.fn() as any,
-    getActiveTools: vi.fn(() => []) as any,
-    getAllTools: vi.fn(() => []) as any,
-    setActiveTools: vi.fn() as any,
-    getCommands: vi.fn(() => Array.from(commands.values())) as any,
-    setModel: vi.fn(() => true) as any,
-    getThinkingLevel: vi.fn(() => mainThinkingLevel) as any,
-    setThinkingLevel: vi.fn() as any,
-    registerProvider: vi.fn() as any,
+    }) as unknown as ExtensionAPI["registerShortcut"],
+    registerFlag: vi.fn() as unknown as ExtensionAPI["registerFlag"],
+    getFlag: vi.fn() as unknown as ExtensionAPI["getFlag"],
+    registerMessageRenderer: vi.fn() as unknown as ExtensionAPI["registerMessageRenderer"],
+    sendMessage: ((message: unknown, options?: unknown) => sentMessages.push({ message, options })) as unknown as ExtensionAPI["sendMessage"],
+    sendUserMessage: ((content: unknown, options?: unknown) => sentUserMessages.push({ content, options })) as unknown as ExtensionAPI["sendUserMessage"],
+    appendEntry: ((customType: string, data?: unknown) => entries.push({ type: "custom", customType, data })) as unknown as ExtensionAPI["appendEntry"],
+    setSessionName: vi.fn() as unknown as ExtensionAPI["setSessionName"],
+    getSessionName: vi.fn() as unknown as ExtensionAPI["getSessionName"],
+    setLabel: vi.fn() as unknown as ExtensionAPI["setLabel"],
+    exec: vi.fn() as unknown as ExtensionAPI["exec"],
+    getActiveTools: vi.fn(() => []) as unknown as ExtensionAPI["getActiveTools"],
+    getAllTools: vi.fn(() => []) as unknown as ExtensionAPI["getAllTools"],
+    setActiveTools: vi.fn() as unknown as ExtensionAPI["setActiveTools"],
+    getCommands: vi.fn(() => Array.from(commands.values())) as unknown as ExtensionAPI["getCommands"],
+    setModel: vi.fn(() => true) as unknown as ExtensionAPI["setModel"],
+    getThinkingLevel: vi.fn(() => mainThinkingLevel) as unknown as ExtensionAPI["getThinkingLevel"],
+    setThinkingLevel: vi.fn() as unknown as ExtensionAPI["setThinkingLevel"],
+    registerProvider: vi.fn() as unknown as ExtensionAPI["registerProvider"],
   } as unknown as ExtensionAPI;
 
   btwExtension(api);
 
   const baseCtx = {
     hasUI: true,
-    ui: ui as any,
-    sessionManager: sessionManager as any,
+    ui: ui as unknown as ExtensionContext["ui"],
+    sessionManager: sessionManager as unknown as ExtensionContext["sessionManager"],
     modelRegistry: {
       getApiKeyAndHeaders: vi.fn((requestedModel: { provider: string; id: string; api: string }) => {
         if (credentialResolver) {
@@ -591,7 +644,7 @@ function createHarness(
         const key = `${provider}/${id}`;
         const known = registeredModels.get(key);
         if (known) return known;
-        return { provider, id, api: "anthropic-messages" } as any;
+        return { provider, id, api: "anthropic-messages" };
       }),
     },
     model,
@@ -599,7 +652,7 @@ function createHarness(
     isIdle: () => idle,
   };
 
-  async function runEvent(name: string, event: unknown = {}, ctx: ExtensionContext | ExtensionCommandContext = baseCtx as any) {
+  async function runEvent(name: string, event: unknown = {}, ctx: ExtensionContext | ExtensionCommandContext = baseCtx as unknown as ExtensionContext) {
     const list = handlers.get(name) ?? [];
     const results = [];
     for (const handler of list) {
@@ -624,7 +677,7 @@ function createHarness(
     await registered.handler(undefined, baseCtx);
   }
 
-  function latestOverlayComponent() {
+  function latestOverlayComponent(): BtwOverlayComponent {
     const overlay = overlays.at(-1)?.component;
     if (!overlay) throw new Error("Overlay not created");
     return overlay;
@@ -633,7 +686,7 @@ function createHarness(
   function latestWidgetFactory() {
     const widget = [...widgets].reverse().find((entry) => entry.key === "btw" && typeof entry.content === "function");
     if (!widget) throw new Error("Widget not rendered");
-    return widget.content as (tui: unknown, themeParam: typeof theme) => any;
+    return widget.content as (tui: unknown, themeParam: typeof theme) => BtwOverlayComponent;
   }
 
   function startMainSessionInput(text: string) {
@@ -691,9 +744,9 @@ describe("btw runtime behavior", () => {
     sessionManagerInMemoryMock.mockClear();
     subSessionRecords.length = 0;
 
-    createAgentSessionMock.mockImplementation((options: any) => createMockAgentSession(options));
+    createAgentSessionMock.mockImplementation((options: MockSessionOptions) => createMockAgentSession(options));
     promptStreamMock.mockImplementation((_record: unknown, _text: string, context: StreamContext) => {
-      return streamAnswer(`default:${(context.messages.at(-1)?.content[0] as any)?.text ?? ""}`);
+      return streamAnswer(`default:${context.messages.at(-1)?.content[0]?.text ?? ""}`);
     });
   });
 
@@ -706,7 +759,7 @@ describe("btw runtime behavior", () => {
     expect(createAgentSessionMock).toHaveBeenCalledTimes(1);
     expect(sessionManagerInMemoryMock).toHaveBeenCalledTimes(1);
 
-    const options = createAgentSessionMock.mock.calls[0]![0];
+    const options = createAgentSessionMock.mock.calls[0]![0] as CreateAgentSessionOptions;
     expect(options.model).toBe(harness.baseCtx.model);
     expect(options.modelRegistry).toBe(harness.baseCtx.modelRegistry);
     expect(options.tools).toEqual(["read", "bash", "edit", "write"]);
@@ -731,7 +784,7 @@ describe("btw runtime behavior", () => {
     await harness.command("btw", "first question");
 
     expect(createAgentSessionMock).toHaveBeenCalledTimes(1);
-    const options = createAgentSessionMock.mock.calls[0]![0];
+    const options = createAgentSessionMock.mock.calls[0]![0] as CreateAgentSessionOptions;
     expect(options.model).toEqual({ provider: "fast-provider", id: "fast-model", api: "custom-api" });
     expect(options.thinkingLevel).toBe("low");
 
@@ -756,7 +809,7 @@ describe("btw runtime behavior", () => {
     await harness.command("btw:summarize", "handoff this");
 
     expect(createAgentSessionMock).toHaveBeenCalledTimes(2);
-    const summaryOptions = createAgentSessionMock.mock.calls[1]![0];
+    const summaryOptions = createAgentSessionMock.mock.calls[1]![0] as CreateAgentSessionOptions;
     expect(summaryOptions.model).toEqual({ provider: "fast-provider", id: "fast-model", api: "custom-api" });
     expect(summaryOptions.thinkingLevel).toBe("off");
     expect(summaryOptions.tools).toEqual([]);
@@ -774,7 +827,7 @@ describe("btw runtime behavior", () => {
     await harness.command("btw", "first question");
 
     expect(createAgentSessionMock).toHaveBeenCalledTimes(1);
-    const options = createAgentSessionMock.mock.calls[0]![0];
+    const options = createAgentSessionMock.mock.calls[0]![0] as CreateAgentSessionOptions;
     expect(options.model).toBe(harness.baseCtx.model);
     expect(options.thinkingLevel).toBe("high");
   });
@@ -814,11 +867,11 @@ describe("btw runtime behavior", () => {
     await harness.runSessionStart();
     await harness.command("btw", "follow-up");
 
-    const options = createAgentSessionMock.mock.calls[0]![0];
+    const options = createAgentSessionMock.mock.calls[0]![0] as CreateAgentSessionOptions;
     expect(options.model).toEqual({ provider: "saved-provider", id: "saved-model", api: "saved-api" });
     expect(options.thinkingLevel).toBe("low");
 
-    const seedTexts = subSessionRecords[0]!.seedMessages.map((message) => (message.content[0])?.text ?? "");
+    const seedTexts = subSessionRecords[0]!.seedMessages.map((message) => (Array.isArray(message.content) ? (message.content[0] as { text?: string } | undefined)?.text : undefined) ?? "");
     expect(seedTexts).toContain("saved question");
     expect(seedTexts).toContain("saved answer");
   });
@@ -860,7 +913,7 @@ describe("btw runtime behavior", () => {
     await harness.command("btw:model", "fast-provider fast-model custom-api");
     await harness.command("btw", "first question");
 
-    const options = createAgentSessionMock.mock.calls[0]![0];
+    const options = createAgentSessionMock.mock.calls[0]![0] as CreateAgentSessionOptions;
     expect(options.model).toBe(harness.baseCtx.model);
     expect(
       harness.notifications.some((entry) =>
@@ -888,7 +941,7 @@ describe("btw runtime behavior", () => {
     await harness.command("btw", "second question");
 
     expect(createAgentSessionMock).toHaveBeenCalledTimes(2);
-    const secondOptions = createAgentSessionMock.mock.calls[1]![0];
+    const secondOptions = createAgentSessionMock.mock.calls[1]![0] as CreateAgentSessionOptions;
     expect(secondOptions.model).toEqual({ provider: "fast-provider", id: "fast-model", api: "custom-api" });
     expect(secondOptions.thinkingLevel).toBe("low");
   });
@@ -918,7 +971,7 @@ describe("btw runtime behavior", () => {
     await harness.runSessionStart();
     await harness.command("btw", "contextual start");
 
-    const seedTexts = subSessionRecords[0]!.seedMessages.map((message) => (message.content[0])?.text ?? "");
+    const seedTexts = subSessionRecords[0]!.seedMessages.map((message) => (Array.isArray(message.content) ? (message.content[0] as { text?: string } | undefined)?.text : undefined) ?? "");
     expect(seedTexts).toContain("main session task");
     expect(seedTexts).toContain("main session answer");
     expect(seedTexts).not.toContain("saved btw note");
@@ -937,7 +990,7 @@ describe("btw runtime behavior", () => {
     await harness.runSessionStart();
     await harness.command("btw", "contextual start");
     const contextualRecord = subSessionRecords[0]!;
-    expect(contextualRecord.seedMessages.map((message) => (message.content[0])?.text ?? "")).toContain(
+    expect(contextualRecord.seedMessages.map((message) => (Array.isArray(message.content) ? (message.content[0] as { text?: string } | undefined)?.text : undefined) ?? "")).toContain(
       "main session task",
     );
 
@@ -947,7 +1000,7 @@ describe("btw runtime behavior", () => {
     expect(tangentRecord.session).not.toBe(contextualRecord.session);
     expect(contextualRecord.session.abort).toHaveBeenCalledTimes(1);
     expect(contextualRecord.session.dispose).toHaveBeenCalledTimes(1);
-    expect(tangentRecord.seedMessages.map((message) => (message.content[0])?.text ?? "")).not.toContain(
+    expect(tangentRecord.seedMessages.map((message) => (Array.isArray(message.content) ? (message.content[0] as { text?: string } | undefined)?.text : undefined) ?? "")).not.toContain(
       "main session task",
     );
   });
@@ -1100,7 +1153,7 @@ describe("btw runtime behavior", () => {
     expect(harness.mainSessionInputs).toEqual(["continue the main task"]);
     expect(harness.baseCtx.isIdle()).toBe(false);
     expect(record.getIsStreaming()).toBe(true);
-    expect(findLatest(transcriptEntries(overlay), (entry: any) => entry.type === "tool-call")).toMatchObject({
+    expect(findLatest(transcriptEntries(overlay), (entry: BtwTranscriptEntry) => entry.type === "tool-call")).toMatchObject({
       toolName: "read",
       args: "package.json",
     });
@@ -1224,7 +1277,7 @@ describe("btw runtime behavior", () => {
     const overlay = harness.latestOverlayComponent();
     const entries = transcriptEntries(overlay);
 
-    expect(entries.map((entry: any) => entry.type)).toEqual([
+    expect(entries.map((entry: BtwTranscriptEntry) => entry.type)).toEqual([
       "turn-boundary",
       "user-message",
       "thinking",
@@ -1314,28 +1367,28 @@ describe("btw runtime behavior", () => {
 
     const overlay = harness.latestOverlayComponent();
     let entries = transcriptEntries(overlay);
-    expect(findLatest(entries, (entry: any) => entry.type === "thinking")).toMatchObject({
+    expect(findLatest(entries, (entry: BtwTranscriptEntry) => entry.type === "thinking")).toMatchObject({
       text: "Inspecting package.json",
       streaming: true,
     });
-    expect(findLatest(entries, (entry: any) => entry.type === "tool-call")).toMatchObject({
+    expect(findLatest(entries, (entry: BtwTranscriptEntry) => entry.type === "tool-call")).toMatchObject({
       toolName: "read",
       args: "package.json",
     });
-    expect(entries.some((entry: any) => entry.type === "tool-result")).toBe(false);
+    expect(entries.some((entry: BtwTranscriptEntry) => entry.type === "tool-result")).toBe(false);
 
     failing.release();
     await pendingCommand;
 
     entries = transcriptEntries(overlay);
-    expect(findLatest(entries, (entry: any) => entry.type === "tool-result")).toMatchObject({
+    expect(findLatest(entries, (entry: BtwTranscriptEntry) => entry.type === "tool-result")).toMatchObject({
       toolName: "read",
       content: '{"name":"pi-btw"}',
       truncated: false,
       isError: false,
       streaming: false,
     });
-    expect(findLatest(entries, (entry: any) => entry.type === "assistant-text")).toMatchObject({
+    expect(findLatest(entries, (entry: BtwTranscriptEntry) => entry.type === "assistant-text")).toMatchObject({
       text: "❌ Sub-session prompt exploded",
       streaming: false,
     });
@@ -1352,7 +1405,7 @@ describe("btw runtime behavior", () => {
     await flushAsyncWork();
 
     const overlay = harness.latestOverlayComponent();
-    expect(findLatest(transcriptEntries(overlay), (entry: any) => entry.type === "assistant-text")).toMatchObject({
+    expect(findLatest(transcriptEntries(overlay), (entry: BtwTranscriptEntry) => entry.type === "assistant-text")).toMatchObject({
       text: "Partial",
       streaming: true,
     });
@@ -1361,7 +1414,7 @@ describe("btw runtime behavior", () => {
     blocking.release();
     await pendingCommand;
 
-    expect(findLatest(transcriptEntries(overlay), (entry: any) => entry.type === "assistant-text")).toMatchObject({
+    expect(findLatest(transcriptEntries(overlay), (entry: BtwTranscriptEntry) => entry.type === "assistant-text")).toMatchObject({
       text: "Partial answer",
       streaming: false,
     });
@@ -1607,7 +1660,7 @@ describe("btw runtime behavior", () => {
     expect(transcriptEntries(overlay)).toEqual([]);
     expect(
       harness.entries.some(
-        (entry: any) => entry.type === "custom" && entry.customType === "btw-thread-reset",
+        (entry: BtwTranscriptEntry) => entry.type === "custom" && entry.customType === "btw-thread-reset",
       ),
     ).toBe(true);
 
@@ -1696,11 +1749,11 @@ describe("btw runtime behavior", () => {
     const harness = createHarness();
     promptStreamMock
       .mockImplementationOnce((_record: unknown, _text: string, context: StreamContext) => {
-        expect(context.messages.map((message) => (message.content[0] as any)?.text ?? "")).toContain("first question");
+        expect(context.messages.map((message) => message.content[0]?.text ?? "")).toContain("first question");
         return streamAnswer("First answer");
       })
       .mockImplementationOnce((_record: unknown, _text: string, context: StreamContext) => {
-        const texts = context.messages.map((message) => (message.content[0] as any)?.text ?? "");
+        const texts = context.messages.map((message) => message.content[0]?.text ?? "");
         expect(texts).not.toContain("first question");
         expect(texts).not.toContain("First answer");
         expect(texts).toContain("replacement question");
@@ -1762,12 +1815,12 @@ describe("btw runtime behavior", () => {
 
     const resets = getCustomEntries(harness.entries, "btw-thread-reset");
     expect(resets).toHaveLength(2);
-    expect(resets.map((entry) => (entry.data as any)?.mode)).toEqual(["tangent", "contextual"]);
+    expect(resets.map((entry) => (entry.data as { mode?: string } | undefined)?.mode)).toEqual(["tangent", "contextual"]);
 
     const streamCalls = promptStreamMock.mock.calls as Array<[unknown, string, StreamContext]>;
     expect(streamCalls.length).toBeGreaterThanOrEqual(2);
 
-    const callTexts = streamCalls.map((call) => call[2].messages.map((message) => (message.content[0] as any)?.text ?? ""));
+    const callTexts = streamCalls.map((call) => call[2].messages.map((message) => message.content[0]?.text ?? ""));
     const tangentTexts = callTexts.find((texts) => texts.at(-1) === "tangent start");
     expect(tangentTexts).toBeDefined();
     expect(tangentTexts).not.toContain("main session task");
@@ -1886,7 +1939,7 @@ describe("btw runtime behavior", () => {
       const transcript = transcriptText(overlay);
       expect(transcript).toContain("You  restored q");
       expect(transcript).toContain("restored a");
-      expect(overlay['modeText'].text).toContain("BTW tangent");
+      expect((overlay['modeText'] as { text: string }).text).toContain("BTW tangent");
     }
   });
 
@@ -2121,7 +2174,7 @@ describe("btw runtime behavior", () => {
     expect(transcript).not.toContain("First answer");
     expect(transcript).toContain("You  replacement question");
     expect(transcript).toContain("Replacement answer");
-    expect(overlay['modeText'].text).toContain("BTW");
+    expect((overlay['modeText'] as { text: string }).text).toContain("BTW");
   });
 
   it("in-modal /btw:tangent reuses command semantics by switching modes and dropping inherited main-session context", async () => {
@@ -2146,18 +2199,18 @@ describe("btw runtime behavior", () => {
 
     const streamCalls = promptStreamMock.mock.calls as Array<[unknown, string, StreamContext]>;
     const tangentCall = [...streamCalls].reverse().find((call) => {
-      const texts = call[2].messages.map((message) => (message.content[0] as any)?.text ?? "");
+      const texts = call[2].messages.map((message) => message.content[0]?.text ?? "");
       return texts.at(-1) === "tangent start";
     });
     expect(tangentCall).toBeDefined();
-    const tangentTexts = tangentCall![2].messages.map((message) => (message.content[0] as any)?.text ?? "");
+    const tangentTexts = tangentCall![2].messages.map((message) => message.content[0]?.text ?? "");
     expect(tangentTexts).not.toContain("main session task");
 
     const transcript = transcriptText(overlay);
     expect(transcript).toContain("You  tangent start");
     expect(transcript).toContain("default:tangent start");
     expect(transcript).not.toContain("You  contextual start");
-    expect(overlay['modeText'].text).toContain("BTW tangent");
+    expect((overlay['modeText'] as { text: string }).text).toContain("BTW tangent");
   });
 
   it("in-modal /btw:inject reuses command semantics by handing off to the main session and dismissing the overlay", async () => {
@@ -2200,7 +2253,7 @@ describe("btw runtime behavior", () => {
 
     expect(record.session.prompt).toHaveBeenLastCalledWith("/plan do something else", { source: "extension" });
     expect(record.promptCalls.at(-1)?.text).toBe("/plan do something else");
-    expect(((record.promptCalls.at(-1)?.context.messages.at(-1)?.content[0] as any)?.text) ?? "").toBe(
+    expect(record.promptCalls.at(-1)?.context.messages.at(-1)?.content[0]?.text ?? "").toBe(
       "/plan do something else",
     );
     expect(promptStreamMock.mock.calls).toHaveLength(2);

@@ -1,5 +1,6 @@
 import { describe, expect, it, vi } from "vitest";
 
+import type { ExtensionAPI, ToolDefinition } from "@mariozechner/pi-coding-agent";
 import createExtension, { type RunDialogFn } from "../src/index.js";
 import type { TParams } from "../src/schema.js";
 
@@ -9,14 +10,15 @@ import type { TParams } from "../src/schema.js";
  */
 function makeFakePi() {
 	// Any tool registered through this stub is stashed here for assertions.
-	let tool: any;
-	const registerTool = vi.fn((t: any) => {
+	let tool: ToolDefinition | undefined;
+	const registerTool = vi.fn((t: ToolDefinition) => {
 		tool = t;
 	});
 	return {
-		api: { registerTool } as unknown as Parameters<typeof createExtension>[0],
+		api: { registerTool } as unknown as ExtensionAPI,
 		registerTool,
-		get tool(): any {
+		get tool(): ToolDefinition {
+			if (!tool) throw new Error("No tool registered");
 			return tool;
 		},
 	};
@@ -65,7 +67,7 @@ describe("tool.execute() — non-interactive short-circuit", () => {
 		const result = await pi.tool.execute("tc-1", validParams, undefined, undefined, ctx);
 		expect(run).not.toHaveBeenCalled();
 		expect(result.content[0]?.text).toMatch(/UI not available/);
-		expect(result.details).toMatchObject({ cancelled: true, error: expect.stringMatching(/UI not available/) });
+		expect(result.details).toMatchObject({ cancelled: true, error: expect.stringMatching(/UI not available/) as unknown });
 	});
 });
 
@@ -156,7 +158,7 @@ describe("tool.renderCall / tool.renderResult", () => {
 	it("renderCall produces a Text component describing the questions", () => {
 		const pi = makeFakePi();
 		createExtension(pi.api);
-		const comp = pi.tool.renderCall(validParams, makeTheme(), {} as any);
+		const comp = pi.tool.renderCall!(validParams, makeTheme(), {} as never);
 		expect(typeof comp.render).toBe("function");
 		const out = comp.render(80)[0] ?? "";
 		expect(out).toContain("ask_user_question");
@@ -167,11 +169,11 @@ describe("tool.renderCall / tool.renderResult", () => {
 		const pi = makeFakePi();
 		createExtension(pi.api);
 		const theme = makeTheme();
-		const comp = pi.tool.renderResult(
+		const comp = pi.tool.renderResult!(
 			{ content: [{ type: "text", text: "ok" }], details: { answers: [], cancelled: false } },
-			{} as any,
+			{ expanded: false, isPartial: false },
 			theme,
-			{} as any,
+			{} as never,
 		);
 		expect((comp.render(80)[0] ?? "").trimEnd()).toBe("ok");
 	});

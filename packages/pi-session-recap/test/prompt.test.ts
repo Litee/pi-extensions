@@ -64,7 +64,7 @@ function makeFakePi(): StubPi {
 	>();
 	return {
 		on: vi.fn(),
-		registerCommand: vi.fn((name: string, def) => {
+		registerCommand: vi.fn((name: string, def: { description: string; handler: (args: string, ctx: unknown) => unknown }) => {
 			commands.set(name, def);
 		}),
 		registerFlag: vi.fn(),

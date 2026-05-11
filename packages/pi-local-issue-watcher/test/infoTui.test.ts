@@ -28,6 +28,8 @@
 
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
+import type { ExtensionCommandContext } from "@mariozechner/pi-coding-agent";
+
 // ---------------------------------------------------------------------------
 // pi-tui mock
 // ---------------------------------------------------------------------------
@@ -224,8 +226,8 @@ async function setupPicker(rows: InfoRow[]): Promise<Harness> {
 	const done = vi.fn();
 	let handle: FakeComponent | undefined;
 
-	 
-	const ctx: any = {
+	// partial ctx stub; factory arg typed as any by pi-tui's custom() signature
+	const ctx = {
 		ui: {
 			theme: {
 				fg: (_c: string, t: string) => t,
@@ -234,11 +236,11 @@ async function setupPicker(rows: InfoRow[]): Promise<Harness> {
 			// Our stub does NOT wait for `done` — resolving eagerly lets
 			// the picker's outer `await ctx.ui.custom(...)` complete so
 			// tests can read `handle` back synchronously after setup.
-			custom: vi.fn(async (factory: any) => {
+			custom: vi.fn(async (factory: (tui: unknown, theme: unknown, kb: unknown, done: unknown) => Promise<FakeComponent>) => {
 				handle = await factory(tui, {}, {}, done);
 			}),
 		},
-	};
+	} as unknown as ExtensionCommandContext;
 
 	const picker = makeInfoTuiPicker(ctx);
 	await picker({ rows, summary: "1 open, 1 total" });
