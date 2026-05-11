@@ -6,7 +6,7 @@ Personal collection of extensions for Pi Agent.
 
 | Package | Description |
 |---------|-------------|
-| [`pi-archon-workflow-watcher`](packages/pi-archon-workflow-watcher) | Polls `archon workflow status` on a 15-second interval and injects state-change notifications into chat as `pi-archon-workflow-watcher` custom messages. Replaces sleep-based LLM polling for interactive workflows. |
+| [`pi-archon-workflow-watcher`](packages/pi-archon-workflow-watcher) | Polls `archon workflow status` on a 15-second interval and injects state-change notifications into chat as `pi-archon-workflow-watcher` custom messages. Replaces manual sleep-based LLM polling for interactive workflows. |
 | [`pi-ask-user-question`](packages/pi-ask-user-question) | Registers an `ask_user_question` tool so the LLM can open a tabbed TUI dialog for structured clarifying questions (single/multi-select, optional previews, free-text fallback). |
 | [`pi-aws-glue-watcher`](packages/pi-aws-glue-watcher) | Opt-in watcher for AWS Glue job and workflow runs. Enable with `/glue-watcher enable` to register the `glue_watcher` tool and pin a status line; disable with `/glue-watcher disable`. Injects state-change notifications into chat as `glue-watcher` custom messages. |
 | [`pi-btw`](packages/pi-btw) | Copy of [`dbachelder/pi-btw`](https://github.com/dbachelder/pi-btw) (MIT, © Dan Bachelder): adds a `/btw` side-conversation channel that opens a real pi sub-session with full tool access in a dedicated overlay, so you can ask questions or explore ideas in parallel without polluting the main thread. Supports `/btw:tangent`, `/btw:inject`, `/btw:summarize`, and BTW-only model/thinking overrides. |
@@ -29,20 +29,6 @@ Workspace packages that are **not** pi extensions — they expose no `registerEx
 | Package | Description |
 |---------|-------------|
 | [`pi-watcher-core`](packages/pi-watcher-core) | Shared library consumed by the `*-watcher` extensions. Provides back-off-aware `PollScheduler`, session-log persistence with malformed-entry tolerance, a `makeWatcherErrors` taxonomy factory, a sanitizing error classifier, an aggregated-error formatter, and TUI status-line / message-renderer helpers. Depend on it via the workspace: `"pi-watcher-core": "*"`. Do **not** list this package in a pi install command — it has no extension entry point. |
-
-## Archon Workflows
-
-Project-local [Archon](https://archon.diy) workflows live in `.archon/workflows/`. Run them with:
-
-```bash
-archon workflow run <name> --branch <branch> "<task description>"
-```
-
-| Workflow | Description |
-|----------|-------------|
-| [`pi-extension-feature`](.archon/workflows/pi-extension-feature.yaml) | End-to-end feature/fix workflow: interactive formulation → autonomous plan-and-review → TDD implementation (`npm run check` gate) → adversarial code review → human approval → rebase-and-commit → merge handoff. |
-
-Sandbox: uses [`@anthropic-ai/sandbox-runtime`](https://github.com/anthropic-experimental/sandbox-runtime) via archon's workflow-level `sandbox:` field — filesystem write access is restricted to the archon workspace; sensitive home paths (`.ssh`, `.aws`, `.gnupg`) are read-denied.
 
 ## Development
 
