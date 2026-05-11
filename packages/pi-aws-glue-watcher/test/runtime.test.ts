@@ -158,7 +158,7 @@ describe("pollOnce — error classification", () => {
 		} as unknown as GlueClient;
 	}
 
-	it("appendEntry does not leak raw auth error details", async () => {
+	it("appendEntry receives raw error for diagnostics; sendMessage gets sanitized string", async () => {
 		const pi = makePi();
 		const rt = makeRuntime(pi, makeErrorClient(
 			Object.assign(new Error("session token expired — internal detail"), { name: "CredentialsProviderError" }),
@@ -167,9 +167,11 @@ describe("pollOnce — error classification", () => {
 		const watch = makeJobWatch({ state: "RUNNING", errorMessage: "" });
 		rt.watches[watch.watchId] = watch;
 		await pollOnce(rt);
+		// appendEntry gets the raw message (useful for internal diagnostics)
 		const entryArg = (pi.appendEntry as ReturnType<typeof vi.fn>).mock.calls[0]![1] as { message: string };
-		expect(entryArg.message).not.toContain("internal detail");
-		expect(entryArg.message).toContain("authentication");
+		expect(entryArg.message).toContain("internal detail");
+		// sendMessage (user-visible) is NOT called yet (threshold not reached)
+		expect(pi.sendMessage).not.toHaveBeenCalled();
 	});
 
 	it("sendMessage at threshold uses sanitized message, not raw error", async () => {

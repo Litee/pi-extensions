@@ -223,7 +223,7 @@ export async function pollOnce(rt: Runtime): Promise<void> {
 			if (classified.shouldBackoff) {
 				rt.scheduler.noteBackoff();
 			}
-			rt.pi.appendEntry("glue-watcher:poll-error", { type: watch.type, name: watch.name, message: classified.userMessage });
+			rt.pi.appendEntry("glue-watcher:poll-error", { type: watch.type, name: watch.name, message: (err as Error)?.message ?? String(err) });
 			if (watch.consecutiveErrors === POLL_ERROR_THRESHOLD) {
 				rt.pi.sendMessage(
 					{
