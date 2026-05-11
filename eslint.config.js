@@ -83,7 +83,7 @@ export default tseslint.config(
 			// log, info, warn, error, debug, trace, dir, table, group, ...
 			"no-console": ["error"],
 
-			// ── Deferred: any-flood (pi packages lack type declarations) ───────────────
+			// ── Deferred: any-flood — enabled for src/, off for test/ (Wave 4b) ─────────
 			"@typescript-eslint/no-unsafe-member-access":        "off", //  356 violations
 			"@typescript-eslint/no-unsafe-assignment":           "off", //  178 violations
 			"@typescript-eslint/no-unsafe-call":                 "off", //  158 violations
@@ -101,6 +101,22 @@ export default tseslint.config(
 				caughtErrorsIgnorePattern: "^_",
 			}],
 
+		},
+	},
+
+	// ── Wave 4a: any-flood rules enabled for src/ only ──────────────────────────
+	// Test stubs legitimately need `any` for partial mocks (Wave 4b).
+	// The private-field patch in pi-local-issue-watcher/src/infoTui.ts is the one
+	// intentional exception — it accesses SelectList internals with no public API.
+	{
+		files: ["packages/*/src/**/*.ts"],
+		rules: {
+			"@typescript-eslint/no-explicit-any":        "error",
+			"@typescript-eslint/no-unsafe-member-access": "error",
+			"@typescript-eslint/no-unsafe-assignment":    "error",
+			"@typescript-eslint/no-unsafe-call":          "error",
+			"@typescript-eslint/no-unsafe-argument":      "error",
+			"@typescript-eslint/no-unsafe-return":        "error",
 		},
 	},
 );

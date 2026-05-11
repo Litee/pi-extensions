@@ -5,7 +5,7 @@
  * Any upstream fixes should be pulled via a diff against the link above.
  */
 
-import type { ExtensionAPI } from "@mariozechner/pi-coding-agent";
+import type { ExtensionAPI, ExtensionContext } from "@mariozechner/pi-coding-agent";
 import { Text } from "@mariozechner/pi-tui";
 import { CronScheduler } from "./scheduler.js";
 import { loadSettings, type ScheduleSettings, saveSettings } from "./settings.js";
@@ -77,7 +77,7 @@ export default function (pi: ExtensionAPI) {
 
   // --- Session initialization ---
 
-  const initializeSession = (ctx: any) => {
+  const initializeSession = (ctx: ExtensionContext) => {
     // Idempotent: tear down any prior instance before creating a new one.
     // Without this, every `session_start` (fires on reload/resume/fork too, not
     // only on fresh startup) leaks a live croner timer into the event loop,
@@ -97,7 +97,7 @@ export default function (pi: ExtensionAPI) {
     }
   };
 
-  const cleanupSession = (ctx: any) => {
+  const cleanupSession = (ctx: ExtensionContext) => {
     // Stop scheduler
     if (scheduler) {
       scheduler.stop();
@@ -110,7 +110,7 @@ export default function (pi: ExtensionAPI) {
     }
   };
 
-  const autoCleanupDisabledJobs = (ctx: any) => {
+  const autoCleanupDisabledJobs = (ctx: ExtensionContext) => {
     // Only sweep our own (or unbound) disabled jobs — never another session's.
     if (!storage) return;
     const mySessionId = ctx.sessionManager.getSessionId();
@@ -163,7 +163,7 @@ export default function (pi: ExtensionAPI) {
                 theme,
                 () => tui.requestRender(),
                 () => done(undefined),
-                (s: string) => (theme as any).bg("customMessageBg", s),
+                (s: string) => theme.bg("customMessageBg", s),
               ),
             {
               overlay: true,

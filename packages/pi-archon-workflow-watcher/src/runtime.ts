@@ -166,8 +166,8 @@ async function handleApprovalDialog(rt: Runtime, run: ArchonRun): Promise<void> 
 	await new Promise<void>((resolve) => {
 		const args =
 			result.decision === "approve"
-				? ["workflow", "approve", run.id!, "approved"]
-				: ["workflow", "reject", run.id!, result.feedback];
+				? ["workflow", "approve", run.id, "approved"]
+				: ["workflow", "reject", run.id, result.feedback];
 		execFile("archon", args, () => resolve());
 	});
 }

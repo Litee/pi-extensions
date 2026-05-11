@@ -30,7 +30,7 @@ import {
   type ExtensionContext,
   type ResourceLoader,
 } from "@mariozechner/pi-coding-agent";
-import { type AssistantMessage, type Message, type ThinkingLevel as AiThinkingLevel, type UserMessage } from "@mariozechner/pi-ai";
+import { type AssistantMessage, type Api, type Message, type Model, type ThinkingLevel as AiThinkingLevel, type UserMessage } from "@mariozechner/pi-ai";
 import {
   Box,
   Container,
@@ -330,7 +330,7 @@ function buildBtwSeedState(
         content: [{ type: "text", text: BTW_CONTINUE_THREAD_ASSISTANT_TEXT }],
         provider: sessionModel?.provider ?? "unknown",
         model: sessionModel?.id ?? "unknown",
-        api: sessionModel?.api ?? "openai-responses",
+        api: (sessionModel?.api as Api | undefined) ?? "openai-responses",
         usage: {
           input: 0,
           output: 0,
@@ -356,7 +356,7 @@ function buildBtwSeedState(
           content: [{ type: "text", text: entry.answer }],
           provider: entry.provider,
           model: entry.model,
-          api: entry.api || sessionModel?.api || ctx.model?.api || "openai-responses",
+          api: entry.api || (sessionModel?.api as Api | undefined) || (ctx.model?.api as Api | undefined) || "openai-responses",
           usage:
             entry.usage ?? {
               input: 0,
@@ -1478,7 +1478,7 @@ export default function (pi: ExtensionAPI) {
     notifyOnFallback = false,
   ): Promise<ResolvedBtwModel> {
     if (btwModelOverride) {
-      const auth = await ctx.modelRegistry.getApiKeyAndHeaders(btwModelOverride);
+      const auth = await ctx.modelRegistry.getApiKeyAndHeaders(btwModelOverride as Model<Api>);
       if (auth.ok && auth.apiKey) {
         return {
           model: btwModelOverride,
@@ -2032,7 +2032,7 @@ export default function (pi: ExtensionAPI) {
 
       const normalizedDetails: BtwDetails = {
         ...details,
-        api: details.api || ctx.model?.api || "openai-responses",
+        api: details.api || (ctx.model?.api as Api | undefined) || "openai-responses",
       };
 
       pendingThread.push(normalizedDetails);
@@ -2058,7 +2058,7 @@ export default function (pi: ExtensionAPI) {
       return;
     }
 
-    const auth = await ctx.modelRegistry.getApiKeyAndHeaders(model);
+    const auth = await ctx.modelRegistry.getApiKeyAndHeaders(model as Model<Api>);
     if (!auth.ok || !auth.apiKey) {
       const message = auth.ok ? `No credentials available for ${model.provider}/${model.id}.` : auth.error;
       setOverlayStatus(message, ctx);
@@ -2110,10 +2110,9 @@ export default function (pi: ExtensionAPI) {
         answer,
         provider: model.provider,
         model: model.id,
-        api: model.api,
+        api: model.api as Api,
         thinkingLevel,
         timestamp: Date.now(),
-        usage: response.usage,
       };
 
       pendingThread.push(details);
@@ -2165,7 +2164,7 @@ export default function (pi: ExtensionAPI) {
       throw new Error(settings.fallbackReason || "No active model selected.");
     }
 
-    const auth = await ctx.modelRegistry.getApiKeyAndHeaders(model);
+    const auth = await ctx.modelRegistry.getApiKeyAndHeaders(model as Model<Api>);
     if (!auth.ok || !auth.apiKey) {
       throw new Error(auth.ok ? `No credentials available for ${model.provider}/${model.id}.` : auth.error);
     }

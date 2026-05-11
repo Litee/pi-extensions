@@ -193,14 +193,17 @@ export function makeInfoTuiPicker(ctx: CommandCtx): InfoPicker {
 			// site that patches the upstream component's private fields
 			// (`filteredItems` / `selectedIndex`) which `SelectList.render()`
 			// reads on every frame.
-			 
+			// eslint-disable-next-line @typescript-eslint/no-explicit-any, @typescript-eslint/no-unsafe-assignment -- SelectList internals: no public filter API in @mariozechner/pi-tui
 			const slInternal = selectList as any;
+			// eslint-disable-next-line @typescript-eslint/no-unsafe-member-access
 			slInternal.setFilter = (filter: string): void => {
+				// eslint-disable-next-line @typescript-eslint/no-unsafe-member-access
 				slInternal.filteredItems = filterItemsBySubstring(
 					items,
 					filter,
 					(it) => it.label,
 				);
+				// eslint-disable-next-line @typescript-eslint/no-unsafe-member-access
 				slInternal.selectedIndex = 0;
 			};
 			listContainer.addChild(selectList);

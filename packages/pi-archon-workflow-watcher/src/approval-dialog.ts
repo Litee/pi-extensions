@@ -22,7 +22,7 @@
  * Input field. Enter confirms the feedback; Escape returns to the list.
  */
 
-import { Container, Input, SelectList, Spacer, Text, type SelectItem, matchesKey, Key, wrapTextWithAnsi, visibleWidth, truncateToWidth } from "@mariozechner/pi-tui";
+import { Input, SelectList, type SelectItem, matchesKey, Key, wrapTextWithAnsi, visibleWidth, truncateToWidth } from "@mariozechner/pi-tui";
 
 import type { ApprovalDialogParams, ApprovalResult } from "./runtime.js";
 
@@ -48,8 +48,8 @@ class ScrollableText {
 	private lines: string[] = [];
 	private offset = 0;
 	private visibleLines: number;
-	private cachedWidth?: number;
-	private cachedWrapped?: string[];
+	private cachedWidth: number | undefined;
+	private cachedWrapped: string[] | undefined;
 
 	constructor(
 		private readonly rawText: string,
@@ -141,7 +141,7 @@ export function createApprovalDialog(
 			done({ decision: "approve" });
 		} else {
 			phase = "reject-input";
-			rejectInput.setText("");
+			rejectInput.setValue("");
 			invalidate();
 			tui.requestRender();
 		}
@@ -242,7 +242,7 @@ export function createApprovalDialog(
 					return;
 				}
 				if (matchesKey(data, Key.enter)) {
-					const feedback = rejectInput.getText().trim();
+					const feedback = rejectInput.getValue().trim();
 					done({ decision: "reject", feedback: feedback || "(no feedback provided)" });
 					return;
 				}

@@ -14,6 +14,7 @@
  */
 
 import type { Component } from "@mariozechner/pi-tui";
+import type { Theme } from "@mariozechner/pi-coding-agent";
 import { matchesKey, visibleWidth } from "@mariozechner/pi-tui";
 import { CronScheduler } from "../scheduler.js";
 import type { CronStorage } from "../storage.js";
@@ -41,7 +42,7 @@ export class JobsView implements Component {
     private storage: CronStorage,
     private scheduler: CronScheduler,
     private mySessionId: string | undefined,
-    private theme: any,
+    private theme: Theme,
     _requestRender: () => void,
     private done: () => void,
     private bgFn?: (s: string) => string,

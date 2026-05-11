@@ -13,7 +13,7 @@
  * No subprocess, no extension recursion (noExtensions: true), no persistence.
  */
 
-import type { Model } from "@mariozechner/pi-ai";
+import type { Api, Model } from "@mariozechner/pi-ai";
 import {
   type AgentSession,
   type AgentSessionEvent,
@@ -34,7 +34,7 @@ export type SubagentResult =
 export function resolveModel(
   registry: ExtensionContext["modelRegistry"],
   modelStr: string,
-): Model<any> | undefined {
+): Model<Api> | undefined {
   let fuzzyNeedle = modelStr;
   const slash = modelStr.indexOf("/");
   if (slash !== -1) {
@@ -59,17 +59,12 @@ export function resolveModel(
 
 export function getLastAssistantText(session: AgentSession): string {
   for (let i = session.messages.length - 1; i >= 0; i--) {
-     
-    const msg = session.messages[i] as any;
+    const msg = session.messages[i];
     if (!msg || msg.role !== "assistant") continue;
     const parts: string[] = [];
-    if (typeof msg.content === "string") {
-      parts.push(msg.content as string);
-    } else if (Array.isArray(msg.content)) {
-      for (const c of msg.content as unknown[]) {
-        if (c && typeof c === "object" && (c as any).type === "text" && (c as any).text) {
-          parts.push((c as any).text as string);
-        }
+    for (const c of msg.content) {
+      if (c.type === "text") {
+        parts.push(c.text);
       }
     }
     const text = parts.join("").trim();

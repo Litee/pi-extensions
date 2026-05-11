@@ -487,11 +487,10 @@ describe("pollOnce — approval gate dialog routing", () => {
 		rt.snapshot = { r1: { id: "r1", status: "running" } };
 
 		const dialogResults: unknown[] = [];
-		let approvedWith: string[] | null = null;
 		rt.ui = {
-			showApprovalDialog: async (params) => {
+			showApprovalDialog: (params) => {
 				dialogResults.push(params);
-				return { decision: "approve" as const };
+				return Promise.resolve({ decision: "approve" as const });
 			},
 		};
 
@@ -523,9 +522,9 @@ describe("pollOnce — approval gate dialog routing", () => {
 
 		let dialogCalled = false;
 		rt.ui = {
-			showApprovalDialog: async () => {
+			showApprovalDialog: () => {
 				dialogCalled = true;
-				return null;
+				return Promise.resolve(null);
 			},
 		};
 
@@ -534,7 +533,7 @@ describe("pollOnce — approval gate dialog routing", () => {
 		expect(dialogCalled).toBe(false);
 		// Chat message IS sent for interactive_loop pauses (LLM relays them).
 		expect(pi.sendMessage).toHaveBeenCalledOnce();
-		const msg = pi.sendMessage.mock.calls[0];
+		const msg = pi.sendMessage.mock.calls[0]!;
 		expect(msg[1]).toMatchObject({ triggerTurn: true });
 	});
 
@@ -554,14 +553,14 @@ describe("pollOnce — approval gate dialog routing", () => {
 			r1: { id: "r1", status: "running" },
 			r2: { id: "r2", status: "running" },
 		};
-		rt.ui = { showApprovalDialog: async () => ({ decision: "approve" as const }) };
+		rt.ui = { showApprovalDialog: () => Promise.resolve({ decision: "approve" as const }) };
 
 		await pollOnce(rt);
 
 		// Dialog for r1
 		// Chat for r2 (completed → triggerTurn)
 		expect(pi.sendMessage).toHaveBeenCalledOnce();
-		const content = pi.sendMessage.mock.calls[0][0].content as string;
+		const content = (pi.sendMessage.mock.calls[0]![0] as { content: string }).content;
 		expect(content).toContain("wf2");
 		expect(content).not.toContain("commit-gate");
 	});

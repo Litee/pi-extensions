@@ -17,6 +17,8 @@
  */
 
 import { getMarkdownTheme } from "@mariozechner/pi-coding-agent";
+import type { ExtensionContext, Theme } from "@mariozechner/pi-coding-agent";
+import type { KeybindingsManager, TUI } from "@mariozechner/pi-tui";
 import {
 	Editor,
 	type EditorTheme,
@@ -59,8 +61,8 @@ const keyProbe: KeyProbe = {
 	},
 };
 
-export function runDialog(ctx: any, questions: TQuestion[]): Promise<Result> {
-	return ctx.ui.custom((tui: any, theme: any, _kb: any, done: (v: Result) => void) => {
+export function runDialog(ctx: ExtensionContext, questions: TQuestion[]): Promise<Result> {
+	return ctx.ui.custom((tui: TUI, theme: Theme, _kb: KeybindingsManager, done: (v: Result) => void) => {
 		const ctrl = new DialogController(questions);
 
 		const editorTheme: EditorTheme = {
@@ -93,7 +95,7 @@ export function runDialog(ctx: any, questions: TQuestion[]): Promise<Result> {
 			return m;
 		};
 
-		const panelTheme: PanelTheme = theme;
+		const panelTheme: PanelTheme = theme as unknown as PanelTheme;
 		const layout: LayoutProbe = { truncateToWidth, visibleWidth };
 
 		function openEditorForNote(): void {

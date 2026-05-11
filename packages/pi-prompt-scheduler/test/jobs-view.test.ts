@@ -11,6 +11,7 @@ import { join } from "node:path";
 
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
+import type { Theme } from "@mariozechner/pi-coding-agent";
 import type { CronScheduler } from "../src/scheduler.js";
 import { CronStorage } from "../src/storage.js";
 import type { CronJob } from "../src/types.js";
@@ -26,7 +27,7 @@ const theme = {
 	fg: (_cat: string, s: string) => s,
 	bold: (s: string) => s,
 	bg: (_cat: string, s: string) => s,
-};
+} as unknown as Theme;
 
 function stripAnsi(s: string): string {
 	// Defensive: with the stub theme above no ANSI leaks in, but keep this

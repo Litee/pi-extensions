@@ -12,9 +12,11 @@
  * Auto-refreshes every 30 seconds to update relative times
  */
 
-import type { ExtensionAPI } from "@mariozechner/pi-coding-agent";
+import type { ExtensionAPI, ExtensionContext } from "@mariozechner/pi-coding-agent";
 import { DynamicBorder } from "@mariozechner/pi-coding-agent";
+import type { Theme } from "@mariozechner/pi-coding-agent";
 import { Container, Spacer, Text } from "@mariozechner/pi-tui";
+import type { TUI } from "@mariozechner/pi-tui";
 import { CronScheduler, formatISOShort, humanizeCron } from "../scheduler.js";
 import type { CronStorage } from "../storage.js";
 
@@ -53,7 +55,7 @@ function formatRelativeTime(date: Date | string): string {
  */
 export class CronWidget {
   private refreshInterval: NodeJS.Timeout | undefined;
-  private ctx?: any;
+  private ctx?: ExtensionContext;
   private unsubscribe: () => void;
 
   constructor(
@@ -75,7 +77,7 @@ export class CronWidget {
       .filter((j) => CronScheduler.isLoadedFor(j, this.sessionId));
   }
 
-  show(ctx: any): void {
+  show(ctx: ExtensionContext): void {
     this.ctx = ctx;
 
     if (!this.isVisible() || this.loadedJobs().length === 0) {
@@ -85,7 +87,7 @@ export class CronWidget {
 
     ctx.ui.setWidget(
       WIDGET_ID,
-      (_tui: any, theme: any) => ({
+      (_tui: TUI, theme: Theme) => ({
         render: (width: number) => this.renderWidget(width, theme),
         invalidate: () => {},
       }),
@@ -99,7 +101,7 @@ export class CronWidget {
     }
   }
 
-  hide(ctx: any): void {
+  hide(ctx: ExtensionContext): void {
     ctx.ui.setWidget(WIDGET_ID, undefined);
     if (this.refreshInterval) {
       clearInterval(this.refreshInterval);
@@ -116,7 +118,7 @@ export class CronWidget {
   /**
    * Render the widget content
    */
-  private renderWidget(width: number, theme: any): string[] {
+  private renderWidget(width: number, theme: Theme): string[] {
     const jobs = this.loadedJobs();
 
     // Deduplicate jobs by ID (safeguard against rendering issues)

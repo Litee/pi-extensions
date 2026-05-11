@@ -86,7 +86,7 @@ export function makeTuiPicker(
 				render: (w: number) => container.render(w),
 				invalidate: () => container.invalidate(),
 				handleInput: (data: string) => {
-					 
+					// eslint-disable-next-line @typescript-eslint/no-explicit-any, @typescript-eslint/no-unsafe-member-access, @typescript-eslint/no-unsafe-call -- SettingsList internals: no public handleInput in @mariozechner/pi-tui
 					(settingsList as any).handleInput?.(data);
 					tui.requestRender();
 				},

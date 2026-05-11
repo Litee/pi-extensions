@@ -12,7 +12,7 @@
  */
 
 import type { ThinkingLevel } from "@mariozechner/pi-agent-core";
-import type { Model } from "@mariozechner/pi-ai";
+import type { Api, Model } from "@mariozechner/pi-ai";
 import type { ExtensionAPI, ExtensionContext } from "@mariozechner/pi-coding-agent";
 import { Key } from "@mariozechner/pi-tui";
 import {
@@ -49,7 +49,7 @@ export default function planModeExtension(pi: ExtensionAPI): void {
 	//      session_start skips snapshot population entirely.
 	//   3. Plan mode was resumed from a new-format entry, but the recorded model is
 	//      no longer available (the `if (found)` guard left modelSnapshot unset).
-	let modelSnapshot: Model<any> | undefined;
+	let modelSnapshot: Model<Api> | undefined;
 	let thinkingLevelSnapshot: ThinkingLevel | undefined;
 
 	pi.registerFlag("plan", {
