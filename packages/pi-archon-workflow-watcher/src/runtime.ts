@@ -6,6 +6,9 @@
  */
 
 import { execFile } from "node:child_process";
+import { existsSync, readdirSync } from "node:fs";
+import { homedir } from "node:os";
+import { join } from "node:path";
 import type { ExtensionAPI } from "@mariozechner/pi-coding-agent";
 import { PollScheduler } from "pi-watcher-core/poll-scheduler";
 
@@ -69,7 +72,14 @@ export interface ApprovalDialogParams {
 	runId: string;
 	workflowName: string;
 	nodeId: string;
+	/** Full gate message text shown as scrollable context. */
 	message: string;
+	/** Absolute path to ~/.archon/.../artifacts/runs/<id>/ */
+	artifactsDir?: string;
+	/** Absolute path to the file whose content to display prominently. */
+	contentFile?: string;
+	/** Label shown above the content section (e.g. "plan.md"). */
+	contentLabel?: string;
 }
 
 export type ApprovalResult =
@@ -153,14 +163,69 @@ export function refreshStatus(rt: Runtime): void {
  * Fires `archon workflow approve/reject` based on the human's decision.
  * Called fire-and-forget from pollOnce.
  */
+/**
+ * Search ~/.archon/workspaces across all owner directories for a
+ * artifacts/runs/<runId> directory. Returns the first match found, or
+ * undefined. The `home` parameter is injectable for tests.
+ */
+export function findArtifactsDir(runId: string, home = homedir()): string | undefined {
+	const workspacesDir = join(home, ".archon", "workspaces");
+	try {
+		for (const owner of readdirSync(workspacesDir, { withFileTypes: true })) {
+			if (!owner.isDirectory()) continue;
+			const ownerPath = join(workspacesDir, owner.name);
+			for (const repo of readdirSync(ownerPath, { withFileTypes: true })) {
+				if (!repo.isDirectory()) continue;
+				const candidate = join(ownerPath, repo.name, "artifacts", "runs", runId);
+				if (existsSync(candidate)) return candidate;
+			}
+		}
+	} catch {
+		// workspacesDir doesn't exist or isn't readable
+	}
+	return undefined;
+}
+
 async function handleApprovalDialog(rt: Runtime, run: ArchonRun): Promise<void> {
 	if (!run.id || !rt.ui?.showApprovalDialog) return;
-	const result = await rt.ui.showApprovalDialog({
+
+	const artifactsDir = findArtifactsDir(run.id);
+	let contentFile: string | undefined;
+	let contentLabel: string | undefined;
+
+	if (artifactsDir) {
+		const nodeId = run.approvalNodeId ?? "";
+		if (nodeId === "human-plan-review" || nodeId === "plan-gate") {
+			const candidate = join(artifactsDir, "plan.md");
+			if (existsSync(candidate)) {
+				contentFile = candidate;
+				contentLabel = "plan.md";
+			}
+		} else if (nodeId === "human-commit-review" || nodeId === "commit-gate") {
+			const candidate = join(artifactsDir, "commit-message.txt");
+			if (existsSync(candidate)) {
+				contentFile = candidate;
+				contentLabel = "commit-message.txt";
+			}
+		}
+	}
+
+	// Open plan/commit-message in a cmux markdown panel for full-screen reading.
+	if (contentFile && existsSync(contentFile) && contentFile.endsWith(".md")) {
+		execFile("cmux", ["markdown", "open", contentFile], () => { /* ignore if cmux absent */ });
+	}
+
+	const params: ApprovalDialogParams = {
 		runId: run.id,
 		workflowName: run.workflowName ?? run.id,
 		nodeId: run.approvalNodeId ?? "approval",
 		message: run.approvalMessage ?? "",
-	});
+		...(artifactsDir !== undefined && { artifactsDir }),
+		...(contentFile !== undefined && { contentFile }),
+		...(contentLabel !== undefined && { contentLabel }),
+	};
+
+	const result = await rt.ui.showApprovalDialog(params);
 	if (!result) return; // dismissed without action
 
 	await new Promise<void>((resolve) => {
