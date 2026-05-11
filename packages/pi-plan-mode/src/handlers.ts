@@ -52,7 +52,7 @@ export function shouldBlockBashInPlan(
  *   1. Custom messages authored by `buildPlanModeContextMessage` — identified
  *      by `customType === PLAN_MODE_CONTEXT_CUSTOM_TYPE`.
  *   2. User messages whose content carries the `[PLAN MODE ACTIVE]` marker
- *      (which users may have injected in prior turns).
+ *      injected by `buildPlanModeContextMessage` via the `before_agent_start` handler.
  *
  * Non-user, non-plan-mode-context messages always pass through.
  *

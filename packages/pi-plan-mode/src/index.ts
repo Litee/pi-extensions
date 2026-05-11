@@ -8,7 +8,7 @@
  * - /plan command, Ctrl+Alt+P, or Shift+Tab to toggle
  * - Bash restricted to allowlisted read-only commands
  * - Switches to model/thinking-level from ~/.pi/agent/pi-plan-mode.json while active;
- *   restores the previous model and thinking level when disabled.
+ *   restores the previous model, thinking level, and tool set when disabled.
  */
 
 import type { ThinkingLevel } from "@mariozechner/pi-agent-core";
@@ -42,8 +42,13 @@ export default function planModeExtension(pi: ExtensionAPI): void {
 	const toolSnapshot = new ToolSnapshot();
 
 	// Snapshots of model and thinking level captured when plan mode is enabled.
-	// Undefined means either plan mode was never enabled in this session chain,
-	// or the persisted snapshot pointed at a model that is no longer available.
+	// Undefined means one of three cases:
+	//   1. Plan mode was never enabled in this session chain.
+	//   2. Plan mode was resumed from a legacy-format entry — the old format never
+	//      stored snapshot fields, so the `picked.source === "new"` guard in
+	//      session_start skips snapshot population entirely.
+	//   3. Plan mode was resumed from a new-format entry, but the recorded model is
+	//      no longer available (the `if (found)` guard left modelSnapshot unset).
 	let modelSnapshot: Model<any> | undefined;
 	let thinkingLevelSnapshot: ThinkingLevel | undefined;
 
@@ -114,7 +119,7 @@ export default function planModeExtension(pi: ExtensionAPI): void {
 			);
 		}
 
-		// Restore model if we have a snapshot (skipped for session-resumed plan mode).
+		// Only run the settings-file workaround when there is something to restore.
 		// Workaround for pi-coding-agent setModel/setThinkingLevel persisting to
 		// ~/.pi/agent/settings.json. Remove once upstream adds a { persist: false }
 		// option. See skill-issue pi-plan-mode#0002.
