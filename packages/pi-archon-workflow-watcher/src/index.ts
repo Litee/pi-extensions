@@ -79,7 +79,7 @@ export function createExtensionWithClient(
 					return uiCtx.custom!(
 						(tui: { requestRender(): void }, theme: Parameters<typeof createApprovalDialog>[3], _kb: unknown, done: (r: ApprovalResult) => void) =>
 							createApprovalDialog(params, done, tui, theme),
-						{ overlay: true, overlayOptions: { width: "70%", maxHeight: "80%", anchor: "center" } },
+						{ overlay: true, overlayOptions: { width: "90%", maxHeight: "80%", anchor: "center" } },
 					) as Promise<ApprovalResult>;
 				};
 			}
