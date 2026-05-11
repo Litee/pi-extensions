@@ -149,6 +149,7 @@ nodes:
   - id: plan-and-review
     depends_on: [formulate]
     idle_timeout: 900000
+    maxBudgetUsd: 1.00
     loop:
       max_iterations: 6
       fresh_context: true
@@ -352,6 +353,7 @@ nodes:
   - id: implement
     depends_on: [verify-test-fails]
     idle_timeout: 900000
+    maxBudgetUsd: 2.00
     loop:
       max_iterations: 8
       fresh_context: false
@@ -367,6 +369,15 @@ nodes:
         `npm run check` runs `tsc -b` (typecheck) then `vitest run` (all tests).
         Both must be green.
 
+        ## ⚠ SCOPE FENCE — read before touching any file
+        The plan lists the ONLY files you are allowed to create or modify.
+        Before editing any file ask: "Is this file listed in plan.md?"
+        If the answer is no, do NOT touch it — not even to fix a pre-existing
+        error. Pre-existing failures outside the plan scope are not your
+        responsibility. If `npm run check` fails ONLY on files outside your
+        scope, emit <promise>IMPLEMENTATION_DONE</promise> anyway and note
+        the pre-existing failures in your final message.
+
         ## Constraints (from AGENTS.md — enforce every one)
         - Write code ONLY inside the packages listed in the plan. Do NOT touch
           any other package or file outside the plan scope.
@@ -379,18 +390,19 @@ nodes:
 
         ## What to do each iteration
         1. Run `npm run check 2>&1 | tail -200` to see the current state.
-        2. If green → emit <promise>IMPLEMENTATION_DONE</promise>.
-        3. If red → read the error output carefully. Fix the smallest set of
-           files needed to address the failures. Run a targeted
-           `npx vitest run packages/<pkg>/test/<name>.test.ts` to confirm
-           progress before writing more code.
-        4. Do not rewrite the test file unless it has a genuine bug (wrong
-           import path, wrong module name). The test defines the contract.
+        2. Check each failure: is the failing file in the plan scope?
+           - YES → fix it.
+           - NO  → ignore it; it is a pre-existing issue outside this task.
+        3. If all in-scope files are correct → emit <promise>IMPLEMENTATION_DONE</promise>.
+        4. If still red on in-scope files → fix the smallest set of changes
+           needed. Run a targeted test to confirm before writing more code.
+        5. Do not rewrite the test file unless it has a genuine bug.
 
         ## Never do these
         - Do not remove or weaken existing tests to make the suite pass.
         - Do not skip/xtest the failing tests.
         - Do not touch vitest.config.ts or root tsconfig.json.
+        - Do not fix errors in packages not listed in the plan.
 
   # ───────────────────────────────────────────────────────────────────────────
   # PHASE 6  Write git diff artifact (bash — feeds the reviewer)
@@ -410,6 +422,7 @@ nodes:
   - id: code-review
     depends_on: [capture-diff]
     idle_timeout: 600000
+    maxBudgetUsd: 1.50
     loop:
       max_iterations: 4
       fresh_context: true
