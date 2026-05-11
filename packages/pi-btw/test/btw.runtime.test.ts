@@ -30,14 +30,19 @@ type BtwOverlayComponent = {
   input?: {
     onSubmit?: (text: string) => void;
     onEscape?: () => void;
-    setValue?: (value: string) => void;
-    getValue?: () => string;
-    handleInput?: (data: string) => void;
+    setValue: (value: string) => void;
+    getValue: () => string;
+    handleInput: (data: string) => void;
+    focused?: boolean;
   };
   [key: string]: unknown;
 };
 
-type SeedMessage = { role: string; content: Array<{ type: string; text?: string }> | string };
+type SeedMessage = {
+  role: string;
+  content: Array<{ type: string; text?: string; thinking?: string }>;
+  timestamp?: number;
+};
 
 type MockSession = {
   agent: { state: { messages: SeedMessage[] } };
@@ -84,7 +89,7 @@ type SessionEntry = CustomEntry | { type: string; role?: string; customType?: st
 
 type StreamContext = {
   systemPrompt: string;
-  messages: Array<{ role: string; content: Array<{ type: string; text?: string; thinking?: string }> }>;
+  messages: Array<{ role: string; content: Array<{ type: string; text?: string; thinking?: string }>; timestamp?: number }>;
 };
 
 type PromptStreamEvent =
@@ -763,14 +768,14 @@ describe("btw runtime behavior", () => {
     expect(options.model).toBe(harness.baseCtx.model);
     expect(options.modelRegistry).toBe(harness.baseCtx.modelRegistry);
     expect(options.tools).toEqual(["read", "bash", "edit", "write"]);
-    expect(options.resourceLoader.getAppendSystemPrompt()[0]).toContain(
+    expect(options.resourceLoader!.getAppendSystemPrompt?.()?.[0]).toContain(
       "You are having an aside conversation with the user, separate from their main working session.",
     );
 
-    const subSession = subSessionRecords[0]?.session;
+    const subSession = subSessionRecords[0]!.session;
     expect(subSession).toBeDefined();
     expect(subSession.bindExtensions).not.toHaveBeenCalled();
-    expect(subSession.getActiveToolNames()).toEqual(["read", "bash", "edit", "write"]);
+    expect((subSession.getActiveToolNames as unknown as () => string[])()).toEqual(["read", "bash", "edit", "write"]);
     expect(subSession.prompt).toHaveBeenCalledWith("first question", { source: "extension" });
   });
 
@@ -1032,7 +1037,7 @@ describe("btw runtime behavior", () => {
     });
     expect(getCustomEntries(harness.entries, "btw-thread-entry")).toHaveLength(0);
 
-    overlay.input.onSubmit?.("retry question");
+    overlay.input!.onSubmit?.("retry question");
     await flushAsyncWork();
 
     expect(getCustomEntries(harness.entries, "btw-thread-entry")).toHaveLength(1);
@@ -1061,10 +1066,10 @@ describe("btw runtime behavior", () => {
     await harness.command("btw", "");
 
     const overlay = harness.latestOverlayComponent();
-    overlay.input.setValue("draft follow-up");
-    overlay.input.handleInput("\x03");
+    overlay.input!.setValue("draft follow-up");
+    overlay.input!.handleInput("\x03");
 
-    expect(overlay.input.getValue()).toBe("");
+    expect(overlay.input!.getValue()).toBe("");
     expect(harness.overlayHandles.at(-1)?.hideCalls).toBe(0);
   });
 
@@ -1077,8 +1082,8 @@ describe("btw runtime behavior", () => {
     await harness.command("btw", "");
 
     const overlay = harness.latestOverlayComponent();
-    overlay.input.setValue("");
-    overlay.input.handleInput("\x03");
+    overlay.input!.setValue("");
+    overlay.input!.handleInput("\x03");
     await flushAsyncWork();
 
     expect(harness.overlayHandles.at(-1)?.hideCalls).toBe(1);
@@ -1093,8 +1098,8 @@ describe("btw runtime behavior", () => {
     await harness.command("btw", "");
 
     const overlay = harness.latestOverlayComponent();
-    overlay.input.setValue("draft follow-up");
-    overlay.input.handleInput("\x1b");
+    overlay.input!.setValue("draft follow-up");
+    overlay.input!.handleInput("\x1b");
     await flushAsyncWork();
 
     expect(harness.overlayHandles.at(-1)?.hideCalls).toBe(1);
@@ -1117,7 +1122,7 @@ describe("btw runtime behavior", () => {
     expect(firstRecord.getIsStreaming()).toBe(true);
     expect(firstRecord.getListenerCount()).toBe(1);
 
-    overlay.input.onEscape?.();
+    overlay.input!.onEscape?.();
     await flushAsyncWork();
 
     expect(firstRecord.session.abort).toHaveBeenCalledTimes(1);
@@ -1139,7 +1144,7 @@ describe("btw runtime behavior", () => {
     await harness.command("btw", "");
 
     const overlay = harness.latestOverlayComponent();
-    const submitResult = overlay.input.onSubmit?.("inspect package metadata");
+    const submitResult = overlay.input!.onSubmit?.("inspect package metadata");
     expect(submitResult).toBeUndefined();
 
     await flushAsyncWork();
@@ -1180,7 +1185,7 @@ describe("btw runtime behavior", () => {
     const firstRecord = subSessionRecords[0]!;
     expect(firstRecord.getListenerCount()).toBe(1);
 
-    overlay.input.onEscape?.();
+    overlay.input!.onEscape?.();
     await flushAsyncWork();
 
     expect(firstRecord.session.abort).toHaveBeenCalledTimes(1);
@@ -1209,7 +1214,7 @@ describe("btw runtime behavior", () => {
 
     const firstRecord = subSessionRecords[0]!;
     const overlay = harness.latestOverlayComponent();
-    overlay.input.onEscape?.();
+    overlay.input!.onEscape?.();
     await flushAsyncWork();
 
     expect(firstRecord.session.abort).toHaveBeenCalledTimes(1);
@@ -1237,7 +1242,7 @@ describe("btw runtime behavior", () => {
     await harness.command("btw", "first question");
 
     const overlay = harness.latestOverlayComponent();
-    overlay.input.onSubmit?.("follow-up question");
+    overlay.input!.onSubmit?.("follow-up question");
     await flushAsyncWork();
 
     const threadEntries = getCustomEntries(harness.entries, "btw-thread-entry");
@@ -1337,7 +1342,7 @@ describe("btw runtime behavior", () => {
     await harness.command("btw", "read package metadata");
 
     const overlay = harness.latestOverlayComponent();
-    overlay.input.onSubmit?.("second question");
+    overlay.input!.onSubmit?.("second question");
     await flushAsyncWork();
 
     const transcript = transcriptText(overlay);
@@ -1431,8 +1436,8 @@ describe("btw runtime behavior", () => {
     await harness.command("btw", "first question");
 
     const overlay = harness.latestOverlayComponent();
-    overlay.input.setValue("follow-up question");
-    overlay.input.onSubmit?.("follow-up question");
+    overlay.input!.setValue("follow-up question");
+    overlay.input!.onSubmit?.("follow-up question");
     await flushAsyncWork();
 
     expect(overlay.getDraft()).toBe("");
@@ -1526,7 +1531,7 @@ describe("btw runtime behavior", () => {
     const overlay = harness.latestOverlayComponent();
     expect(harness.overlayHandles.at(-1)?.isFocused()).toBe(true);
     expect(overlay.focused).toBe(true);
-    expect(overlay.input.focused).toBe(true);
+    expect(overlay.input!.focused).toBe(true);
   });
 
   it("forwards terminal input from the focused overlay to the embedded BTW input", async () => {
@@ -1536,7 +1541,7 @@ describe("btw runtime behavior", () => {
     await harness.command("btw", "");
 
     const overlay = harness.latestOverlayComponent();
-    const inputHandleSpy = vi.spyOn(overlay.input, "handleInput");
+    const inputHandleSpy = vi.spyOn(overlay.input!, "handleInput");
 
     overlay.handleInput("abc");
 
@@ -1552,7 +1557,7 @@ describe("btw runtime behavior", () => {
     await harness.command("btw", "fill the transcript");
 
     const overlay = harness.latestOverlayComponent();
-    const inputHandleSpy = vi.spyOn(overlay.input, "handleInput");
+    const inputHandleSpy = vi.spyOn(overlay.input!, "handleInput");
 
     // Prime the viewport height by rendering once; the overlay derives page
     // size from terminalRows, so this is enough for the scroll math.
@@ -1649,7 +1654,7 @@ describe("btw runtime behavior", () => {
     expect(getCustomEntries(harness.entries, "btw-thread-entry")).toHaveLength(1);
 
     const overlay = harness.latestOverlayComponent();
-    const inputHandleSpy = vi.spyOn(overlay.input, "handleInput");
+    const inputHandleSpy = vi.spyOn(overlay.input!, "handleInput");
     const hideCallsBefore = harness.overlayHandles.at(-1)?.hideCalls ?? 0;
 
     overlay.handleInput("\x0c");
@@ -1660,7 +1665,7 @@ describe("btw runtime behavior", () => {
     expect(transcriptEntries(overlay)).toEqual([]);
     expect(
       harness.entries.some(
-        (entry: BtwTranscriptEntry) => entry.type === "custom" && entry.customType === "btw-thread-reset",
+        (entry: BtwTranscriptEntry) => entry.type === "custom" && entry["customType"] === "btw-thread-reset",
       ),
     ).toBe(true);
 
@@ -1686,7 +1691,7 @@ describe("btw runtime behavior", () => {
     const overlay = harness.latestOverlayComponent();
     const firstRender = overlay.render(80);
 
-    overlay.input.onSubmit?.("second question");
+    overlay.input!.onSubmit?.("second question");
     await flushAsyncWork();
 
     const secondRender = overlay.render(80);
@@ -1721,7 +1726,7 @@ describe("btw runtime behavior", () => {
     overlay.focused = false;
     const emptyLines = overlay.render(80);
 
-    overlay.input.onSubmit?.("first question");
+    overlay.input!.onSubmit?.("first question");
     await flushAsyncWork();
 
     // The submit flow triggers syncUi/refresh which re-reads focus from the
@@ -2162,7 +2167,7 @@ describe("btw runtime behavior", () => {
     await harness.command("btw", "first question");
 
     const overlay = harness.latestOverlayComponent();
-    overlay.input.onSubmit?.("/btw:new replacement question");
+    overlay.input!.onSubmit?.("/btw:new replacement question");
     await flushAsyncWork();
 
     const resets = getCustomEntries(harness.entries, "btw-thread-reset");
@@ -2190,7 +2195,7 @@ describe("btw runtime behavior", () => {
     await harness.command("btw", "contextual start");
 
     const overlay = harness.latestOverlayComponent();
-    overlay.input.onSubmit?.("/btw:tangent tangent start");
+    overlay.input!.onSubmit?.("/btw:tangent tangent start");
     await flushAsyncWork();
 
     const resets = getCustomEntries(harness.entries, "btw-thread-reset");
@@ -2222,7 +2227,7 @@ describe("btw runtime behavior", () => {
 
     const overlay = harness.latestOverlayComponent();
     const overlayHandle = harness.overlayHandles.at(-1);
-    overlay.input.onSubmit?.("/btw:inject Use this in the main run.");
+    overlay.input!.onSubmit?.("/btw:inject Use this in the main run.");
     await flushAsyncWork();
 
     expect(harness.sentUserMessages).toHaveLength(1);
@@ -2248,7 +2253,7 @@ describe("btw runtime behavior", () => {
     const sentUserMessagesBefore = harness.sentUserMessages.length;
     const resetCountBefore = getCustomEntries(harness.entries, "btw-thread-reset").length;
 
-    overlay.input.onSubmit?.("/plan do something else");
+    overlay.input!.onSubmit?.("/plan do something else");
     await flushAsyncWork();
 
     expect(record.session.prompt).toHaveBeenLastCalledWith("/plan do something else", { source: "extension" });
@@ -2286,7 +2291,7 @@ describe("btw runtime behavior", () => {
 
     const overlay = harness.latestOverlayComponent();
     const record = subSessionRecords[0]!;
-    overlay.input.onSubmit?.("/plan fail loudly");
+    overlay.input!.onSubmit?.("/plan fail loudly");
     await flushAsyncWork();
 
     expect(record.session.prompt).toHaveBeenLastCalledWith("/plan fail loudly", { source: "extension" });
@@ -2314,9 +2319,9 @@ describe("btw runtime behavior", () => {
     await harness.command("btw", "first question");
 
     const overlay = harness.latestOverlayComponent();
-    overlay.input.onSubmit?.("follow-up question");
+    overlay.input!.onSubmit?.("follow-up question");
     await flushAsyncWork();
-    overlay.input.onEscape?.();
+    overlay.input!.onEscape?.();
     await flushAsyncWork();
 
     expect(harness.sentUserMessages).toHaveLength(0);
