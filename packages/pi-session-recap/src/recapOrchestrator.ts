@@ -51,6 +51,18 @@ const DEFAULT_WIDGET_KEY = "pi-session-recap";
 const DEFAULT_STATUS_KEY = "pi-session-recap";
 
 /**
+ * pi's ExtensionRunner throws from every ctx getter once the session has
+ * been replaced or reloaded (see runner.assertActive). The error message is
+ * stable; we match on a prefix so a minor wording change doesn't silently
+ * re-expose the crash.
+ */
+const STALE_CTX_MESSAGE_PREFIX = "This extension ctx is stale";
+
+function isStaleCtxError(err: unknown): boolean {
+	return err instanceof Error && err.message.startsWith(STALE_CTX_MESSAGE_PREFIX);
+}
+
+/**
  * Internal: resolve the target model, fetch auth, fire `completeSimple`,
  * and return the first line of the response. Mirrors the original
  * `generateRecap` inline function byte-for-byte except the prompt text
@@ -145,6 +157,36 @@ export function createRecapOrchestrator(deps: RecapOrchestratorDeps): RecapOrche
 		}
 	};
 
+	/**
+	 * Read the current session branch through the captured ctx. Returns
+	 * undefined if the ctx is stale (i.e. a session replacement or reload
+	 * landed between scheduling a callback and it firing). Callers must
+	 * treat `undefined` as "bail silently" — we can't recover the old
+	 * session's state, and the new session has its own orchestrator.
+	 */
+	const safeGetBranch = (): Entry[] | undefined => {
+		try {
+			return deps.ctx.sessionManager.getBranch();
+		} catch (err) {
+			if (isStaleCtxError(err)) {
+				// Drop any pending idle timer — it would hit the same stale
+				// ctx on every subsequent fire.
+				clearTimer();
+				return undefined;
+			}
+			throw err;
+		}
+	};
+
+	const safeHasUI = (): boolean => {
+		try {
+			return deps.ctx.hasUI;
+		} catch (err) {
+			if (isStaleCtxError(err)) return false;
+			throw err;
+		}
+	};
+
 	const showRecap = (recap: string) => {
 		const ctx = deps.ctx;
 		if (!ctx.hasUI) return;
@@ -170,7 +212,8 @@ export function createRecapOrchestrator(deps: RecapOrchestratorDeps): RecapOrche
 
 	const runGenerateAndShow = async (opts: { reason: RecapReason }): Promise<void> => {
 		const ctx = deps.ctx;
-		const entries = ctx.sessionManager.getBranch() as Entry[];
+		const entries = safeGetBranch();
+		if (entries === undefined) return;
 		if (!hasMeaningfulActivity(entries) && opts.reason !== "manual") return;
 
 		const transcript = buildRecentTranscript(entries, opts.reason !== "resume");
@@ -216,10 +259,18 @@ export function createRecapOrchestrator(deps: RecapOrchestratorDeps): RecapOrche
 
 	const scheduleRecap = () => {
 		clearTimer();
-		if (deps.config.isDisabled() || !deps.ctx.hasUI) return;
+		if (deps.config.isDisabled() || !safeHasUI()) return;
 		idleTimer = setTimeout(() => {
 			idleTimer = undefined;
-			void runGenerateAndShow({ reason: "idle" });
+			// The captured ctx may have been invalidated between scheduling
+			// and firing (session replaced / reloaded with a dropped
+			// session_shutdown). runGenerateAndShow defends its own ctx
+			// reads; we additionally guard against any synchronous throw
+			// escaping into Timeout._onTimeout as an unhandled rejection.
+			void runGenerateAndShow({ reason: "idle" }).catch((err: unknown) => {
+				if (isStaleCtxError(err)) return;
+				deps.onError?.(err);
+			});
 		}, deps.config.idleMs());
 	};
 
@@ -230,9 +281,13 @@ export function createRecapOrchestrator(deps: RecapOrchestratorDeps): RecapOrche
 		const leaf = getLeafId();
 		if (lastDraftedLeafId && leaf === lastDraftedLeafId) return;
 
-		const entries = deps.ctx.sessionManager.getBranch() as Entry[];
+		const entries = safeGetBranch();
+		if (entries === undefined) return;
 		if (!hasMeaningfulActivity(entries)) return;
-		void runGenerateAndShow({ reason: "focus" });
+		void runGenerateAndShow({ reason: "focus" }).catch((err: unknown) => {
+			if (isStaleCtxError(err)) return;
+			deps.onError?.(err);
+		});
 	};
 
 	const onFocusIn = () => {

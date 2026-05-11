@@ -273,4 +273,64 @@ describe("recapOrchestrator", () => {
 		vi.advanceTimersByTime(10_000);
 		expect(deps.completeSimple).not.toHaveBeenCalled();
 	});
+
+	// Regression: the idle-timer callback must not throw when the captured
+	// ctx has been invalidated by pi (e.g. a prior ctx.reload() / session
+	// replacement whose session_shutdown cleanup for this orchestrator was
+	// missed or raced). The stale-ctx getters throw a canonical message; the
+	// orchestrator must catch it and silently bail.
+	it("runGenerateAndShow swallows stale-ctx errors from ctx.sessionManager and does not throw", async () => {
+		const deps = makeDeps();
+		// Simulate the captured ctx going stale: every sessionManager access
+		// throws the canonical message from pi's ExtensionRunner.assertActive().
+		const STALE = new Error(
+			"This extension ctx is stale after session replacement or reload.",
+		);
+		deps.getBranch.mockImplementation(() => {
+			throw STALE;
+		});
+		deps.getLeafId.mockImplementation(() => {
+			throw STALE;
+		});
+
+		const orch = createRecapOrchestrator(deps);
+		await expect(orch.runGenerateAndShow({ reason: "idle" })).resolves.toBeUndefined();
+		expect(deps.completeSimple).not.toHaveBeenCalled();
+		expect(deps.setWidget).not.toHaveBeenCalled();
+	});
+
+	it("idle timer callback swallows stale-ctx errors rather than throwing from the Timeout", async () => {
+		vi.useFakeTimers();
+		const deps = makeDeps({ config: { idleMs: () => 1000 } });
+		const orch = createRecapOrchestrator(deps);
+
+		orch.scheduleRecap();
+
+		// Invalidate the captured ctx between scheduling and firing.
+		const STALE = new Error(
+			"This extension ctx is stale after session replacement or reload.",
+		);
+		deps.getBranch.mockImplementation(() => {
+			throw STALE;
+		});
+
+		// Advancing timers must not surface an unhandled exception.
+		await vi.advanceTimersByTimeAsync(1500);
+		expect(deps.completeSimple).not.toHaveBeenCalled();
+	});
+
+	it("onFocusOut swallows stale-ctx errors from ctx.sessionManager", () => {
+		const deps = makeDeps();
+		const STALE = new Error(
+			"This extension ctx is stale after session replacement or reload.",
+		);
+		deps.getBranch.mockImplementation(() => {
+			throw STALE;
+		});
+		deps.getLeafId.mockImplementation(() => {
+			throw STALE;
+		});
+		const orch = createRecapOrchestrator(deps);
+		expect(() => orch.onFocusOut()).not.toThrow();
+	});
 });
