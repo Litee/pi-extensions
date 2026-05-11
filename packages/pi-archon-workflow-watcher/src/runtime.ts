@@ -6,9 +6,9 @@
  */
 
 import { execFile } from "node:child_process";
-import { existsSync, readdirSync } from "node:fs";
+import { existsSync, readFileSync, readdirSync } from "node:fs";
 import { homedir } from "node:os";
-import { join } from "node:path";
+import { basename, join } from "node:path";
 import type { ExtensionAPI } from "@mariozechner/pi-coding-agent";
 import { PollScheduler } from "pi-watcher-core/poll-scheduler";
 
@@ -68,18 +68,33 @@ export interface UiSurface {
 	showApprovalDialog?: (params: ApprovalDialogParams) => Promise<ApprovalResult>;
 }
 
+/**
+ * A single section in an approval dialog. The dialog itself knows nothing
+ * about workflows or files — callers translate run metadata into whatever
+ * sections are useful for the gate at hand.
+ *
+ * At most one section may be `primary`. The primary section gets the
+ * large scrollable treatment (18 visible lines, Ctrl-B/F/U/D scrolling).
+ * Other sections get a compact preview (up to 6 lines, with a "… N more"
+ * hint if truncated).
+ */
+export interface DialogSection {
+	/** Displayed as the section header. */
+	title: string;
+	/** Pre-formatted body text. Word-wrapped at render time. */
+	body: string;
+	/** If true, render as the large scrollable section. First primary wins. */
+	primary?: boolean;
+}
+
 export interface ApprovalDialogParams {
 	runId: string;
 	workflowName: string;
 	nodeId: string;
-	/** Full gate message text shown as scrollable context. */
+	/** Gate message text. Always shown as the final compact section. */
 	message: string;
-	/** Absolute path to ~/.archon/.../artifacts/runs/<id>/ */
-	artifactsDir?: string;
-	/** Absolute path to the file whose content to display prominently. */
-	contentFile?: string;
-	/** Label shown above the content section (e.g. "plan.md"). */
-	contentLabel?: string;
+	/** Caller-supplied sections rendered in order before the gate message. */
+	sections?: DialogSection[];
 }
 
 export type ApprovalResult =
@@ -186,43 +201,92 @@ export function findArtifactsDir(runId: string, home = homedir()): string | unde
 	return undefined;
 }
 
+/** Read a file safely — returns undefined on any I/O error. */
+function readFileSafe(path: string): string | undefined {
+	try {
+		return readFileSync(path, "utf8");
+	} catch {
+		return undefined;
+	}
+}
+
+/**
+ * Build the list of sections to display for a plan-review gate.
+ * Exported for unit tests.
+ */
+export function buildPlanGateSections(run: ArchonRun, artifactsDir: string): DialogSection[] {
+	const sections: DialogSection[] = [];
+	const planPath = join(artifactsDir, "plan.md");
+	const planBody = existsSync(planPath) ? readFileSafe(planPath) : undefined;
+	if (planBody !== undefined) {
+		sections.push({ title: "plan.md", body: planBody, primary: true });
+		// Fire-and-forget: open in cmux markdown panel for full-screen reading.
+		execFile("cmux", ["markdown", "open", planPath], () => { /* ignore if cmux absent */ });
+	}
+	sections.push({
+		title: "Context",
+		body: [
+			`Worktree: ${basename(run.workingPath ?? "")}`,
+			`Run ID:   ${run.id}`,
+		].join("\n"),
+	});
+	return sections;
+}
+
+/**
+ * Build the list of sections to display for a commit-review gate.
+ * Exported for unit tests.
+ */
+export function buildCommitGateSections(run: ArchonRun, artifactsDir: string): DialogSection[] {
+	const sections: DialogSection[] = [];
+
+	const diffStatPath = join(artifactsDir, "diff-stat.txt");
+	const diffStatBody = existsSync(diffStatPath) ? readFileSafe(diffStatPath) : undefined;
+	if (diffStatBody !== undefined) {
+		sections.push({ title: "Changed files", body: diffStatBody });
+	}
+
+	const commitMsgPath = join(artifactsDir, "commit-message.txt");
+	const commitMsgBody = existsSync(commitMsgPath) ? readFileSafe(commitMsgPath) : undefined;
+	if (commitMsgBody !== undefined) {
+		sections.push({ title: "Commit message", body: commitMsgBody });
+	}
+
+	sections.push({
+		title: "Context",
+		body: `Worktree: ${basename(run.workingPath ?? "")}`,
+	});
+
+	// Open the full diff in a cmux panel for detailed review.
+	const diffPath = join(artifactsDir, "diff.patch");
+	if (existsSync(diffPath)) {
+		execFile("cmux", ["markdown", "open", diffPath], () => { /* ignore if cmux absent */ });
+	}
+
+	return sections;
+}
+
 async function handleApprovalDialog(rt: Runtime, run: ArchonRun): Promise<void> {
 	if (!run.id || !rt.ui?.showApprovalDialog) return;
 
+	const nodeId = run.approvalNodeId ?? "";
 	const artifactsDir = findArtifactsDir(run.id);
-	let contentFile: string | undefined;
-	let contentLabel: string | undefined;
 
+	let sections: DialogSection[] = [];
 	if (artifactsDir) {
-		const nodeId = run.approvalNodeId ?? "";
 		if (nodeId === "human-plan-review" || nodeId === "plan-gate") {
-			const candidate = join(artifactsDir, "plan.md");
-			if (existsSync(candidate)) {
-				contentFile = candidate;
-				contentLabel = "plan.md";
-			}
+			sections = buildPlanGateSections(run, artifactsDir);
 		} else if (nodeId === "human-commit-review" || nodeId === "commit-gate") {
-			const candidate = join(artifactsDir, "commit-message.txt");
-			if (existsSync(candidate)) {
-				contentFile = candidate;
-				contentLabel = "commit-message.txt";
-			}
+			sections = buildCommitGateSections(run, artifactsDir);
 		}
-	}
-
-	// Open plan/commit-message in a cmux markdown panel for full-screen reading.
-	if (contentFile && existsSync(contentFile) && contentFile.endsWith(".md")) {
-		execFile("cmux", ["markdown", "open", contentFile], () => { /* ignore if cmux absent */ });
 	}
 
 	const params: ApprovalDialogParams = {
 		runId: run.id,
 		workflowName: run.workflowName ?? run.id,
-		nodeId: run.approvalNodeId ?? "approval",
+		nodeId: nodeId || "approval",
 		message: run.approvalMessage ?? "",
-		...(artifactsDir !== undefined && { artifactsDir }),
-		...(contentFile !== undefined && { contentFile }),
-		...(contentLabel !== undefined && { contentLabel }),
+		...(sections.length > 0 && { sections }),
 	};
 
 	const result = await rt.ui.showApprovalDialog(params);

@@ -6,6 +6,8 @@ import {
 	POLL_INTERVAL_MAX_MS,
 	POLL_INTERVAL_MS,
 	STATUS_KEY,
+	buildCommitGateSections,
+	buildPlanGateSections,
 	makeRuntime,
 	pollOnce,
 	refreshStatus,
@@ -607,21 +609,13 @@ describe("findArtifactsDir", () => {
 });
 
 // ---------------------------------------------------------------------------
-// handleApprovalDialog — content-file branch coverage
+// handleApprovalDialog — section construction branch coverage
 // ---------------------------------------------------------------------------
 import { writeFileSync } from "node:fs";
 
-describe("pollOnce — approval dialog content file detection", () => {
-	it("passes contentFile for plan-gate when plan.md exists in artifacts", async () => {
-		// Create a real artifacts dir with plan.md
+describe("pollOnce — approval dialog params", () => {
+	it("passes sections for plan-gate runs (no crash when artifacts missing)", async () => {
 		const runId = "fake-run-" + Date.now();
-		const fakeHome = pathJoin(tmpdir(), "archon-dialog-test-" + Date.now());
-		const artifactsPath = pathJoin(fakeHome, ".archon", "workspaces", "owner", "repo", "artifacts", "runs", runId);
-		mkdirSync(artifactsPath, { recursive: true });
-		writeFileSync(pathJoin(artifactsPath, "plan.md"), "# Plan\nSome content");
-
-		// Monkey-patch findArtifactsDir to use fakeHome
-		// Since we can't inject home, we test via pollOnce with a captured params check
 		const capturedParams: ApprovalDialogParams[] = [];
 		const pi = { sendMessage: vi.fn(), appendEntry: vi.fn() };
 		const client = makeClient([{
@@ -642,20 +636,15 @@ describe("pollOnce — approval dialog content file detection", () => {
 			},
 		};
 
-		// Use the real findArtifactsDir — it won't find the fakeHome path,
-		// so contentFile will be undefined. That's fine: we just verify no throw
-		// and the dialog is called with at minimum the required fields.
-		try {
-			await pollOnce(rt);
-			expect(capturedParams).toHaveLength(1);
-			expect(capturedParams[0]!.nodeId).toBe("plan-gate");
-			expect(capturedParams[0]!.runId).toBe(runId);
-		} finally {
-			rmSync(fakeHome, { recursive: true, force: true });
-		}
+		await pollOnce(rt);
+		expect(capturedParams).toHaveLength(1);
+		expect(capturedParams[0]!.nodeId).toBe("plan-gate");
+		expect(capturedParams[0]!.runId).toBe(runId);
+		// No artifacts dir found — no sections should be passed.
+		expect(capturedParams[0]!.sections).toBeUndefined();
 	});
 
-	it("passes contentFile for commit-gate when commit-message.txt exists", async () => {
+	it("passes sections for commit-gate runs", async () => {
 		const capturedParams: ApprovalDialogParams[] = [];
 		const runId = "fake-commit-" + Date.now();
 		const pi = { sendMessage: vi.fn(), appendEntry: vi.fn() };
@@ -693,7 +682,87 @@ describe("pollOnce — approval dialog content file detection", () => {
 		rt.watchedIds.add(runId);
 		rt.snapshot = { [runId]: { id: runId, status: "running" } };
 		rt.ui = { showApprovalDialog: () => Promise.resolve(null) };
-		// Should not throw
 		await expect(pollOnce(rt)).resolves.toBeUndefined();
+	});
+});
+
+// ---------------------------------------------------------------------------
+// Section builders
+// ---------------------------------------------------------------------------
+
+describe("buildPlanGateSections", () => {
+	it("returns primary plan.md section + Context when plan.md exists", () => {
+		const dir = pathJoin(tmpdir(), "build-plan-sections-" + Date.now());
+		mkdirSync(dir, { recursive: true });
+		writeFileSync(pathJoin(dir, "plan.md"), "# Plan\nstep 1");
+		try {
+			const run: ArchonRun = {
+				id: "r1",
+				status: "paused",
+				workingPath: "/some/path/task-xyz",
+			};
+			const sections = buildPlanGateSections(run, dir);
+			expect(sections).toHaveLength(2);
+			expect(sections[0]!.title).toBe("plan.md");
+			expect(sections[0]!.primary).toBe(true);
+			expect(sections[0]!.body).toContain("# Plan");
+			expect(sections[1]!.title).toBe("Context");
+			expect(sections[1]!.body).toContain("task-xyz");
+			expect(sections[1]!.body).toContain("r1");
+		} finally {
+			rmSync(dir, { recursive: true, force: true });
+		}
+	});
+
+	it("returns only Context when plan.md is missing", () => {
+		const dir = pathJoin(tmpdir(), "build-plan-no-plan-" + Date.now());
+		mkdirSync(dir, { recursive: true });
+		try {
+			const run: ArchonRun = { id: "r1", status: "paused", workingPath: "/x/y" };
+			const sections = buildPlanGateSections(run, dir);
+			expect(sections).toHaveLength(1);
+			expect(sections[0]!.title).toBe("Context");
+			expect(sections[0]!.primary).toBeUndefined();
+		} finally {
+			rmSync(dir, { recursive: true, force: true });
+		}
+	});
+});
+
+describe("buildCommitGateSections", () => {
+	it("returns diff-stat, commit message, and Context when all present", () => {
+		const dir = pathJoin(tmpdir(), "build-commit-" + Date.now());
+		mkdirSync(dir, { recursive: true });
+		writeFileSync(pathJoin(dir, "diff-stat.txt"), " src/foo.ts | 2 +-");
+		writeFileSync(pathJoin(dir, "commit-message.txt"), "fix: typo");
+		try {
+			const run: ArchonRun = { id: "r1", status: "paused", workingPath: "/a/b/feat-x" };
+			const sections = buildCommitGateSections(run, dir);
+			// diff-stat, commit message, Context
+			expect(sections).toHaveLength(3);
+			expect(sections[0]!.title).toBe("Changed files");
+			expect(sections[0]!.body).toContain("src/foo.ts");
+			expect(sections[1]!.title).toBe("Commit message");
+			expect(sections[1]!.body).toBe("fix: typo");
+			expect(sections[2]!.title).toBe("Context");
+			expect(sections[2]!.body).toContain("feat-x");
+			// No primary marker on compact sections
+			expect(sections.every((s) => !s.primary)).toBe(true);
+		} finally {
+			rmSync(dir, { recursive: true, force: true });
+		}
+	});
+
+	it("omits missing artifacts gracefully; still includes Context", () => {
+		const dir = pathJoin(tmpdir(), "build-commit-empty-" + Date.now());
+		mkdirSync(dir, { recursive: true });
+		try {
+			const run: ArchonRun = { id: "r1", status: "paused", workingPath: "/a/b/c" };
+			const sections = buildCommitGateSections(run, dir);
+			expect(sections).toHaveLength(1);
+			expect(sections[0]!.title).toBe("Context");
+		} finally {
+			rmSync(dir, { recursive: true, force: true });
+		}
 	});
 });
