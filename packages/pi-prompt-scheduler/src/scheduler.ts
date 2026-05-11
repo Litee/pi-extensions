@@ -142,7 +142,7 @@ export class CronScheduler {
       if (job.type === "interval" && job.intervalMs) {
         // Interval-based scheduling
         const interval = setInterval(() => {
-          this.executeJob(job);
+          void this.executeJob(job);
         }, job.intervalMs);
         this.intervals.set(job.id, interval);
       } else if (job.type === "once") {
@@ -153,7 +153,7 @@ export class CronScheduler {
 
         if (delay > 0) {
           const timeout = setTimeout(() => {
-            this.executeJob(job);
+            void this.executeJob(job);
             // Auto-disable one-shot jobs after execution
             this.storage.updateJob(job.id, { enabled: false });
             this.emitChange({ type: "update", job: { ...job, enabled: false } });
@@ -176,7 +176,7 @@ export class CronScheduler {
       } else {
         // Standard cron expression
         const cron = new Cron(job.schedule, () => {
-          this.executeJob(job);
+          void this.executeJob(job);
         });
         this.jobs.set(job.id, cron);
       }

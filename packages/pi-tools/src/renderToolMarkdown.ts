@@ -17,7 +17,7 @@ export function renderToolMarkdown(tool: ToolInfo, active: Set<string>): string 
 	try {
 		schema = JSON.stringify(tool.parameters ?? {}, null, 2);
 	} catch {
-		schema = String(tool.parameters);
+		schema = "[schema unavailable]";
 	}
 	return [
 		`## ${tool.name}  ${status}`,

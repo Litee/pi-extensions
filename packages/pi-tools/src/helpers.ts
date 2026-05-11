@@ -57,7 +57,7 @@ export function estimateToolTokens(tool: ToolInfo): number {
 	try {
 		chars += JSON.stringify(tool.parameters ?? {}).length;
 	} catch {
-		chars += String(tool.parameters ?? "").length;
+		// parameters not serializable; skip count
 	}
 	return Math.ceil(chars / 4);
 }

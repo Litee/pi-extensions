@@ -193,7 +193,7 @@ export default async function (pi: ExtensionAPI) {
             if (choice.startsWith("Widget visibility:")) {
               const next = !isWidgetVisible();
               settings = { ...settings, widgetVisible: next };
-              next ? widget.show(ctx) : widget.hide(ctx);
+              if (next) { widget.show(ctx); } else { widget.hide(ctx); }
               const persisted = saveSettings(ctx.cwd, { widgetVisible: next });
               if (!persisted) {
                 ctx.ui.notify(

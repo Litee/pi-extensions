@@ -458,7 +458,7 @@ function createHarness(
 ) {
   const commands = new Map<string, RegisteredCommand>();
   const shortcuts = new Map<string, any>();
-  const handlers = new Map<string, Function[]>();
+  const handlers = new Map<string, ((...args: unknown[]) => unknown)[]>();
   const entries: SessionEntry[] = [...initialEntries];
   const notifications: Array<{ message: string; type?: string }> = [];
   const widgets: Array<{ key: string; content?: unknown; options?: unknown }> = [];
@@ -538,7 +538,7 @@ function createHarness(
   };
 
   const api: ExtensionAPI = {
-    on: ((event: string, handler: Function) => {
+    on: ((event: string, handler: (...args: unknown[]) => unknown) => {
       const list = handlers.get(event) ?? [];
       list.push(handler);
       handlers.set(event, list);

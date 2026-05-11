@@ -597,7 +597,7 @@ function summarizeToolResult(value: unknown, maxLength = 400): { content: string
       try {
         content = JSON.stringify(value, null, 2);
       } catch {
-        content = String(value);
+        // value is not serializable; leave content empty so the "(no tool output)" fallback applies
       }
     }
   }

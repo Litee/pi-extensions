@@ -132,9 +132,9 @@ export async function runSubagentOnce(
     let onAbort: (() => void) | undefined;
     if (signal) {
       if (signal.aborted) {
-        session.abort();
+        void session.abort();
       } else {
-        onAbort = () => session.abort();
+        onAbort = () => { void session.abort(); };
         signal.addEventListener("abort", onAbort, { once: true });
       }
     }

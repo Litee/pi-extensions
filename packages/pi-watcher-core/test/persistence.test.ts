@@ -296,8 +296,7 @@ describe("writeState", () => {
 		});
 		const pi = {
 			appendEntry: () => {
-				// biome-ignore lint/suspicious/noThrowLiterals: intentional non-Error throw
-				throw "disk full";
+				throw new Error("disk full");
 			},
 		};
 

@@ -162,7 +162,7 @@ describe("agent_end pi.events emissions", () => {
 		});
 
 		const ctx = makeFakeCtx();
-		(ctx.ui.select as ReturnType<typeof vi.fn>).mockImplementation(async () => {
+		(ctx.ui.select as ReturnType<typeof vi.fn>).mockImplementation(() => {
 			callOrder.push("select");
 			return "Stay in plan mode";
 		});

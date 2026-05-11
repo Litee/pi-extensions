@@ -25,7 +25,7 @@ export function feedFocusBytes(
 	buf: string,
 	chunk: string,
 ): { events: FocusEvent[]; rest: string } {
-	let work = buf + chunk;
+	const work = buf + chunk;
 	const events: FocusEvent[] = [];
 	let i = 0;
 	while (i + MAX_SEQ <= work.length) {

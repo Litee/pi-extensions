@@ -183,5 +183,5 @@ async function runWithRetry(cwd?: string): Promise<ArchonRun[]> {
 			throw err;
 		}
 	}
-	throw lastError;
+	throw lastError ?? new Error("All retry attempts failed");
 }
