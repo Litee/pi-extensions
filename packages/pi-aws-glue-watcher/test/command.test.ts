@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from "vitest";
 
-import type { GlueClient } from "../src/cli-client.js";
+import type { GlueClient } from "../src/glue-client.js";
 import {
 	parseSubcommand,
 	runGlueWatcherCommand,

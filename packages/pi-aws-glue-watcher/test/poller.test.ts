@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from "vitest";
 
-import type { GlueClient, JobRunResponse, WorkflowRunNode, WorkflowRunResponse } from "../src/cli-client.js";
+import type { GlueClient, JobRunResponse, WorkflowRunNode, WorkflowRunResponse } from "../src/glue-client.js";
 import {
 	detectJobChanges,
 	detectWorkflowChanges,

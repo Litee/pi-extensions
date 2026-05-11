@@ -13,7 +13,7 @@
  *                                     and detect per-node failures.
  */
 
-import type { GlueClient, WorkflowRunNode } from "./cli-client.js";
+import type { GlueClient, WorkflowRunNode } from "./glue-client.js";
 import {
 	JOB_TERMINAL_STATES,
 	NODE_FAILURE_STATES,

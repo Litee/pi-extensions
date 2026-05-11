@@ -16,7 +16,7 @@
 
 import type { ExtensionAPI } from "@mariozechner/pi-coding-agent";
 
-import { createGlueClient, type GlueClient } from "./cli-client.js";
+import { createGlueClient, type GlueClient } from "./glue-client.js";
 import { buildStartupChatMessage } from "./format.js";
 import { rehydrateStateFromSession } from "./persistence.js";
 import { snapshotJobRun, snapshotWorkflowRun } from "./poller.js";
@@ -129,6 +129,6 @@ export { handleToolAction, registerToolIfNeeded } from "./toolAction.js";
 export { STATE_CUSTOM_TYPE } from "./persistence.js";
 export { buildStatusLine, buildChangeChatMessage, buildStartupChatMessage } from "./format.js";
 export { snapshotJobRun, snapshotWorkflowRun, detectJobChanges, detectWorkflowChanges } from "./poller.js";
-export { createGlueClient, GlueCliError } from "./cli-client.js";
-export type { GlueClient } from "./cli-client.js";
+export { createGlueClient, GlueCliError } from "./glue-client.js";
+export type { GlueClient } from "./glue-client.js";
 export type { GlueWatch, GlueEvent, WatchMap, WatchBaseline, JobBaseline, WorkflowBaseline } from "./types.js";

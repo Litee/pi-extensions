@@ -9,7 +9,7 @@
 
 import type { ExtensionAPI } from "@mariozechner/pi-coding-agent";
 
-import type { GlueClient } from "./cli-client.js";
+import type { GlueClient } from "./glue-client.js";
 import { writeState } from "./persistence.js";
 import {
 	refreshStatus,

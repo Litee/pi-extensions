@@ -4,15 +4,21 @@
   "private": true,
   "description": "Pi extension that watches AWS Glue job and workflow runs and injects state-change notifications into chat as 'glue-watcher' custom messages.",
   "type": "module",
-  "keywords": ["pi-package"],
+  "keywords": [
+    "pi-package"
+  ],
   "pi": {
-    "extensions": ["./src/index.ts"]
+    "extensions": [
+      "./src/index.ts"
+    ]
   },
   "peerDependencies": {
     "@mariozechner/pi-coding-agent": "*",
     "typebox": "*"
   },
   "dependencies": {
+    "@aws-sdk/client-glue": "^3.1045.0",
+    "@aws-sdk/credential-providers": "^3.1045.0",
     "pi-watcher-core": "*"
   }
 }

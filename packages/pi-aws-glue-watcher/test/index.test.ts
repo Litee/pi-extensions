@@ -1,7 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import type { ExtensionAPI } from "@mariozechner/pi-coding-agent";
-import type { GlueClient, JobRunResponse, WorkflowRunResponse } from "../src/cli-client.js";
+import type { GlueClient, JobRunResponse, WorkflowRunResponse } from "../src/glue-client.js";
 import { makeRuntime, POLL_ERROR_THRESHOLD, POLL_INTERVAL_MS, pollOnce } from "../src/runtime.js";
 import {
 	handleToolAction,
@@ -583,7 +583,9 @@ describe("pollOnce — consecutive error tracking", () => {
 	it("sends a warning chat message exactly once when threshold is reached", async () => {
 		const pi = makePi();
 		const client = makeClient();
-		vi.spyOn(client, "getJobRun").mockRejectedValue(new Error("credentials expired"));
+		vi.spyOn(client, "getJobRun").mockRejectedValue(
+			Object.assign(new Error("token expired — internal detail"), { name: "CredentialsProviderError" }),
+		);
 		const rt = makeRuntime(pi, client);
 		rt.enabled = true;
 		rt.watches["aa"] = makeWatch({ watchId: "aa", consecutiveErrors: POLL_ERROR_THRESHOLD - 1, baseline: { state: "RUNNING", errorMessage: "" } });
@@ -594,7 +596,7 @@ describe("pollOnce — consecutive error tracking", () => {
 		const [msg] = pi.sendMessage.mock.calls[0]!;
 		expect(msg.content).toContain("⚠");
 		expect(msg.content).toContain("aa");
-		expect(msg.content).toContain("credentials expired");
+		expect(msg.content).toContain("authentication");
 
 		// Subsequent polls should NOT send additional threshold messages
 		await pollOnce(rt);

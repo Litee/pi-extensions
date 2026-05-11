@@ -17,9 +17,10 @@
 
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
-import type { GlueClient, JobRunResponse } from "../src/cli-client.js";
+import type { GlueClient, JobRunResponse } from "../src/glue-client.js";
 import {
 	makeRuntime,
+	POLL_ERROR_THRESHOLD,
 	POLL_INTERVAL_MAX_MS,
 	POLL_INTERVAL_MS,
 	pollOnce,
@@ -141,6 +142,65 @@ describe("pollOnce — idle back-off via PollScheduler", () => {
 		const rt = makeRuntime(makePi(), makeClient(makeJobRunResponse("RUNNING")));
 		for (let i = 0; i < 30; i++) rt.scheduler.noteSuccess(false);
 		expect(rt.scheduler.idleIntervalMs).toBe(POLL_INTERVAL_MAX_MS);
+	});
+});
+
+// ---------------------------------------------------------------------------
+// Error classification
+// ---------------------------------------------------------------------------
+
+describe("pollOnce — error classification", () => {
+
+	function makeErrorClient(err: Error): GlueClient {
+		return {
+			getJobRun: vi.fn().mockRejectedValue(err),
+			getWorkflowRun: vi.fn(),
+		} as unknown as GlueClient;
+	}
+
+	it("appendEntry does not leak raw auth error details", async () => {
+		const pi = makePi();
+		const rt = makeRuntime(pi, makeErrorClient(
+			Object.assign(new Error("session token expired — internal detail"), { name: "CredentialsProviderError" }),
+		));
+		rt.enabled = true;
+		const watch = makeJobWatch({ state: "RUNNING", errorMessage: "" });
+		rt.watches[watch.watchId] = watch;
+		await pollOnce(rt);
+		const entryArg = (pi.appendEntry as ReturnType<typeof vi.fn>).mock.calls[0][1] as { message: string };
+		expect(entryArg.message).not.toContain("internal detail");
+		expect(entryArg.message).toContain("authentication");
+	});
+
+	it("sendMessage at threshold uses sanitized message, not raw error", async () => {
+		const pi = makePi();
+		const rt = makeRuntime(pi, makeErrorClient(
+			Object.assign(new Error("session token expired — internal detail"), { name: "CredentialsProviderError" }),
+		));
+		rt.enabled = true;
+		const watch = makeJobWatch({ state: "RUNNING", errorMessage: "" });
+		watch.consecutiveErrors = POLL_ERROR_THRESHOLD - 1;
+		rt.watches[watch.watchId] = watch;
+		await pollOnce(rt);
+		expect(pi.sendMessage).toHaveBeenCalledOnce();
+		const content = (pi.sendMessage as ReturnType<typeof vi.fn>).mock.calls[0]![0].content as string;
+		expect(content).not.toContain("401");
+		expect(content).toContain("authentication");
+	});
+
+	it("auth error triggers scheduler.noteBackoff", async () => {
+		const rt = makeRuntime(
+			makePi(),
+			makeErrorClient(
+				Object.assign(new Error("token expired — internal detail"), { name: "CredentialsProviderError" }),
+			),
+		);
+		rt.enabled = true;
+		const watch = makeJobWatch({ state: "RUNNING", errorMessage: "" });
+		rt.watches[watch.watchId] = watch;
+		const initialInterval = rt.scheduler.intervalMs;
+		await pollOnce(rt);
+		expect(rt.scheduler.intervalMs).toBeGreaterThan(initialInterval);
 	});
 });
 
