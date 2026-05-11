@@ -65,10 +65,7 @@ export function createExtensionWithClient(pi: ExtensionAPI, client: GlueClient):
 						? await snapshotJobRun(client, watch)
 						: await snapshotWorkflowRun(client, watch);
 			} catch (err) {
-				// eslint-disable-next-line no-console
-				console.warn(
-					`[glue-watcher] seed failed for ${watch.type} '${watch.name}': ${(err as Error).message}`,
-				);
+				rt.pi.appendEntry("glue-watcher:seed-error", { type: watch.type, name: watch.name, message: (err as Error).message });
 			}
 		}
 

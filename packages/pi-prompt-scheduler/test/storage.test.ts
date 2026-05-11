@@ -62,12 +62,10 @@ describe("CronStorage.load", () => {
 		expect(new CronStorage(cwd).load().jobs).toHaveLength(1);
 	});
 
-	it("returns an empty store on malformed JSON (logs but does not throw)", () => {
+	it("returns an empty store on malformed JSON (does not throw)", () => {
 		mkdirSync(join(cwd, ".pi"), { recursive: true });
 		writeFileSync(join(cwd, ".pi", "schedule-prompts.json"), "{ not json", "utf-8");
-		const errSpy = vi.spyOn(console, "error").mockImplementation(() => {});
 		expect(new CronStorage(cwd).load()).toEqual({ jobs: [], version: 1 });
-		expect(errSpy).toHaveBeenCalled();
 	});
 });
 

@@ -165,11 +165,11 @@ export async function pollOnce(rt: Runtime): Promise<void> {
 		// db-locked is transient (retries already exhausted in the client).
 		// Don't penalise the error counter — just skip this poll quietly.
 		if (msg.includes(DB_LOCKED_MARKER)) {
-			console.warn("[archon-watcher] poll skipped: database is locked");
+			rt.pi.appendEntry("archon-watcher:poll-skip", { reason: "db-locked" });
 			return;
 		}
 		rt.consecutiveErrors += 1;
-		console.warn(`[archon-watcher] poll failed: ${msg}`);
+		rt.pi.appendEntry("archon-watcher:poll-error", { message: msg });
 		if (rt.consecutiveErrors === ERROR_THRESHOLD) {
 			rt.pi.sendMessage(
 				{

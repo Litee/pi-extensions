@@ -213,23 +213,22 @@ describe("pollOnce", () => {
 		const rt = makeRuntime(pi as never, makeClient(new Error("connection refused")));
 		rt.snapshot = { r1: makeRun({ id: "r1", status: "running" }) };
 		rt.watchedIds.add("r1");
-		const warnSpy = vi.spyOn(console, "warn").mockImplementation(() => {});
 		await pollOnce(rt);
-		warnSpy.mockRestore();
 		expect(rt.consecutiveErrors).toBe(1);
 		expect(rt.snapshot["r1"]).toBeDefined(); // snapshot unchanged
-		expect(pi.appendEntry).not.toHaveBeenCalled();
+		// error is logged via appendEntry, not via console
+		const [type, data] = pi.appendEntry.mock.calls[0] as [string, unknown];
+		expect(type).toBe("archon-watcher:poll-error");
+		expect((data as any).message).toBe("connection refused");
 	});
 
 	it("does not send a warning message until ERROR_THRESHOLD is reached", async () => {
 		const pi = makePi();
 		const rt = makeRuntime(pi as never, makeClient(new Error("fail")));
 		rt.watchedIds.add("r1");
-		const warnSpy = vi.spyOn(console, "warn").mockImplementation(() => {});
 		for (let i = 0; i < ERROR_THRESHOLD - 1; i++) {
 			await pollOnce(rt);
 		}
-		warnSpy.mockRestore();
 		expect(pi.sendMessage).not.toHaveBeenCalled();
 	});
 
@@ -237,11 +236,9 @@ describe("pollOnce", () => {
 		const pi = makePi();
 		const rt = makeRuntime(pi as never, makeClient(new Error("fail")));
 		rt.watchedIds.add("r1");
-		const warnSpy = vi.spyOn(console, "warn").mockImplementation(() => {});
 		for (let i = 0; i < ERROR_THRESHOLD; i++) {
 			await pollOnce(rt);
 		}
-		warnSpy.mockRestore();
 		expect(pi.sendMessage).toHaveBeenCalledOnce();
 		const [msg] = pi.sendMessage.mock.calls[0] as [{ customType: string; content: string }];
 		expect(msg.customType).toBe("pi-archon-workflow-watcher");
@@ -252,11 +249,9 @@ describe("pollOnce", () => {
 		const pi = makePi();
 		const rt = makeRuntime(pi as never, makeClient(new Error("fail")));
 		rt.watchedIds.add("r1");
-		const warnSpy = vi.spyOn(console, "warn").mockImplementation(() => {});
 		for (let i = 0; i < ERROR_THRESHOLD + 3; i++) {
 			await pollOnce(rt);
 		}
-		warnSpy.mockRestore();
 		expect(pi.sendMessage).toHaveBeenCalledOnce(); // only once at threshold
 	});
 
@@ -264,9 +259,7 @@ describe("pollOnce", () => {
 		const pi = makePi();
 		const rt = makeRuntime(pi as never, makeClient(new Error("fail")));
 		rt.watchedIds.add("r1");
-		const warnSpy = vi.spyOn(console, "warn").mockImplementation(() => {});
 		await pollOnce(rt); // fail
-		warnSpy.mockRestore();
 		expect(rt.consecutiveErrors).toBe(1);
 
 		// Now succeed
@@ -445,36 +438,30 @@ describe("PollScheduler re-entry guard", () => {
 
 describe("pollOnce — db-locked handling", () => {
 	it("does NOT increment consecutiveErrors when error is db-locked", async () => {
-		const warnSpy = vi.spyOn(console, "warn").mockImplementation(() => {});
 		const pi = makePi();
 		const err = new Error("archon workflow status failed: Command failed\nstderr: Error: Failed to list workflow runs: database is locked");
 		const rt = makeRuntime(pi as never, makeClient(err));
 		rt.watchedIds.add("r1");
 		await pollOnce(rt);
-		warnSpy.mockRestore();
 		expect(rt.consecutiveErrors).toBe(0);
 	});
 
 	it("does NOT send a chat message for a db-locked error", async () => {
-		const warnSpy = vi.spyOn(console, "warn").mockImplementation(() => {});
 		const pi = makePi();
 		const err = new Error("archon workflow status failed\nstderr: database is locked");
 		const rt = makeRuntime(pi as never, makeClient(err));
 		rt.watchedIds.add("r1");
 		// Run more than ERROR_THRESHOLD times — still no message
 		for (let i = 0; i < 6; i++) await pollOnce(rt);
-		warnSpy.mockRestore();
 		expect(pi.sendMessage).not.toHaveBeenCalled();
 		expect(rt.consecutiveErrors).toBe(0);
 	});
 
 	it("still increments consecutiveErrors for non-db-locked errors", async () => {
-		const warnSpy = vi.spyOn(console, "warn").mockImplementation(() => {});
 		const pi = makePi();
 		const rt = makeRuntime(pi as never, makeClient(new Error("some other error")));
 		rt.watchedIds.add("r1");
 		await pollOnce(rt);
-		warnSpy.mockRestore();
 		expect(rt.consecutiveErrors).toBe(1);
 	});
 });

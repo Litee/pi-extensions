@@ -43,6 +43,8 @@ export interface RecapOrchestratorDeps {
 	/** Optional status-line + widget keys; defaulted in index.ts. */
 	widgetKey?: string;
 	statusKey?: string;
+	/** Called with unexpected errors from the model call (non-abort). */
+	onError?: (err: unknown) => void;
 }
 
 const DEFAULT_WIDGET_KEY = "pi-session-recap";
@@ -202,7 +204,7 @@ export function createRecapOrchestrator(deps: RecapOrchestratorDeps): RecapOrche
 				showRecap(recap);
 			}
 		} catch (err) {
-			if (!controller.signal.aborted) console.error("[session-recap] failed:", err);
+			if (!controller.signal.aborted) deps.onError?.(err);
 		} finally {
 			if (activeController === controller) {
 				activeController = undefined;

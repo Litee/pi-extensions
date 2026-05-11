@@ -44,6 +44,7 @@ function makeFakePi() {
 			events: { emit },
 			sendMessage: vi.fn(),
 			sendUserMessage: vi.fn(),
+			appendEntry: vi.fn(),
 		},
 		emit,
 	};
@@ -273,7 +274,6 @@ describe("CronScheduler.stop", () => {
 describe("CronScheduler.addJob invalid expression", () => {
 	it("emits an `error` event when the underlying scheduler rejects the expression", () => {
 		const { scheduler, emit } = makeScheduler();
-		const errSpy = vi.spyOn(console, "error").mockImplementation(() => {});
 
 		// Bypass validateSchedule by feeding a bad schedule directly. croner
 		// will reject this inside scheduleJob and the scheduler emits `error`.
@@ -285,7 +285,6 @@ describe("CronScheduler.addJob invalid expression", () => {
 			.filter((p: any) => p.type === "error");
 		expect(errorCalls).toHaveLength(1);
 		expect(errorCalls[0]).toMatchObject({ jobId: "bad" });
-		expect(errSpy).toHaveBeenCalled();
 	});
 });
 
@@ -357,14 +356,17 @@ describe("CronScheduler.executeJob (inline)", () => {
 		(pi.sendUserMessage as any).mockImplementation(() => {
 			throw new Error("pi exploded");
 		});
-		const errSpy = vi.spyOn(console, "error").mockImplementation(() => {});
 		const scheduler = new CronScheduler(storage, pi as any, makeFakeCtx("sess-A") as any);
 		schedulers.push(scheduler);
 
 		await (scheduler as any).executeJob(mkJob({ id: "boom" }));
 
 		expect(storage.getJob("boom")?.lastStatus).toBe("error");
-		expect(errSpy).toHaveBeenCalled();
+		// error is recorded via pi.appendEntry, not console
+		expect(pi.appendEntry).toHaveBeenCalledWith(
+			"schedule-prompt:execute-error",
+			expect.objectContaining({ jobId: "boom" }),
+		);
 	});
 });
 

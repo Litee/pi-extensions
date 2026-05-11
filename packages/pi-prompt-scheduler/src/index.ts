@@ -119,7 +119,7 @@ export default async function (pi: ExtensionAPI) {
       .filter((j) => !j.enabled && CronScheduler.isLoadedFor(j, mySessionId));
 
     if (disabledJobs.length > 0) {
-      console.log(`Auto-cleanup: removing ${disabledJobs.length} disabled job(s)`);
+      pi.appendEntry("schedule-prompt:auto-cleanup", { removed: disabledJobs.length });
       for (const job of disabledJobs) {
         storage.removeJob(job.id);
       }

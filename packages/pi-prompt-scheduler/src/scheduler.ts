@@ -162,7 +162,7 @@ export class CronScheduler {
           this.intervals.set(job.id, timeout as any);
         } else {
           // Job is in the past - disable it and log warning
-          console.warn(`Job ${job.id} (${job.name}) scheduled for past time: ${job.schedule}`);
+          this.pi.appendEntry("schedule-prompt:schedule-warn", { jobId: job.id, jobName: job.name, schedule: job.schedule });
           this.storage.updateJob(job.id, { 
             enabled: false,
             lastStatus: "error" 
@@ -181,7 +181,7 @@ export class CronScheduler {
         this.jobs.set(job.id, cron);
       }
     } catch (error) {
-      console.error(`Failed to schedule job ${job.id}:`, error);
+      this.pi.appendEntry("schedule-prompt:schedule-error", { jobId: job.id, error: error instanceof Error ? error.message : String(error) });
       this.emitChange({
         type: "error",
         jobId: job.id,
@@ -217,7 +217,7 @@ export class CronScheduler {
     if (!fresh?.enabled) return;
     if (!CronScheduler.isLoadedFor(fresh, this.ctx.sessionManager.getSessionId())) return;
 
-    console.log(`Executing scheduled prompt: ${job.name} (${job.id})`);
+    this.pi.appendEntry("schedule-prompt:fire", { jobId: job.id, jobName: job.name });
 
     if (job.model) {
       this.executeJobInSubagent(job);
@@ -268,7 +268,7 @@ export class CronScheduler {
 
       this.emitChange({ type: "fire", job });
     } catch (error) {
-      console.error(`Failed to execute job ${job.id}:`, error);
+      this.pi.appendEntry("schedule-prompt:execute-error", { jobId: job.id, error: error instanceof Error ? error.message : String(error) });
       this.storage.updateJob(job.id, {
         lastRun: new Date().toISOString(),
         lastStatus: "error",
@@ -370,7 +370,7 @@ export class CronScheduler {
               notify ? { deliverAs: "followUp", triggerTurn: true } : undefined,
             );
           } catch (markerErr) {
-            console.error(`Failed to post subagent_done marker for job ${job.id}:`, markerErr);
+            this.pi.appendEntry("schedule-prompt:marker-error", { jobId: job.id, phase: "subagent_done", error: markerErr instanceof Error ? markerErr.message : String(markerErr) });
           }
         } else {
           // Truncate the error the same way as the success snippet — verbose
@@ -401,13 +401,13 @@ export class CronScheduler {
               notify ? { deliverAs: "followUp", triggerTurn: true } : undefined,
             );
           } catch (markerErr) {
-            console.error(`Failed to post subagent_error marker for job ${job.id}:`, markerErr);
+            this.pi.appendEntry("schedule-prompt:marker-error", { jobId: job.id, phase: "subagent_error", error: markerErr instanceof Error ? markerErr.message : String(markerErr) });
           }
         }
       } catch (error) {
         // Outer backstop: anything else (e.g. storage write failure) shouldn't
         // escape the IIFE as an unhandled rejection.
-        console.error(`Subagent completion handler failed for job ${job.id}:`, error);
+        this.pi.appendEntry("schedule-prompt:handler-error", { jobId: job.id, error: error instanceof Error ? error.message : String(error) });
       }
     })();
   }

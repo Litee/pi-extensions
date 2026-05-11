@@ -120,6 +120,10 @@ export default function (pi: ExtensionAPI) {
 			config,
 			widgetKey: WIDGET_KEY,
 			statusKey: STATUS_KEY,
+			onError: (err) =>
+				pi.appendEntry("session-recap:error", {
+					message: err instanceof Error ? err.message : String(err),
+				}),
 		});
 		return orchestrator;
 	};

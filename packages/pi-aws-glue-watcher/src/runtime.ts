@@ -204,10 +204,7 @@ export async function pollOnce(rt: Runtime): Promise<void> {
 			}
 		} catch (err) {
 			watch.consecutiveErrors = watch.consecutiveErrors + 1;
-			// eslint-disable-next-line no-console
-			console.warn(
-				`[glue-watcher] poll failed for ${watch.type} '${watch.name}': ${(err as Error).message}`,
-			);
+			rt.pi.appendEntry("glue-watcher:poll-error", { type: watch.type, name: watch.name, message: (err as Error).message });
 			if (watch.consecutiveErrors === POLL_ERROR_THRESHOLD) {
 				rt.pi.sendMessage(
 					{

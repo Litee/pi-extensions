@@ -43,9 +43,7 @@ function read(path: string): ScheduleSettings {
   if (!existsSync(path)) return {};
   try {
     return sanitize(JSON.parse(readFileSync(path, "utf-8")));
-  } catch (err) {
-    const reason = err instanceof Error ? err.message : String(err);
-    console.warn(`[pi-schedule-prompt] Ignoring malformed settings at ${path}: ${reason}`);
+  } catch {
     return {};
   }
 }

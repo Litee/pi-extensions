@@ -34,8 +34,8 @@ export class CronStorage {
         const store = JSON.parse(data) as CronStore;
         return store;
       }
-    } catch (error) {
-      console.error("Failed to load scheduled prompts:", error);
+    } catch {
+      // ignore — fall through to empty store
     }
 
     // Return empty store if file doesn't exist or is corrupted
@@ -57,7 +57,6 @@ export class CronStorage {
       fs.writeFileSync(tempPath, JSON.stringify(store, null, 2), "utf-8");
       fs.renameSync(tempPath, this.storePath);
     } catch (error) {
-      console.error("Failed to save scheduled prompts:", error);
       throw error;
     }
   }

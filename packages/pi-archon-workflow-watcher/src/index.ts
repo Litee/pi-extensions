@@ -110,9 +110,7 @@ export function createExtensionWithClient(
 		try {
 			initialRuns = await client.getWorkflowStatus();
 		} catch (e) {
-			console.warn(
-				`[archon-watcher] session_start: could not fetch initial status: ${(e as Error).message}`,
-			);
+			rt.pi.appendEntry("archon-watcher:init-error", { message: (e as Error).message });
 		}
 
 		const current: RunSnapshot = {};

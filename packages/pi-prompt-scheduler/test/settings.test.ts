@@ -83,12 +83,10 @@ describe("loadSettings", () => {
 		expect(loadSettings(cwd)).toEqual({ widgetVisible: true });
 	});
 
-	it("returns {} on malformed JSON (warns, doesn't throw)", () => {
+	it("returns {} on malformed JSON (doesn't throw)", () => {
 		mkdirSync(join(cwd, ".pi"), { recursive: true });
 		writeFileSync(join(cwd, ".pi", FILE), "{ not json", "utf-8");
-		const warnSpy = vi.spyOn(console, "warn").mockImplementation(() => {});
 		expect(loadSettings(cwd)).toEqual({});
-		expect(warnSpy).toHaveBeenCalled();
 	});
 
 	it("returns {} when JSON is a non-object scalar", () => {
