@@ -228,9 +228,10 @@ export function createApprovalDialog(
 	const selectItems: SelectItem[] = [
 		{ value: "approve", label: "Approve", description: "Accept and proceed to next step" },
 		{ value: "reject", label: "Reject with feedback", description: "Send feedback for rework" },
+		{ value: "cancel", label: "Cancel workflow", description: "Abandon this run entirely" },
 	];
 
-	const selectList = new SelectList(selectItems, 2, {
+	const selectList = new SelectList(selectItems, 3, {
 		selectedPrefix: (t) => theme.fg("accent", t),
 		selectedText: (t) => theme.fg("accent", t),
 		description: (t) => theme.fg("muted", t),
@@ -241,6 +242,8 @@ export function createApprovalDialog(
 	selectList.onSelect = (item) => {
 		if (item.value === "approve") {
 			done({ decision: "approve" });
+		} else if (item.value === "cancel") {
+			done({ decision: "cancel" });
 		} else {
 			phase = "reject-input";
 			rejectInput.setValue("");

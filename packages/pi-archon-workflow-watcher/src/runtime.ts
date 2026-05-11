@@ -100,6 +100,7 @@ export interface ApprovalDialogParams {
 export type ApprovalResult =
 	| { decision: "approve" }
 	| { decision: "reject"; feedback: string }
+	| { decision: "cancel" }
 	| null;
 
 /** Mutable per-process runtime. One instance per extension activation. */
@@ -296,7 +297,9 @@ async function handleApprovalDialog(rt: Runtime, run: ArchonRun): Promise<void> 
 		const args =
 			result.decision === "approve"
 				? ["workflow", "approve", run.id, "approved"]
-				: ["workflow", "reject", run.id, result.feedback];
+				: result.decision === "reject"
+					? ["workflow", "reject", run.id, result.feedback]
+					: ["workflow", "abandon", run.id];
 		execFile("archon", args, () => resolve());
 	});
 }
