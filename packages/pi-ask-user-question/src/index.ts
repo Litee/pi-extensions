@@ -62,7 +62,7 @@ export interface RegisterOptions {
 }
 
 export default function askUserQuestion(pi: ExtensionAPI, options: RegisterOptions = {}): void {
-	const run = options.runDialog ?? (runDialog as unknown as RunDialogFn);
+	const run = options.runDialog ?? (runDialog);
 
 	pi.registerTool({
 		name: "ask_user_question",
@@ -76,7 +76,7 @@ export default function askUserQuestion(pi: ExtensionAPI, options: RegisterOptio
 			if (!ctx.hasUI) {
 				return formatToolResult(emptyResult(true, ERROR_NO_UI), []);
 			}
-			const typed = params as TParams;
+			const typed = params;
 			const v = validate(typed);
 			if (!v.ok) {
 				return formatToolResult(emptyResult(true, v.message), typed.questions ?? []);
@@ -86,7 +86,7 @@ export default function askUserQuestion(pi: ExtensionAPI, options: RegisterOptio
 		},
 
 		renderCall(args, theme) {
-			return renderCall(args as TParams | undefined, theme);
+			return renderCall(args, theme);
 		},
 		renderResult(result, _opts, theme) {
 			return renderResult(result as { content: { type: "text"; text: string }[]; details: Result | undefined }, theme);

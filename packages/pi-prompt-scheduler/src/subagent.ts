@@ -59,7 +59,7 @@ export function resolveModel(
 
 export function getLastAssistantText(session: AgentSession): string {
   for (let i = session.messages.length - 1; i >= 0; i--) {
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+     
     const msg = session.messages[i] as any;
     if (!msg || msg.role !== "assistant") continue;
     const parts: string[] = [];

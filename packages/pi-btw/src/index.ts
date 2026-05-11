@@ -434,7 +434,7 @@ function ensureTranscriptTurn(state: BtwTranscriptState): number {
   const turnId = state.nextTurnId++;
   state.currentTurnId = turnId;
   state.lastTurnId = turnId;
-  appendTranscriptEntry(state, { type: "turn-boundary", turnId, phase: "start" } as Omit<Extract<BtwTranscriptEntry, { type: "turn-boundary" }>, "id">);
+  appendTranscriptEntry<Extract<BtwTranscriptEntry, { type: "turn-boundary" }>>(state, { type: "turn-boundary", turnId, phase: "start" });
   return turnId;
 }
 
@@ -448,7 +448,7 @@ function finishTranscriptTurn(state: BtwTranscriptState, turnId?: number | null)
     (entry) => entry.turnId === resolvedTurnId && entry.type === "turn-boundary" && entry.phase === "end",
   );
   if (!hasEndBoundary) {
-    appendTranscriptEntry(state, { type: "turn-boundary", turnId: resolvedTurnId, phase: "end" } as Omit<Extract<BtwTranscriptEntry, { type: "turn-boundary" }>, "id">);
+    appendTranscriptEntry<Extract<BtwTranscriptEntry, { type: "turn-boundary" }>>(state, { type: "turn-boundary", turnId: resolvedTurnId, phase: "end" });
   }
 
   for (const entry of state.entries) {
@@ -539,7 +539,7 @@ function upsertUserMessageEntry(state: BtwTranscriptState, turnId: number, text:
     return;
   }
 
-  appendTranscriptEntry(state, { type: "user-message", turnId, text } as Omit<Extract<BtwTranscriptEntry, { type: "user-message" }>, "id">);
+  appendTranscriptEntry<Extract<BtwTranscriptEntry, { type: "user-message" }>>(state, { type: "user-message", turnId, text });
 }
 
 function upsertTranscriptTextEntry(
@@ -560,7 +560,7 @@ function upsertTranscriptTextEntry(
     return;
   }
 
-  appendTranscriptEntry(state, { type, turnId, text, streaming } as Omit<Extract<BtwTranscriptEntry, { type: "thinking" | "assistant-text" }>, "id">);
+  appendTranscriptEntry<Extract<BtwTranscriptEntry, { type: "thinking" | "assistant-text" }>>(state, { type, turnId, text, streaming });
 }
 
 function summarizeToolResult(value: unknown, maxLength = 400): { content: string; truncated: boolean } {
@@ -625,13 +625,13 @@ function ensureToolCallEntry(
     return existing;
   }
 
-  const callEntry = appendTranscriptEntry(state, {
+  const callEntry = appendTranscriptEntry<Extract<BtwTranscriptEntry, { type: "tool-call" }>>(state, {
     type: "tool-call",
     turnId,
     toolCallId,
     toolName,
     args,
-  } as Omit<Extract<BtwTranscriptEntry, { type: "tool-call" }>, "id">);
+  });
   const record = { turnId, callEntryId: callEntry.id };
   state.toolCalls.set(toolCallId, record);
   return record;
@@ -661,7 +661,7 @@ function upsertToolResultEntry(
     return;
   }
 
-  const resultEntry = appendTranscriptEntry(state, {
+  const resultEntry = appendTranscriptEntry<Extract<BtwTranscriptEntry, { type: "tool-result" }>>(state, {
     type: "tool-result",
     turnId,
     toolCallId,
@@ -670,7 +670,7 @@ function upsertToolResultEntry(
     truncated,
     isError,
     streaming,
-  } as Omit<Extract<BtwTranscriptEntry, { type: "tool-result" }>, "id">);
+  });
   toolCall.resultEntryId = resultEntry.id;
 }
 
@@ -920,7 +920,7 @@ function getLastAssistantMessage(session: AgentSession): AssistantMessage | null
     const message = session.state.messages[i];
     if (!message) continue;
     if (message.role === "assistant") {
-      return message as AssistantMessage;
+      return message;
     }
   }
 
@@ -1533,7 +1533,7 @@ export default function (pi: ExtensionAPI) {
     notifyOnFallback = false,
   ): Promise<ResolvedBtwSettings> {
     const resolvedModel = await resolveBtwModel(ctx, notifyOnFallback);
-    const thinkingLevel = btwThinkingOverride ?? (pi.getThinkingLevel() as SessionThinkingLevel);
+    const thinkingLevel = btwThinkingOverride ?? (pi.getThinkingLevel());
 
     return {
       model: resolvedModel.model,
@@ -1611,7 +1611,7 @@ export default function (pi: ExtensionAPI) {
     const { session } = await createAgentSession({
       sessionManager: SessionManager.inMemory(),
       model: settings.model,
-      modelRegistry: ctx.modelRegistry as AgentSession["modelRegistry"],
+      modelRegistry: ctx.modelRegistry,
       thinkingLevel: settings.thinkingLevel,
       // Match pi's default coding-agent toolset (read/bash/edit/write).
       tools: ["read", "bash", "edit", "write"],
@@ -2173,7 +2173,7 @@ export default function (pi: ExtensionAPI) {
     const { session } = await createAgentSession({
       sessionManager: SessionManager.inMemory(),
       model,
-      modelRegistry: ctx.modelRegistry as AgentSession["modelRegistry"],
+      modelRegistry: ctx.modelRegistry,
       thinkingLevel: "off",
       tools: [],
       resourceLoader: createBtwResourceLoader(ctx, [BTW_SUMMARIZE_SYSTEM_PROMPT]),

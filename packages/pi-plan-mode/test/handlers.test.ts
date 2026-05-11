@@ -169,7 +169,7 @@ describe("shouldBlockBashInPlan", () => {
 		// locks down the "malformed input must not silently slip through plan
 		// mode" contract.
 		const r = shouldBlockBashInPlan(
-			{ toolName: "bash", input: { command: 42 as unknown as string } },
+			{ toolName: "bash", input: { command: 42 } },
 			true,
 		);
 		expect(r).toEqual({

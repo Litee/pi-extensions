@@ -159,7 +159,7 @@ export class CronScheduler {
             this.emitChange({ type: "update", job: { ...job, enabled: false } });
           }, delay);
           // Store as interval for cleanup purposes
-          this.intervals.set(job.id, timeout as any);
+          this.intervals.set(job.id, timeout);
         } else {
           // Job is in the past - disable it and log warning
           this.pi.appendEntry("schedule-prompt:schedule-warn", { jobId: job.id, jobName: job.name, schedule: job.schedule });

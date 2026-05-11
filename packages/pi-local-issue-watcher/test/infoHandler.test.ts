@@ -18,7 +18,7 @@ function mkIssue(partial: Partial<IssueInfo> & { issueId: string; skill: string 
 		comments: [],
 		skillVersion: "1.0.0",
 		...partial,
-	} as IssueInfo;
+	};
 }
 
 describe("formatRowLabel", () => {

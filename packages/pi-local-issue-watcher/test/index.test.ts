@@ -35,7 +35,7 @@ interface StubPi {
 	/** The `session_start` handler registered by the extension (captured for tests). */
 	readonly sessionStartHandler: ((...args: unknown[]) => unknown) | undefined;
 	/** Map of commandName → registered handler (from registerCommand calls). */
-	readonly commands: Map<string, { description: string; handler: (args: string, ctx: unknown) => unknown | Promise<unknown> }>;
+	readonly commands: Map<string, { description: string; handler: (args: string, ctx: unknown) => unknown }>;
 	/** Map of customType → registered renderer (from registerMessageRenderer calls). */
 	readonly renderers: Map<
 		string,
@@ -45,7 +45,7 @@ interface StubPi {
 
 function makeFakePi(): StubPi {
 	const handlers = new Map<string, (...args: unknown[]) => unknown>();
-	const commands = new Map<string, { description: string; handler: (args: string, ctx: unknown) => unknown | Promise<unknown> }>();
+	const commands = new Map<string, { description: string; handler: (args: string, ctx: unknown) => unknown }>();
 	const renderers = new Map<
 		string,
 		(message: { customType: string; content: unknown; details?: unknown }, options: { expanded: boolean }, theme: unknown) => unknown
@@ -54,7 +54,7 @@ function makeFakePi(): StubPi {
 	const on = vi.fn((event: string, fn: (...args: unknown[]) => unknown) => {
 		handlers.set(event, fn);
 	});
-	const registerCommand = vi.fn((name: string, def: { description: string; handler: (args: string, ctx: unknown) => unknown | Promise<unknown> }) => {
+	const registerCommand = vi.fn((name: string, def: { description: string; handler: (args: string, ctx: unknown) => unknown }) => {
 		commands.set(name, def);
 	});
 	const registerMessageRenderer = vi.fn(

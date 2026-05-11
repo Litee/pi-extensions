@@ -8,7 +8,7 @@ import { dispatchKey, type MatchesKey } from "../src/keys.js";
  */
 function stubMatcher(pairs: Array<[string, string]>): MatchesKey {
 	return (data, keyId) =>
-		pairs.some(([d, k]) => d === data && (k as string) === (keyId as string));
+		pairs.some(([d, k]) => d === data && (k) === (keyId as string));
 }
 
 describe("dispatchKey", () => {

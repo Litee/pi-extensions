@@ -287,7 +287,7 @@ describe("buildRecentTranscript", () => {
 
 	it("ignores non-message entries", () => {
 		const out = buildRecentTranscript([
-			{ type: "thinking", message: { role: "assistant", content: "dropped" } } as Entry,
+			{ type: "thinking", message: { role: "assistant", content: "dropped" } },
 			userMsg("q"),
 			assistantMsg("a"),
 		]);
@@ -298,7 +298,7 @@ describe("buildRecentTranscript", () => {
 	it("ignores entries whose message has no role", () => {
 		const out = buildRecentTranscript([
 			userMsg("q"),
-			{ type: "message", message: { content: [{ type: "text", text: "no-role" }] } } as Entry,
+			{ type: "message", message: { content: [{ type: "text", text: "no-role" }] } },
 			assistantMsg("a"),
 		]);
 		expect(out).not.toContain("no-role");

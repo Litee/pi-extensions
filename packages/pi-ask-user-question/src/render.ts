@@ -10,7 +10,7 @@ import type { AgentToolResult } from "@mariozechner/pi-agent-core";
 import { Text, truncateToWidth } from "@mariozechner/pi-tui";
 
 import type { Result } from "./format.js";
-import type { TParams, TQuestion } from "./schema.js";
+import type { TParams } from "./schema.js";
 
 /**
  * Minimal theme surface the renderers need. The real `Theme` class satisfies
@@ -23,7 +23,7 @@ export interface RenderTheme {
 }
 
 export function renderCall(args: TParams | undefined, theme: RenderTheme): Text {
-	const qs = Array.isArray(args?.questions) ? (args!.questions as TQuestion[]) : [];
+	const qs = Array.isArray(args?.questions) ? (args.questions) : [];
 	const count = qs.length;
 	const labels = qs.map((_q, i) => `Q${i + 1}`).join(", ");
 	let text = theme.fg("toolTitle", theme.bold("ask_user_question "));

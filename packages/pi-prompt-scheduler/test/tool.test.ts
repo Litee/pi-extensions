@@ -164,7 +164,7 @@ describe("schedule_prompt tool / add", () => {
 		[{ schedule: "0 * * * * *" }, "'prompt'"],
 	])("rejects add missing required param (%j) with a pointed error", async (partial, expectedFragment) => {
 		const tool = makeTool();
-		const result = await exec(tool, { action: "add", ...partial } as CronToolParamsType);
+		const result = await exec(tool, { action: "add", ...partial });
 		expect(detailsOf(result).error).toContain(expectedFragment);
 		expect(storage.getAllJobs()).toHaveLength(0);
 		expect(fakeScheduler.addJob).not.toHaveBeenCalled();
@@ -554,7 +554,7 @@ describe("schedule_prompt tool / unknown action", () => {
 		const tool = makeTool();
 		// Bypass the schema — the tool is allowed to be invoked by callers
 		// passing params directly (described in the tool source).
-		const result = await exec(tool, { action: "bogus" as any });
+		const result = await exec(tool, { action: "bogus" });
 		expect(detailsOf(result).error).toContain("Unknown action");
 	});
 });
@@ -579,7 +579,7 @@ describe("schedule_prompt tool / renderCall", () => {
 	])("labels %o", (params, matcher) => {
 		const tool = makeTool();
 		const rendered = (tool.renderCall as any)(params, fakeTheme);
-		expect(String((rendered as any).text ?? rendered)).toMatch(matcher);
+		expect(String((rendered).text ?? rendered)).toMatch(matcher);
 	});
 });
 
@@ -603,7 +603,7 @@ describe("schedule_prompt tool / renderResult", () => {
 			{},
 			fakeTheme,
 		);
-		expect(String((rendered as any).text)).toContain("Error: nope");
+		expect(String((rendered).text)).toContain("Error: nope");
 	});
 
 	it("renders a success line for non-list actions", async () => {
@@ -616,7 +616,7 @@ describe("schedule_prompt tool / renderResult", () => {
 			{},
 			fakeTheme,
 		);
-		expect(String((rendered as any).text)).toMatch(/remove victim/);
+		expect(String((rendered).text)).toMatch(/remove victim/);
 	});
 
 	it("renders a table row per job for list actions, including model + runs + last-run", async () => {
@@ -646,7 +646,7 @@ describe("schedule_prompt tool / renderResult", () => {
 			{},
 			fakeTheme,
 		);
-		const text = String((rendered as any).text);
+		const text = String((rendered).text);
 		expect(text).toContain("Cron Jobs");
 		expect(text).toContain("digest");
 		expect(text).toContain("0 0 0 * * *");
@@ -663,6 +663,6 @@ describe("schedule_prompt tool / renderResult", () => {
 			{},
 			fakeTheme,
 		);
-		expect(String((rendered as any).text)).toBe("raw fallback");
+		expect(String((rendered).text)).toBe("raw fallback");
 	});
 });

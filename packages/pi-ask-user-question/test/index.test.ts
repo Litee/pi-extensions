@@ -33,7 +33,7 @@ function makeCtx(hasUI: boolean) {
 			custom: vi.fn(),
 		},
 		cwd: "/tmp",
-	} as unknown as Parameters<any>[4]; // loose — we only pass it through
+	} as unknown; // loose — we only pass it through
 }
 
 describe("default export — tool registration", () => {
@@ -94,7 +94,7 @@ describe("tool.execute() — validation failures", () => {
 		const ctx = makeCtx(true);
 		const result = await pi.tool.execute(
 			"tc-3",
-			{ questions: undefined as unknown as TParams["questions"] } as unknown as TParams,
+			{ questions: undefined as unknown as TParams["questions"] },
 			undefined,
 			undefined,
 			ctx,

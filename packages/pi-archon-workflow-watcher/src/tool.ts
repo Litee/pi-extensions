@@ -17,7 +17,6 @@
 import type { ExtensionAPI } from "@mariozechner/pi-coding-agent";
 import { Type } from "typebox";
 
-import type { ArchonClient } from "./archon-client.js";
 import { buildStartupChatMessage } from "./format.js";
 import { writeState } from "./persistence.js";
 import {
@@ -28,7 +27,7 @@ import {
 	stopPolling,
 	type Runtime,
 } from "./runtime.js";
-import type { ArchonRun, RunSnapshot } from "./types.js";
+import type { ArchonRun } from "./types.js";
 
 // ---------------------------------------------------------------------------
 // Schema

@@ -57,14 +57,14 @@ describe("extension default export", () => {
 
 	it("subscribes to resources_discover", () => {
 		const pi = makeFakePi();
-		// eslint-disable-next-line @typescript-eslint/no-explicit-any -- fake shape
+		 
 		createExtension(pi as any);
 		expect(pi.handlers.has("resources_discover")).toBe(true);
 	});
 
 	it("resources_discover returns empty promptPaths when no commands dirs exist", async () => {
 		const pi = makeFakePi();
-		// eslint-disable-next-line @typescript-eslint/no-explicit-any -- fake shape
+		 
 		createExtension(pi as any);
 		const cwd = mkdir(tmpRoot, "project");
 		const handler = pi.handlers.get("resources_discover")!;
@@ -79,7 +79,7 @@ describe("extension default export", () => {
 		const userCmds = mkdir(tmpRoot, "claude/commands");
 		writeCommand(userCmds, "my-cmd");
 		const pi = makeFakePi();
-		// eslint-disable-next-line @typescript-eslint/no-explicit-any -- fake shape
+		 
 		createExtension(pi as any);
 		const cwd = mkdir(tmpRoot, "project");
 		const handler = pi.handlers.get("resources_discover")!;
@@ -95,7 +95,7 @@ describe("extension default export", () => {
 		const projectCmds = mkdir(tmpRoot, "project/.claude/commands");
 		writeCommand(projectCmds, "local-cmd");
 		const pi = makeFakePi();
-		// eslint-disable-next-line @typescript-eslint/no-explicit-any -- fake shape
+		 
 		createExtension(pi as any);
 		const handler = pi.handlers.get("resources_discover")!;
 		const result = (await handler(
@@ -110,7 +110,7 @@ describe("extension default export", () => {
 		const cwd = mkdir(tmpRoot, "project");
 		const projectCmds = mkdir(tmpRoot, "project/.claude/commands");
 		const pi = makeFakePi();
-		// eslint-disable-next-line @typescript-eslint/no-explicit-any -- fake shape
+		 
 		createExtension(pi as any);
 		const handler = pi.handlers.get("resources_discover")!;
 		const result = (await handler(
@@ -123,7 +123,7 @@ describe("extension default export", () => {
 	it("resources_discover is a safe no-op when Claude Code is not installed", async () => {
 		process.env["CLAUDE_CONFIG_DIR"] = join(tmpRoot, "nonexistent");
 		const pi = makeFakePi();
-		// eslint-disable-next-line @typescript-eslint/no-explicit-any -- fake shape
+		 
 		createExtension(pi as any);
 		const cwd = mkdir(tmpRoot, "project");
 		const handler = pi.handlers.get("resources_discover")!;
@@ -138,7 +138,7 @@ describe("extension default export", () => {
 		const userCmds = mkdir(tmpRoot, "claude/commands");
 		writeCommand(userCmds, "reload-test");
 		const pi = makeFakePi();
-		// eslint-disable-next-line @typescript-eslint/no-explicit-any -- fake shape
+		 
 		createExtension(pi as any);
 		const cwd = mkdir(tmpRoot, "project");
 		const handler = pi.handlers.get("resources_discover")!;

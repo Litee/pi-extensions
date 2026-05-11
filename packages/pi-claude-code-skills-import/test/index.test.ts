@@ -102,7 +102,7 @@ describe("extension default export", () => {
 
 	it("subscribes to resources_discover and registers /cc-skills-info", () => {
 		const pi = makeFakePi();
-		// eslint-disable-next-line @typescript-eslint/no-explicit-any -- fake shape
+		 
 		createExtension(pi as any);
 		expect(pi.handlers.has("resources_discover")).toBe(true);
 		expect(pi.commands.has("cc-skills-info")).toBe(true);
@@ -111,7 +111,7 @@ describe("extension default export", () => {
 	it("resources_discover returns all discovered paths when nothing is disabled", async () => {
 		writeSkill(join(claudeDir, "skills", "alpha"), "alpha");
 		const pi = makeFakePi();
-		// eslint-disable-next-line @typescript-eslint/no-explicit-any -- fake shape
+		 
 		createExtension(pi as any);
 		const ctx = makeCtx(mkdir(tmpRoot, "project"));
 		const handler = pi.handlers.get("resources_discover")!;
@@ -131,7 +131,7 @@ describe("extension default export", () => {
 		writeFileSync(stateFile, JSON.stringify({ disabled: ["@user/alpha"] }));
 
 		const pi = makeFakePi();
-		// eslint-disable-next-line @typescript-eslint/no-explicit-any -- fake shape
+		 
 		createExtension(pi as any);
 		const ctx = makeCtx(mkdir(tmpRoot, "project"));
 		const handler = pi.handlers.get("resources_discover")!;
@@ -158,7 +158,7 @@ describe("extension default export", () => {
 			}),
 		);
 		const pi = makeFakePi();
-		// eslint-disable-next-line @typescript-eslint/no-explicit-any -- fake shape
+		 
 		createExtension(pi as any);
 		const ctx = makeCtx(mkdir(tmpRoot, "project"));
 		const handler = pi.handlers.get("resources_discover")!;
@@ -172,7 +172,7 @@ describe("extension default export", () => {
 	it("resources_discover does not warn when there are no collisions", async () => {
 		writeSkill(join(claudeDir, "skills", "unique"), "unique");
 		const pi = makeFakePi();
-		// eslint-disable-next-line @typescript-eslint/no-explicit-any -- fake shape
+		 
 		createExtension(pi as any);
 		const ctx = makeCtx(mkdir(tmpRoot, "project"));
 		const handler = pi.handlers.get("resources_discover")!;
@@ -197,7 +197,7 @@ describe("extension default export", () => {
 			}),
 		);
 		const pi = makeFakePi();
-		// eslint-disable-next-line @typescript-eslint/no-explicit-any -- fake shape
+		 
 		createExtension(pi as any);
 		const ctx = makeCtx(mkdir(tmpRoot, "project"));
 		const handler = pi.handlers.get("resources_discover")!;
@@ -230,7 +230,7 @@ describe("extension default export", () => {
 			JSON.stringify({ disabled: ["@user/alpha"] }),
 		);
 		const pi = makeFakePi();
-		// eslint-disable-next-line @typescript-eslint/no-explicit-any -- fake shape
+		 
 		createExtension(pi as any);
 		const ctx = makeCtx(mkdir(tmpRoot, "project"));
 		const handler = pi.handlers.get("resources_discover")!;
@@ -245,7 +245,7 @@ describe("extension default export", () => {
 		writeSkill(join(claudeDir, "skills", "alpha"), "alpha");
 		writeFileSync(stateFile, JSON.stringify({ disabled: [] }));
 		const pi = makeFakePi();
-		// eslint-disable-next-line @typescript-eslint/no-explicit-any -- fake shape
+		 
 		createExtension(pi as any);
 		const ctx = makeCtx(mkdir(tmpRoot, "project"));
 		const handler = pi.handlers.get("resources_discover")!;
@@ -275,7 +275,7 @@ describe("extension default export", () => {
 			JSON.stringify({ disabled: ["never-installed/skill"] }),
 		);
 		const pi = makeFakePi();
-		// eslint-disable-next-line @typescript-eslint/no-explicit-any -- fake shape
+		 
 		createExtension(pi as any);
 		const ctx = makeCtx(mkdir(tmpRoot, "project"));
 		const handler = pi.handlers.get("resources_discover")!;
@@ -318,7 +318,7 @@ describe("handleCcSkills (injectable picker)", () => {
 		});
 
 		await handleCcSkills({
-			ctx: ctx as never,
+			ctx: ctx,
 			claudeDir,
 			stateFile,
 			picker,
@@ -339,7 +339,7 @@ describe("handleCcSkills (injectable picker)", () => {
 		const ctx = makeCtx(mkdir(tmpRoot, "project"), reload);
 
 		await handleCcSkills({
-			ctx: ctx as never,
+			ctx: ctx,
 			claudeDir,
 			stateFile,
 			picker: async ({ onToggle }) => {
@@ -359,7 +359,7 @@ describe("handleCcSkills (injectable picker)", () => {
 		const ctx = makeCtx(mkdir(tmpRoot, "project"), reload);
 
 		await handleCcSkills({
-			ctx: ctx as never,
+			ctx: ctx,
 			claudeDir,
 			stateFile,
 			picker: async () => undefined,
@@ -375,7 +375,7 @@ describe("handleCcSkills (injectable picker)", () => {
 		const ctx = makeCtx(mkdir(tmpRoot, "project"), reload);
 
 		await handleCcSkills({
-			ctx: ctx as never,
+			ctx: ctx,
 			claudeDir,
 			stateFile,
 			picker: async ({ onToggle }) => {
@@ -394,7 +394,7 @@ describe("handleCcSkills (injectable picker)", () => {
 		const ctx = makeCtx(mkdir(tmpRoot, "project"), reload);
 
 		await handleCcSkills({
-			ctx: ctx as never,
+			ctx: ctx,
 			claudeDir,
 			stateFile,
 			picker: async ({ onToggle }) => {
@@ -416,7 +416,7 @@ describe("handleCcSkills (injectable picker)", () => {
 		const persist = vi.fn();
 
 		await handleCcSkills({
-			ctx: ctx as never,
+			ctx: ctx,
 			claudeDir,
 			stateFile,
 			persist,
@@ -441,7 +441,7 @@ describe("handleCcSkills (injectable picker)", () => {
 		const persist = vi.fn();
 
 		await handleCcSkills({
-			ctx: ctx as never,
+			ctx: ctx,
 			claudeDir,
 			stateFile,
 			persist,

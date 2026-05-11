@@ -202,7 +202,7 @@ describe("renderEdit", () => {
 		].join("\n");
 		const { result } = renderEdit(
 			{ path: "file.ts" },
-			{ content: [], details: { diff } as never },
+			{ content: [], details: { diff } },
 			taggedTheme,
 			ctx(),
 		);
@@ -213,7 +213,7 @@ describe("renderEdit", () => {
 	it("shows 'Applied' when no diff is present", () => {
 		const { result } = renderEdit(
 			{ path: "file.ts" },
-			{ content: [], details: {} as never },
+			{ content: [], details: {} },
 			taggedTheme,
 			ctx(),
 		);
@@ -235,7 +235,7 @@ describe("renderEdit", () => {
 		const diff = diffLines.join("\n");
 		const { result } = renderEdit(
 			{ path: "file.ts" },
-			{ content: [], details: { diff } as never },
+			{ content: [], details: { diff } },
 			plainTheme,
 			ctx({ expanded: true }),
 		);
@@ -304,7 +304,7 @@ describe("renderGrep", () => {
 					matchLimitReached: true,
 					truncation: { truncated: true },
 					linesTruncated: true,
-				} as never,
+				},
 			},
 			taggedTheme,
 			ctx(),
@@ -340,7 +340,7 @@ describe("renderLs", () => {
 			{ path: "." },
 			{
 				content: [{ type: "text", text: "a\nb" }],
-				details: { entryLimitReached: true, truncation: { truncated: true } } as never,
+				details: { entryLimitReached: true, truncation: { truncated: true } },
 			},
 			taggedTheme,
 			ctx(),
@@ -385,7 +385,7 @@ describe("renderFind", () => {
 			{ pattern: "*" },
 			{
 				content: [{ type: "text", text: "a.ts" }],
-				details: { truncation: { truncated: true } } as never,
+				details: { truncation: { truncated: true } },
 			},
 			taggedTheme,
 			ctx(),

@@ -95,10 +95,16 @@ export default tseslint.config(
 			"@typescript-eslint/require-await":                  "off", //   89 violations
 			"@typescript-eslint/unbound-method":                 "off", //   10 violations
 
-			// ── Deferred: easy/auto-fixable (Wave 2) ─────────────────────────────────
-			"@typescript-eslint/no-unnecessary-type-assertion":  "off", //   83 violations
-			"@typescript-eslint/no-unused-vars":                 "off", //   24 violations
-			"@typescript-eslint/no-redundant-type-constituents": "off", //   18 violations
+			// Respect the _-prefix convention for intentionally-unused identifiers.
+			// All three ignore patterns are needed: args (function parameters),
+			// vars (destructured discard bindings like `const { x: _x, ...rest }`),
+			// and caughtErrors (catch-clause bindings like `catch (_e)`).
+			"@typescript-eslint/no-unused-vars": ["error", {
+				argsIgnorePattern: "^_",
+				varsIgnorePattern: "^_",
+				caughtErrorsIgnorePattern: "^_",
+			}],
+
 		},
 	},
 );

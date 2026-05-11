@@ -61,7 +61,7 @@ describe("pi-local-issue-watcher scheduler lifecycle", () => {
 			},
 			hasUI: false,
 		};
-		const result = await handleSessionStart({ pi: pi as never, ctx: ctx as never, dbRoot });
+		const result = await handleSessionStart({ pi: pi as never, ctx: ctx, dbRoot });
 		expect(result.started).toBe(true);
 		expect(result.paused).toBe(false);
 		// Snapshot reflects the single sample issue we wrote above.
@@ -82,7 +82,7 @@ describe("pi-local-issue-watcher scheduler lifecycle", () => {
 			},
 			hasUI: false,
 		};
-		const result = await handleSessionStart({ pi: pi as never, ctx: ctx as never, dbRoot });
+		const result = await handleSessionStart({ pi: pi as never, ctx: ctx, dbRoot });
 		expect(result.started).toBe(true);
 		expect(result.paused).toBe(true);
 	});

@@ -45,8 +45,8 @@ export function makeTuiPicker(
 			container.addChild({
 				render: () => headerLines,
 				invalidate: () => {},
-				// eslint-disable-next-line @typescript-eslint/no-explicit-any -- tui child shape
-			} as any);
+				 
+			});
 
 			if (items.length === 0) {
 				container.addChild(new Text(theme.fg("dim", "No Claude Code skills found."), 1, 1));
@@ -86,7 +86,7 @@ export function makeTuiPicker(
 				render: (w: number) => container.render(w),
 				invalidate: () => container.invalidate(),
 				handleInput: (data: string) => {
-					// eslint-disable-next-line @typescript-eslint/no-explicit-any -- runtime widget shape
+					 
 					(settingsList as any).handleInput?.(data);
 					tui.requestRender();
 				},

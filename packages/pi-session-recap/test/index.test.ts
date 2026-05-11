@@ -33,9 +33,9 @@ interface StubPi {
 	getFlag: ReturnType<typeof vi.fn>;
 	readonly commands: Map<
 		string,
-		{ description: string; handler: (args: string, ctx: unknown) => unknown | Promise<unknown> }
+		{ description: string; handler: (args: string, ctx: unknown) => unknown }
 	>;
-	readonly handlers: Map<string, (event: unknown, ctx: unknown) => unknown | Promise<unknown>>;
+	readonly handlers: Map<string, (event: unknown, ctx: unknown) => unknown>;
 	readonly renderers: Map<
 		string,
 		(message: { customType: string; content: string; details?: unknown }, options: { expanded: boolean }, theme: unknown) => unknown
@@ -50,17 +50,17 @@ function makeFakePi(
 ): StubPi {
 	const commands = new Map<
 		string,
-		{ description: string; handler: (args: string, ctx: unknown) => unknown | Promise<unknown> }
+		{ description: string; handler: (args: string, ctx: unknown) => unknown }
 	>();
 	const handlers = new Map<
 		string,
-		(event: unknown, ctx: unknown) => unknown | Promise<unknown>
+		(event: unknown, ctx: unknown) => unknown
 	>();
 	const renderers = new Map<
 		string,
 		(message: { customType: string; content: string; details?: unknown }, options: { expanded: boolean }, theme: unknown) => unknown
 	>();
-	const on = vi.fn((event: string, fn: (event: unknown, ctx: unknown) => unknown | Promise<unknown>) => {
+	const on = vi.fn((event: string, fn: (event: unknown, ctx: unknown) => unknown) => {
 		handlers.set(event, fn);
 	});
 	const registerFlag = vi.fn();
@@ -79,7 +79,7 @@ function makeFakePi(
 	const registerCommand = vi.fn(
 		(
 			name: string,
-			def: { description: string; handler: (args: string, ctx: unknown) => unknown | Promise<unknown> },
+			def: { description: string; handler: (args: string, ctx: unknown) => unknown },
 		) => {
 			commands.set(name, def);
 		},
@@ -167,7 +167,7 @@ describe("/recap command dispatch (#0004)", () => {
 
 	function getHandler(
 		pi: StubPi,
-	): (args: string, ctx: unknown) => unknown | Promise<unknown> {
+	): (args: string, ctx: unknown) => unknown {
 		const cmd = pi.commands.get("recap");
 		expect(cmd).toBeDefined();
 		return cmd!.handler;

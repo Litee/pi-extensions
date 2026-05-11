@@ -31,7 +31,7 @@ interface StubPi {
 		string,
 		{
 			description: string;
-			handler: (args: string, ctx: unknown) => unknown | Promise<unknown>;
+			handler: (args: string, ctx: unknown) => unknown;
 		}
 	>;
 }
@@ -42,7 +42,7 @@ function makePi(): StubPi {
 		string,
 		{
 			description: string;
-			handler: (args: string, ctx: unknown) => unknown | Promise<unknown>;
+			handler: (args: string, ctx: unknown) => unknown;
 		}
 	>();
 
@@ -56,7 +56,7 @@ function makePi(): StubPi {
 			name: string,
 			def: {
 				description: string;
-				handler: (args: string, ctx: unknown) => unknown | Promise<unknown>;
+				handler: (args: string, ctx: unknown) => unknown;
 			},
 		) => {
 			commands.set(name, def);

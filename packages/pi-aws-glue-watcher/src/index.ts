@@ -18,7 +18,7 @@ import type { ExtensionAPI } from "@mariozechner/pi-coding-agent";
 
 import { createGlueClient, type GlueClient } from "./cli-client.js";
 import { buildStartupChatMessage } from "./format.js";
-import { rehydrateStateFromSession, type SessionLike } from "./persistence.js";
+import { rehydrateStateFromSession } from "./persistence.js";
 import { snapshotJobRun, snapshotWorkflowRun } from "./poller.js";
 import { runGlueWatcherCommand } from "./command.js";
 import {
@@ -46,7 +46,7 @@ export function createExtensionWithClient(pi: ExtensionAPI, client: GlueClient):
 		const hasUI = anyCtx.hasUI ?? anyCtx.ui?.hasUI ?? anyCtx.ui !== undefined;
 		rt.ui = hasUI ? (anyCtx.ui ?? null) : null;
 
-		const state = rehydrateStateFromSession(ctx as unknown as SessionLike);
+		const state = rehydrateStateFromSession(ctx);
 		rt.watches = state?.watches ?? {};
 		rt.paused = state?.paused ?? false;
 		rt.enabled = state?.enabled ?? false;

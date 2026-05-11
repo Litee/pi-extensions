@@ -152,7 +152,7 @@ export function formatPreview(info: IssueInfo): string {
 				typeof c.text === "string"
 					? c.text
 					: typeof c["body"] === "string"
-						? (c["body"] as string)
+						? (c["body"])
 						: JSON.stringify(c);
 			lines.push(`  • ${body}`);
 		}

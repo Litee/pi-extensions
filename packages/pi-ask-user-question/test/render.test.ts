@@ -122,7 +122,7 @@ describe("renderResult()", () => {
 			content: [{ type: "image" as unknown as "text", text: "ignored" }],
 			details: { answers: [], cancelled: false },
 		};
-		const comp = renderResult(weird as Parameters<typeof renderResult>[0], theme);
+		const comp = renderResult(weird, theme);
 		expect(firstLine(comp)).toBe("");
 	});
 

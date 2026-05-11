@@ -621,7 +621,7 @@ function createHarness(
   async function shortcut(name: string) {
     const registered = shortcuts.get(name);
     if (!registered) throw new Error(`Missing shortcut: ${name}`);
-    await registered.handler(undefined, baseCtx as unknown as ExtensionContext);
+    await registered.handler(undefined, baseCtx);
   }
 
   function latestOverlayComponent() {
@@ -818,7 +818,7 @@ describe("btw runtime behavior", () => {
     expect(options.model).toEqual({ provider: "saved-provider", id: "saved-model", api: "saved-api" });
     expect(options.thinkingLevel).toBe("low");
 
-    const seedTexts = subSessionRecords[0]!.seedMessages.map((message) => (message.content[0] as any)?.text ?? "");
+    const seedTexts = subSessionRecords[0]!.seedMessages.map((message) => (message.content[0])?.text ?? "");
     expect(seedTexts).toContain("saved question");
     expect(seedTexts).toContain("saved answer");
   });
@@ -900,25 +900,25 @@ describe("btw runtime behavior", () => {
         role: "custom",
         customType: "btw-note",
         content: "saved btw note",
-      } as SessionEntry,
+      },
       {
         type: "message",
         role: "user",
         content: [{ type: "text", text: "main session task" }],
         timestamp: Date.now(),
-      } as SessionEntry,
+      },
       {
         type: "message",
         role: "assistant",
         content: [{ type: "text", text: "main session answer" }],
         timestamp: Date.now(),
-      } as SessionEntry,
+      },
     ]);
 
     await harness.runSessionStart();
     await harness.command("btw", "contextual start");
 
-    const seedTexts = subSessionRecords[0]!.seedMessages.map((message) => (message.content[0] as any)?.text ?? "");
+    const seedTexts = subSessionRecords[0]!.seedMessages.map((message) => (message.content[0])?.text ?? "");
     expect(seedTexts).toContain("main session task");
     expect(seedTexts).toContain("main session answer");
     expect(seedTexts).not.toContain("saved btw note");
@@ -931,13 +931,13 @@ describe("btw runtime behavior", () => {
         role: "user",
         content: [{ type: "text", text: "main session task" }],
         timestamp: Date.now(),
-      } as SessionEntry,
+      },
     ]);
 
     await harness.runSessionStart();
     await harness.command("btw", "contextual start");
     const contextualRecord = subSessionRecords[0]!;
-    expect(contextualRecord.seedMessages.map((message) => (message.content[0] as any)?.text ?? "")).toContain(
+    expect(contextualRecord.seedMessages.map((message) => (message.content[0])?.text ?? "")).toContain(
       "main session task",
     );
 
@@ -947,7 +947,7 @@ describe("btw runtime behavior", () => {
     expect(tangentRecord.session).not.toBe(contextualRecord.session);
     expect(contextualRecord.session.abort).toHaveBeenCalledTimes(1);
     expect(contextualRecord.session.dispose).toHaveBeenCalledTimes(1);
-    expect(tangentRecord.seedMessages.map((message) => (message.content[0] as any)?.text ?? "")).not.toContain(
+    expect(tangentRecord.seedMessages.map((message) => (message.content[0])?.text ?? "")).not.toContain(
       "main session task",
     );
   });

@@ -224,7 +224,7 @@ async function setupPicker(rows: InfoRow[]): Promise<Harness> {
 	const done = vi.fn();
 	let handle: FakeComponent | undefined;
 
-	// eslint-disable-next-line @typescript-eslint/no-explicit-any -- partial ctx stub
+	 
 	const ctx: any = {
 		ui: {
 			theme: {

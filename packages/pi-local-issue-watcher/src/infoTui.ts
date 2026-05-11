@@ -123,8 +123,8 @@ export function makeInfoTuiPicker(ctx: CommandCtx): InfoPicker {
 				emptyContainer.addChild({
 					render: () => listHeader,
 					invalidate: () => {},
-					// eslint-disable-next-line @typescript-eslint/no-explicit-any -- tui child shape
-				} as any);
+					 
+				});
 				emptyContainer.addChild(
 					new Text(theme.fg("dim", "(no open issues)"), 1, 1),
 				);
@@ -163,16 +163,16 @@ export function makeInfoTuiPicker(ctx: CommandCtx): InfoPicker {
 			listContainer.addChild({
 				render: () => listHeader,
 				invalidate: () => {},
-				// eslint-disable-next-line @typescript-eslint/no-explicit-any -- tui child shape
-			} as any);
+				 
+			});
 
 			// Search input with a preceding "search:" label Text.
 			const searchInput = new Input();
 			listContainer.addChild({
 				render: () => [theme.fg("dim", "search:")],
 				invalidate: () => {},
-				// eslint-disable-next-line @typescript-eslint/no-explicit-any -- tui child shape
-			} as any);
+				 
+			});
 			listContainer.addChild(searchInput);
 
 			// List — one row per InfoRow.
@@ -193,7 +193,7 @@ export function makeInfoTuiPicker(ctx: CommandCtx): InfoPicker {
 			// site that patches the upstream component's private fields
 			// (`filteredItems` / `selectedIndex`) which `SelectList.render()`
 			// reads on every frame.
-			// eslint-disable-next-line @typescript-eslint/no-explicit-any -- scoped private-field patch, see comment above
+			 
 			const slInternal = selectList as any;
 			slInternal.setFilter = (filter: string): void => {
 				slInternal.filteredItems = filterItemsBySubstring(
@@ -217,8 +217,8 @@ export function makeInfoTuiPicker(ctx: CommandCtx): InfoPicker {
 			listContainer.addChild({
 				render: () => ["", listHint],
 				invalidate: () => {},
-				// eslint-disable-next-line @typescript-eslint/no-explicit-any -- tui child shape
-			} as any);
+				 
+			});
 
 			// ---------------------------------------------------------
 			// Detail subtree — preview text + back hint. The Text
@@ -235,8 +235,8 @@ export function makeInfoTuiPicker(ctx: CommandCtx): InfoPicker {
 			detailContainer.addChild({
 				render: () => ["", detailHint],
 				invalidate: () => {},
-				// eslint-disable-next-line @typescript-eslint/no-explicit-any -- tui child shape
-			} as any);
+				 
+			});
 
 			// ---------------------------------------------------------
 			// SelectList callbacks

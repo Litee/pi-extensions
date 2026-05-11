@@ -73,7 +73,7 @@ describe("runGlueWatcherCommand", () => {
 		const pi = makeFakePi();
 		// `pi` here is used both as the full ExtensionAPI and as the narrower
 		// Runtime["pi"] subset. Casts are constrained by the Runtime type.
-		return makeRuntime(pi as unknown as Runtime["pi"], makeFakeClient());
+		return makeRuntime(pi, makeFakeClient());
 	}
 
 	it("enable: flips rt.enabled and notifies", async () => {

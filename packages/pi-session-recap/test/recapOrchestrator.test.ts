@@ -113,7 +113,7 @@ function makeDeps(
 		setWidget,
 		setStatus,
 		getApiKeyAndHeaders,
-	}) as RecapOrchestratorDeps & FakeDepsExtras;
+	});
 }
 
 // --- tests ----------------------------------------------------------------

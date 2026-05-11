@@ -53,14 +53,14 @@ interface StubPi {
 	getFlag: ReturnType<typeof vi.fn>;
 	readonly commands: Map<
 		string,
-		{ description: string; handler: (args: string, ctx: unknown) => unknown | Promise<unknown> }
+		{ description: string; handler: (args: string, ctx: unknown) => unknown }
 	>;
 }
 
 function makeFakePi(): StubPi {
 	const commands = new Map<
 		string,
-		{ description: string; handler: (args: string, ctx: unknown) => unknown | Promise<unknown> }
+		{ description: string; handler: (args: string, ctx: unknown) => unknown }
 	>();
 	return {
 		on: vi.fn(),

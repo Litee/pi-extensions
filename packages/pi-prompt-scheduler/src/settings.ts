@@ -32,9 +32,9 @@ function sanitize(raw: unknown): ScheduleSettings {
   if (!raw || typeof raw !== "object") return {};
   const r = raw as Record<string, unknown>;
   const out: ScheduleSettings = {};
-  if (typeof r['widgetVisible'] === "boolean") out.widgetVisible = r['widgetVisible'] as boolean;
+  if (typeof r['widgetVisible'] === "boolean") out.widgetVisible = r['widgetVisible'];
   if (r['defaultJobScope'] === "session" || r['defaultJobScope'] === "workdir") {
-    out.defaultJobScope = r['defaultJobScope'] as JobScope;
+    out.defaultJobScope = r['defaultJobScope'];
   }
   return out;
 }

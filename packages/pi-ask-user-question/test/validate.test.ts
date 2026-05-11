@@ -122,7 +122,7 @@ describe("validate()", () => {
 
 	it("rejects an option with non-string label", () => {
 		const bogus = { question: "Q", options: [{ label: 42 as unknown as string }, { label: "B" }] };
-		const r = validate({ questions: [bogus as unknown as TParams["questions"][number]] });
+		const r = validate({ questions: [bogus] });
 		expect(r).toMatchObject({ ok: false, error: "missing_label" });
 	});
 

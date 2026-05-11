@@ -22,7 +22,7 @@ interface StubPi {
 		string,
 		{
 			description: string;
-			handler: (args: string, ctx: unknown) => unknown | Promise<unknown>;
+			handler: (args: string, ctx: unknown) => unknown;
 		}
 	>;
 }
@@ -33,7 +33,7 @@ function makeFakePi(): StubPi {
 		string,
 		{
 			description: string;
-			handler: (args: string, ctx: unknown) => unknown | Promise<unknown>;
+			handler: (args: string, ctx: unknown) => unknown;
 		}
 	>();
 	const on = vi.fn((evt: string, fn: (...a: unknown[]) => unknown) => {
@@ -44,7 +44,7 @@ function makeFakePi(): StubPi {
 			name: string,
 			def: {
 				description: string;
-				handler: (args: string, ctx: unknown) => unknown | Promise<unknown>;
+				handler: (args: string, ctx: unknown) => unknown;
 			},
 		) => {
 			commands.set(name, def);

@@ -135,7 +135,7 @@ export class JobsView implements Component {
         // unbind: remove session field entirely
         this.storage.updateJob(sel.id, { session: undefined });
         const { session: _removed, ...rest } = sel;
-        this.scheduler.updateJob(sel.id, rest as CronJob);
+        this.scheduler.updateJob(sel.id, rest);
       } else {
         // bind: add session field
         const session = this.mySessionId;

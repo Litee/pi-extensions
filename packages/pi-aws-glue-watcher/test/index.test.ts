@@ -494,7 +494,7 @@ describe("pollOnce", () => {
 
 		await pollOnce(rt);
 
-		expect(rt.watches["aa"]!.terminal).toBe(true);
+		expect(rt.watches["aa"].terminal).toBe(true);
 	});
 
 	it("skips terminal watches during polling", async () => {
@@ -556,9 +556,9 @@ describe("pollOnce — consecutive error tracking", () => {
 		rt.watches["aa"] = makeWatch({ watchId: "aa", baseline: { state: "RUNNING", errorMessage: "" } });
 
 		await pollOnce(rt);
-		expect(rt.watches["aa"]!.consecutiveErrors).toBe(1);
+		expect(rt.watches["aa"].consecutiveErrors).toBe(1);
 		await pollOnce(rt);
-		expect(rt.watches["aa"]!.consecutiveErrors).toBe(2);
+		expect(rt.watches["aa"].consecutiveErrors).toBe(2);
 	});
 
 	it("resets consecutiveErrors to 0 on a successful poll", async () => {
@@ -574,10 +574,10 @@ describe("pollOnce — consecutive error tracking", () => {
 
 		await pollOnce(rt);
 		await pollOnce(rt);
-		expect(rt.watches["aa"]!.consecutiveErrors).toBe(2);
+		expect(rt.watches["aa"].consecutiveErrors).toBe(2);
 
 		await pollOnce(rt);
-		expect(rt.watches["aa"]!.consecutiveErrors).toBe(0);
+		expect(rt.watches["aa"].consecutiveErrors).toBe(0);
 	});
 
 	it("sends a warning chat message exactly once when threshold is reached", async () => {
@@ -633,7 +633,7 @@ describe("pollOnce — consecutive error tracking", () => {
 
 		// No change in state, no recovery message (streak below threshold)
 		expect(pi.sendMessage).not.toHaveBeenCalled();
-		expect(rt.watches["aa"]!.consecutiveErrors).toBe(0);
+		expect(rt.watches["aa"].consecutiveErrors).toBe(0);
 	});
 });
 

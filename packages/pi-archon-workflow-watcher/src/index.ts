@@ -75,7 +75,7 @@ export function createExtensionWithClient(
 		 */
 		const emit: typeof pi.sendMessage = ((message, options) => {
 			setImmediate(() => pi.sendMessage(message, options));
-		}) as typeof pi.sendMessage;
+		});
 
 		// Rehydrate combined state (paused preference + watchedIds + snapshot).
 		const sessionCtx = ctx as unknown as SessionLike;

@@ -107,11 +107,11 @@ function _normaliseGlueWatch(v: unknown): GlueWatch | null {
 		return null;
 	}
 	return {
-		watchId: r["watchId"] as string,
-		type: r["type"] as "job" | "workflow",
-		name: r["name"] as string,
-		runId: r["runId"] as string,
-		profile: r["profile"] as string,
+		watchId: r["watchId"],
+		type: r["type"],
+		name: r["name"],
+		runId: r["runId"],
+		profile: r["profile"],
 		region: typeof r["region"] === "string" ? r["region"] : undefined,
 		addedAt: toFiniteNumber(r["addedAt"]),
 		lastPolledAt: typeof r["lastPolledAt"] === "number" ? r["lastPolledAt"] : undefined,

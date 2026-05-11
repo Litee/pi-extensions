@@ -245,7 +245,7 @@ export async function handleSessionStart(
 		} else {
 			pi.sendMessage(message, options);
 		}
-	}) as typeof pi.sendMessage;
+	});
 
 	// #0019: paused = silent + zero-IO. Rehydrate the user's explicit
 	// pause / resume preference BEFORE touching the filesystem so that a
@@ -603,7 +603,7 @@ export default function issueWatcher(pi: ExtensionAPI): void {
 					}
 					const picker =
 						infoPickerOverride ??
-						makeInfoTuiPicker(ctx as Parameters<typeof makeInfoTuiPicker>[0]);
+						makeInfoTuiPicker(ctx);
 					await handleInfo({
 						dbRoot: rt.dbRoot,
 						scan: (root) => scanIssueFiles(root),
