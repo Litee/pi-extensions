@@ -1,0 +1,535 @@
+name: pi-extension-feature
+description: |
+  End-to-end feature/fix workflow for the pi-extensions monorepo.
+  Use when: adding a new pi extension package, changing behaviour of an existing
+  one, or fixing a bug — anything that touches TypeScript source in packages/*.
+  Does: interactive formulation → autonomous plan-and-review loop → TDD
+  implementation (failing-test-first, `npm run check` gate) → adversarial code
+  review → human approval gate → rebase-and-commit → merge handoff to main repo.
+  Enforces: git worktree isolation, vitest-first TDD, `npm run check` as the
+  only green bar, alphabetical README table, UPSTREAM.md rule for ports,
+  no `git push`, ff-only merge handed off to the user.
+  Does NOT create a PR or push to origin — hand-off is a printed ff-only command.
+  NOT for: pure documentation changes, reviewing PRs, brainstorming without code.
+
+provider: claude
+model: sonnet
+thinking:
+  type: enabled
+  budgetTokens: 10000
+effort: high
+interactive: true
+
+worktree:
+  enabled: true
+
+# @anthropic-ai/sandbox-runtime integration.
+# filesystem: deny sensitive system + home paths; allow writes inside
+# the archon workspace (artifacts, worktree checkout).
+# network: not restricted in v1 — omitting the network sub-object.
+# NOTE (known v1 ambiguity): archon may pass an empty network config to
+# sandbox-runtime which defaults to deny-all. Watch for silent network
+# failures in AI nodes that use web tools; add allowedDomains if needed.
+sandbox:
+  enabled: true
+  filesystem:
+    denyRead:
+      - ~/.ssh
+      - ~/.aws
+      - ~/.gnupg
+    denyWrite:
+      - /tmp
+      - /opt
+      - /etc
+      - /usr
+      - /private
+      - /System
+      - /Library
+      - /Applications
+      - /Network
+      - /cores
+      - /var
+
+nodes:
+  # ───────────────────────────────────────────────────────────────────────────
+  # PHASE 1  Formulation — interactive clarification loop
+  # ───────────────────────────────────────────────────────────────────────────
+  - id: formulate
+    idle_timeout: 600000
+    loop:
+      max_iterations: 12
+      interactive: true
+      until: READY
+      gate_message: |
+        Answer the questions above, ask me to look something up, or say
+        "ready" / "let's plan" / "proceed" when you're happy with the direction.
+      prompt: |
+        # pi-extensions Feature Formulation
+
+        You are a senior contributor to the pi-extensions monorepo helping a
+        colleague turn a rough idea into a concrete, scoped task ready for
+        planning.
+
+        ## Repository context (read these files now, before anything else)
+        - AGENTS.md                  — mandatory conventions you must enforce
+        - README.md                  — current package table; new extensions go here
+        - packages/*/package.json    — existing packages (discover via Glob)
+        - tsconfig.json              — workspace TS config
+
+        ## Incoming request
+        **$ARGUMENTS**
+
+        ## Latest human input (empty on first iteration)
+        **$LOOP_USER_INPUT**
+
+        ---
+        ## First iteration only — do all of this before replying
+
+        1. Read AGENTS.md and README.md in full.
+        2. Run `find packages -maxdepth 2 -name "*.ts" | head -40` to get a
+           sense of the codebase shape.
+        3. If the request mentions a specific package, read its src/index.ts
+           and test/ directory.
+        4. If it mentions a known pi SDK concept (extensions, tools, TUI, etc.),
+           read the relevant pi README section.
+
+        Then reply with:
+
+        ## What I Understand
+        (2–4 sentences: what the user wants and why)
+
+        ## Codebase Context
+        (what you read — file refs, relevant types/interfaces, max 6 bullets)
+
+        ## Constraints from AGENTS.md I'll enforce
+        (TDD, README alpha-sort, UPSTREAM.md if porting, ff-only merge, etc.)
+
+        ## Open Decisions
+        (ambiguities that block planning — at most 5)
+
+        ## Questions
+        (focused decision questions, not background questions — at most 5)
+
+        ---
+        ## Subsequent iterations
+
+        1. Integrate the human's input: note decisions made, new constraints,
+           any research requests.
+        2. If they asked you to look something up — do it and report findings.
+        3. Update your understanding and either ask 2–3 more focused questions
+           OR present a Pre-Plan Summary when you have a clear picture:
+             - Package(s) affected / to be created
+             - Public API surface (if new package)
+             - Test-first strategy: which vitest file(s), what assertions prove correctness
+             - Scope: in / out
+             - UPSTREAM.md required? (yes if porting from another project)
+           Then say: "Ready to plan. Say 'ready' to proceed, or share final thoughts."
+
+        ---
+        ## Completion
+
+        ONLY emit <promise>READY</promise> when the user's LATEST message
+        contains an explicit go-ahead: "ready", "let's plan", "proceed",
+        "plan it", "go", or clear equivalent. If they asked a question or
+        added a constraint — keep going.
+
+        **Before emitting READY**, write $ARTIFACTS_DIR/formulation.md:
+          # Formulation
+          ## Goal
+          ## Package(s) affected
+          ## Public API surface (if new)
+          ## Test-first strategy
+          ## Steps (rough, pre-plan)
+          ## AGENTS.md constraints to enforce
+          ## Open risks
+
+  # ───────────────────────────────────────────────────────────────────────────
+  # PHASE 2  Autonomous plan ↔ reviewer loop
+  # ───────────────────────────────────────────────────────────────────────────
+  - id: plan-and-review
+    depends_on: [formulate]
+    idle_timeout: 900000
+    loop:
+      max_iterations: 6
+      fresh_context: true
+      until: PLAN_APPROVED
+      interactive: true
+      gate_message: |
+        The reviewer needs human input before proceeding. See the questions
+        above and respond — your answer will feed the next planning iteration.
+      prompt: |
+        # Autonomous Plan ↔ Review Iteration
+        # Two roles in sequence — no human unless the reviewer truly cannot proceed.
+
+        **Original request**: $ARGUMENTS
+        **Formulation**: $ARTIFACTS_DIR/formulation.md
+        **Prior reviewer feedback** (if iteration > 1): $ARTIFACTS_DIR/review-feedback.md
+        **Human escalation answer** (if prior iteration escalated): $LOOP_USER_INPUT
+
+        ---
+        ═══════════════════════════════════════════
+        ROLE 1 — PLAN AUTHOR
+        ═══════════════════════════════════════════
+
+        Read ALL of the above files that exist on disk.
+        Priority order for incorporating feedback:
+          1. review-feedback.md    (reviewer's prior critique)
+          2. $LOOP_USER_INPUT      (human escalation answer, if non-empty)
+          3. formulation.md        (original requirements)
+
+        Verify load-bearing claims via tool calls before writing:
+          - Read referenced source files to confirm real paths, types, symbols.
+          - Read AGENTS.md again to re-confirm conventions.
+
+        Write/overwrite $ARTIFACTS_DIR/plan.md using this skeleton:
+
+          # Implementation Plan: {title}
+          ## Context
+          ## Goal (one sentence)
+          ## Package(s) touched
+          ## Public API changes
+          ## Test-first strategy
+            - Vitest file(s): packages/<pkg>/test/<name>.test.ts
+            - Failing assertions (what the test checks before implementation)
+            - Expected green bar after implementation
+          ## Implementation steps (ordered, atomic)
+          ## README.md update (table row — alphabetically sorted)
+          ## UPSTREAM.md required? (yes/no + rationale)
+          ## `npm run check` must pass (typecheck + vitest)
+          ## Risks and mitigations
+
+        ═══════════════════════════════════════════
+        ROLE 2 — ADVERSARIAL REVIEWER
+        ═══════════════════════════════════════════
+
+        Stop. You are now a NEW reviewer who has never seen the drafting process.
+        Read ONLY $ARTIFACTS_DIR/plan.md and $ARTIFACTS_DIR/formulation.md.
+        Apply a fresh, adversarial eye.
+
+        Review lenses:
+          1. Does the plan solve what formulation.md describes? Any scope drift?
+          2. Is the test-first strategy real? Would the listed assertions actually
+             fail before implementation?
+          3. Are all referenced file paths real (verify via Glob/Read)?
+          4. Does the plan respect every AGENTS.md constraint you see in
+             formulation.md? (TDD, README alpha-sort, UPSTREAM.md, no push, etc.)
+          5. Are the implementation steps ordered correctly and atomic?
+          6. Is the README table row alphabetically placed?
+          7. Is there an ambiguity only the human can resolve?
+
+        Write verdict to $ARTIFACTS_DIR/review.json:
+          {
+            "iteration": <N>,
+            "verdict": "approve" | "needs-changes" | "needs-human-input",
+            "headline": "<one-sentence summary>",
+            "feedback": "<specific, actionable notes>",
+            "questions_for_human": []
+          }
+
+        Act on the verdict:
+          "approve"           → Print headline.
+                                Emit <promise>PLAN_APPROVED</promise>.
+
+          "needs-changes"     → Write feedback to $ARTIFACTS_DIR/review-feedback.md.
+                                Do NOT emit any promise. Loop iterates.
+
+          "needs-human-input" → ONLY for true decision blockers the formulation
+                                never addressed. Print questions prominently.
+                                Emit <promise>HUMAN_ESCALATION</promise>.
+
+        Bias strongly toward "needs-changes". Only escalate for genuine blockers.
+
+  # ───────────────────────────────────────────────────────────────────────────
+  # PHASE 3  Write the failing test (test-first, no implementation yet)
+  # ───────────────────────────────────────────────────────────────────────────
+  - id: write-failing-test
+    depends_on: [plan-and-review]
+    context: fresh
+    allowed_tools:
+      - Read
+      - Write
+      - Edit
+      - Glob
+      - Grep
+    prompt: |
+      # Write the Failing Test
+
+      Read $ARTIFACTS_DIR/plan.md now.
+
+      Your ONLY job in this node is to write the vitest test file(s) described
+      in the "Test-first strategy" section of the plan. Do NOT write any
+      implementation code. Do NOT modify any existing source files.
+
+      Rules:
+        - Place test files at packages/<pkg>/test/<name>.test.ts
+          (or the exact paths stated in the plan).
+        - Import from the package's src/ using relative paths, e.g.:
+            import { foo } from '../src/index.js'
+        - Write assertions that will FAIL before the implementation exists.
+          Concrete failing tests: call a function that doesn't exist yet,
+          assert a behaviour that the current code doesn't have, etc.
+        - Do NOT add `expect.fail()` or skip/todo markers — the test must
+          represent the real intended behaviour.
+        - If the plan adds a new package, also create the minimal
+          package.json (with "pi-package" keyword and correct workspace deps)
+          and an empty src/index.ts so the import resolves at test time.
+          The empty src/index.ts should export a stub that makes the import
+          succeed but the assertions fail.
+
+      After writing, print the full path(s) of the file(s) you created.
+
+  # ───────────────────────────────────────────────────────────────────────────
+  # PHASE 4  Verify the test actually fails (deterministic guardrail)
+  # ───────────────────────────────────────────────────────────────────────────
+  - id: verify-test-fails
+    depends_on: [write-failing-test]
+    bash: |
+      set -euo pipefail
+
+      # Extract test file paths from plan.md (lines matching packages/*/test/*.test.ts)
+      TEST_FILES=$(grep -oE 'packages/[^/]+/test/[^ ]+\.test\.ts' "$ARTIFACTS_DIR/plan.md" | sort -u | tr '\n' ' ')
+
+      if [ -z "$TEST_FILES" ]; then
+        echo "ERROR: could not extract test file paths from plan.md"
+        exit 1
+      fi
+
+      echo "Running: npx vitest run $TEST_FILES"
+      # We WANT the tests to fail. Exit 0 from vitest → tests passed → bad.
+      if npx vitest run $TEST_FILES 2>&1 | tail -100; then
+        echo ""
+        echo "ERROR: tests passed before implementation — the test is not a real failing test."
+        exit 1
+      else
+        echo ""
+        echo "✓ Tests failed as expected — proceeding to implementation."
+        exit 0
+      fi
+
+  # ───────────────────────────────────────────────────────────────────────────
+  # PHASE 5  TDD implementation loop — runs until `npm run check` exits 0
+  # ───────────────────────────────────────────────────────────────────────────
+  - id: implement
+    depends_on: [verify-test-fails]
+    idle_timeout: 900000
+    loop:
+      max_iterations: 8
+      fresh_context: false
+      until: IMPLEMENTATION_DONE
+      until_bash: npm run check
+      prompt: |
+        # TDD Implementation Loop
+
+        Re-read $ARTIFACTS_DIR/plan.md at the start of every iteration.
+        The test file(s) you must make pass are listed there.
+
+        Your job: implement the code that makes `npm run check` pass.
+        `npm run check` runs `tsc -b` (typecheck) then `vitest run` (all tests).
+        Both must be green.
+
+        ## Constraints (from AGENTS.md — enforce every one)
+        - Write code ONLY inside the packages listed in the plan. Do NOT touch
+          any other package or file outside the plan scope.
+        - Do NOT create merge commits, do NOT push, do NOT run `git commit`.
+        - If the plan says UPSTREAM.md is required, write it now.
+        - Keep the README.md packages table alphabetically sorted — update it
+          now if the plan adds a new package row.
+        - TypeScript only; match the style of existing packages (ESM, no
+          default CJS exports, strict tsconfig inherited from root).
+
+        ## What to do each iteration
+        1. Run `npm run check 2>&1 | tail -200` to see the current state.
+        2. If green → emit <promise>IMPLEMENTATION_DONE</promise>.
+        3. If red → read the error output carefully. Fix the smallest set of
+           files needed to address the failures. Run a targeted
+           `npx vitest run packages/<pkg>/test/<name>.test.ts` to confirm
+           progress before writing more code.
+        4. Do not rewrite the test file unless it has a genuine bug (wrong
+           import path, wrong module name). The test defines the contract.
+
+        ## Never do these
+        - Do not remove or weaken existing tests to make the suite pass.
+        - Do not skip/xtest the failing tests.
+        - Do not touch vitest.config.ts or root tsconfig.json.
+
+  # ───────────────────────────────────────────────────────────────────────────
+  # PHASE 6  Write git diff artifact (bash — feeds the reviewer)
+  # ───────────────────────────────────────────────────────────────────────────
+  - id: capture-diff
+    depends_on: [implement]
+    bash: |
+      set -euo pipefail
+      git diff HEAD 2>&1 > "$ARTIFACTS_DIR/diff.patch"
+      git diff HEAD --stat 2>&1 > "$ARTIFACTS_DIR/diff-stat.txt"
+      echo "--- diff stat ---"
+      cat "$ARTIFACTS_DIR/diff-stat.txt"
+
+  # ───────────────────────────────────────────────────────────────────────────
+  # PHASE 6b  Adversarial code review + optional fix loop
+  # ───────────────────────────────────────────────────────────────────────────
+  - id: code-review
+    depends_on: [capture-diff]
+    context: fresh
+    idle_timeout: 600000
+    loop:
+      max_iterations: 4
+      fresh_context: true
+      until: CODE_APPROVED
+      prompt: |
+        # Adversarial Code Review
+
+        Read these files now — all of them:
+          - $ARTIFACTS_DIR/formulation.md
+          - $ARTIFACTS_DIR/plan.md
+          - $ARTIFACTS_DIR/diff.patch
+          - $ARTIFACTS_DIR/diff-stat.txt
+          - AGENTS.md
+
+        You are playing TWO roles in sequence.
+
+        ═══════════════════════════════════════════
+        ROLE 1 — CODE REVIEWER  (adversarial critic)
+        ═══════════════════════════════════════════
+
+        Review the diff against the plan and AGENTS.md conventions:
+          1. Does every changed file belong to the scope in the plan?
+          2. Do the tests correctly test the new behaviour? Are they
+             testing implementation details instead of the public API?
+          3. Is TypeScript strict — no `any`, no casts unless justified?
+          4. Are there missing edge-case tests?
+          5. Does the README.md table row appear? Is it alphabetically placed?
+          6. Is UPSTREAM.md present if the plan required it?
+          7. Is the code readable and consistent with existing packages?
+          8. Any security concerns (reading arbitrary paths, executing user
+             strings, leaking env vars)?
+
+        Write verdict to $ARTIFACTS_DIR/code-review.json:
+          {
+            "verdict": "approve" | "needs-changes",
+            "headline": "<one-sentence summary>",
+            "issues": ["<specific issue with file:line ref>", ...]
+          }
+
+        ═══════════════════════════════════════════
+        ROLE 2 — FIXER  (only if verdict is needs-changes)
+        ═══════════════════════════════════════════
+
+        If verdict is "needs-changes":
+          - Address every issue listed.
+          - Do NOT modify test files unless the issue is a genuine test bug.
+          - Run `npm run check` via Bash to confirm the fix compiles and tests pass.
+          - Update $ARTIFACTS_DIR/diff.patch and diff-stat.txt:
+              git diff HEAD > $ARTIFACTS_DIR/diff.patch
+              git diff HEAD --stat > $ARTIFACTS_DIR/diff-stat.txt
+          - Then re-run the reviewer role (ROLE 1) on the updated diff.
+            If now "approve", emit <promise>CODE_APPROVED</promise>.
+            If still "needs-changes" and this is the last iteration, surface
+            the unresolved issues in your final message for the human gate.
+
+        If verdict is "approve":
+          - Write $ARTIFACTS_DIR/commit-message.txt with a conventional commit
+            message derived from the plan (50-char subject, blank line,
+            short body explaining what and why).
+          - Print the commit message.
+          - Emit <promise>CODE_APPROVED</promise>.
+
+  # ───────────────────────────────────────────────────────────────────────────
+  # PHASE 7  Human approval gate before commit
+  # ───────────────────────────────────────────────────────────────────────────
+  - id: commit-gate
+    depends_on: [code-review]
+    approval:
+      message: |
+        ## Ready to commit
+
+        **Diff stat**: $ARTIFACTS_DIR/diff-stat.txt
+        **Full diff**:  $ARTIFACTS_DIR/diff.patch
+        **Reviewer**:   $ARTIFACTS_DIR/code-review.json
+        **Commit msg**: $ARTIFACTS_DIR/commit-message.txt
+
+        Review the diff above. Approve to rebase + commit, or reject with
+        specific feedback — your feedback will trigger one more fix pass
+        before returning here.
+      capture_response: true
+      on_reject:
+        prompt: |
+          The human reviewed the diff and provided this feedback:
+
+          $REJECTION_REASON
+
+          Step 1: Write the feedback to $ARTIFACTS_DIR/human-fix-feedback.md.
+
+          Step 2: As IMPLEMENTER — address every point in the feedback.
+          Run `npm run check` to confirm all checks still pass.
+          Update the diff artifacts:
+            git diff HEAD > $ARTIFACTS_DIR/diff.patch
+            git diff HEAD --stat > $ARTIFACTS_DIR/diff-stat.txt
+
+          Step 3: As REVIEWER — re-read the updated diff adversarially.
+          Update $ARTIFACTS_DIR/code-review.json.
+
+          Step 4: If the reviewer approves, regenerate
+          $ARTIFACTS_DIR/commit-message.txt.
+
+          Step 5: Output a brief summary of what changed so the human
+          can quickly assess the revision at the next gate pause.
+        max_attempts: 3
+
+  # ───────────────────────────────────────────────────────────────────────────
+  # PHASE 8  Rebase onto origin/main, then commit
+  # ───────────────────────────────────────────────────────────────────────────
+  - id: rebase-and-commit
+    depends_on: [commit-gate]
+    bash: |
+      set -euo pipefail
+
+      echo "=== Fetching origin/main ==="
+      git fetch origin main
+
+      echo "=== Rebasing onto origin/main ==="
+      # If rebase fails, exit non-zero so the workflow surfaces the conflict.
+      git rebase origin/main
+
+      echo "=== Staging all changes ==="
+      git add -A
+
+      COMMIT_MSG_FILE="$ARTIFACTS_DIR/commit-message.txt"
+      if [ ! -f "$COMMIT_MSG_FILE" ]; then
+        echo "ERROR: $COMMIT_MSG_FILE not found — code-review node must write it."
+        exit 1
+      fi
+
+      echo "=== Committing ==="
+      git commit -F "$COMMIT_MSG_FILE"
+
+      echo "=== Commit successful ==="
+      git log --oneline -3
+
+  # ───────────────────────────────────────────────────────────────────────────
+  # PHASE 9  Merge handoff — print the ff-only command for the user
+  # ───────────────────────────────────────────────────────────────────────────
+  - id: merge-handoff
+    depends_on: [rebase-and-commit]
+    bash: |
+      set -euo pipefail
+
+      BRANCH=$(git rev-parse --abbrev-ref HEAD)
+      REPO_ROOT=$(git rev-parse --show-toplevel)
+
+      # Derive the main repo path — strip the worktree suffix if we're inside
+      # a .worktrees/ directory.
+      MAIN_REPO=$(echo "$REPO_ROOT" | sed 's|/.worktrees/[^/]*||')
+
+      echo ""
+      echo "╔══════════════════════════════════════════════════════════════╗"
+      echo "║  All done. To merge into main, run from your main checkout:  ║"
+      echo "╚══════════════════════════════════════════════════════════════╝"
+      echo ""
+      echo "  git -C \"$MAIN_REPO\" fetch . \"$BRANCH\":\"$BRANCH\" --update-head-ok"
+      echo "  git -C \"$MAIN_REPO\" merge --ff-only \"$BRANCH\""
+      echo "  git -C \"$MAIN_REPO\" worktree remove .worktrees/$(basename $REPO_ROOT)"
+      echo ""
+      echo "Or use archon's built-in cleanup:"
+      echo "  archon complete $BRANCH"
+      echo ""
+      echo "NOTE: Do NOT run git push — publishing to origin is done manually."

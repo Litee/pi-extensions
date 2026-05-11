@@ -8,3 +8,8 @@ tmp/
 coverage/
 dist/
 node_modules
+
+# Archon runtime artifacts — never commit
+.archon/state/
+.archon/.env
+.archon/mcp/

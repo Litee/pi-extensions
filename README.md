@@ -30,6 +30,20 @@ Workspace packages that are **not** pi extensions — they expose no `registerEx
 |---------|-------------|
 | [`pi-watcher-core`](packages/pi-watcher-core) | Shared library consumed by the `*-watcher` extensions. Provides back-off-aware `PollScheduler`, session-log persistence with malformed-entry tolerance, a `makeWatcherErrors` taxonomy factory, a sanitizing error classifier, an aggregated-error formatter, and TUI status-line / message-renderer helpers. Depend on it via the workspace: `"pi-watcher-core": "*"`. Do **not** list this package in a pi install command — it has no extension entry point. |
 
+## Archon Workflows
+
+Project-local [Archon](https://archon.diy) workflows live in `.archon/workflows/`. Run them with:
+
+```bash
+archon workflow run <name> --branch <branch> "<task description>"
+```
+
+| Workflow | Description |
+|----------|-------------|
+| [`pi-extension-feature`](.archon/workflows/pi-extension-feature.yaml) | End-to-end feature/fix workflow: interactive formulation → autonomous plan-and-review → TDD implementation (`npm run check` gate) → adversarial code review → human approval → rebase-and-commit → merge handoff. |
+
+Sandbox: uses [`@anthropic-ai/sandbox-runtime`](https://github.com/anthropic-experimental/sandbox-runtime) via archon's workflow-level `sandbox:` field — filesystem write access is restricted to the archon workspace; sensitive home paths (`.ssh`, `.aws`, `.gnupg`) are read-denied.
+
 ## Development
 
 ```bash
