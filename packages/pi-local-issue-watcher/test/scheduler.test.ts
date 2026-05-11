@@ -19,6 +19,7 @@ import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { handleSessionStart } from "../src/index.js";
+import { RUNSTATE_ENTRY_TYPE } from "../src/persistence.js";
 
 interface StubPi {
 	sendMessage: ReturnType<typeof vi.fn>;
@@ -53,8 +54,8 @@ describe("pi-local-issue-watcher scheduler lifecycle", () => {
 					// Explicit run-state = not paused so the watcher arms itself.
 					{
 						type: "custom",
-						customType: "pi-local-issue-watcher-runstate",
-						data: { savedAt: Date.now(), paused: false },
+						customType: RUNSTATE_ENTRY_TYPE,
+						data: { savedAt: Date.now(), paused: false, items: [], baselines: {} },
 					},
 				],
 			},
@@ -74,8 +75,8 @@ describe("pi-local-issue-watcher scheduler lifecycle", () => {
 				getEntries: () => [
 					{
 						type: "custom",
-						customType: "pi-local-issue-watcher-runstate",
-						data: { savedAt: Date.now(), paused: true },
+						customType: RUNSTATE_ENTRY_TYPE,
+						data: { savedAt: Date.now(), paused: true, items: [], baselines: {} },
 					},
 				],
 			},

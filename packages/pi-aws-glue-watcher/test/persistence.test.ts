@@ -6,7 +6,7 @@ import {
 	STATE_CUSTOM_TYPE,
 	writeState,
 } from "../src/persistence.js";
-import type { WatchMap } from "../src/types.js";
+import type { GlueWatch } from "../src/types.js";
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -25,11 +25,12 @@ function makeSession(entries: unknown[]) {
 	};
 }
 
+// New session format: watches is an array, baselines holds enabled/displayMode
 const VALID_DATA = {
 	savedAt: 1_746_527_400_000,
-	enabled: true,
 	paused: false,
-	watches: {} as WatchMap,
+	watches: [] as GlueWatch[],
+	baselines: { enabled: true, displayMode: "widget" as const },
 };
 
 // ---------------------------------------------------------------------------
@@ -62,8 +63,8 @@ describe("rehydrateStateFromSession", () => {
 	});
 
 	it("reads entries newest-to-oldest, returning the last-appended valid one", () => {
-		const older = makeEntry({ ...VALID_DATA, enabled: false, savedAt: 1_000 });
-		const newer = makeEntry({ ...VALID_DATA, enabled: true, savedAt: 2_000 });
+		const older = makeEntry({ ...VALID_DATA, baselines: { enabled: false, displayMode: "widget" as const }, savedAt: 1_000 });
+		const newer = makeEntry({ ...VALID_DATA, baselines: { enabled: true, displayMode: "widget" as const }, savedAt: 2_000 });
 		const ctx = makeSession([older, newer]);
 		const result = rehydrateStateFromSession(ctx);
 		// newer is last in the array, so it wins (reversed iteration = last first)
@@ -87,35 +88,36 @@ describe("rehydrateStateFromSession", () => {
 		expect(rehydrateStateFromSession(ctx)).toBeNull();
 	});
 
-	it("skips an entry where enabled is not a boolean", () => {
-		const bad = makeEntry({ ...VALID_DATA, enabled: "yes" });
-		const ctx = makeSession([bad]);
-		expect(rehydrateStateFromSession(ctx)).toBeNull();
-	});
-
 	it("skips an entry where paused is not a boolean", () => {
 		const bad = makeEntry({ ...VALID_DATA, paused: 0 });
 		const ctx = makeSession([bad]);
 		expect(rehydrateStateFromSession(ctx)).toBeNull();
 	});
 
+	it("skips an entry where watches is not an array", () => {
+		// In new format watches must be an array
+		const bad = makeEntry({ ...VALID_DATA, watches: { aabb: {} } });
+		const ctx = makeSession([bad]);
+		expect(rehydrateStateFromSession(ctx)).toBeNull();
+	});
+
 	it("restores a watch record with all expected fields", () => {
+		const watchObj: GlueWatch = {
+			watchId: "aabb",
+			type: "job",
+			name: "my-job",
+			runId: "jr_abc123",
+			profile: "my-profile",
+			region: "us-east-1",
+			addedAt: 1_000,
+			lastPolledAt: 2_000,
+			baseline: { state: "RUNNING", errorMessage: "" },
+			terminal: false,
+			consecutiveErrors: 0,
+		};
 		const data = {
 			...VALID_DATA,
-			watches: {
-				aabb: {
-					watchId: "aabb",
-					type: "job",
-					name: "my-job",
-					runId: "jr_abc123",
-					profile: "my-profile",
-					region: "us-east-1",
-					addedAt: 1_000,
-					lastPolledAt: 2_000,
-					baseline: { state: "RUNNING", errorMessage: "" },
-					terminal: false,
-				},
-			},
+			watches: [watchObj],
 		};
 		const ctx = makeSession([makeEntry(data)]);
 		const result = rehydrateStateFromSession(ctx);
@@ -140,10 +142,12 @@ describe("writeState", () => {
 		expect(appendEntry).toHaveBeenCalledOnce();
 		const [ct, data] = appendEntry.mock.calls[0] as [string, Record<string, unknown>];
 		expect(ct).toBe(STATE_CUSTOM_TYPE);
-		expect(data["enabled"]).toBe(true);
+		// watches is stored as array (Object.values({}))
+		expect(Array.isArray(data["watches"])).toBe(true);
 		expect(data["paused"]).toBe(false);
 		expect(typeof data["savedAt"]).toBe("number");
-		expect(data["watches"]).toEqual({});
+		// baselines holds enabled + displayMode
+		expect((data["baselines"] as Record<string, unknown>)["enabled"]).toBe(true);
 	});
 
 	it("swallows errors thrown by appendEntry without propagating them", () => {
@@ -168,7 +172,15 @@ describe("normaliseWatches", () => {
 		expect(normaliseWatches(42)).toEqual({});
 	});
 
-	it("drops entries with missing required fields", () => {
+	it("drops entries with missing required fields (array input)", () => {
+		const raw = [
+			{ type: "job" }, // missing watchId, name, runId, profile
+			{ watchId: "aa", type: "unknown", name: "x", runId: "r", profile: "p" },
+		];
+		expect(normaliseWatches(raw)).toEqual({});
+	});
+
+	it("drops entries with missing required fields (object-map input)", () => {
 		const raw = {
 			bad1: { type: "job" }, // missing watchId, name, runId, profile
 			bad2: { watchId: "aa", type: "unknown", name: "x", runId: "r", profile: "p" },
@@ -176,9 +188,9 @@ describe("normaliseWatches", () => {
 		expect(normaliseWatches(raw)).toEqual({});
 	});
 
-	it("preserves valid entries and coerces optional fields", () => {
-		const raw = {
-			aabb: {
+	it("preserves valid entries and coerces optional fields (array input)", () => {
+		const raw = [
+			{
 				watchId: "aabb",
 				type: "workflow",
 				name: "wf",
@@ -190,7 +202,7 @@ describe("normaliseWatches", () => {
 				terminal: true,
 				baseline: null, // invalid → undefined
 			},
-		};
+		];
 		const result = normaliseWatches(raw);
 		expect(Object.keys(result)).toHaveLength(1);
 		const w = result["aabb"]!;
@@ -200,41 +212,60 @@ describe("normaliseWatches", () => {
 		expect(w.terminal).toBe(true);
 		expect(w.baseline).toBeUndefined();
 	});
+
+	it("preserves valid entries from object-map input", () => {
+		const raw = {
+			aabb: {
+				watchId: "aabb",
+				type: "workflow",
+				name: "wf",
+				runId: "wr_123",
+				profile: "prod",
+				addedAt: 999,
+				terminal: true,
+				baseline: null,
+			},
+		};
+		const result = normaliseWatches(raw);
+		expect(Object.keys(result)).toHaveLength(1);
+		const w = result["aabb"]!;
+		expect(w.type).toBe("workflow");
+	});
 });
 
 describe("normaliseWatches — consecutiveErrors", () => {
 	it("defaults consecutiveErrors to 0 when the field is absent", () => {
-		const raw = {
-			aa: {
+		const raw = [
+			{
 				watchId: "aa", type: "job", name: "j", runId: "jr_1",
 				profile: "p", addedAt: 1, terminal: false,
 				// consecutiveErrors absent
 			},
-		};
+		];
 		const result = normaliseWatches(raw);
 		expect(result["aa"]!.consecutiveErrors).toBe(0);
 	});
 
 	it("preserves a valid consecutiveErrors value", () => {
-		const raw = {
-			aa: {
+		const raw = [
+			{
 				watchId: "aa", type: "job", name: "j", runId: "jr_1",
 				profile: "p", addedAt: 1, terminal: false,
 				consecutiveErrors: 7,
 			},
-		};
+		];
 		const result = normaliseWatches(raw);
 		expect(result["aa"]!.consecutiveErrors).toBe(7);
 	});
 
 	it("defaults consecutiveErrors to 0 for a non-finite value", () => {
-		const raw = {
-			aa: {
+		const raw = [
+			{
 				watchId: "aa", type: "job", name: "j", runId: "jr_1",
 				profile: "p", addedAt: 1, terminal: false,
 				consecutiveErrors: NaN,
 			},
-		};
+		];
 		const result = normaliseWatches(raw);
 		expect(result["aa"]!.consecutiveErrors).toBe(0);
 	});

@@ -10,7 +10,7 @@ import { PollScheduler } from "pi-watcher-core/poll-scheduler";
 
 import type { ArchonClient } from "./archon-client.js";
 import { buildChangeChatMessage, buildStatusLine } from "./format.js";
-import { writeSnapshot } from "./persistence.js";
+import { writeState } from "./persistence.js";
 import { detectChanges } from "./poller.js";
 import { DB_LOCKED_MARKER } from "./archon-client.js";
 import { TERMINAL_STATUSES, type ArchonRun, type RunSnapshot } from "./types.js";
@@ -218,7 +218,7 @@ export async function pollOnce(rt: Runtime): Promise<void> {
 	}
 
 	rt.snapshot = current;
-	writeSnapshot(rt.pi, current, rt.watchedIds);
+	writeState(rt.pi, { snapshot: current, watchedIds: rt.watchedIds, paused: rt.paused });
 	refreshStatus(rt);
 
 	// Stop polling once nothing remains to watch.

@@ -131,11 +131,36 @@ function makeFakeCtx(entries: Array<{ type?: string; customType?: string; data?:
  * runstate entry defaults to PAUSED, so most tests that exercise active
  * behaviour (diff emit, startup chat, polling) need to seed this.
  */
-function runningRunstate(): { type: string; customType: string; data: { savedAt: number; paused: boolean } } {
+function runningRunstate(): { type: string; customType: string; data: { savedAt: number; paused: boolean; items: never[]; baselines: Record<string, never> } } {
 	return {
 		type: "custom",
-		customType: "local-issue-watcher-runstate",
-		data: { savedAt: Date.now(), paused: false },
+		customType: RUNSTATE_ENTRY_TYPE,
+		data: { savedAt: Date.now(), paused: false, items: [], baselines: {} },
+	};
+}
+
+// ---------------------------------------------------------------------------
+// Helper: build a new-format STATE_ENTRY_TYPE session entry.
+// In the new persistence, snapshot is stored as Object.entries(serialised)
+// (array of [path, info] tuples where mtimeNs is a string).
+// ---------------------------------------------------------------------------
+function makeStateEntry(
+	snapshot: Snapshot,
+	paused = false,
+	savedAt = Date.now(),
+): { type: string; customType: string; data: unknown } {
+	return {
+		type: "custom",
+		customType: STATE_ENTRY_TYPE,
+		data: {
+			savedAt,
+			paused,
+			snapshot: Object.entries(snapshot).map(([path, info]) => [
+				path,
+				{ ...info, mtimeNs: info.mtimeNs.toString() },
+			]),
+			baselines: {},
+		},
 	};
 }
 
@@ -248,9 +273,11 @@ describe("handleSessionStart", () => {
 
 		// appendEntry was called with STATE_ENTRY_TYPE and a snapshot containing our issue.
 		expect(pi.appendEntry).toHaveBeenCalledTimes(1);
-		const [entryType, payload] = pi.appendEntry.mock.calls[0] as [string, { savedAt: number; snapshot: Snapshot }];
+		const [entryType, payload] = pi.appendEntry.mock.calls[0] as [string, { savedAt: number; snapshot: Array<[string, unknown]> }];
 		expect(entryType).toBe(STATE_ENTRY_TYPE);
-		expect(Object.keys(payload.snapshot)).toHaveLength(1);
+		// New format: snapshot is stored as array of [path, info] entries
+		expect(Array.isArray(payload.snapshot)).toBe(true);
+		expect(payload.snapshot).toHaveLength(1);
 		expect(typeof payload.savedAt).toBe("number");
 
 		// No diff message delivered — nothing to report yet. (Since #0011, a
@@ -307,11 +334,7 @@ describe("handleSessionStart", () => {
 		const pi = makeFakePi();
 		const ctx = makeFakeCtx([
 			runningRunstate(),
-			{
-				type: "custom",
-				customType: STATE_ENTRY_TYPE,
-				data: { savedAt: Date.now(), snapshot: baselineSnapshot },
-			},
+			makeStateEntry(baselineSnapshot),
 		]);
 
 		const out = await handleSessionStart({ pi: pi as never, ctx: ctx as never, dbRoot });
@@ -357,7 +380,10 @@ describe("handleSessionStart", () => {
 				// serialise bigint -> string so rehydrate has to convert back
 				data: {
 					savedAt: Date.now(),
-					snapshot: { [filePath]: { ...snap[filePath]!, mtimeNs: String(snap[filePath]!.mtimeNs) } },
+					paused: false,
+					// New format: array of [path, info] tuples
+					snapshot: [[filePath, { ...snap[filePath]!, mtimeNs: String(snap[filePath]!.mtimeNs) }]],
+					baselines: {},
 				},
 			},
 		]);
@@ -482,8 +508,8 @@ describe("handleSessionStart", () => {
 				getEntries: () => [
 					{
 						type: "custom",
-						customType: "local-issue-watcher-runstate",
-						data: { savedAt: Date.now(), paused: false },
+						customType: RUNSTATE_ENTRY_TYPE,
+						data: { savedAt: Date.now(), paused: false, items: [], baselines: {} },
 					},
 				],
 			},
@@ -1063,7 +1089,7 @@ describe("run-state persistence", () => {
 			{
 				type: "custom",
 				customType: RUNSTATE_ENTRY_TYPE,
-				data: { savedAt: Date.now(), paused: false },
+				data: { savedAt: Date.now(), paused: false, items: [], baselines: {} },
 			},
 		]);
 		const res = await handleSessionStart({ pi: pi as never, ctx: ctx as never, dbRoot });
@@ -1077,7 +1103,7 @@ describe("run-state persistence", () => {
 			{
 				type: "custom",
 				customType: RUNSTATE_ENTRY_TYPE,
-				data: { savedAt: Date.now(), paused: true },
+				data: { savedAt: Date.now(), paused: true, items: [], baselines: {} },
 			},
 		]);
 		const res = await handleSessionStart({ pi: pi as never, ctx: ctx as never, dbRoot });
@@ -1092,7 +1118,7 @@ describe("run-state persistence", () => {
 			{
 				type: "custom",
 				customType: RUNSTATE_ENTRY_TYPE,
-				data: { savedAt: Date.now(), paused: true },
+				data: { savedAt: Date.now(), paused: true, items: [], baselines: {} },
 			},
 		]);
 		await handleSessionStart({ pi: pi as never, ctx: ctx as never, dbRoot });
@@ -1116,8 +1142,9 @@ describe("run-state persistence", () => {
 				customType: STATE_ENTRY_TYPE,
 				data: {
 					savedAt: Date.now(),
-					snapshot: {
-						[stalePathKey]: {
+					paused: false,
+					snapshot: [
+						[stalePathKey, {
 							mtimeNs: "1",
 							issueId: "0001",
 							status: "open",
@@ -1126,14 +1153,15 @@ describe("run-state persistence", () => {
 							comments: [],
 							skill: "skill-a",
 							skillVersion: "",
-						},
-					},
+						}],
+					],
+					baselines: {},
 				},
 			},
 			{
 				type: "custom",
 				customType: RUNSTATE_ENTRY_TYPE,
-				data: { savedAt: Date.now(), paused: true },
+				data: { savedAt: Date.now(), paused: true, items: [], baselines: {} },
 			},
 		]);
 		await handleSessionStart({ pi: pi as never, ctx: ctx as never, dbRoot });
@@ -1153,7 +1181,7 @@ describe("run-state persistence", () => {
 				{
 					type: "custom",
 					customType: RUNSTATE_ENTRY_TYPE,
-					data: { savedAt: Date.now(), paused: true },
+					data: { savedAt: Date.now(), paused: true, items: [], baselines: {} },
 				},
 			]);
 			await pi.sessionStartHandler!({}, ctx);
@@ -1177,7 +1205,7 @@ describe("run-state persistence", () => {
 				{
 					type: "custom",
 					customType: RUNSTATE_ENTRY_TYPE,
-					data: { savedAt: Date.now(), paused: false },
+					data: { savedAt: Date.now(), paused: false, items: [], baselines: {} },
 				},
 			]);
 			await pi.sessionStartHandler!({}, ctx);
@@ -1372,7 +1400,9 @@ describe("status line — refresh on every poll (#0016 supersedes #0009)", () =>
 				// but must be dropped from any fresh write.
 				data: {
 					savedAt: Date.now(),
-					snapshot: baselineSnapshot,
+					paused: false,
+					snapshot: Object.entries(baselineSnapshot).map(([p, info]) => [p, { ...info, mtimeNs: info.mtimeNs.toString() }]),
+					baselines: {},
 					lastUpdateAt: Date.now() - 10 * 60_000,
 				},
 			},
@@ -1493,7 +1523,7 @@ describe("startup chat message (#0011)", () => {
 		const pi = makeFakePi();
 		// Seed the session log with a run-state entry that marks the watcher paused.
 		const ctx = makeFakeCtx([
-			{ type: "custom", customType: RUNSTATE_ENTRY_TYPE, data: { savedAt: Date.now(), paused: true } },
+			{ type: "custom", customType: RUNSTATE_ENTRY_TYPE, data: { savedAt: Date.now(), paused: true, items: [], baselines: {} } },
 		]);
 
 		await handleSessionStart({ pi: pi as never, ctx: ctx as never, dbRoot });
@@ -1528,11 +1558,7 @@ describe("startup chat message (#0011)", () => {
 		const pi = makeFakePi();
 		const ctx = makeFakeCtx([
 			runningRunstate(),
-			{
-				type: "custom",
-				customType: STATE_ENTRY_TYPE,
-				data: { savedAt: Date.now(), snapshot: baselineSnapshot },
-			},
+			makeStateEntry(baselineSnapshot),
 		]);
 
 		await handleSessionStart({ pi: pi as never, ctx: ctx as never, dbRoot });
@@ -1638,7 +1664,7 @@ describe("paused watcher = silent + zero-IO (#0019)", () => {
 			{
 				type: "custom",
 				customType: RUNSTATE_ENTRY_TYPE,
-				data: { savedAt: Date.now(), paused: true },
+				data: { savedAt: Date.now(), paused: true, items: [], baselines: {} },
 			},
 		]);
 
@@ -1730,7 +1756,7 @@ describe("paused watcher = silent + zero-IO (#0019)", () => {
 			{
 				type: "custom",
 				customType: RUNSTATE_ENTRY_TYPE,
-				data: { savedAt: Date.now(), paused: true },
+				data: { savedAt: Date.now(), paused: true, items: [], baselines: {} },
 			},
 		]);
 		await pi.sessionStartHandler!({}, ctx);

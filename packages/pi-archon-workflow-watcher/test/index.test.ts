@@ -4,7 +4,6 @@ import type { ArchonClient } from "../src/archon-client.js";
 import {
 	createExtensionWithClient,
 	POLL_INTERVAL_MS,
-	RUNSTATE_ENTRY_TYPE,
 	STATE_ENTRY_TYPE,
 	resetToolRegisteredForTests,
 } from "../src/index.js";
@@ -147,21 +146,21 @@ function makeClient(runs: ArchonRun[] | Error): ArchonClient {
 	return { getWorkflowStatus: vi.fn().mockResolvedValue(runs) };
 }
 
-/** A runstate entry seeded as "not paused" so session_start goes into active mode. */
+/** A combined state entry seeded as "not paused" so session_start goes into active mode. */
 function runningRunstate() {
 	return {
 		type: "custom",
-		customType: RUNSTATE_ENTRY_TYPE,
-		data: { savedAt: Date.now(), paused: false },
+		customType: STATE_ENTRY_TYPE,
+		data: { savedAt: Date.now(), paused: false, watchedIds: [], baselines: {} },
 	};
 }
 
-/** A runstate entry seeded as "paused". */
+/** A combined state entry seeded as "paused". */
 function pausedRunstate() {
 	return {
 		type: "custom",
-		customType: RUNSTATE_ENTRY_TYPE,
-		data: { savedAt: Date.now(), paused: true },
+		customType: STATE_ENTRY_TYPE,
+		data: { savedAt: Date.now(), paused: true, watchedIds: [], baselines: {} },
 	};
 }
 
@@ -225,11 +224,10 @@ describe("session_start — active (not paused)", () => {
 		createExtensionWithClient(pi as never, client);
 
 		const ctx = makeFakeCtx([
-			runningRunstate(),
 			{
 				type: "custom",
 				customType: STATE_ENTRY_TYPE,
-				data: { savedAt: Date.now(), snapshot: {}, watchedIds: ["r1"] },
+				data: { savedAt: Date.now(), paused: false, watchedIds: ["r1"], baselines: {} },
 			},
 		]);
 		await pi.sessionStartHandler!({}, ctx);
@@ -252,11 +250,10 @@ describe("session_start — active (not paused)", () => {
 			makeClient([makeRun({ id: "r1", status: "running" })]),
 		);
 		const ctx = makeFakeCtx([
-			runningRunstate(),
 			{
 				type: "custom",
 				customType: STATE_ENTRY_TYPE,
-				data: { savedAt: Date.now(), snapshot: {}, watchedIds: ["r1"] },
+				data: { savedAt: Date.now(), paused: false, watchedIds: ["r1"], baselines: {} },
 			},
 		]);
 		await pi.sessionStartHandler!({}, ctx);
@@ -287,11 +284,10 @@ describe("session_start — active (not paused)", () => {
 		const run = makeRun({ id: "r1", status: "running", workflowName: "archon-assist" });
 		createExtensionWithClient(pi as never, makeClient([run]));
 		const ctx = makeFakeCtx([
-			runningRunstate(),
 			{
 				type: "custom",
 				customType: STATE_ENTRY_TYPE,
-				data: { savedAt: Date.now(), snapshot: { r1: run }, watchedIds: ["r1"] },
+				data: { savedAt: Date.now(), paused: false, watchedIds: ["r1"], baselines: { r1: run } },
 			},
 		]);
 		await pi.sessionStartHandler!({}, ctx);
@@ -314,14 +310,14 @@ describe("session_start — active (not paused)", () => {
 		);
 		// Baseline has r1 as running; current is completed → diff
 		const ctx = makeFakeCtx([
-			runningRunstate(),
 			{
 				type: "custom",
 				customType: STATE_ENTRY_TYPE,
 				data: {
 					savedAt: Date.now(),
-					snapshot: { r1: makeRun({ id: "r1", status: "running" }) },
+					paused: false,
 					watchedIds: ["r1"],
+					baselines: { r1: makeRun({ id: "r1", status: "running" }) },
 				},
 			},
 		]);
@@ -342,14 +338,14 @@ describe("session_start — active (not paused)", () => {
 		const pi = makePi();
 		createExtensionWithClient(pi as never, makeClient([run]));
 		const ctx = makeFakeCtx([
-			runningRunstate(),
 			{
 				type: "custom",
 				customType: STATE_ENTRY_TYPE,
 				data: {
 					savedAt: Date.now(),
-					snapshot: { r1: run },
+					paused: false,
 					watchedIds: ["r1"],
+					baselines: { r1: run },
 				},
 			},
 		]);
@@ -447,7 +443,7 @@ describe("session_start — paused", () => {
 			{
 				type: "custom",
 				customType: STATE_ENTRY_TYPE,
-				data: { savedAt: Date.now(), snapshot: {}, watchedIds: ["r1"] },
+				data: { savedAt: Date.now(), paused: false, watchedIds: ["r1"], baselines: {} },
 			},
 		]);
 		await pi.sessionStartHandler!({}, ctx);
@@ -500,7 +496,7 @@ describe("/archon-watcher command", () => {
 			expect.any(String),
 		);
 		const runstateCalls = pi.appendEntry.mock.calls.filter(
-			(c) => c[0] === RUNSTATE_ENTRY_TYPE,
+			(c) => c[0] === STATE_ENTRY_TYPE,
 		);
 		expect(runstateCalls.length).toBeGreaterThanOrEqual(1);
 		const lastData = runstateCalls[runstateCalls.length - 1]![1] as {
@@ -538,7 +534,7 @@ describe("/archon-watcher command", () => {
 		expect(notifies.some((m) => /resumed/i.test(m))).toBe(true);
 
 		const runstateCalls = pi.appendEntry.mock.calls.filter(
-			(c) => c[0] === RUNSTATE_ENTRY_TYPE,
+			(c) => c[0] === STATE_ENTRY_TYPE,
 		);
 		const lastData = runstateCalls[runstateCalls.length - 1]![1] as {
 			paused: boolean;
@@ -640,14 +636,14 @@ describe("polling loop integration", () => {
 
 		// Provide a baseline with watchedIds so session_start proceeds and starts polling.
 		const ctx = makeFakeCtx([
-			runningRunstate(),
 			{
 				type: "custom",
 				customType: STATE_ENTRY_TYPE,
 				data: {
 					savedAt: Date.now(),
-					snapshot: { r1: makeRun({ id: "r1", status: "running" }) },
+					paused: false,
 					watchedIds: ["r1"],
+					baselines: { r1: makeRun({ id: "r1", status: "running" }) },
 				},
 			},
 		]);

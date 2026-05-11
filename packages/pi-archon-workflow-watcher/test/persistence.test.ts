@@ -1,12 +1,9 @@
 import { describe, expect, it, vi } from "vitest";
 
 import {
-	RUNSTATE_ENTRY_TYPE,
 	STATE_ENTRY_TYPE,
-	rehydrateRunStateFromSession,
-	rehydrateSnapshotFromSession,
-	writeRunState,
-	writeSnapshot,
+	rehydrateStateFromSession,
+	writeState,
 } from "../src/persistence.js";
 import type { RunSnapshot } from "../src/types.js";
 
@@ -44,250 +41,177 @@ function now(): number {
 	return Date.now();
 }
 
+/** Build a valid combined state entry data payload */
+function validData(
+	overrides: {
+		savedAt?: number;
+		paused?: boolean;
+		watchedIds?: string[];
+		baselines?: RunSnapshot;
+	} = {},
+) {
+	return {
+		savedAt: overrides.savedAt ?? now(),
+		paused: overrides.paused ?? false,
+		watchedIds: overrides.watchedIds ?? [],
+		baselines: overrides.baselines ?? {},
+	};
+}
+
 // ---------------------------------------------------------------------------
-// rehydrateSnapshotFromSession
+// rehydrateStateFromSession
 // ---------------------------------------------------------------------------
 
-describe("rehydrateSnapshotFromSession", () => {
+describe("rehydrateStateFromSession", () => {
 	it("returns null when there are no entries", () => {
-		expect(rehydrateSnapshotFromSession(makeCtx([]) as never)).toBeNull();
+		expect(rehydrateStateFromSession(makeCtx([]))).toBeNull();
 	});
 
 	it("returns null when no entries match STATE_ENTRY_TYPE", () => {
 		const ctx = makeCtx([
-			entry("some-other-type", { savedAt: now(), snapshot: SAMPLE_SNAPSHOT }),
-			entry(RUNSTATE_ENTRY_TYPE, { savedAt: now(), paused: false }),
+			entry("some-other-type", validData()),
 		]);
-		expect(rehydrateSnapshotFromSession(ctx as never)).toBeNull();
+		expect(rehydrateStateFromSession(ctx)).toBeNull();
 	});
 
-	it("returns the most recent matching entry (walks newest to oldest)", () => {
-		const older: RunSnapshot = {
-			"run-old": { id: "run-old", status: "running" },
-		};
-		const newer: RunSnapshot = {
-			"run-new": { id: "run-new", status: "completed" },
-		};
-		const ctx = makeCtx([
-			entry(STATE_ENTRY_TYPE, { savedAt: now() - 1000, snapshot: older }),
-			entry("noise", "hello"),
-			entry(STATE_ENTRY_TYPE, { savedAt: now(), snapshot: newer }),
-		]);
-		const got = rehydrateSnapshotFromSession(ctx as never);
+	it("reads entries newest-to-oldest; newest wins", () => {
+		const older = entry(STATE_ENTRY_TYPE, validData({ savedAt: 1_000, watchedIds: ["run-old"] }));
+		const newer = entry(STATE_ENTRY_TYPE, validData({ savedAt: 2_000, watchedIds: ["run-new"] }));
+		const ctx = makeCtx([older, newer]);
+		const got = rehydrateStateFromSession(ctx);
 		expect(got).not.toBeNull();
-		expect(Object.keys(got!.snapshot)).toEqual(["run-new"]);
+		expect(got!.savedAt).toBe(2_000);
+		expect(got!.watchedIds).toEqual(["run-new"]);
 	});
 
-	it("returns a stale entry (no TTL — entries never expire)", () => {
-		// The old design had a 5-minute TTL; the new design has no TTL.
-		const veryOld = now() - 7 * 24 * 60 * 60 * 1000; // 7 days ago
+	it("returns full state from a valid entry", () => {
 		const ctx = makeCtx([
-			entry(STATE_ENTRY_TYPE, { savedAt: veryOld, snapshot: SAMPLE_SNAPSHOT }),
+			entry(STATE_ENTRY_TYPE, validData({
+				paused: false,
+				watchedIds: ["r1"],
+				baselines: SAMPLE_SNAPSHOT,
+			})),
 		]);
-		const got = rehydrateSnapshotFromSession(ctx as never);
+		const got = rehydrateStateFromSession(ctx);
 		expect(got).not.toBeNull();
+		expect(got!.paused).toBe(false);
+		expect(got!.watchedIds).toEqual(["r1"]);
 		expect(got!.snapshot).toEqual(SAMPLE_SNAPSHOT);
 	});
 
-	it("returns a valid entry", () => {
+	it("no TTL — stale entries are still returned", () => {
+		const veryOld = now() - 7 * 24 * 60 * 60 * 1000;
 		const ctx = makeCtx([
-			entry(STATE_ENTRY_TYPE, { savedAt: now(), snapshot: SAMPLE_SNAPSHOT }),
+			entry(STATE_ENTRY_TYPE, validData({ savedAt: veryOld, watchedIds: ["r1"] })),
 		]);
-		const got = rehydrateSnapshotFromSession(ctx as never);
+		const got = rehydrateStateFromSession(ctx);
 		expect(got).not.toBeNull();
-		expect(got!.snapshot).toEqual(SAMPLE_SNAPSHOT);
+		expect(got!.watchedIds).toEqual(["r1"]);
 	});
 
-	it("returns null when entry data is missing", () => {
-		const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
-		const ctx = makeCtx([entry(STATE_ENTRY_TYPE, undefined)]);
-		expect(rehydrateSnapshotFromSession(ctx as never)).toBeNull();
-		warn.mockRestore();
-	});
-
-	it("skips malformed entry (missing snapshot) and falls through to next", () => {
-		const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
-		const older: RunSnapshot = { "run-old": { id: "run-old", status: "running" } };
+	it("skips entries with no data", () => {
 		const ctx = makeCtx([
-			entry(STATE_ENTRY_TYPE, { savedAt: now() - 2000, snapshot: older }), // older, valid
-			entry(STATE_ENTRY_TYPE, { savedAt: now() /* no snapshot */ }), // newer, malformed
+			entry(STATE_ENTRY_TYPE, validData({ watchedIds: ["r1"] })), // older valid
+			entry(STATE_ENTRY_TYPE, undefined), // newer, no data
 		]);
-		const got = rehydrateSnapshotFromSession(ctx as never);
+		const got = rehydrateStateFromSession(ctx);
 		expect(got).not.toBeNull();
-		expect(Object.keys(got!.snapshot)).toEqual(["run-old"]);
-		warn.mockRestore();
+		expect(got!.watchedIds).toEqual(["r1"]);
 	});
 
-	it("returns the savedAt from the entry", () => {
-		const ts = now();
+	it("skips entries with bad savedAt and falls through", () => {
 		const ctx = makeCtx([
-			entry(STATE_ENTRY_TYPE, { savedAt: ts, snapshot: SAMPLE_SNAPSHOT }),
+			entry(STATE_ENTRY_TYPE, validData({ watchedIds: ["r1"] })), // older valid
+			entry(STATE_ENTRY_TYPE, { ...validData(), savedAt: "bad" }), // newer, bad savedAt
 		]);
-		const got = rehydrateSnapshotFromSession(ctx as never);
-		expect(got!.savedAt).toBe(ts);
+		const got = rehydrateStateFromSession(ctx);
+		expect(got).not.toBeNull();
+		expect(got!.watchedIds).toEqual(["r1"]);
 	});
 
-	it("preserves all ArchonRun fields in the rehydrated snapshot", () => {
+	it("skips entries with non-boolean paused", () => {
+		const ctx = makeCtx([
+			entry(STATE_ENTRY_TYPE, validData({ watchedIds: ["r1"] })), // older valid
+			entry(STATE_ENTRY_TYPE, { ...validData(), paused: "yes" }), // newer, bad paused
+		]);
+		const got = rehydrateStateFromSession(ctx);
+		expect(got).not.toBeNull();
+		expect(got!.watchedIds).toEqual(["r1"]);
+	});
+
+	it("skips entries with non-array watchedIds", () => {
+		const ctx = makeCtx([
+			entry(STATE_ENTRY_TYPE, validData({ watchedIds: ["r1"] })), // older valid
+			entry(STATE_ENTRY_TYPE, { ...validData(), watchedIds: "r1" }), // newer, bad watchedIds
+		]);
+		const got = rehydrateStateFromSession(ctx);
+		expect(got).not.toBeNull();
+		expect(got!.watchedIds).toEqual(["r1"]);
+	});
+
+	it("reads paused=true correctly", () => {
+		const ctx = makeCtx([
+			entry(STATE_ENTRY_TYPE, validData({ paused: true, watchedIds: ["r1"] })),
+		]);
+		const got = rehydrateStateFromSession(ctx);
+		expect(got!.paused).toBe(true);
+	});
+
+	it("filters watchedIds to strings only", () => {
+		const ctx = makeCtx([
+			entry(STATE_ENTRY_TYPE, validData({ watchedIds: ["r1", 42 as unknown as string, null as unknown as string, "r2"] })),
+		]);
+		const got = rehydrateStateFromSession(ctx);
+		expect(got!.watchedIds).toEqual(["r1", "r2"]);
+	});
+
+	it("preserves open-ended RunSnapshot fields", () => {
 		const snap: RunSnapshot = {
-			r1: {
-				id: "r1",
-				status: "running",
-				workflowName: "wf",
-				workingPath: "/repo/main",
-				startedAt: "2024-01-01T00:00:00Z",
-				lastActivityAt: "2024-01-01T01:00:00Z",
-				extra: "field",
-			},
+			r1: { id: "r1", status: "running", extra: "field", workflowName: "wf" },
 		};
-		const ctx = makeCtx([entry(STATE_ENTRY_TYPE, { savedAt: now(), snapshot: snap })]);
-		const got = rehydrateSnapshotFromSession(ctx as never);
+		const ctx = makeCtx([
+			entry(STATE_ENTRY_TYPE, validData({ baselines: snap })),
+		]);
+		const got = rehydrateStateFromSession(ctx);
 		expect(got!.snapshot["r1"]).toMatchObject(snap["r1"]!);
 	});
-});
 
-// ---------------------------------------------------------------------------
-// rehydrateRunStateFromSession
-// ---------------------------------------------------------------------------
-
-describe("rehydrateRunStateFromSession", () => {
-	it("returns null when there are no entries", () => {
-		expect(rehydrateRunStateFromSession(makeCtx([]) as never)).toBeNull();
-	});
-
-	it("returns null when no entries match RUNSTATE_ENTRY_TYPE", () => {
-		const ctx = makeCtx([
-			entry(STATE_ENTRY_TYPE, { savedAt: now(), snapshot: SAMPLE_SNAPSHOT }),
-		]);
-		expect(rehydrateRunStateFromSession(ctx as never)).toBeNull();
-	});
-
-	it("returns the most recent run-state entry (paused=true)", () => {
-		const ctx = makeCtx([
-			entry(RUNSTATE_ENTRY_TYPE, { savedAt: now() - 1000, paused: false }),
-			entry(RUNSTATE_ENTRY_TYPE, { savedAt: now(), paused: true }),
-		]);
-		const got = rehydrateRunStateFromSession(ctx as never);
-		expect(got!.paused).toBe(true);
-	});
-
-	it("returns the most recent run-state entry (paused=false)", () => {
-		const ctx = makeCtx([
-			entry(RUNSTATE_ENTRY_TYPE, { savedAt: now() - 2000, paused: true }),
-			entry(RUNSTATE_ENTRY_TYPE, { savedAt: now(), paused: false }),
-		]);
-		const got = rehydrateRunStateFromSession(ctx as never);
-		expect(got!.paused).toBe(false);
-	});
-
-	it("has no TTL — honours a paused entry from a long time ago", () => {
-		const ancient = now() - 7 * 24 * 60 * 60 * 1000; // 7 days ago
-		const ctx = makeCtx([
-			entry(RUNSTATE_ENTRY_TYPE, { savedAt: ancient, paused: true }),
-		]);
-		const got = rehydrateRunStateFromSession(ctx as never);
-		expect(got).not.toBeNull();
-		expect(got!.paused).toBe(true);
-	});
-
-	it("skips entries with missing data and falls through", () => {
-		const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
-		const ctx = makeCtx([
-			entry(RUNSTATE_ENTRY_TYPE, { savedAt: now() - 1000, paused: true }), // older, valid
-			entry(RUNSTATE_ENTRY_TYPE, undefined), // newer, no data
-		]);
-		const got = rehydrateRunStateFromSession(ctx as never);
-		expect(got!.paused).toBe(true);
-		warn.mockRestore();
-	});
-
-	it("skips entries where paused is not a boolean", () => {
-		const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
-		const ctx = makeCtx([
-			entry(RUNSTATE_ENTRY_TYPE, { savedAt: now() - 1000, paused: false }), // older, valid
-			entry(RUNSTATE_ENTRY_TYPE, {
-				savedAt: now(),
-				paused: "yes" as unknown as boolean,
-			}), // newer, malformed
-		]);
-		const got = rehydrateRunStateFromSession(ctx as never);
-		expect(got!.paused).toBe(false);
-		warn.mockRestore();
-	});
-
-	it("returns null when all entries are malformed", () => {
-		const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
-		const ctx = makeCtx([
-			entry(RUNSTATE_ENTRY_TYPE, undefined),
-			entry(RUNSTATE_ENTRY_TYPE, { savedAt: "bad" }),
-		]);
-		expect(rehydrateRunStateFromSession(ctx as never)).toBeNull();
-		warn.mockRestore();
+	it("returns savedAt from the entry", () => {
+		const ts = now();
+		const ctx = makeCtx([entry(STATE_ENTRY_TYPE, validData({ savedAt: ts }))]);
+		const got = rehydrateStateFromSession(ctx);
+		expect(got!.savedAt).toBe(ts);
 	});
 });
 
 // ---------------------------------------------------------------------------
-// writeSnapshot
+// writeState
 // ---------------------------------------------------------------------------
 
-describe("writeSnapshot", () => {
-	it("calls pi.appendEntry with STATE_ENTRY_TYPE and snapshot", () => {
+describe("writeState", () => {
+	it("calls pi.appendEntry with STATE_ENTRY_TYPE and correct shape", () => {
 		const appendEntry = vi.fn();
-		const pi = { appendEntry };
-		writeSnapshot(pi, SAMPLE_SNAPSHOT, new Set());
+		writeState({ appendEntry }, {
+			snapshot: SAMPLE_SNAPSHOT,
+			watchedIds: new Set(["r1"]),
+			paused: false,
+		});
 		expect(appendEntry).toHaveBeenCalledOnce();
-		const [type, data] = appendEntry.mock.calls[0] as [
-			string,
-			{ savedAt: number; snapshot: RunSnapshot },
-		];
-		expect(type).toBe(STATE_ENTRY_TYPE);
-		expect(data.snapshot).toEqual(SAMPLE_SNAPSHOT);
-		expect(typeof data.savedAt).toBe("number");
+		const [ct, data] = appendEntry.mock.calls[0] as [string, Record<string, unknown>];
+		expect(ct).toBe(STATE_ENTRY_TYPE);
+		expect(typeof data["savedAt"]).toBe("number");
+		expect(data["paused"]).toBe(false);
+		expect(data["watchedIds"]).toEqual(["r1"]);
+		expect(data["baselines"]).toEqual(SAMPLE_SNAPSHOT);
 	});
 
-	it("does not throw when appendEntry throws", () => {
-		const pi = {
-			appendEntry: vi.fn(() => {
-				throw new Error("storage failure");
-			}),
-		};
-		expect(() => writeSnapshot(pi, SAMPLE_SNAPSHOT, new Set())).not.toThrow();
-	});
-});
-
-// ---------------------------------------------------------------------------
-// writeRunState
-// ---------------------------------------------------------------------------
-
-describe("writeRunState", () => {
-	it("calls pi.appendEntry with RUNSTATE_ENTRY_TYPE and paused=true", () => {
-		const appendEntry = vi.fn();
-		writeRunState({ appendEntry }, true);
-		const [type, data] = appendEntry.mock.calls[0] as [
-			string,
-			{ savedAt: number; paused: boolean },
-		];
-		expect(type).toBe(RUNSTATE_ENTRY_TYPE);
-		expect(data.paused).toBe(true);
-		expect(typeof data.savedAt).toBe("number");
-	});
-
-	it("calls pi.appendEntry with paused=false", () => {
-		const appendEntry = vi.fn();
-		writeRunState({ appendEntry }, false);
-		const [, data] = appendEntry.mock.calls[0] as [
-			string,
-			{ savedAt: number; paused: boolean },
-		];
-		expect(data.paused).toBe(false);
-	});
-
-	it("does not throw when appendEntry throws", () => {
-		const pi = {
-			appendEntry: vi.fn(() => {
-				throw new Error("storage failure");
-			}),
-		};
-		expect(() => writeRunState(pi, false)).not.toThrow();
+	it("swallows errors from appendEntry", () => {
+		const appendEntry = vi.fn().mockImplementation(() => {
+			throw new Error("storage failure");
+		});
+		expect(() =>
+			writeState({ appendEntry }, { snapshot: {}, watchedIds: new Set(), paused: false }),
+		).not.toThrow();
 	});
 });
 
@@ -299,9 +223,4 @@ describe("constants", () => {
 	it("STATE_ENTRY_TYPE uses the package-name-prefixed form", () => {
 		expect(STATE_ENTRY_TYPE).toBe("pi-archon-workflow-watcher:state");
 	});
-
-	it("RUNSTATE_ENTRY_TYPE uses the package-name-prefixed form", () => {
-		expect(RUNSTATE_ENTRY_TYPE).toBe("pi-archon-workflow-watcher:runstate");
-	});
-
 });

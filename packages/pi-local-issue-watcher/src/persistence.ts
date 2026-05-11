@@ -1,61 +1,34 @@
+/**
+ * Session-log persistence for pi-local-issue-watcher.
+ * Uses two createPersistence instances: one for the snapshot baseline
+ * (with a 24h TTL applied by the caller) and one for the paused/running
+ * run state (sticky, no TTL).
+ *
+ * Migration note: the legacy entry types
+ *   issue-watcher-state / local-issue-watcher-state / pi-local-issue-watcher-state
+ *   issue-watcher-runstate / local-issue-watcher-runstate / pi-local-issue-watcher-runstate
+ * are no longer read. Sessions written before this migration will not
+ * rehydrate; the watcher starts fresh (24h TTL already guarantees this
+ * for snapshot; paused state defaults to false on clean start).
+ */
+import { createPersistence } from "pi-watcher-core/persistence";
+export type { SessionLike } from "pi-watcher-core/persistence";
+
 import type { IssueInfo, Snapshot } from "./types.js";
 
-/** Key used with `pi.appendEntry(...)` / session custom entries. */
-export const STATE_ENTRY_TYPE = "pi-local-issue-watcher-state";
+// ---------------------------------------------------------------------------
+// Public constants
+// ---------------------------------------------------------------------------
 
-/**
- * Entry types we still accept on **read** for back-compat with session
- * logs written by earlier versions. New entries always use
- * {@link STATE_ENTRY_TYPE}.
- *
- * - `"issue-watcher-state"` — pre-#0017
- * - `"local-issue-watcher-state"` — #0017…#0019 (bare, package-agnostic
- *   prefix)
- *
- * #0020 renamed the active key to the package-prefixed form
- * `pi-local-issue-watcher-state`; both prior variants remain
- * readable.
- */
-export const LEGACY_STATE_ENTRY_TYPES = [
-	"issue-watcher-state",
-	"local-issue-watcher-state",
-] as const;
+export const STATE_ENTRY_TYPE = "pi-local-issue-watcher:state";
+export const RUNSTATE_ENTRY_TYPE = "pi-local-issue-watcher:runstate";
 
-/**
- * Separate key used to persist the watcher's **run state** (paused /
- * running) across session_start boundaries. Kept distinct from
- * {@link STATE_ENTRY_TYPE} so that the snapshot can age out under its
- * 24h TTL while the user's explicit pause preference survives forever.
- */
-export const RUNSTATE_ENTRY_TYPE = "pi-local-issue-watcher-runstate";
+export const STATE_MAX_AGE_MS = 24 * 60 * 60 * 1000;
 
-/**
- * Run-state entry types still accepted on read. Same layering as
- * {@link LEGACY_STATE_ENTRY_TYPES} — pre-#0017 then #0017…#0019.
- */
-export const LEGACY_RUNSTATE_ENTRY_TYPES = [
-	"issue-watcher-runstate",
-	"local-issue-watcher-runstate",
-] as const;
+// ---------------------------------------------------------------------------
+// Serialised shapes (JSON-safe)
+// ---------------------------------------------------------------------------
 
-function isStateEntryType(t: string | undefined): boolean {
-	if (t === STATE_ENTRY_TYPE) return true;
-	return (LEGACY_STATE_ENTRY_TYPES as readonly string[]).includes(t ?? "");
-}
-
-function isRunstateEntryType(t: string | undefined): boolean {
-	if (t === RUNSTATE_ENTRY_TYPE) return true;
-	return (LEGACY_RUNSTATE_ENTRY_TYPES as readonly string[]).includes(t ?? "");
-}
-
-/** Maximum age at which a persisted snapshot is still trusted as baseline. */
-export const STATE_MAX_AGE_MS = 24 * 60 * 60 * 1000; // 24h — matches watch_issues.py
-
-/**
- * On-disk shape of a single issue entry. Differs from {@link IssueInfo} in
- * that `mtimeNs` is a decimal string — `pi.appendEntry` ultimately JSON-
- * encodes the payload, and JSON cannot round-trip `bigint`.
- */
 export interface SerialisedIssueInfo {
 	mtimeNs: string;
 	issueId: string;
@@ -66,93 +39,117 @@ export interface SerialisedIssueInfo {
 	skill: string;
 	skillVersion: string;
 }
-
-/** On-disk shape of a full snapshot. */
 export type SerialisedSnapshot = Record<string, SerialisedIssueInfo>;
 
-/**
- * Shape of the `data` payload we store via `pi.appendEntry`.
- *
- * Pre-#0016 entries also carried a numeric `lastUpdateAt` field; the read
- * path silently ignores unknown keys so those old payloads still parse.
- */
-export interface PersistedState {
-	/** Epoch ms at which the snapshot was captured. */
-	savedAt: number;
-	snapshot: SerialisedSnapshot;
-}
+// ---------------------------------------------------------------------------
+// In-memory shapes returned to callers
+// ---------------------------------------------------------------------------
 
-/**
- * In-memory shape returned by {@link rehydrateFromSession} once the stored
- * snapshot has been converted back to {@link Snapshot} (i.e. bigint mtime).
- */
 export interface RehydratedState {
 	savedAt: number;
 	snapshot: Snapshot;
 }
+export interface RehydratedRunState {
+	savedAt: number;
+	paused: boolean;
+}
+
+// ---------------------------------------------------------------------------
+// Persistence instances
+// ---------------------------------------------------------------------------
+
+const _snapshotPersistence = createPersistence<SerialisedSnapshot, Record<string, never>>({
+	stateCustomType: STATE_ENTRY_TYPE,
+	watchItemsKey: "snapshot",
+	normaliseItems: _normaliseSnapshotItems,
+	normaliseBaselines: () => ({}),
+});
+
+const _runstatePersistence = createPersistence<string[], Record<string, never>>({
+	stateCustomType: RUNSTATE_ENTRY_TYPE,
+	watchItemsKey: "items",
+	normaliseItems: (raw: unknown) => (Array.isArray(raw) ? raw.filter((x): x is string => typeof x === "string") : []),
+	normaliseBaselines: () => ({}),
+});
+
+// ---------------------------------------------------------------------------
+// Public API
+// ---------------------------------------------------------------------------
 
 /**
- * Minimal `ctx` surface we need from pi's session manager. Kept narrow so the
- * test double in `persistence.test.ts` can supply a plain object.
+ * Rehydrate snapshot from session. Returns null when no valid entry is found
+ * OR when the entry is older than STATE_MAX_AGE_MS.
  */
-export interface SessionLike {
-	sessionManager: {
-		getEntries(): Array<{ type?: string; customType?: string; data?: unknown }>;
+export function rehydrateFromSession(
+	ctx: import("pi-watcher-core/persistence").SessionLike,
+): RehydratedState | null {
+	const state = _snapshotPersistence.rehydrateStateFromSession(ctx);
+	if (state === null) return null;
+	if (Date.now() - state.savedAt > STATE_MAX_AGE_MS) return null;
+	return {
+		savedAt: state.savedAt,
+		snapshot: _deserialiseSnapshot(state.items),
 	};
 }
 
-interface RawIssueInfo {
-	mtimeNs?: bigint | string | number;
-	issueId?: string;
-	status?: string;
-	title?: string;
-	description?: string;
-	comments?: IssueInfo["comments"];
-	skill?: string;
-	skillVersion?: string;
+/**
+ * Write a new snapshot baseline entry. Best-effort.
+ */
+export function persistSnapshot(
+	pi: { appendEntry(customType: string, data: unknown): void },
+	snapshot: Snapshot,
+): void {
+	_snapshotPersistence.writeState(pi, {
+		// Stored as Object.entries([path, info][]); normaliseItems reconstructs the record on read.
+		items: Object.entries(_serialiseSnapshot(snapshot)) as unknown as SerialisedSnapshot,
+		paused: false,
+		baselines: {},
+	});
 }
 
 /**
- * Walk the session entry log newest → oldest. Return the first entry whose
- * `customType === STATE_ENTRY_TYPE` and whose `savedAt` is within
- * `STATE_MAX_AGE_MS`. Returns `null` otherwise.
- *
- * `mtimeNs` is re-hydrated back to `bigint` because `appendEntry` typically
- * round-trips through JSON where bigint is serialised as a string.
+ * Rehydrate run state (paused/running) from session. No TTL.
  */
-export function rehydrateFromSession(ctx: SessionLike): RehydratedState | null {
-	const entries = ctx.sessionManager.getEntries();
-	for (let i = entries.length - 1; i >= 0; i--) {
-		const e = entries[i];
-		if (!e || e.type !== "custom" || !isStateEntryType(e.customType)) continue;
-		const data = e.data as Partial<PersistedState> | undefined;
-		if (!data || typeof data !== "object") {
-			// eslint-disable-next-line no-console
-			console.warn(`[local-issue-watcher] persisted entry missing data`);
-			continue;
-		}
-		const savedAt = typeof data.savedAt === "number" ? data.savedAt : NaN;
-		const snapshotRaw = data.snapshot;
-		if (!Number.isFinite(savedAt) || typeof snapshotRaw !== "object" || snapshotRaw === null) {
-			// eslint-disable-next-line no-console
-			console.warn(`[local-issue-watcher] persisted entry malformed; ignoring`);
-			continue;
-		}
-		if (Date.now() - savedAt > STATE_MAX_AGE_MS) return null;
-		return {
-			savedAt,
-			snapshot: normaliseSnapshot(snapshotRaw as Record<string, RawIssueInfo>),
-		};
-	}
-	return null;
+export function rehydrateRunStateFromSession(
+	ctx: import("pi-watcher-core/persistence").SessionLike,
+): RehydratedRunState | null {
+	const state = _runstatePersistence.rehydrateStateFromSession(ctx);
+	if (state === null) return null;
+	return { savedAt: state.savedAt, paused: state.paused };
 }
 
-function normaliseSnapshot(raw: Record<string, RawIssueInfo>): Snapshot {
+/**
+ * Write run-state entry. Best-effort.
+ */
+export function persistRunState(
+	pi: { appendEntry(customType: string, data: unknown): void },
+	paused: boolean,
+): void {
+	_runstatePersistence.writeState(pi, {
+		items: [],
+		paused,
+		baselines: {},
+	});
+}
+
+// ---------------------------------------------------------------------------
+// Serialisation helpers
+// ---------------------------------------------------------------------------
+
+function _serialiseSnapshot(snap: Snapshot): SerialisedSnapshot {
+	const out: SerialisedSnapshot = {};
+	for (const [path, info] of Object.entries(snap)) {
+		out[path] = { ...info, mtimeNs: info.mtimeNs.toString() };
+	}
+	return out;
+}
+
+function _deserialiseSnapshot(snap: SerialisedSnapshot): Snapshot {
 	const out: Snapshot = {};
-	for (const [path, info] of Object.entries(raw)) {
+	for (const [path, info] of Object.entries(snap)) {
 		if (!info || typeof info !== "object") continue;
 		out[path] = {
-			mtimeNs: toBigint(info.mtimeNs),
+			mtimeNs: _toBigint(info.mtimeNs),
 			issueId: typeof info.issueId === "string" ? info.issueId : "",
 			status: typeof info.status === "string" ? info.status : "",
 			title: typeof info.title === "string" ? info.title : "",
@@ -165,64 +162,38 @@ function normaliseSnapshot(raw: Record<string, RawIssueInfo>): Snapshot {
 	return out;
 }
 
-function toBigint(v: bigint | string | number | undefined): bigint {
+function _normaliseSnapshotItems(raw: unknown): SerialisedSnapshot {
+	// Items are stored as Object.entries(serialisableSnapshot) — array of [path, info] tuples.
+	if (!Array.isArray(raw)) return {};
+	const out: SerialisedSnapshot = {};
+	for (const entry of raw) {
+		if (
+			!Array.isArray(entry) ||
+			entry.length < 2 ||
+			typeof entry[0] !== "string" ||
+			!entry[1] ||
+			typeof entry[1] !== "object"
+		) {
+			continue;
+		}
+		const [path, rawInfo] = entry as [string, Record<string, unknown>];
+		out[path] = {
+			mtimeNs: typeof rawInfo["mtimeNs"] === "string" ? rawInfo["mtimeNs"] : "0",
+			issueId: typeof rawInfo["issueId"] === "string" ? rawInfo["issueId"] : "",
+			status: typeof rawInfo["status"] === "string" ? rawInfo["status"] : "",
+			title: typeof rawInfo["title"] === "string" ? rawInfo["title"] : "",
+			description: typeof rawInfo["description"] === "string" ? rawInfo["description"] : "",
+			comments: Array.isArray(rawInfo["comments"]) ? rawInfo["comments"] as IssueInfo["comments"] : [],
+			skill: typeof rawInfo["skill"] === "string" ? rawInfo["skill"] : "",
+			skillVersion: typeof rawInfo["skillVersion"] === "string" ? rawInfo["skillVersion"] : "",
+		};
+	}
+	return out;
+}
+
+function _toBigint(v: bigint | string | number | undefined): bigint {
 	if (typeof v === "bigint") return v;
 	if (typeof v === "number" && Number.isFinite(v)) return BigInt(Math.floor(v));
 	if (typeof v === "string" && /^-?\d+$/.test(v)) return BigInt(v);
 	return 0n;
-}
-
-// ---------------------------------------------------------------------------
-// Run-state persistence (paused / running)
-// ---------------------------------------------------------------------------
-
-/** Shape of the `data` payload we store via `pi.appendEntry` for run-state. */
-export interface PersistedRunState {
-	/** Epoch ms at which the entry was captured. */
-	savedAt: number;
-	/** `true` when the watcher is paused; `false` when it is running. */
-	paused: boolean;
-}
-
-/** In-memory shape returned by {@link rehydrateRunStateFromSession}. */
-export interface RehydratedRunState {
-	savedAt: number;
-	paused: boolean;
-}
-
-/**
- * Walk the session entry log newest → oldest and return the most recent
- * run-state entry. Unlike {@link rehydrateFromSession}, this has **no
- * TTL** — an explicit pause preference is sticky until the user runs
- * `/local-issue-watcher resume` (or deletes the session).
- *
- * Pre-#0017 `issue-watcher-runstate` entries and #0017…#0019
- * `local-issue-watcher-runstate` entries are still read for back-compat
- * via {@link LEGACY_RUNSTATE_ENTRY_TYPES} (#0020).
- *
- * Returns `null` when no run-state entry has ever been written — callers
- * should treat that as the default (`paused=false`, i.e. running).
- */
-export function rehydrateRunStateFromSession(
-	ctx: SessionLike,
-): RehydratedRunState | null {
-	const entries = ctx.sessionManager.getEntries();
-	for (let i = entries.length - 1; i >= 0; i--) {
-		const e = entries[i];
-		if (!e || e.type !== "custom" || !isRunstateEntryType(e.customType)) continue;
-		const data = e.data as Partial<PersistedRunState> | undefined;
-		if (!data || typeof data !== "object") {
-			// eslint-disable-next-line no-console
-			console.warn(`[local-issue-watcher] persisted run-state entry missing data`);
-			continue;
-		}
-		const savedAt = typeof data.savedAt === "number" ? data.savedAt : NaN;
-		if (!Number.isFinite(savedAt) || typeof data.paused !== "boolean") {
-			// eslint-disable-next-line no-console
-			console.warn(`[local-issue-watcher] persisted run-state entry malformed; ignoring`);
-			continue;
-		}
-		return { savedAt, paused: data.paused };
-	}
-	return null;
 }

@@ -36,10 +36,8 @@ import {
 	buildStartupChatMessage,
 } from "./format.js";
 import {
-	rehydrateRunStateFromSession,
-	rehydrateSnapshotFromSession,
-	writeRunState,
-	writeSnapshot,
+	rehydrateStateFromSession,
+	writeState,
 	type SessionLike,
 } from "./persistence.js";
 import { detectChanges } from "./poller.js";
@@ -79,10 +77,10 @@ export function createExtensionWithClient(
 			setImmediate(() => pi.sendMessage(message, options));
 		}) as typeof pi.sendMessage;
 
-		// Rehydrate run state (paused preference). Default: not paused.
+		// Rehydrate combined state (paused preference + watchedIds + snapshot).
 		const sessionCtx = ctx as unknown as SessionLike;
-		const runState = rehydrateRunStateFromSession(sessionCtx);
-		const paused = runState?.paused === true;
+		const state = rehydrateStateFromSession(sessionCtx);
+		const paused = state?.paused === true;
 
 		if (paused) {
 			rt.paused = true;
@@ -99,14 +97,13 @@ export function createExtensionWithClient(
 		// Rehydrate watched IDs and last-known snapshot.
 		// If no IDs are persisted, skip the archon CLI call entirely —
 		// there is nothing to watch and no reason to touch archon.
-		const baseline = rehydrateSnapshotFromSession(sessionCtx);
-		if (!baseline || baseline.watchedIds.length === 0) {
+		if (!state || state.watchedIds.length === 0) {
 			// Nothing to watch — stay completely silent.
 			return;
 		}
 
 		// Restore watched IDs.
-		for (const id of baseline.watchedIds) rt.watchedIds.add(id);
+		for (const id of state.watchedIds) rt.watchedIds.add(id);
 
 		// Fetch current status and filter to watched IDs only.
 		let initialRuns: ArchonRun[] = [];
@@ -124,7 +121,7 @@ export function createExtensionWithClient(
 		}
 
 		// Diff against persisted snapshot and emit startup message if anything changed.
-		const events = detectChanges(baseline.snapshot, current);
+		const events = detectChanges(state.snapshot, current);
 		if (events.length > 0) {
 			const triggerTurn = events.some((e) => e.shouldTriggerTurn);
 			emit(
@@ -154,7 +151,7 @@ export function createExtensionWithClient(
 		// else: watched IDs exist but no longer active (already ended) — stay silent.
 
 		rt.snapshot = current;
-		writeSnapshot(pi, current, rt.watchedIds);
+		writeState(pi, { snapshot: current, watchedIds: rt.watchedIds, paused: rt.paused });
 		if (rt.watchedIds.size > 0) startPolling(rt);
 		refreshStatus(rt);
 	});
@@ -207,7 +204,7 @@ export function createExtensionWithClient(
 				case "pause": {
 					rt.paused = true;
 					stopPolling(rt);
-					writeRunState(pi, true);
+					writeState(pi, { snapshot: rt.snapshot, watchedIds: rt.watchedIds, paused: true });
 					// Clear status via the command ctx UI (always available) and
 					// rt.ui (set by session_start, may be null or same object).
 					ui?.setStatus?.(STATUS_KEY, undefined);
@@ -219,7 +216,7 @@ export function createExtensionWithClient(
 				}
 				case "resume": {
 					rt.paused = false;
-					writeRunState(pi, false);
+					writeState(pi, { snapshot: rt.snapshot, watchedIds: rt.watchedIds, paused: false });
 					startPolling(rt);
 					// refreshStatus handles the no-active-runs case by clearing the row.
 					refreshStatus(rt);
@@ -270,9 +267,8 @@ export default function archonWorkflowWatcher(pi: ExtensionAPI): void {
 
 export {
 	STATE_ENTRY_TYPE,
-	RUNSTATE_ENTRY_TYPE,
-	rehydrateSnapshotFromSession,
-	rehydrateRunStateFromSession,
+	rehydrateStateFromSession,
+	writeState,
 } from "./persistence.js";
 export { POLL_INTERVAL_MS, POLL_INTERVAL_MAX_MS, ERROR_THRESHOLD } from "./runtime.js";
 export { handleToolAction, registerToolIfNeeded, resetToolRegisteredForTests } from "./tool.js";

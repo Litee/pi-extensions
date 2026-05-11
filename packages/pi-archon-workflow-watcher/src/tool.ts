@@ -19,7 +19,7 @@ import { Type } from "typebox";
 
 import type { ArchonClient } from "./archon-client.js";
 import { buildStartupChatMessage } from "./format.js";
-import { writeRunState, writeSnapshot } from "./persistence.js";
+import { writeState } from "./persistence.js";
 import {
 	CUSTOM_MESSAGE_TYPE,
 	pollOnce,
@@ -152,7 +152,7 @@ export async function handleToolAction(
 			}
 			rt.watchedIds.add(runId);
 			if (match) rt.snapshot[runId] = match;
-			writeSnapshot(pi, rt.snapshot, rt.watchedIds);
+			writeState(pi, { snapshot: rt.snapshot, watchedIds: rt.watchedIds, paused: rt.paused });
 			if (!rt.paused && !rt.scheduler.isRunning) startPolling(rt);
 			refreshStatus(rt);
 			const label = match?.workflowName ?? runId;
@@ -174,7 +174,7 @@ export async function handleToolAction(
 			rt.watchedIds.delete(runId);
 			delete rt.snapshot[runId];
 			if (rt.watchedIds.size === 0) stopPolling(rt);
-			writeSnapshot(pi, rt.snapshot, rt.watchedIds);
+			writeState(pi, { snapshot: rt.snapshot, watchedIds: rt.watchedIds, paused: rt.paused });
 			refreshStatus(rt);
 			return ok("remove",
 				`archon-watcher: stopped watching '${runId}'. ` +
@@ -213,7 +213,7 @@ export async function handleToolAction(
 		case "pause": {
 			rt.paused = true;
 			stopPolling(rt);
-			writeRunState(pi, true);
+			writeState(pi, { snapshot: rt.snapshot, watchedIds: rt.watchedIds, paused: true });
 			refreshStatus(rt);
 			return ok("pause",
 				"archon-watcher: paused. Background polling suspended. " +
@@ -223,7 +223,7 @@ export async function handleToolAction(
 
 		case "resume": {
 			rt.paused = false;
-			writeRunState(pi, false);
+			writeState(pi, { snapshot: rt.snapshot, watchedIds: rt.watchedIds, paused: false });
 			if (rt.watchedIds.size > 0 && !rt.scheduler.isRunning) startPolling(rt);
 			refreshStatus(rt);
 			return ok("resume",

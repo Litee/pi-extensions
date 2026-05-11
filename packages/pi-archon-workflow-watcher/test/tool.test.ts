@@ -189,11 +189,11 @@ describe("handleToolAction — pause", () => {
 		const { rt, pi } = makeRt([]);
 		await handleToolAction(rt, { action: "pause" }, pi);
 		const calls = pi.appendEntry.mock.calls as Array<[string, unknown]>;
-		const runstateCall = calls.find(([type]) =>
-			type === "pi-archon-workflow-watcher:runstate",
+		const stateCall = calls.find(([type]) =>
+			type === "pi-archon-workflow-watcher:state",
 		);
-		expect(runstateCall).toBeDefined();
-		expect((runstateCall![1] as { paused: boolean }).paused).toBe(true);
+		expect(stateCall).toBeDefined();
+		expect((stateCall![1] as { paused: boolean }).paused).toBe(true);
 	});
 });
 
@@ -223,11 +223,11 @@ describe("handleToolAction — resume", () => {
 		rt.paused = true;
 		await handleToolAction(rt, { action: "resume" }, pi);
 		const calls = pi.appendEntry.mock.calls as Array<[string, unknown]>;
-		const runstateCall = calls.find(([type]) =>
-			type === "pi-archon-workflow-watcher:runstate",
+		const stateCall = calls.find(([type]) =>
+			type === "pi-archon-workflow-watcher:state",
 		);
-		expect(runstateCall).toBeDefined();
-		expect((runstateCall![1] as { paused: boolean }).paused).toBe(false);
+		expect(stateCall).toBeDefined();
+		expect((stateCall![1] as { paused: boolean }).paused).toBe(false);
 		rt.scheduler.stop();
 		vi.useRealTimers();
 	});

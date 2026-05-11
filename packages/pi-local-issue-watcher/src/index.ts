@@ -51,11 +51,10 @@ import {
 import { handleInfo, type InfoPicker } from "./infoHandler.js";
 import { makeInfoTuiPicker } from "./infoTui.js";
 import {
-	RUNSTATE_ENTRY_TYPE,
-	STATE_ENTRY_TYPE,
 	rehydrateFromSession,
 	rehydrateRunStateFromSession,
-	type SerialisedSnapshot,
+	persistSnapshot,
+	persistRunState,
 	type SessionLike,
 } from "./persistence.js";
 import { scanIssueFiles } from "./scanner.js";
@@ -316,10 +315,7 @@ export async function handleSessionStart(
 
 	if (baseline === null) {
 		// First session, or state stale — adopt current as the new baseline.
-		pi.appendEntry(STATE_ENTRY_TYPE, {
-			savedAt: Date.now(),
-			snapshot: serialisableSnapshot(currentSnapshot),
-		});
+		persistSnapshot(pi, currentSnapshot);
 		// Fresh-session startup summary (#0011, #0013). `triggerTurn: true`
 		// so the LLM sees the tracker state at session start (reversed from
 		// the original #0011 decision in #0013). Only reachable when not
@@ -351,10 +347,7 @@ export async function handleSessionStart(
 		);
 		// Persist the new baseline so we don't replay these changes next
 		// session.
-		pi.appendEntry(STATE_ENTRY_TYPE, {
-			savedAt: Date.now(),
-			snapshot: serialisableSnapshot(currentSnapshot),
-		});
+		persistSnapshot(pi, currentSnapshot);
 	} else {
 		// No diff to deliver — emit a short, chat-visible startup summary so the
 		// LLM can see the watcher is active and knows which tracker it is
@@ -387,38 +380,6 @@ export async function handleSessionStart(
 function buildParseFailureToast(failureCount: number): string {
 	const noun = failureCount === 1 ? "issue file" : "issue files";
 	return `local-issue-watcher: ${failureCount} ${noun} failed to parse; skipping.`;
-}
-
-/**
- * Convert a `Snapshot` (with `bigint` mtimeNs) into a form safe to pass
- * through `pi.appendEntry`, which round-trips through JSON. We stringify
- * every bigint; `rehydrateFromSession` converts it back.
- */
-function serialisableSnapshot(snap: Snapshot): SerialisedSnapshot {
-	const out: SerialisedSnapshot = {};
-	for (const [path, info] of Object.entries(snap)) {
-		out[path] = { ...info, mtimeNs: info.mtimeNs.toString() };
-	}
-	return out;
-}
-
-/**
- * Append a run-state entry (paused / running) to the session log.
- * Swallows any failure from `appendEntry` — persistence is a nice-to-have,
- * not worth breaking the pause/resume command over.
- */
-function persistRunState(
-	pi: Pick<ExtensionAPI, "appendEntry">,
-	paused: boolean,
-): void {
-	try {
-		pi.appendEntry(RUNSTATE_ENTRY_TYPE, {
-			savedAt: Date.now(),
-			paused,
-		});
-	} catch {
-		/* noop — see doc comment */
-	}
 }
 
 // ---------------------------------------------------------------------------
@@ -535,10 +496,7 @@ async function pollOnce(rt: Runtime): Promise<void> {
 			},
 			{ deliverAs: "followUp", triggerTurn: true },
 		);
-		rt.pi.appendEntry(STATE_ENTRY_TYPE, {
-			savedAt: Date.now(),
-			snapshot: serialisableSnapshot(next),
-		});
+		persistSnapshot(rt.pi, next);
 	}
 	rt.snapshot = next;
 	// Re-pin the status line on every poll (even when no diff fired) so the

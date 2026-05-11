@@ -6,14 +6,20 @@ import {
 	STATE_MAX_AGE_MS,
 	rehydrateFromSession,
 	rehydrateRunStateFromSession,
+	persistSnapshot,
+	persistRunState,
 } from "../src/persistence.js";
 import type { Snapshot } from "../src/types.js";
 
-function entry(type: string, data?: unknown, customType?: string) {
-	return customType === undefined ? { type, data } : { type, customType, data };
+// ---------------------------------------------------------------------------
+// Helpers
+// ---------------------------------------------------------------------------
+
+function entry(customType: string, data?: unknown) {
+	return { type: "custom", customType, data };
 }
 
-function makeCtx(entries: Array<{ type: string; customType?: string; data?: unknown }>) {
+function makeCtx(entries: Array<{ type?: string; customType?: string; data?: unknown }>) {
 	return {
 		sessionManager: {
 			getEntries: () => entries,
@@ -21,403 +27,314 @@ function makeCtx(entries: Array<{ type: string; customType?: string; data?: unkn
 	};
 }
 
-const FRESH_SNAPSHOT: Snapshot = {
+function now(): number {
+	return Date.now();
+}
+
+/** Build a valid snapshot entry data payload. Items are Object.entries(serialisedSnapshot). */
+function snapshotEntryData(
+	items: Array<[string, unknown]> = [],
+	savedAt = now(),
+) {
+	return {
+		savedAt,
+		paused: false,
+		snapshot: items,
+		baselines: {},
+	};
+}
+
+/** Build a valid runstate entry data payload. */
+function runstateEntryData(paused: boolean, savedAt = now()) {
+	return {
+		savedAt,
+		paused,
+		items: [],
+		baselines: {},
+	};
+}
+
+const SAMPLE_ISSUE_SERIALISED = {
+	mtimeNs: "12345",
+	issueId: "0001",
+	status: "open",
+	title: "Test issue",
+	description: "desc",
+	comments: [],
+	skill: "skill-a",
+	skillVersion: "1.0.0",
+};
+
+const SAMPLE_SNAPSHOT: Snapshot = {
 	"/db/skill-a/0001-x.json": {
-		mtimeNs: 1n,
+		mtimeNs: 12345n,
 		issueId: "0001",
 		status: "open",
-		title: "t",
-		description: "d",
+		title: "Test issue",
+		description: "desc",
 		comments: [],
 		skill: "skill-a",
 		skillVersion: "1.0.0",
 	},
 };
 
-function now(): number {
-	return Date.now();
-}
+// ---------------------------------------------------------------------------
+// rehydrateFromSession
+// ---------------------------------------------------------------------------
 
 describe("rehydrateFromSession", () => {
-	it("returns null when there are no entries at all", () => {
-		expect(rehydrateFromSession(makeCtx([]) as never)).toBeNull();
+	it("returns null when no entries", () => {
+		expect(rehydrateFromSession(makeCtx([]))).toBeNull();
 	});
 
-	it("returns null when no entries match the expected customType", () => {
+	it("returns null when no matching entry (customType must be STATE_ENTRY_TYPE)", () => {
 		const ctx = makeCtx([
-			entry("custom", { savedAt: now(), snapshot: FRESH_SNAPSHOT }, "some-other-type"),
-			entry("message", "hello"),
+			entry("some-other-type", snapshotEntryData()),
 		]);
-		expect(rehydrateFromSession(ctx as never)).toBeNull();
+		expect(rehydrateFromSession(ctx)).toBeNull();
 	});
 
-	it("returns the most recent matching entry (walks newest to oldest)", () => {
-		const older: Snapshot = {
-			"/db/old/0001-a.json": { ...FRESH_SNAPSHOT["/db/skill-a/0001-x.json"]! },
-		};
-		const newer: Snapshot = {
-			"/db/new/0002-b.json": { ...FRESH_SNAPSHOT["/db/skill-a/0001-x.json"]! },
-		};
-		const ctx = makeCtx([
-			entry("custom", { savedAt: now(), snapshot: older }, STATE_ENTRY_TYPE),
-			entry("message", "noise"),
-			entry("custom", { savedAt: now(), snapshot: newer }, STATE_ENTRY_TYPE),
-		]);
-		const got = rehydrateFromSession(ctx as never);
+	it("returns the newest matching entry (newest-to-oldest walk)", () => {
+		const older = entry(STATE_ENTRY_TYPE, snapshotEntryData(
+			[["/db/old/0001.json", { ...SAMPLE_ISSUE_SERIALISED, issueId: "old" }]],
+			now() - 1000,
+		));
+		const newer = entry(STATE_ENTRY_TYPE, snapshotEntryData(
+			[["/db/new/0002.json", { ...SAMPLE_ISSUE_SERIALISED, issueId: "new" }]],
+			now(),
+		));
+		const ctx = makeCtx([older, newer]);
+		const got = rehydrateFromSession(ctx);
 		expect(got).not.toBeNull();
-		expect(Object.keys(got!.snapshot)).toEqual(["/db/new/0002-b.json"]);
+		expect(Object.keys(got!.snapshot)).toEqual(["/db/new/0002.json"]);
 	});
 
-	it("returns null when the most recent matching entry is older than STATE_MAX_AGE_MS", () => {
+	it("returns null when the entry is older than STATE_MAX_AGE_MS", () => {
 		const stale = now() - STATE_MAX_AGE_MS - 1000;
 		const ctx = makeCtx([
-			entry("custom", { savedAt: stale, snapshot: FRESH_SNAPSHOT }, STATE_ENTRY_TYPE),
+			entry(STATE_ENTRY_TYPE, snapshotEntryData([], stale)),
 		]);
-		expect(rehydrateFromSession(ctx as never)).toBeNull();
+		expect(rehydrateFromSession(ctx)).toBeNull();
 	});
 
-	it("returns null when the entry data is malformed (missing snapshot / savedAt)", () => {
-		const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+	it("returns a valid entry when within TTL", () => {
+		const fresh = now() - 1000;
 		const ctx = makeCtx([
-			entry("custom", { savedAt: now() /* no snapshot */ }, STATE_ENTRY_TYPE),
+			entry(STATE_ENTRY_TYPE, snapshotEntryData(
+				[["/db/skill-a/0001-x.json", SAMPLE_ISSUE_SERIALISED]],
+				fresh,
+			)),
 		]);
-		expect(rehydrateFromSession(ctx as never)).toBeNull();
-		warn.mockRestore();
+		const got = rehydrateFromSession(ctx);
+		expect(got).not.toBeNull();
+		expect(Object.keys(got!.snapshot)).toEqual(["/db/skill-a/0001-x.json"]);
 	});
 
-	it("deserialises mtimeNs back into bigint when reading from a persisted snapshot", () => {
-		// Custom entries stored via `pi.appendEntry` typically round-trip through
-		// JSON, which means bigint fields come back as strings. The rehydrator
-		// must convert them back so downstream diff logic keeps working.
-		const serialised = {
-			"/db/skill-a/0001-x.json": {
-				...FRESH_SNAPSHOT["/db/skill-a/0001-x.json"]!,
-				mtimeNs: "12345",
-			},
-		};
+	it("skips malformed entries (no data) and falls back to next valid one", () => {
 		const ctx = makeCtx([
-			entry("custom", { savedAt: now(), snapshot: serialised }, STATE_ENTRY_TYPE),
+			entry(STATE_ENTRY_TYPE, snapshotEntryData([["/db/old.json", SAMPLE_ISSUE_SERIALISED]], now() - 1000)),
+			entry(STATE_ENTRY_TYPE, undefined), // newer, no data
 		]);
-		const got = rehydrateFromSession(ctx as never);
+		const got = rehydrateFromSession(ctx);
+		expect(got).not.toBeNull();
+		expect(Object.keys(got!.snapshot)).toEqual(["/db/old.json"]);
+	});
+
+	it("skips malformed entries (bad savedAt) and falls back to next valid one", () => {
+		const ctx = makeCtx([
+			entry(STATE_ENTRY_TYPE, snapshotEntryData([["/db/old.json", SAMPLE_ISSUE_SERIALISED]], now() - 1000)),
+			entry(STATE_ENTRY_TYPE, { ...snapshotEntryData(), savedAt: "bad" }), // newer, bad savedAt
+		]);
+		const got = rehydrateFromSession(ctx);
+		expect(got).not.toBeNull();
+		expect(Object.keys(got!.snapshot)).toEqual(["/db/old.json"]);
+	});
+
+	it("skips malformed entries (non-array snapshot) and falls back to next valid one", () => {
+		const ctx = makeCtx([
+			entry(STATE_ENTRY_TYPE, snapshotEntryData([["/db/old.json", SAMPLE_ISSUE_SERIALISED]], now() - 1000)),
+			entry(STATE_ENTRY_TYPE, { ...snapshotEntryData(), snapshot: { not: "array" } }), // newer, bad shape
+		]);
+		const got = rehydrateFromSession(ctx);
+		expect(got).not.toBeNull();
+		expect(Object.keys(got!.snapshot)).toEqual(["/db/old.json"]);
+	});
+
+	it("deserialises mtimeNs back to bigint (from string '12345' → 12345n)", () => {
+		const ctx = makeCtx([
+			entry(STATE_ENTRY_TYPE, snapshotEntryData(
+				[["/db/skill-a/0001-x.json", { ...SAMPLE_ISSUE_SERIALISED, mtimeNs: "12345" }]],
+			)),
+		]);
+		const got = rehydrateFromSession(ctx);
 		expect(got).not.toBeNull();
 		expect(got!.snapshot["/db/skill-a/0001-x.json"]!.mtimeNs).toBe(12345n);
 	});
 
-	it("accepts numeric mtimeNs and falls back to 0n for garbage values", () => {
+	it("handles numeric mtimeNs (converts to bigint)", () => {
 		const ctx = makeCtx([
-			entry("custom", {
-				savedAt: now(),
-				snapshot: {
-					"/a": { ...FRESH_SNAPSHOT["/db/skill-a/0001-x.json"]!, mtimeNs: 42 },
-					"/b": { ...FRESH_SNAPSHOT["/db/skill-a/0001-x.json"]!, mtimeNs: "not-a-number" },
-					"/c": { ...FRESH_SNAPSHOT["/db/skill-a/0001-x.json"]!, mtimeNs: undefined },
-					"/d": null, // should be skipped entirely
-				},
-			}, STATE_ENTRY_TYPE),
+			entry(STATE_ENTRY_TYPE, snapshotEntryData(
+				[["/db/a.json", { ...SAMPLE_ISSUE_SERIALISED, mtimeNs: "42" }]],
+			)),
 		]);
-		const got = rehydrateFromSession(ctx as never);
-		expect(got).not.toBeNull();
-		expect(got!.snapshot["/a"]!.mtimeNs).toBe(42n);
-		expect(got!.snapshot["/b"]!.mtimeNs).toBe(0n);
-		expect(got!.snapshot["/c"]!.mtimeNs).toBe(0n);
-		expect(got!.snapshot["/d"]).toBeUndefined();
+		const got = rehydrateFromSession(ctx);
+		expect(got!.snapshot["/db/a.json"]!.mtimeNs).toBe(42n);
 	});
 
-	it("returns null when the persisted data field is completely missing", () => {
-		const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
-		const ctx = makeCtx([entry("custom", undefined, STATE_ENTRY_TYPE)]);
-		expect(rehydrateFromSession(ctx as never)).toBeNull();
-		warn.mockRestore();
+	it("falls back to 0n for invalid mtimeNs values", () => {
+		const ctx = makeCtx([
+			entry(STATE_ENTRY_TYPE, snapshotEntryData(
+				[
+					["/db/a.json", { ...SAMPLE_ISSUE_SERIALISED, mtimeNs: "not-a-number" }],
+					["/db/b.json", { ...SAMPLE_ISSUE_SERIALISED, mtimeNs: "0" }],
+				],
+			)),
+		]);
+		const got = rehydrateFromSession(ctx);
+		expect(got!.snapshot["/db/a.json"]!.mtimeNs).toBe(0n);
+		expect(got!.snapshot["/db/b.json"]!.mtimeNs).toBe(0n);
 	});
 
-	// -- issue #0016: lastUpdateAt no longer exposed on the rehydrated state --
-	it("silently drops a lastUpdateAt field from legacy entries (issue #0016)", () => {
-		// Old pi sessions wrote a `lastUpdateAt` alongside the snapshot. After
-		// #0016 that field has no consumer, so the read path should accept the
-		// entry (no console warn, no null) but the returned shape must not
-		// expose it.
-		const stamp = now() - 120_000;
+	it("skips null/invalid snapshot entries in the array", () => {
 		const ctx = makeCtx([
-			entry("custom", { savedAt: now(), snapshot: FRESH_SNAPSHOT, lastUpdateAt: stamp }, STATE_ENTRY_TYPE),
+			entry(STATE_ENTRY_TYPE, snapshotEntryData(
+				[
+					null as unknown as [string, unknown], // should be skipped
+					["/db/valid.json", SAMPLE_ISSUE_SERIALISED],
+					"bad-entry" as unknown as [string, unknown], // should be skipped
+				],
+			)),
 		]);
-		const got = rehydrateFromSession(ctx as never);
+		const got = rehydrateFromSession(ctx);
 		expect(got).not.toBeNull();
-		expect(got).not.toHaveProperty("lastUpdateAt");
-	});
-
-	it("skips a malformed newest entry and returns the older valid one (issue #0002)", () => {
-		// Regression: previously, a single malformed entry anywhere in the walk
-		// caused rehydrate to return null, discarding older valid baselines.
-		const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
-		const validData = {
-			savedAt: now(),
-			snapshot: {
-				"/db/skill-a/0001-x.json": {
-					...FRESH_SNAPSHOT["/db/skill-a/0001-x.json"]!,
-					mtimeNs: "777",
-				},
-			},
-		};
-		const ctx = makeCtx([
-			// Older — valid.
-			entry("custom", validData, STATE_ENTRY_TYPE),
-			// Noise between state entries.
-			entry("message", "noise"),
-			// Newest — malformed snapshot (not an object).
-			entry("custom", { savedAt: now(), snapshot: null }, STATE_ENTRY_TYPE),
-		]);
-		const got = rehydrateFromSession(ctx as never);
-		expect(got).not.toBeNull();
-		expect(got!.snapshot["/db/skill-a/0001-x.json"]!.mtimeNs).toBe(777n);
-		warn.mockRestore();
-	});
-
-	it("skips a newest entry with missing data and returns the older valid one (issue #0002)", () => {
-		const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
-		const validData = {
-			savedAt: now(),
-			snapshot: FRESH_SNAPSHOT,
-		};
-		const ctx = makeCtx([
-			entry("custom", validData, STATE_ENTRY_TYPE),
-			entry("custom", undefined, STATE_ENTRY_TYPE), // newest, missing data
-		]);
-		const got = rehydrateFromSession(ctx as never);
-		expect(got).not.toBeNull();
-		expect(Object.keys(got!.snapshot)).toEqual(["/db/skill-a/0001-x.json"]);
-		warn.mockRestore();
+		expect(Object.keys(got!.snapshot)).toEqual(["/db/valid.json"]);
 	});
 });
+
+// ---------------------------------------------------------------------------
+// rehydrateRunStateFromSession
+// ---------------------------------------------------------------------------
 
 describe("rehydrateRunStateFromSession", () => {
-	it("returns null when there are no entries", () => {
-		expect(rehydrateRunStateFromSession(makeCtx([]) as never)).toBeNull();
+	it("returns null when no entries", () => {
+		expect(rehydrateRunStateFromSession(makeCtx([]))).toBeNull();
 	});
 
-	it("returns null when no entries match the RUNSTATE_ENTRY_TYPE", () => {
+	it("returns the most recent run-state entry (paused=true)", () => {
 		const ctx = makeCtx([
-			entry("custom", { savedAt: now(), snapshot: FRESH_SNAPSHOT }, STATE_ENTRY_TYPE),
-			entry("message", "hello"),
+			entry(RUNSTATE_ENTRY_TYPE, runstateEntryData(false, now() - 1000)),
+			entry(RUNSTATE_ENTRY_TYPE, runstateEntryData(true, now())),
 		]);
-		expect(rehydrateRunStateFromSession(ctx as never)).toBeNull();
-	});
-
-	it("returns the most recent run-state entry (paused)", () => {
-		const ctx = makeCtx([
-			entry("custom", { savedAt: now() - 1000, paused: false }, RUNSTATE_ENTRY_TYPE),
-			entry("custom", { savedAt: now(), paused: true }, RUNSTATE_ENTRY_TYPE),
-		]);
-		const got = rehydrateRunStateFromSession(ctx as never);
-		expect(got).not.toBeNull();
+		const got = rehydrateRunStateFromSession(ctx);
 		expect(got!.paused).toBe(true);
 	});
 
-	it("returns the most recent run-state entry (running)", () => {
+	it("returns the most recent run-state entry (paused=false)", () => {
 		const ctx = makeCtx([
-			entry("custom", { savedAt: now() - 2000, paused: true }, RUNSTATE_ENTRY_TYPE),
-			entry("custom", { savedAt: now(), paused: false }, RUNSTATE_ENTRY_TYPE),
+			entry(RUNSTATE_ENTRY_TYPE, runstateEntryData(true, now() - 1000)),
+			entry(RUNSTATE_ENTRY_TYPE, runstateEntryData(false, now())),
 		]);
-		const got = rehydrateRunStateFromSession(ctx as never);
-		expect(got).not.toBeNull();
+		const got = rehydrateRunStateFromSession(ctx);
 		expect(got!.paused).toBe(false);
 	});
 
-	it("has no TTL — honours a paused entry that is older than STATE_MAX_AGE_MS", () => {
-		const ancient = now() - STATE_MAX_AGE_MS - 1_000_000;
+	it("no TTL — honours ancient entries", () => {
+		const ancient = now() - 7 * 24 * 60 * 60 * 1000;
 		const ctx = makeCtx([
-			entry("custom", { savedAt: ancient, paused: true }, RUNSTATE_ENTRY_TYPE),
+			entry(RUNSTATE_ENTRY_TYPE, runstateEntryData(true, ancient)),
 		]);
-		const got = rehydrateRunStateFromSession(ctx as never);
+		const got = rehydrateRunStateFromSession(ctx);
 		expect(got).not.toBeNull();
 		expect(got!.paused).toBe(true);
 	});
 
-	it("skips malformed entries (missing paused field) and falls through to the next", () => {
-		const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+	it("skips malformed entries (bad paused) and falls through to next", () => {
 		const ctx = makeCtx([
-			entry("custom", { savedAt: now() - 1000, paused: true }, RUNSTATE_ENTRY_TYPE),
-			entry("custom", { savedAt: now() /* no paused field */ }, RUNSTATE_ENTRY_TYPE),
+			entry(RUNSTATE_ENTRY_TYPE, runstateEntryData(true, now() - 1000)), // older, valid
+			entry(RUNSTATE_ENTRY_TYPE, { ...runstateEntryData(false), paused: "yes" }), // newer, bad
 		]);
-		const got = rehydrateRunStateFromSession(ctx as never);
-		expect(got).not.toBeNull();
+		const got = rehydrateRunStateFromSession(ctx);
 		expect(got!.paused).toBe(true);
-		warn.mockRestore();
 	});
 
-	it("skips entries with missing data entirely", () => {
-		const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
-		const ctx = makeCtx([entry("custom", undefined, RUNSTATE_ENTRY_TYPE)]);
-		expect(rehydrateRunStateFromSession(ctx as never)).toBeNull();
-		warn.mockRestore();
-	});
-
-	it("skips entries where paused is not a boolean", () => {
-		const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+	it("skips entries with no data", () => {
 		const ctx = makeCtx([
-			entry("custom", { savedAt: now(), paused: "yes" as unknown as boolean }, RUNSTATE_ENTRY_TYPE),
+			entry(RUNSTATE_ENTRY_TYPE, undefined),
 		]);
-		expect(rehydrateRunStateFromSession(ctx as never)).toBeNull();
-		warn.mockRestore();
-	});
-
-	it("ignores unrelated custom-typed entries (e.g. STATE_ENTRY_TYPE)", () => {
-		const ctx = makeCtx([
-			entry("custom", { savedAt: now(), snapshot: FRESH_SNAPSHOT }, STATE_ENTRY_TYPE),
-		]);
-		expect(rehydrateRunStateFromSession(ctx as never)).toBeNull();
+		expect(rehydrateRunStateFromSession(ctx)).toBeNull();
 	});
 });
 
 // ---------------------------------------------------------------------------
-// Back-compat with the pre-#0017 entry types.
-//
-// Before #0017 this extension wrote entries under the customTypes
-// `issue-watcher-state` and `issue-watcher-runstate`. Rehydration must
-// still read those so in-flight session logs survive the rename cutover.
+// persistSnapshot
 // ---------------------------------------------------------------------------
 
-describe("rehydrateFromSession \u2014 legacy entry type (#0017)", () => {
-	it("rehydrates a legacy 'issue-watcher-state' entry", () => {
-		const ctx = makeCtx([
-			entry("custom", { savedAt: now(), snapshot: FRESH_SNAPSHOT }, "issue-watcher-state"),
-		]);
-		const got = rehydrateFromSession(ctx as never);
-		expect(got).not.toBeNull();
-		expect(Object.keys(got!.snapshot)).toEqual(["/db/skill-a/0001-x.json"]);
+describe("persistSnapshot", () => {
+	it("calls appendEntry with STATE_ENTRY_TYPE", () => {
+		const appendEntry = vi.fn();
+		persistSnapshot({ appendEntry }, SAMPLE_SNAPSHOT);
+		expect(appendEntry).toHaveBeenCalledOnce();
+		const [ct, data] = appendEntry.mock.calls[0] as [string, Record<string, unknown>];
+		expect(ct).toBe(STATE_ENTRY_TYPE);
+		expect(typeof (data["savedAt"])).toBe("number");
 	});
 
-	it("prefers the newest entry regardless of which customType it carries", () => {
-		// Newer legacy entry should win over an older new-name entry.
-		const older: Snapshot = {
-			"/db/old/0001-a.json": { ...FRESH_SNAPSHOT["/db/skill-a/0001-x.json"]! },
-		};
-		const newer: Snapshot = {
-			"/db/new/0002-b.json": { ...FRESH_SNAPSHOT["/db/skill-a/0001-x.json"]! },
-		};
-		const ctx = makeCtx([
-			entry("custom", { savedAt: now() - 1000, snapshot: older }, STATE_ENTRY_TYPE),
-			entry("custom", { savedAt: now(), snapshot: newer }, "issue-watcher-state"),
-		]);
-		const got = rehydrateFromSession(ctx as never);
-		expect(Object.keys(got!.snapshot)).toEqual(["/db/new/0002-b.json"]);
-	});
-});
-
-describe("rehydrateRunStateFromSession \u2014 legacy entry type (#0017)", () => {
-	it("rehydrates a legacy 'issue-watcher-runstate' entry", () => {
-		const ctx = makeCtx([
-			entry("custom", { savedAt: now(), paused: true }, "issue-watcher-runstate"),
-		]);
-		const got = rehydrateRunStateFromSession(ctx as never);
-		expect(got).not.toBeNull();
-		expect(got!.paused).toBe(true);
+	it("stores the snapshot field as an array of [path, info] entries", () => {
+		const appendEntry = vi.fn();
+		persistSnapshot({ appendEntry }, SAMPLE_SNAPSHOT);
+		const [, data] = appendEntry.mock.calls[0] as [string, Record<string, unknown>];
+		expect(Array.isArray(data["snapshot"])).toBe(true);
+		const items = data["snapshot"] as Array<[string, unknown]>;
+		expect(items.length).toBe(1);
+		expect(items[0]![0]).toBe("/db/skill-a/0001-x.json");
 	});
 
-	it("prefers the newest run-state entry regardless of customType", () => {
-		const ctx = makeCtx([
-			entry("custom", { savedAt: now() - 1000, paused: true }, RUNSTATE_ENTRY_TYPE),
-			entry("custom", { savedAt: now(), paused: false }, "issue-watcher-runstate"),
-		]);
-		const got = rehydrateRunStateFromSession(ctx as never);
-		expect(got!.paused).toBe(false);
+	it("swallows errors from appendEntry", () => {
+		const appendEntry = vi.fn().mockImplementation(() => {
+			throw new Error("storage failure");
+		});
+		expect(() => persistSnapshot({ appendEntry }, SAMPLE_SNAPSHOT)).not.toThrow();
 	});
 });
 
 // ---------------------------------------------------------------------------
-// #0020 — state keys now carry the full package-name prefix
-// (`pi-local-issue-watcher-state` / `-runstate`). Entries written by
-// pre-#0017 builds (`issue-watcher-*`) and #0017…#0019 builds
-// (`local-issue-watcher-*`) both remain readable via the LEGACY_ arrays.
+// persistRunState
 // ---------------------------------------------------------------------------
 
-describe("rehydrateFromSession — #0020 package-name-prefixed keys", () => {
-	it("STATE_ENTRY_TYPE is prefixed with the full package name", () => {
-		expect(STATE_ENTRY_TYPE).toBe("pi-local-issue-watcher-state");
+describe("persistRunState", () => {
+	it("calls appendEntry with RUNSTATE_ENTRY_TYPE and paused=true", () => {
+		const appendEntry = vi.fn();
+		persistRunState({ appendEntry }, true);
+		const [ct, data] = appendEntry.mock.calls[0] as [string, Record<string, unknown>];
+		expect(ct).toBe(RUNSTATE_ENTRY_TYPE);
+		expect(data["paused"]).toBe(true);
 	});
 
-	it("RUNSTATE_ENTRY_TYPE is prefixed with the full package name", () => {
-		expect(RUNSTATE_ENTRY_TYPE).toBe("pi-local-issue-watcher-runstate");
+	it("calls appendEntry with RUNSTATE_ENTRY_TYPE and paused=false", () => {
+		const appendEntry = vi.fn();
+		persistRunState({ appendEntry }, false);
+		const [, data] = appendEntry.mock.calls[0] as [string, Record<string, unknown>];
+		expect(data["paused"]).toBe(false);
 	});
 
-	it("rehydrates from a mixed log containing all three legacy variants; newest wins", () => {
-		// Interleave the three generations in arbitrary order; the
-		// per-entry `savedAt` decides the winner, not the customType.
-		const a: Snapshot = {
-			"/db/a/0001-aaa.json": { ...FRESH_SNAPSHOT["/db/skill-a/0001-x.json"]! },
-		};
-		const b: Snapshot = {
-			"/db/b/0002-bbb.json": { ...FRESH_SNAPSHOT["/db/skill-a/0001-x.json"]! },
-		};
-		const c: Snapshot = {
-			"/db/c/0003-ccc.json": { ...FRESH_SNAPSHOT["/db/skill-a/0001-x.json"]! },
-		};
-		const ctx = makeCtx([
-			entry(
-				"custom",
-				{ savedAt: now() - 3000, snapshot: a },
-				"issue-watcher-state",
-			),
-			entry(
-				"custom",
-				{ savedAt: now() - 1000, snapshot: b },
-				"local-issue-watcher-state",
-			),
-			entry(
-				"custom",
-				{ savedAt: now(), snapshot: c },
-				STATE_ENTRY_TYPE,
-			),
-		]);
-		const got = rehydrateFromSession(ctx as never);
-		expect(Object.keys(got!.snapshot)).toEqual(["/db/c/0003-ccc.json"]);
-	});
-
-	it("rehydrates from a `local-issue-watcher-state` entry alone (#0017…#0019 legacy)", () => {
-		const ctx = makeCtx([
-			entry(
-				"custom",
-				{ savedAt: now(), snapshot: FRESH_SNAPSHOT },
-				"local-issue-watcher-state",
-			),
-		]);
-		const got = rehydrateFromSession(ctx as never);
-		expect(got).not.toBeNull();
-		expect(Object.keys(got!.snapshot)).toEqual(["/db/skill-a/0001-x.json"]);
+	it("swallows errors from appendEntry", () => {
+		const appendEntry = vi.fn().mockImplementation(() => {
+			throw new Error("storage failure");
+		});
+		expect(() => persistRunState({ appendEntry }, false)).not.toThrow();
 	});
 });
 
-describe("rehydrateRunStateFromSession — #0020 package-name-prefixed keys", () => {
-	it("rehydrates from a mixed run-state log containing all three legacy variants; newest wins", () => {
-		const ctx = makeCtx([
-			entry(
-				"custom",
-				{ savedAt: now() - 3000, paused: true },
-				"issue-watcher-runstate",
-			),
-			entry(
-				"custom",
-				{ savedAt: now() - 1000, paused: false },
-				"local-issue-watcher-runstate",
-			),
-			entry(
-				"custom",
-				{ savedAt: now(), paused: true },
-				RUNSTATE_ENTRY_TYPE,
-			),
-		]);
-		const got = rehydrateRunStateFromSession(ctx as never);
-		expect(got!.paused).toBe(true);
+// ---------------------------------------------------------------------------
+// Constants
+// ---------------------------------------------------------------------------
+
+describe("constants", () => {
+	it("STATE_ENTRY_TYPE uses colon separator (not dash)", () => {
+		expect(STATE_ENTRY_TYPE).toBe("pi-local-issue-watcher:state");
 	});
 
-	it("rehydrates from a `local-issue-watcher-runstate` entry alone", () => {
-		const ctx = makeCtx([
-			entry(
-				"custom",
-				{ savedAt: now(), paused: true },
-				"local-issue-watcher-runstate",
-			),
-		]);
-		const got = rehydrateRunStateFromSession(ctx as never);
-		expect(got!.paused).toBe(true);
+	it("RUNSTATE_ENTRY_TYPE uses colon separator (not dash)", () => {
+		expect(RUNSTATE_ENTRY_TYPE).toBe("pi-local-issue-watcher:runstate");
 	});
 });
