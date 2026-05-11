@@ -130,7 +130,7 @@ function makeFakeCtx(branch: unknown[]) {
 		},
 		modelRegistry: {
 			// Return a usable key so generateRecap gets past the auth gate.
-			getApiKeyAndHeaders: vi.fn(async () => ({ ok: true, apiKey: "test-key" })),
+			getApiKeyAndHeaders: vi.fn(() => ({ ok: true, apiKey: "test-key" })),
 		},
 	};
 }

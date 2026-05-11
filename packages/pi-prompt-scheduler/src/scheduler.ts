@@ -210,7 +210,7 @@ export class CronScheduler {
   /**
    * Execute a job's prompt
    */
-  private async executeJob(job: CronJob): Promise<void> {
+  private executeJob(job: CronJob): void {
     // Re-read before firing — closure-captured `job` is stale if storage was
     // edited mid-tick (removed, disabled, or `session` rebound by hand-edit).
     const fresh = this.storage.getJob(job.id);

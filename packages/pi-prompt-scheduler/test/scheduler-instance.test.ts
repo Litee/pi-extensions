@@ -23,7 +23,7 @@ const { runSubagentMock } = vi.hoisted(() => ({
 		(ctx: unknown, prompt: string, model: string, signal: AbortSignal) => Promise<
 			{ ok: true; text: string } | { ok: false; error: string }
 		>
-	>(async () => ({ ok: true, text: "subagent output" })),
+	>(() => Promise.resolve({ ok: true as const, text: "subagent output" })),
 }));
 vi.mock("../src/subagent.js", () => ({
 	runSubagentOnce: runSubagentMock,
@@ -377,7 +377,7 @@ describe("CronScheduler.executeJob (inline)", () => {
 describe("CronScheduler.executeJobInSubagent", () => {
 	beforeEach(() => {
 		runSubagentMock.mockClear();
-		runSubagentMock.mockImplementation(async () => ({ ok: true, text: "subagent output" }));
+		runSubagentMock.mockImplementation(() => Promise.resolve({ ok: true as const, text: "subagent output" }));
 	});
 
 	async function flushMicrotasks(): Promise<void> {
@@ -429,7 +429,7 @@ describe("CronScheduler.executeJobInSubagent", () => {
 	});
 
 	it("records error state + posts subagent_error when the subagent fails", async () => {
-		runSubagentMock.mockImplementationOnce(async () => ({ ok: false, error: "model broke" }));
+		runSubagentMock.mockImplementationOnce(() => Promise.resolve({ ok: false as const, error: "model broke" }));
 		const job = mkJob({ id: "sub-err", model: "anthropic/claude-haiku-4-5" });
 		storage.addJob(job);
 		const { scheduler, pi } = makeScheduler();
@@ -446,7 +446,7 @@ describe("CronScheduler.executeJobInSubagent", () => {
 
 	it("truncates large subagent output with an ellipsis", async () => {
 		const huge = "x".repeat(1000);
-		runSubagentMock.mockImplementationOnce(async () => ({ ok: true, text: huge }));
+		runSubagentMock.mockImplementationOnce(() => Promise.resolve({ ok: true as const, text: huge }));
 		const job = mkJob({ id: "sub-big", model: "anthropic/claude-haiku-4-5" });
 		storage.addJob(job);
 		const { scheduler, pi } = makeScheduler();

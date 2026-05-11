@@ -211,16 +211,16 @@ export default function planModeExtension(pi: ExtensionAPI): void {
 	});
 
 	// Block destructive bash commands in plan mode
-	pi.on("tool_call", async (event) => shouldBlockBashInPlan(event, planModeEnabled));
+	pi.on("tool_call", (event) => shouldBlockBashInPlan(event, planModeEnabled));
 
 	// Filter out stale plan mode context when not in plan mode
-	pi.on("context", async (event) => {
+	pi.on("context", (event) => {
 		if (planModeEnabled) return;
 		return { messages: filterContextMessages(event.messages) };
 	});
 
 	// Inject plan-mode context before agent starts
-	pi.on("before_agent_start", async () => {
+	pi.on("before_agent_start", () => {
 		if (!planModeEnabled) return undefined;
 		return { message: buildPlanModeContextMessage() };
 	});

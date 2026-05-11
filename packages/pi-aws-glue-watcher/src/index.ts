@@ -89,7 +89,7 @@ export function createExtensionWithClient(pi: ExtensionAPI, client: GlueClient):
 		}
 	});
 
-	pi.on("session_shutdown", async (_event, ctx) => {
+	pi.on("session_shutdown", (_event, ctx) => {
 		stopPolling(rt);
 		try {
 			rt.widget?.hide(ctx);

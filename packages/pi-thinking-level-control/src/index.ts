@@ -41,7 +41,7 @@ export function nextLevel(
 export default function thinkingLevelControl(pi: ExtensionAPI): void {
 	pi.registerShortcut(Key.ctrl("]"), {
 		description: "Increase thinking level",
-		handler: async (ctx) => {
+		handler: (ctx) => {
 			const levels = ctx.model ? getSupportedThinkingLevels(ctx.model) : FALLBACK_LEVELS;
 			const next = nextLevel(levels, pi.getThinkingLevel(), 1);
 			if (next === null) return;
@@ -52,7 +52,7 @@ export default function thinkingLevelControl(pi: ExtensionAPI): void {
 
 	pi.registerShortcut(Key.ctrl("["), {
 		description: "Decrease thinking level",
-		handler: async (ctx) => {
+		handler: (ctx) => {
 			const levels = ctx.model ? getSupportedThinkingLevels(ctx.model) : FALLBACK_LEVELS;
 			const next = nextLevel(levels, pi.getThinkingLevel(), -1);
 			if (next === null) return;

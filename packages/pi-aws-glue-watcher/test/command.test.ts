@@ -21,10 +21,10 @@ function makeFakePi() {
 
 function makeFakeClient(): GlueClient {
 	return {
-		getJobRun: vi.fn(async () => ({}) as never),
-		getWorkflowRun: vi.fn(async () => ({}) as never),
-		stopJobRun: vi.fn(async () => {}),
-		stopWorkflowRun: vi.fn(async () => {}),
+		getJobRun: vi.fn(() => ({}) as never),
+		getWorkflowRun: vi.fn(() => ({}) as never),
+		stopJobRun: vi.fn(() => {}),
+		stopWorkflowRun: vi.fn(() => {}),
 	} as unknown as GlueClient;
 }
 
@@ -35,7 +35,7 @@ function makeCtxWithUi(overrides: Partial<Record<string, unknown>> = {}): unknow
 			notify: vi.fn(),
 			setStatus: vi.fn(),
 			theme: { fg: vi.fn((_c: string, t: string) => t) },
-			custom: vi.fn(async () => undefined),
+			custom: vi.fn(() => undefined),
 			...overrides,
 		},
 	};
@@ -211,7 +211,7 @@ describe("runGlueWatcherCommand", () => {
 	it("jobs: invokes ctx.ui.custom to open the watches overlay", async () => {
 		// Arrange
 		const rt = freshRuntime();
-		const custom = vi.fn(async () => undefined);
+		const custom = vi.fn(() => undefined);
 		const ctx = makeCtxWithUi({ custom });
 		const pi = makeFakePi();
 

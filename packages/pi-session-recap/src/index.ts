@@ -189,34 +189,34 @@ export default function (pi: ExtensionAPI) {
 
 	// --- lifecycle subscriptions --------------------------------------------
 
-	pi.on("turn_end", async (_event, ctx) => {
+	pi.on("turn_end", (_event, ctx) => {
 		const orch = getOrchestrator(ctx);
 		orch.invalidateDraft();
 		orch.scheduleRecap();
 	});
 
-	pi.on("turn_start", async (_event, ctx) => {
+	pi.on("turn_start", (_event, ctx) => {
 		getOrchestrator(ctx).clearTimer();
 	});
 
-	pi.on("input", async (_event, ctx) => {
+	pi.on("input", (_event, ctx) => {
 		const orch = getOrchestrator(ctx);
 		orch.reset();
 		clearRecapWidget(ctx);
 	});
 
-	pi.on("agent_start", async (_event, ctx) => {
+	pi.on("agent_start", (_event, ctx) => {
 		const orch = getOrchestrator(ctx);
 		orch.reset();
 		clearRecapWidget(ctx);
 	});
 
-	pi.on("session_shutdown", async () => {
+	pi.on("session_shutdown", () => {
 		orchestrator?.reset();
 		detachFocusReporting();
 	});
 
-	pi.on("session_start", async (event, ctx) => {
+	pi.on("session_start", (event, ctx) => {
 		try {
 			migrateLegacyConfig(getAgentDir(), process.env);
 		} catch {

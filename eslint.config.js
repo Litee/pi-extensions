@@ -91,10 +91,6 @@ export default tseslint.config(
 			"@typescript-eslint/no-unsafe-argument":             "off", //   68 violations
 			"@typescript-eslint/no-unsafe-return":               "off", //   42 violations
 
-			// ── Deferred: medium complexity ───────────────────────────────────────────
-			"@typescript-eslint/require-await":                  "off", //   89 violations
-			"@typescript-eslint/unbound-method":                 "off", //   10 violations
-
 			// Respect the _-prefix convention for intentionally-unused identifiers.
 			// All three ignore patterns are needed: args (function parameters),
 			// vars (destructured discard bindings like `const { x: _x, ...rest }`),

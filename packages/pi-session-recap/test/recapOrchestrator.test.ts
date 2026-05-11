@@ -58,7 +58,7 @@ function makeDeps(
 ): RecapOrchestratorDeps & FakeDepsExtras {
 	const completeSimple = vi.fn(
 		overrides.completeSimpleImpl ??
-			(async () => ({
+			(() => ({
 				content: [{ type: "text", text: "one-line recap" }],
 			})),
 	);
@@ -71,7 +71,7 @@ function makeDeps(
 	const getLeafId = vi.fn(() => leafSeq[Math.min(leafIdx++, leafSeq.length - 1)]);
 	const setWidget = vi.fn();
 	const setStatus = vi.fn();
-	const getApiKeyAndHeaders = vi.fn(async () => ({ ok: true, apiKey: "test-key" }));
+	const getApiKeyAndHeaders = vi.fn(() => ({ ok: true, apiKey: "test-key" }));
 
 	const config: RecapOrchestratorDeps["config"] = {
 		isDisabled: () => false,
@@ -163,7 +163,7 @@ describe("recapOrchestrator", () => {
 				return { content: [{ type: "text", text: "stale" }] };
 			})
 			// Second call: resolves immediately with a fresh recap.
-			.mockImplementationOnce(async () => ({
+			.mockImplementationOnce(() => ({
 				content: [{ type: "text", text: "fresh" }],
 			}));
 

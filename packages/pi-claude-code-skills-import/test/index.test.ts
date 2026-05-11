@@ -313,8 +313,9 @@ describe("handleCcSkills (injectable picker)", () => {
 
 		const ctx = makeCtx(mkdir(tmpRoot, "project"));
 		let capturedArgs: { skills: DiscoveredSkill[]; disabled: Set<string> } | undefined;
-		const picker = vi.fn(async (args: { skills: DiscoveredSkill[]; disabled: Set<string> }) => {
+		const picker = vi.fn((args: { skills: DiscoveredSkill[]; disabled: Set<string> }) => {
 			capturedArgs = args;
+			return Promise.resolve();
 		});
 
 		await handleCcSkills({
@@ -342,8 +343,9 @@ describe("handleCcSkills (injectable picker)", () => {
 			ctx: ctx,
 			claudeDir,
 			stateFile,
-			picker: async ({ onToggle }) => {
+			picker: ({ onToggle }): Promise<void> => {
 				onToggle("@user/alpha", "disabled");
+				return Promise.resolve();
 			},
 		});
 
@@ -362,7 +364,7 @@ describe("handleCcSkills (injectable picker)", () => {
 			ctx: ctx,
 			claudeDir,
 			stateFile,
-			picker: async () => undefined,
+			picker: (): Promise<void> => Promise.resolve(),
 		});
 
 		expect(reload).not.toHaveBeenCalled();
@@ -378,8 +380,9 @@ describe("handleCcSkills (injectable picker)", () => {
 			ctx: ctx,
 			claudeDir,
 			stateFile,
-			picker: async ({ onToggle }) => {
+			picker: ({ onToggle }): Promise<void> => {
 				onToggle("@user/alpha", "enabled");
+				return Promise.resolve();
 			},
 		});
 
@@ -397,8 +400,9 @@ describe("handleCcSkills (injectable picker)", () => {
 			ctx: ctx,
 			claudeDir,
 			stateFile,
-			picker: async ({ onToggle }) => {
+			picker: ({ onToggle }): Promise<void> => {
 				onToggle("@user/alpha", "enabled");
+				return Promise.resolve();
 			},
 		});
 
@@ -420,11 +424,12 @@ describe("handleCcSkills (injectable picker)", () => {
 			claudeDir,
 			stateFile,
 			persist,
-			picker: async ({ onToggle }) => {
+			picker: ({ onToggle }): Promise<void> => {
 				onToggle("@user/a", "disabled");
 				onToggle("@user/b", "disabled");
 				onToggle("@user/c", "disabled");
 				onToggle("@user/b", "enabled"); // flip back
+				return Promise.resolve();
 			},
 		});
 
@@ -445,9 +450,10 @@ describe("handleCcSkills (injectable picker)", () => {
 			claudeDir,
 			stateFile,
 			persist,
-			picker: async ({ onToggle }) => {
+			picker: ({ onToggle }): Promise<void> => {
 				onToggle("@user/a", "disabled");
 				onToggle("@user/a", "enabled"); // net: no change
+				return Promise.resolve();
 			},
 		});
 

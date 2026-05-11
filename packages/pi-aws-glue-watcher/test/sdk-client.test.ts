@@ -27,7 +27,7 @@ describe("createGlueClient", () => {
 		mockSend = vi.fn();
 		vi.mocked(AwsGlueClient).mockImplementation(function (this: { send: unknown }) {
 			this.send = mockSend;
-		} as unknown as typeof AwsGlueClient);
+		});
 	});
 
 	it("SDK errors propagate as-is (no wrapping)", async () => {

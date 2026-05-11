@@ -144,7 +144,7 @@ function makeAssistantMessage(answer: string) {
   };
 }
 
-async function* streamAnswer(answer: string) {
+function* streamAnswer(answer: string) {
   yield { type: "text_delta" as const, delta: answer.slice(0, Math.max(1, Math.floor(answer.length / 2))) };
   yield { type: "text_delta" as const, delta: answer.slice(Math.max(1, Math.floor(answer.length / 2))) };
   yield { type: "done" as const, message: makeAssistantMessage(answer) };
@@ -403,7 +403,7 @@ function createMockAgentSession(options: any) {
       emit({ type: "turn_end", message: finalMessage, toolResults });
       stateMessages = [...context.messages.map((message) => structuredClone(message)), structuredClone(finalMessage)];
     }),
-    abort: vi.fn(async () => {
+    abort: vi.fn(() => {
       isStreaming = false;
     }),
     dispose: vi.fn(() => {
@@ -525,16 +525,16 @@ function createHarness(
     pasteToEditor: () => {},
     setEditorText: () => {},
     getEditorText: () => "",
-    editor: async () => undefined,
+    editor: () => undefined,
     setEditorComponent: () => {},
     getAllThemes: () => [],
     getTheme: () => undefined,
     setTheme: () => ({ success: true }),
     getToolsExpanded: () => false,
     setToolsExpanded: () => {},
-    select: async () => undefined,
-    confirm: async () => false,
-    input: async () => undefined,
+    select: () => undefined,
+    confirm: () => false,
+    input: () => undefined,
   };
 
   const api: ExtensionAPI = {
@@ -564,7 +564,7 @@ function createHarness(
     getAllTools: vi.fn(() => []) as any,
     setActiveTools: vi.fn() as any,
     getCommands: vi.fn(() => Array.from(commands.values())) as any,
-    setModel: vi.fn(async () => true) as any,
+    setModel: vi.fn(() => true) as any,
     getThinkingLevel: vi.fn(() => mainThinkingLevel) as any,
     setThinkingLevel: vi.fn() as any,
     registerProvider: vi.fn() as any,
@@ -577,7 +577,7 @@ function createHarness(
     ui: ui as any,
     sessionManager: sessionManager as any,
     modelRegistry: {
-      getApiKeyAndHeaders: vi.fn(async (requestedModel: { provider: string; id: string; api: string }) => {
+      getApiKeyAndHeaders: vi.fn((requestedModel: { provider: string; id: string; api: string }) => {
         if (credentialResolver) {
           const key = credentialResolver(requestedModel);
           return key ? { ok: true, apiKey: key, headers: undefined } : { ok: true, apiKey: undefined, headers: undefined };
@@ -691,7 +691,7 @@ describe("btw runtime behavior", () => {
     sessionManagerInMemoryMock.mockClear();
     subSessionRecords.length = 0;
 
-    createAgentSessionMock.mockImplementation(async (options: any) => createMockAgentSession(options));
+    createAgentSessionMock.mockImplementation((options: any) => createMockAgentSession(options));
     promptStreamMock.mockImplementation((_record: unknown, _text: string, context: StreamContext) => {
       return streamAnswer(`default:${(context.messages.at(-1)?.content[0] as any)?.text ?? ""}`);
     });
@@ -955,7 +955,7 @@ describe("btw runtime behavior", () => {
   it("preserves BTW overlay recoverability after agent prompt failure", async () => {
     const harness = createHarness();
     promptStreamMock
-      .mockImplementationOnce(async function* () {
+      .mockImplementationOnce(function* () {
         yield {
           type: "error" as const,
           error: {
@@ -1200,7 +1200,7 @@ describe("btw runtime behavior", () => {
 
   it("maps turn, tool, thinking, and assistant events into transcript entries", async () => {
     const harness = createHarness();
-    promptStreamMock.mockImplementation(async function* () {
+    promptStreamMock.mockImplementation(function* () {
       yield { type: "thinking_delta" as const, delta: "Inspecting package.json" };
       yield { type: "tool_execution_start" as const, toolName: "read", args: { path: "package.json" } };
       yield {
@@ -1261,7 +1261,7 @@ describe("btw runtime behavior", () => {
     const longToolResult = ["line 1", "line 2", "x".repeat(420)].join("\n");
 
     promptStreamMock
-      .mockImplementationOnce(async function* () {
+      .mockImplementationOnce(function* () {
         yield { type: "thinking_delta" as const, delta: "Inspecting package.json" };
         yield { type: "tool_execution_start" as const, toolName: "read", args: { path: "package.json" } };
         yield {
@@ -2065,7 +2065,7 @@ describe("btw runtime behavior", () => {
     const harness = createHarness();
     promptStreamMock
       .mockImplementationOnce(() => streamAnswer("First answer"))
-      .mockImplementationOnce(async function* () {
+      .mockImplementationOnce(function* () {
         yield {
           type: "error" as const,
           error: {
@@ -2217,7 +2217,7 @@ describe("btw runtime behavior", () => {
     const harness = createHarness();
     promptStreamMock
       .mockImplementationOnce(() => streamAnswer("First answer"))
-      .mockImplementationOnce(async function* () {
+      .mockImplementationOnce(function* () {
         yield {
           type: "error" as const,
           error: {

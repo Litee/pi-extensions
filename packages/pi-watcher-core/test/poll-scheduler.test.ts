@@ -100,7 +100,7 @@ describe("PollScheduler.noteSuccess(true) — update observed", () => {
 		vi.useRealTimers();
 	});
 
-	it("resets_both_idle_base_and_effective_interval_to_baseMs", async () => {
+	it("resets_both_idle_base_and_effective_interval_to_baseMs", () => {
 		// Arrange — drive idle backoff up first
 		const s = makeScheduler();
 		const tick = vi.fn().mockResolvedValue(undefined);
@@ -166,7 +166,7 @@ describe("PollScheduler.noteSuccess(false) — no change poll", () => {
 		vi.useRealTimers();
 	});
 
-	it("doubles_idle_base_and_effective_interval_each_call", async () => {
+	it("doubles_idle_base_and_effective_interval_each_call", () => {
 		// Arrange
 		const s = makeScheduler();
 
@@ -184,7 +184,7 @@ describe("PollScheduler.noteSuccess(false) — no change poll", () => {
 		expect(s.intervalMs).toBe(BASE * 8);
 	});
 
-	it("caps_idle_base_and_effective_interval_at_idleMaxMs", async () => {
+	it("caps_idle_base_and_effective_interval_at_idleMaxMs", () => {
 		// Arrange
 		const s = makeScheduler();
 
@@ -198,7 +198,7 @@ describe("PollScheduler.noteSuccess(false) — no change poll", () => {
 		expect(s.intervalMs).toBe(IDLE_MAX);
 	});
 
-	it("snaps_effective_interval_down_to_idle_base_after_throttle_backoff", async () => {
+	it("snaps_effective_interval_down_to_idle_base_after_throttle_backoff", () => {
 		// Arrange — simulate two throttled polls, then a clean no-update poll
 		const s = makeScheduler();
 		s.noteBackoff(); // effective: 120_000, idle: 60_000

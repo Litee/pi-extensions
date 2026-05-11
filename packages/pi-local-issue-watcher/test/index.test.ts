@@ -1826,8 +1826,9 @@ describe("/local-issue-watcher browse subcommand (#0025)", () => {
 		);
 
 		const received: Array<{ rows: InfoRow[]; summary: string }> = [];
-		const fakePicker: InfoPicker = async (args) => {
+		const fakePicker: InfoPicker = (args) => {
 			received.push(args);
+			return Promise.resolve();
 		};
 		__setInfoPickerForTests(fakePicker);
 
@@ -1846,8 +1847,9 @@ describe("/local-issue-watcher browse subcommand (#0025)", () => {
 
 	it("'browse' emits a warning notify (and does NOT invoke the picker) when dbRoot is not configured", async () => {
 		const pickerCalls: number[] = [];
-		__setInfoPickerForTests(async () => {
+		__setInfoPickerForTests(() => {
 			pickerCalls.push(1);
+			return Promise.resolve();
 		});
 
 		const missing = join(dbRoot, "does-not-exist");

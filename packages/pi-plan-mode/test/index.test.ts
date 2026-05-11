@@ -28,7 +28,7 @@ function makeFakePi(activeTools: string[] = []) {
 			on: vi.fn(),
 		},
 		sendMessage: vi.fn(),
-		setModel: vi.fn(async () => true),
+		setModel: vi.fn(() => true),
 		getThinkingLevel: vi.fn(() => "medium" as const),
 		setThinkingLevel: vi.fn(),
 	};
@@ -40,7 +40,7 @@ function makeFakeCtx() {
 			notify: vi.fn(),
 			setStatus: vi.fn(),
 			theme: { fg: vi.fn((_color: string, text: string) => text) },
-			select: vi.fn(async () => "Stay in plan mode"),
+			select: vi.fn(() => "Stay in plan mode"),
 		},
 		hasUI: true,
 		model: { id: "claude-sonnet-4-5", provider: "anthropic" } as any,

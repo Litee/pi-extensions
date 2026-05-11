@@ -92,45 +92,45 @@ export interface WorkflowRunResponse {
 // ---------------------------------------------------------------------------
 
 export interface GlueClient {
-	getJobRun(
+	getJobRun: (
 		jobName: string,
 		runId: string,
 		profile: string,
 		region: string | undefined,
-	): Promise<JobRunResponse>;
+	) => Promise<JobRunResponse>;
 
-	getWorkflowRun(
+	getWorkflowRun: (
 		workflowName: string,
 		runId: string,
 		profile: string,
 		region: string | undefined,
-	): Promise<WorkflowRunResponse>;
+	) => Promise<WorkflowRunResponse>;
 
-	getLatestJobRunId(
+	getLatestJobRunId: (
 		jobName: string,
 		profile: string,
 		region: string | undefined,
-	): Promise<string>;
+	) => Promise<string>;
 
-	getLatestWorkflowRunId(
+	getLatestWorkflowRunId: (
 		workflowName: string,
 		profile: string,
 		region: string | undefined,
-	): Promise<string>;
+	) => Promise<string>;
 
-	stopJobRun(
+	stopJobRun: (
 		jobName: string,
 		runId: string,
 		profile: string,
 		region: string | undefined,
-	): Promise<void>;
+	) => Promise<void>;
 
-	stopWorkflowRun(
+	stopWorkflowRun: (
 		workflowName: string,
 		runId: string,
 		profile: string,
 		region: string | undefined,
-	): Promise<void>;
+	) => Promise<void>;
 }
 
 // ---------------------------------------------------------------------------

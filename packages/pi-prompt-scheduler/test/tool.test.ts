@@ -593,7 +593,7 @@ describe("schedule_prompt tool / renderResult", () => {
 		bold: (s: string) => s,
 	};
 
-	it("renders an error line when details.error is set", async () => {
+	it("renders an error line when details.error is set", () => {
 		const tool = makeTool();
 		const rendered = (tool.renderResult as any)(
 			{
@@ -606,7 +606,7 @@ describe("schedule_prompt tool / renderResult", () => {
 		expect(String((rendered).text)).toContain("Error: nope");
 	});
 
-	it("renders a success line for non-list actions", async () => {
+	it("renders a success line for non-list actions", () => {
 		const tool = makeTool();
 		const rendered = (tool.renderResult as any)(
 			{
@@ -619,7 +619,7 @@ describe("schedule_prompt tool / renderResult", () => {
 		expect(String((rendered).text)).toMatch(/remove victim/);
 	});
 
-	it("renders a table row per job for list actions, including model + runs + last-run", async () => {
+	it("renders a table row per job for list actions, including model + runs + last-run", () => {
 		const tool = makeTool();
 		const rendered = (tool.renderResult as any)(
 			{
@@ -656,7 +656,7 @@ describe("schedule_prompt tool / renderResult", () => {
 		expect(text).toContain("Runs:");
 	});
 
-	it("falls back to content text when details is missing", async () => {
+	it("falls back to content text when details is missing", () => {
 		const tool = makeTool();
 		const rendered = (tool.renderResult as any)(
 			{ content: [{ type: "text", text: "raw fallback" }] },

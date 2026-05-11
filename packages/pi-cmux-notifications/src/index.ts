@@ -90,20 +90,20 @@ export default function cmuxReportStatus(pi: ExtensionAPI): void {
 	}
 
 	// ── Session lifecycle ──────────────────────────────────────────────
-	pi.on("session_start", async () => {
+	pi.on("session_start", () => {
 		if (!cmuxAvailable()) return;
 		setStatus(rt.statusKey, "idle", "checkmark", "#30d158");
 		logLine(rt.statusKey, "info", `[${hhmm()}] pi session started`);
 	});
 
-	pi.on("session_shutdown", async () => {
+	pi.on("session_shutdown", () => {
 		if (!cmuxAvailable()) return;
 		clearProgress();
 		clearStatus(rt.statusKey);
 	});
 
 	// ── User input → pill to working ───────────────────────────────────
-	pi.on("input", async (event) => {
+	pi.on("input", (event) => {
 		if (!cmuxAvailable()) return;
 		if (event.source !== "interactive" && event.source !== "rpc") return;
 		const text = (event.text || "").trim();
@@ -117,7 +117,7 @@ export default function cmuxReportStatus(pi: ExtensionAPI): void {
 	});
 
 	// ── Agent run lifecycle ────────────────────────────────────────────
-	pi.on("agent_end", async () => {
+	pi.on("agent_end", () => {
 		if (!cmuxAvailable()) return;
 		clearProgress();
 		setStatus(rt.statusKey, "idle", "checkmark", "#30d158");
@@ -143,7 +143,7 @@ export default function cmuxReportStatus(pi: ExtensionAPI): void {
 	});
 
 	// ── Attention tools → waiting pill + desktop notify ────────────────
-	pi.on("tool_execution_start", async (event) => {
+	pi.on("tool_execution_start", (event) => {
 		if (!cmuxAvailable()) return;
 		const toolName = (event as { toolName?: unknown }).toolName;
 		if (typeof toolName !== "string") return;
@@ -151,7 +151,7 @@ export default function cmuxReportStatus(pi: ExtensionAPI): void {
 		enterWaiting(`Needs your input (${toolName})`);
 	});
 
-	pi.on("tool_execution_end", async (event) => {
+	pi.on("tool_execution_end", (event) => {
 		if (!cmuxAvailable()) return;
 		const toolName = (event as { toolName?: unknown }).toolName;
 		if (typeof toolName !== "string") return;

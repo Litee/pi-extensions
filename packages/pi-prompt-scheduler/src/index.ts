@@ -14,7 +14,7 @@ import { createCronTool } from "./tool.js";
 import { CronWidget } from "./ui/cron-widget.js";
 import { JobsView } from "./ui/jobs-view.js";
 
-export default async function (pi: ExtensionAPI) {
+export default function (pi: ExtensionAPI) {
   let storage: CronStorage;
   let scheduler: CronScheduler;
   let widget: CronWidget;
@@ -128,14 +128,14 @@ export default async function (pi: ExtensionAPI) {
 
   // --- Lifecycle events ---
 
-  pi.on("session_start", async (event, ctx) => {
+  pi.on("session_start", (event, ctx) => {
     if (event.reason !== "startup") {
       autoCleanupDisabledJobs(ctx);
     }
     initializeSession(ctx);
   });
 
-  pi.on("session_shutdown", async (_event, ctx) => {
+  pi.on("session_shutdown", (_event, ctx) => {
     autoCleanupDisabledJobs(ctx);
     cleanupSession(ctx);
   });

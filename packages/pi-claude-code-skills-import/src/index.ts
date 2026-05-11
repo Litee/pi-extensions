@@ -93,7 +93,7 @@ export function defaultStateFile(env: NodeJS.ProcessEnv, home: string): string {
 
 /** Pi extension default export. */
 export default function (pi: ExtensionAPI): void {
-	pi.on("resources_discover", async (event, ctx) => {
+	pi.on("resources_discover", (event, ctx) => {
 		const claudeDir = resolveClaudeDir(process.env, homedir());
 		const stateFile = defaultStateFile(process.env, homedir());
 

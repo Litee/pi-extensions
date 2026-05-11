@@ -196,7 +196,7 @@ export interface HandleSessionStartResult {
  * with stubbed `pi` / `ctx` / `dbRoot` — no polling loop, no real filesystem
  * assumptions beyond `scanIssueFiles` reading the supplied path.
  */
-export async function handleSessionStart(
+export function handleSessionStart(
 	opts: HandleSessionStartOptions,
 ): Promise<HandleSessionStartResult> {
 	const { pi, ctx, dbRoot, deferMessages, parseFailureToastState } = opts;
@@ -265,7 +265,7 @@ export async function handleSessionStart(
 		// startup summary.
 		setStatus?.(STATUS_KEY, undefined);
 		const baselineSnapshot = rehydrateFromSession(ctx)?.snapshot ?? {};
-		return { started: true, paused: true, snapshot: baselineSnapshot };
+		return Promise.resolve({ started: true, paused: true, snapshot: baselineSnapshot });
 	}
 
 	if (!existsSync(dbRoot)) {
@@ -289,7 +289,7 @@ export async function handleSessionStart(
 			},
 			{ deliverAs: "followUp", triggerTurn: true },
 		);
-		return { started: false, paused: false, snapshot: {} };
+		return Promise.resolve({ started: false, paused: false, snapshot: {} });
 	}
 
 	const baseline = rehydrateFromSession(ctx);
@@ -328,7 +328,7 @@ export async function handleSessionStart(
 			},
 			{ deliverAs: "followUp", triggerTurn: true },
 		);
-		return { started: true, paused: false, snapshot: currentSnapshot };
+		return Promise.resolve({ started: true, paused: false, snapshot: currentSnapshot });
 	}
 
 	const changes = diffSnapshots(baseline.snapshot, currentSnapshot);
@@ -366,7 +366,7 @@ export async function handleSessionStart(
 		);
 	}
 
-	return { started: true, paused: false, snapshot: currentSnapshot };
+	return Promise.resolve({ started: true, paused: false, snapshot: currentSnapshot });
 }
 
 /**
@@ -455,14 +455,17 @@ function refreshStatusLine(
 }
 
 function startPolling(rt: Runtime): void {
-	rt.scheduler.start(() => pollOnce(rt));
+	rt.scheduler.start(() => {
+		pollOnce(rt);
+		return Promise.resolve();
+	});
 }
 
 function stopPolling(rt: Runtime): void {
 	rt.scheduler.stop();
 }
 
-async function pollOnce(rt: Runtime): Promise<void> {
+function pollOnce(rt: Runtime): void {
 	if (rt.paused) return;
 	if (!existsSync(rt.dbRoot)) return;
 	// Carry forward the previous snapshot so transient read/parse failures
@@ -545,7 +548,7 @@ export default function issueWatcher(pi: ExtensionAPI): void {
 		if (!rt.paused) startPolling(rt);
 	});
 
-	pi.on("session_shutdown", async () => {
+	pi.on("session_shutdown", () => {
 		stopPolling(rt);
 		try {
 			rt.ui?.setStatus?.(STATUS_KEY, undefined);

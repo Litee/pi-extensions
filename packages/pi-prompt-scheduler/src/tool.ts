@@ -30,7 +30,7 @@ export function createCronTool(
       "IMPORTANT: For action='add', you MUST provide both 'schedule' parameter AND 'prompt' parameter. Schedule prompts at times/intervals. Schedule formats: 6-field cron (with seconds: '0 * * * * *' = every minute), ISO timestamp, relative time (+10s, +5m, +1h), or interval (5m, 1h). Type defaults to 'cron', use 'once' for relative/ISO times. Actions: add (needs schedule+prompt), list, remove/enable/disable/update (need jobId), cleanup.",
     parameters: CronToolParams,
 
-    async execute(_toolCallId, params, _signal, _onUpdate, ctx) {
+    execute(_toolCallId, params, _signal, _onUpdate, ctx) {
       const storage = getStorage();
       const scheduler = getScheduler();
       
@@ -119,7 +119,7 @@ export function createCronTool(
             const modelLine = job.model
               ? `\nModel: ${job.model} (runs in subagent${job.notify ? ", notifies parent" : ""})`
               : "";
-            return {
+            return Promise.resolve({
               content: [
                 {
                   type: "text",
@@ -127,7 +127,7 @@ export function createCronTool(
                 },
               ],
               details,
-            };
+            });
           }
 
           case "remove": {
@@ -146,7 +146,7 @@ export function createCronTool(
               details.jobId = params.jobId;
               details.jobName = job.name;
 
-              return {
+              return Promise.resolve({
                 content: [
                   {
                     type: "text",
@@ -154,7 +154,7 @@ export function createCronTool(
                   },
                 ],
                 details,
-              };
+              });
             }
             throw new Error(`Failed to remove job: ${params.jobId}`);
           }
@@ -179,7 +179,7 @@ export function createCronTool(
             details.jobId = params.jobId;
             details.jobName = job.name;
 
-            return {
+            return Promise.resolve({
               content: [
                 {
                   type: "text",
@@ -187,7 +187,7 @@ export function createCronTool(
                 },
               ],
               details,
-            };
+            });
           }
 
           case "cleanup": {
@@ -200,7 +200,7 @@ export function createCronTool(
 
             if (disabledJobs.length === 0) {
               details.jobs = [];
-              return {
+              return Promise.resolve({
                 content: [
                   {
                     type: "text",
@@ -208,7 +208,7 @@ export function createCronTool(
                   },
                 ],
                 details,
-              };
+              });
             }
 
             for (const job of disabledJobs) {
@@ -218,7 +218,7 @@ export function createCronTool(
 
             details.jobs = disabledJobs;
 
-            return {
+            return Promise.resolve({
               content: [
                 {
                   type: "text",
@@ -226,7 +226,7 @@ export function createCronTool(
                 },
               ],
               details,
-            };
+            });
           }
 
           case "update": {
@@ -272,7 +272,7 @@ export function createCronTool(
             details.jobId = params.jobId;
             details.jobName = updated.name;
 
-            return {
+            return Promise.resolve({
               content: [
                 {
                   type: "text",
@@ -280,7 +280,7 @@ export function createCronTool(
                 },
               ],
               details,
-            };
+            });
           }
 
           case "list": {
@@ -291,10 +291,10 @@ export function createCronTool(
             details.jobs = jobs;
 
             if (jobs.length === 0) {
-              return {
+              return Promise.resolve({
                 content: [{ type: "text", text: "No cron jobs configured." }],
                 details,
-              };
+              });
             }
 
             const lines = ["Configured cron jobs:", ""];
@@ -318,10 +318,10 @@ export function createCronTool(
               lines.push("");
             }
 
-            return {
+            return Promise.resolve({
               content: [{ type: "text", text: lines.join("\n") }],
               details,
-            };
+            });
           }
 
           default:
@@ -329,7 +329,7 @@ export function createCronTool(
         }
       } catch (error) {
         details.error = error instanceof Error ? error.message : String(error);
-        return {
+        return Promise.resolve({
           content: [
             {
               type: "text",
@@ -337,7 +337,7 @@ export function createCronTool(
             },
           ],
           details,
-        };
+        });
       }
     },
 

@@ -154,7 +154,7 @@ export function createExtensionWithClient(
 		refreshStatus(rt);
 	});
 
-	pi.on("session_shutdown", async () => {
+	pi.on("session_shutdown", () => {
 		stopPolling(rt);
 		try {
 			rt.ui?.setStatus?.(STATUS_KEY, undefined);

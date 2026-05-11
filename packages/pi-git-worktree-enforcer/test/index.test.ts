@@ -119,7 +119,7 @@ describe("worktreeGuard — write tool", () => {
 
 describe("worktreeGuard — fail open", () => {
 	it("allows edit to main-repo path when exec throws (fail open)", async () => {
-		const pi = makeFakePi(async () => { throw new Error("git not found"); });
+		const pi = makeFakePi(() => { throw new Error("git not found"); });
 		createExtension(pi as never);
 		const result = await pi.handlers.get("tool_call")!(
 			{ type: "tool_call", toolName: "edit", toolCallId: "5", input: { path: "/repo/main/src/foo.ts" } },

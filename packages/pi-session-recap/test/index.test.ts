@@ -142,7 +142,7 @@ function makeFakeCtx(): StubCtx {
 			getLeafId: vi.fn(() => undefined),
 		},
 		modelRegistry: {
-			getApiKeyAndHeaders: vi.fn(async () => ({ ok: false })),
+			getApiKeyAndHeaders: vi.fn(() => ({ ok: false })),
 		},
 	};
 }
@@ -567,7 +567,7 @@ describe("orchestrator lifecycle — session replacement", () => {
 			ctx1.sessionManager.getBranch.mockReturnValue(meaningfulEntries);
 			// getApiKeyAndHeaders is the first ctx access inside runModelCall.
 			// If the timer fires with a stale ctx, this spy will record the call.
-			ctx1.modelRegistry.getApiKeyAndHeaders = vi.fn(async () => ({ ok: false }));
+			ctx1.modelRegistry.getApiKeyAndHeaders = vi.fn(() => ({ ok: false }));
 
 			// Initial session start + turn end → recap timer scheduled on ctx1
 			await pi.handlers.get("session_start")?.({ reason: "startup" }, ctx1);

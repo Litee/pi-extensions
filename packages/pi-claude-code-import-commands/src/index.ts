@@ -7,7 +7,7 @@ import { resolveClaudeDir } from "./resolve.js";
 
 /** Pi extension default export. */
 export default function (pi: ExtensionAPI): void {
-	pi.on("resources_discover", async (event, _ctx) => {
+	pi.on("resources_discover", (event, _ctx) => {
 		const claudeDir = resolveClaudeDir(process.env, homedir());
 		const promptPaths = discoverCommandDirs({ claudeDir, cwd: event.cwd });
 		return { promptPaths };

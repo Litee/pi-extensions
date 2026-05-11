@@ -160,11 +160,11 @@ export default function toolInfoExtension(pi: ExtensionAPI) {
 	// Session event handlers
 	// ---------------------------------------------------------------------------
 
-	pi.on("session_start", async (_event, ctx) => {
+	pi.on("session_start", (_event, ctx) => {
 		restoreFromBranch(ctx);
 	});
 
-	pi.on("session_tree", async (_event, ctx) => {
+	pi.on("session_tree", (_event, ctx) => {
 		restoreFromBranch(ctx);
 	});
 

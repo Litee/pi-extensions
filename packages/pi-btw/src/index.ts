@@ -1641,7 +1641,7 @@ export default function (pi: ExtensionAPI) {
     return activeBtwSession;
   }
 
-  async function ensureOverlay(ctx: ExtensionCommandContext | ExtensionContext): Promise<void> {
+  function ensureOverlay(ctx: ExtensionCommandContext | ExtensionContext): void {
     if (!ctx.hasUI) {
       return;
     }
@@ -1674,7 +1674,7 @@ export default function (pi: ExtensionAPI) {
 
     void ctx.ui
       .custom<void>(
-        async (tui, theme, keybindings, done) => {
+        (tui, theme, keybindings, done) => {
           runtime.finish = () => {
             done();
           };
@@ -1760,7 +1760,7 @@ export default function (pi: ExtensionAPI) {
       const { question, save } = parseBtwArgs(trimmedArgs);
       if (!question) {
         await ensureBtwSession(ctx, pendingMode);
-        await ensureOverlay(ctx);
+        ensureOverlay(ctx);
         return true;
       }
 
@@ -1780,7 +1780,7 @@ export default function (pi: ExtensionAPI) {
 
       if (!question) {
         await ensureBtwSession(ctx, "tangent");
-        await ensureOverlay(ctx);
+        ensureOverlay(ctx);
         return true;
       }
 
@@ -1796,7 +1796,7 @@ export default function (pi: ExtensionAPI) {
       } else {
         await ensureBtwSession(ctx, "contextual");
         setOverlayStatus("Started a fresh BTW thread.", ctx);
-        await ensureOverlay(ctx);
+        ensureOverlay(ctx);
         notify(ctx, "Started a fresh BTW thread.", "info");
       }
       return true;
@@ -1862,7 +1862,7 @@ export default function (pi: ExtensionAPI) {
       }
 
       setOverlayStatus("⏳ injecting into the main session...", ctx);
-      await ensureOverlay(ctx);
+      ensureOverlay(ctx);
 
       try {
         const { thread } = await getBtwHandoffThread(ctx);
@@ -1890,7 +1890,7 @@ export default function (pi: ExtensionAPI) {
       }
 
       setOverlayStatus("⏳ summarizing...", ctx);
-      await ensureOverlay(ctx);
+      ensureOverlay(ctx);
 
       try {
         const { thread } = await getBtwHandoffThread(ctx);
@@ -2063,7 +2063,7 @@ export default function (pi: ExtensionAPI) {
       const message = auth.ok ? `No credentials available for ${model.provider}/${model.id}.` : auth.error;
       setOverlayStatus(message, ctx);
       notify(ctx, message, "error");
-      await ensureOverlay(ctx);
+      ensureOverlay(ctx);
       return;
     }
 
@@ -2080,7 +2080,7 @@ export default function (pi: ExtensionAPI) {
     const thinkingLevel = settings.thinkingLevel;
 
     setOverlayStatus("⏳ streaming...", ctx);
-    await ensureOverlay(ctx);
+    ensureOverlay(ctx);
 
     try {
       await session.prompt(question, { source: "extension" });
@@ -2240,7 +2240,7 @@ export default function (pi: ExtensionAPI) {
     return box;
   });
 
-  pi.on("context", async (event) => {
+  pi.on("context", (event) => {
     return {
       messages: event.messages.filter((message) => !isVisibleBtwMessage(message)),
     };
@@ -2262,7 +2262,7 @@ export default function (pi: ExtensionAPI) {
   for (const shortcut of BTW_FOCUS_SHORTCUTS) {
     pi.registerShortcut(shortcut, {
       description: "Toggle BTW overlay focus while leaving it open.",
-      handler: async (_ctx) => {
+      handler: (_ctx) => {
         toggleOverlayFocus();
       },
     });

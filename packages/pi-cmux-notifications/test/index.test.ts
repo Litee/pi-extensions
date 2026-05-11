@@ -255,7 +255,7 @@ describe("session lifecycle side-effects", () => {
 		expect(argvs).toContainEqual(["set-status", "pi", ""]);
 	});
 
-	it("pi.events need_user_attention flips pill to waiting and fires a desktop notify", async () => {
+	it("pi.events need_user_attention flips pill to waiting and fires a desktop notify", () => {
 		const pi = makeFakePi();
 		createExtension(pi as never);
 		const handler = pi.events.handlers.get("need_user_attention")!;
@@ -266,7 +266,7 @@ describe("session lifecycle side-effects", () => {
 		expect(argvs.some((a) => a[0] === "notify" && a.some((s) => s.includes("Plan mode")))).toBe(true);
 	});
 
-	it("pi.events user_attention_resolved flips pill back to working", async () => {
+	it("pi.events user_attention_resolved flips pill back to working", () => {
 		const pi = makeFakePi();
 		createExtension(pi as never);
 		const handler = pi.events.handlers.get("user_attention_resolved")!;

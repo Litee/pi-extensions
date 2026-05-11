@@ -6,7 +6,7 @@ import { join } from "node:path";
 import type { ArchonRun } from "./types.js";
 
 export interface ArchonClient {
-	getWorkflowStatus(): Promise<ArchonRun[]>;
+	getWorkflowStatus: () => Promise<ArchonRun[]>;
 }
 
 export class ArchonCliError extends Error {

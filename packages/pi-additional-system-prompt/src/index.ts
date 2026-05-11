@@ -7,7 +7,7 @@ const __dirname = dirname(fileURLToPath(import.meta.url));
 const GUIDELINES = readFileSync(join(__dirname, "../assets/PROMPT.md"), "utf-8");
 
 export default function (pi: ExtensionAPI) {
-  pi.on("before_agent_start", async (event, _ctx) => {
+  pi.on("before_agent_start", (event, _ctx) => {
     return {
       systemPrompt: event.systemPrompt + "\n" + GUIDELINES,
     };

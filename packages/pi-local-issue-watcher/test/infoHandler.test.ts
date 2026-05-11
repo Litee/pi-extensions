@@ -235,7 +235,7 @@ describe("handleInfo", () => {
 
 	it("propagates picker rejections (so the command surfaces TUI errors)", async () => {
 		const scan = vi.fn(() => ({}));
-		const picker = vi.fn(async () => {
+		const picker = vi.fn(() => {
 			throw new Error("TUI crashed");
 		});
 		await expect(

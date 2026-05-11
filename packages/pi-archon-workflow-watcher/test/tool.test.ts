@@ -26,9 +26,9 @@ function makeClient(
 	runsOrError: ArchonRun[] | Error,
 ): ArchonClient {
 	return {
-		getWorkflowStatus: vi.fn(async () => {
+		getWorkflowStatus: vi.fn(() => {
 			if (runsOrError instanceof Error) throw runsOrError;
-			return runsOrError;
+			return Promise.resolve(runsOrError);
 		}),
 	};
 }
