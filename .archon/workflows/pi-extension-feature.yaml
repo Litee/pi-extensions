@@ -153,10 +153,6 @@ nodes:
       max_iterations: 6
       fresh_context: true
       until: PLAN_APPROVED
-      interactive: true
-      gate_message: |
-        The reviewer needs human input before proceeding. See the questions
-        above and respond — your answer will feed the next planning iteration.
       prompt: |
         # Autonomous Plan ↔ Review Iteration
         # Two roles in sequence — no human unless the reviewer truly cannot proceed.
@@ -240,10 +236,45 @@ nodes:
         Bias strongly toward "needs-changes". Only escalate for genuine blockers.
 
   # ───────────────────────────────────────────────────────────────────────────
+  # PHASE 2b  Human plan review gate
+  # ───────────────────────────────────────────────────────────────────────────
+  - id: plan-gate
+    depends_on: [plan-and-review]
+    approval:
+      message: |
+        ## Plan ready for review
+
+        **Plan**:   $ARTIFACTS_DIR/plan.md
+        **Review**: $ARTIFACTS_DIR/review.json
+
+        Approve to proceed to implementation, or reject with specific
+        feedback — your feedback triggers one rework pass before returning here.
+      capture_response: true
+      on_reject:
+        prompt: |
+          The human reviewed the implementation plan and provided this feedback:
+
+          $REJECTION_REASON
+
+          Step 1: Write the feedback to $ARTIFACTS_DIR/human-plan-feedback.md.
+
+          Step 2: As PLAN AUTHOR — re-read formulation.md, review.json, and
+          human-plan-feedback.md. Revise $ARTIFACTS_DIR/plan.md to address all
+          feedback. Verify any changed claims via tool calls.
+
+          Step 3: As REVIEWER — re-read plan.md and formulation.md adversarially.
+          Write a new verdict to $ARTIFACTS_DIR/review.json.
+          If the plan is now solid, stop — the plan-gate will re-pause for the human.
+          If still needs-changes, do up to 2 more internal passes, then stop.
+
+          Step 4: Output a brief summary of what changed vs the prior plan.
+        max_attempts: 3
+
+  # ───────────────────────────────────────────────────────────────────────────
   # PHASE 3  Write the failing test (test-first, no implementation yet)
   # ───────────────────────────────────────────────────────────────────────────
   - id: write-failing-test
-    depends_on: [plan-and-review]
+    depends_on: [plan-gate]
     context: fresh
     allowed_tools:
       - Read
@@ -293,22 +324,15 @@ nodes:
     bash: |
       set -euo pipefail
 
-      # If write-failing-test explicitly said no tests are needed, skip this guard.
-      # The node output is captured as $write-failing-test.output but bash nodes
-      # can't read prior node outputs directly — check the plan instead.
-      if grep -qiE 'no (new )?tests? (are )?(required|needed)' "$ARTIFACTS_DIR/plan.md"; then
-        echo "✓ Plan says no tests required — skipping test-fail verification."
+      # If no test file paths appear in plan.md this is a no-test task
+      # (comment fixes, docs, pure refactors with no observable behaviour change).
+      if ! grep -qE 'packages/[^/]+/test/[^ ]+\.test\.ts' "$ARTIFACTS_DIR/plan.md"; then
+        echo "✓ No test file paths in plan — skipping test-fail verification."
         exit 0
       fi
 
-      # Extract test file paths from plan.md (lines matching packages/*/test/*.test.ts)
-      TEST_FILES=$(grep -oE 'packages/[^/]+/test/[^ ]+\.test\.ts' "$ARTIFACTS_DIR/plan.md" | sort -u | tr '\n' ' ')
-
-      if [ -z "$TEST_FILES" ]; then
-        echo "WARNING: could not extract test file paths from plan.md and plan did not"
-        echo "explicitly say 'no tests required'. Treating as no-test task and proceeding."
-        exit 0
-      fi
+      # Extract the test file paths (|| true prevents set -e exit on no-match).
+      TEST_FILES=$(grep -oE 'packages/[^/]+/test/[^ ]+\.test\.ts' "$ARTIFACTS_DIR/plan.md" | sort -u | tr '\n' ' ' || true)
 
       echo "Running: npx vitest run $TEST_FILES"
       # We WANT the tests to fail. Exit 0 from vitest → tests passed → bad.
@@ -375,8 +399,8 @@ nodes:
     depends_on: [implement]
     bash: |
       set -euo pipefail
-      git diff HEAD 2>&1 > "$ARTIFACTS_DIR/diff.patch"
-      git diff HEAD --stat 2>&1 > "$ARTIFACTS_DIR/diff-stat.txt"
+      git diff HEAD > "$ARTIFACTS_DIR/diff.patch" 2>&1
+      git diff HEAD --stat > "$ARTIFACTS_DIR/diff-stat.txt" 2>&1
       echo "--- diff stat ---"
       cat "$ARTIFACTS_DIR/diff-stat.txt"
 
@@ -385,7 +409,6 @@ nodes:
   # ───────────────────────────────────────────────────────────────────────────
   - id: code-review
     depends_on: [capture-diff]
-    context: fresh
     idle_timeout: 600000
     loop:
       max_iterations: 4
