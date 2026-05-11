@@ -135,7 +135,7 @@ function makeRun(
 		status: overrides.status,
 	};
 	if (overrides.workflowName !== undefined) base.workflowName = overrides.workflowName;
-	if (overrides.branch !== undefined) base.workingPath = overrides.branch;
+	if (overrides.workingPath !== undefined) base.workingPath = overrides.workingPath;
 	return base;
 }
 

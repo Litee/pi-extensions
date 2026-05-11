@@ -160,9 +160,7 @@ describe("findArchonWorkspaceCwd", () => {
 
 	it("returns null when home exists but .archon/workspaces is absent", (_ctx) => {
 		// Use the OS temp dir (guaranteed to exist, no .archon/workspaces inside).
-		const tmp = import.meta.env?.VITEST_WORKER_ID
-			? "/tmp"
-			: "/tmp";
+		const tmp = "/tmp";
 		const result = findArchonWorkspaceCwd(tmp);
 		expect(result).toBeNull();
 	});

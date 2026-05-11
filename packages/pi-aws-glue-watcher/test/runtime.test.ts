@@ -167,7 +167,7 @@ describe("pollOnce — error classification", () => {
 		const watch = makeJobWatch({ state: "RUNNING", errorMessage: "" });
 		rt.watches[watch.watchId] = watch;
 		await pollOnce(rt);
-		const entryArg = (pi.appendEntry as ReturnType<typeof vi.fn>).mock.calls[0][1] as { message: string };
+		const entryArg = (pi.appendEntry as ReturnType<typeof vi.fn>).mock.calls[0]![1] as { message: string };
 		expect(entryArg.message).not.toContain("internal detail");
 		expect(entryArg.message).toContain("authentication");
 	});

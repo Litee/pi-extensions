@@ -6,6 +6,7 @@
  */
 
 import type { ExtensionAPI } from "@mariozechner/pi-coding-agent";
+import { classifyWatcherError } from "pi-watcher-core/classify-error";
 import { PollScheduler } from "pi-watcher-core/poll-scheduler";
 
 import type { GlueClient } from "./glue-client.js";
@@ -15,7 +16,6 @@ import { detectJobChanges, detectWorkflowChanges } from "./poller.js";
 import type { GlueEvent, WatchMap } from "./types.js";
 import type { GlueWidget } from "./ui/glue-widget.js";
 
-/** @see TODO in pollOnce catch block */
 const AUTH_ERROR_NAMES = new Set([
 	"CredentialsProviderError",
 	"TokenProviderError",
@@ -215,22 +215,15 @@ export async function pollOnce(rt: Runtime): Promise<void> {
 			}
 		} catch (err) {
 			watch.consecutiveErrors = watch.consecutiveErrors + 1;
-			// TODO: replace this inline classification with classifyWatcherError() once
-			// pi-watcher-core gains predicate support alongside its instanceof-based API.
-			// classifyWatcherError currently only accepts class constructors, but SDK
-			// errors are identified by .name string, not by prototype chain.
-			const errName = (err as Error)?.name ?? "";
-			const isAuth = AUTH_ERROR_NAMES.has(errName);
-			const isThrottle = THROTTLE_ERROR_NAMES.has(errName);
-			const userMessage = isAuth
-				? "authentication expired — run aws sso login to re-authenticate"
-				: isThrottle
-					? "service throttled — will retry"
-					: "request failed";
-			if (isAuth || isThrottle) {
+			const classified = classifyWatcherError(err, {
+				authPredicate: (e) => AUTH_ERROR_NAMES.has((e as Error)?.name ?? ""),
+				throttlePredicate: (e) => THROTTLE_ERROR_NAMES.has((e as Error)?.name ?? ""),
+				authMessage: "authentication expired — run aws sso login to re-authenticate",
+			});
+			if (classified.shouldBackoff) {
 				rt.scheduler.noteBackoff();
 			}
-			rt.pi.appendEntry("glue-watcher:poll-error", { type: watch.type, name: watch.name, message: userMessage });
+			rt.pi.appendEntry("glue-watcher:poll-error", { type: watch.type, name: watch.name, message: classified.userMessage });
 			if (watch.consecutiveErrors === POLL_ERROR_THRESHOLD) {
 				rt.pi.sendMessage(
 					{
@@ -238,7 +231,7 @@ export async function pollOnce(rt: Runtime): Promise<void> {
 						content:
 							`⚠ ${watch.type} '${watch.name}' (${watch.watchId}) ` +
 							`has failed ${POLL_ERROR_THRESHOLD} consecutive polls. ` +
-							`Last error: ${userMessage}`,
+							`Last error: ${classified.userMessage}`,
 						display: true,
 					},
 					{ deliverAs: "followUp", triggerTurn: true },

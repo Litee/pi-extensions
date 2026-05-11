@@ -1,13 +1,17 @@
 /**
  * Error classifier for watcher extensions.
  *
- * Each watcher throws subclasses of a generated WatcherError family
- * ({@link makeWatcherErrors}). When those errors escape into a user-visible
- * path (chat transcript, tool response, `ctx.ui.notify`, or
- * `pi.appendEntry` payload) we MUST NOT echo the raw `err.message`, because
- * it can embed service-specific error discriminators, internal hostnames,
- * request ids, and — when the upstream service returns HTML or a partial
- * body on a parse failure — raw response bytes.
+ * Callers supply up to three optional predicate functions — `authPredicate`,
+ * `throttlePredicate`, and `notFoundPredicate` — each with the signature
+ * `(err: unknown) => boolean`. When an error matches a predicate it is
+ * mapped to the corresponding safe user message and status modifier.
+ *
+ * Errors that escape into user-visible paths (chat transcript, tool
+ * response, `ctx.ui.notify`, or `pi.appendEntry` payload) MUST NOT echo the
+ * raw `err.message`, because it can embed service-specific error
+ * discriminators, internal hostnames, request ids, and — when the upstream
+ * service returns HTML or a partial body on a parse failure — raw response
+ * bytes.
  *
  * This classifier collapses any error into a small set of known-safe
  * human-readable strings plus a `statusModifier` that the caller can mirror
@@ -38,16 +42,10 @@ export interface ClassifiedWatcherError {
 	shouldBackoff: boolean;
 }
 
-// Minimal shape we need from the generated classes. We accept anything
-// `instanceof`-compatible rather than exporting concrete types, because the
-// real classes are produced by `makeWatcherErrors` per-watcher and differ
-// per-package.
-type ErrorCtor = new (...args: never[]) => Error;
-
 export interface ClassifyErrorOptions {
-	authErrorClass: ErrorCtor;
-	throttleErrorClass: ErrorCtor;
-	notFoundErrorClass?: ErrorCtor;
+	authPredicate?: (err: unknown) => boolean;
+	throttlePredicate?: (err: unknown) => boolean;
+	notFoundPredicate?: (err: unknown) => boolean;
 	/** Defaults to 'authentication expired — re-authenticate'. */
 	authMessage?: string;
 	/** Defaults to 'service throttled — will retry'. */
@@ -67,7 +65,7 @@ export function classifyWatcherError(
 	err: unknown,
 	opts: ClassifyErrorOptions,
 ): ClassifiedWatcherError {
-	if (err instanceof opts.authErrorClass) {
+	if (opts.authPredicate?.(err)) {
 		return {
 			userMessage: opts.authMessage ?? DEFAULT_AUTH,
 			kind: "auth",
@@ -75,7 +73,7 @@ export function classifyWatcherError(
 			shouldBackoff: true,
 		};
 	}
-	if (err instanceof opts.throttleErrorClass) {
+	if (opts.throttlePredicate?.(err)) {
 		return {
 			userMessage: opts.throttleMessage ?? DEFAULT_THROTTLE,
 			kind: "throttle",
@@ -83,7 +81,7 @@ export function classifyWatcherError(
 			shouldBackoff: true,
 		};
 	}
-	if (opts.notFoundErrorClass && err instanceof opts.notFoundErrorClass) {
+	if (opts.notFoundPredicate?.(err)) {
 		return {
 			userMessage: opts.notFoundMessage ?? DEFAULT_NOT_FOUND,
 			kind: "not_found",

@@ -18,7 +18,7 @@ function makeRun(
 	const run: ArchonRun = { id: overrides.id, status: overrides.status };
 	if (overrides.workflowName !== undefined)
 		run.workflowName = overrides.workflowName;
-	if (overrides.branch !== undefined) run.workingPath = overrides.branch;
+	if (overrides.workingPath !== undefined) run.workingPath = overrides.workingPath;
 	return run;
 }
 

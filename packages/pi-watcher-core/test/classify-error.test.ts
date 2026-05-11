@@ -7,9 +7,9 @@ const { WatcherError, AuthError, ThrottleError, NotFoundError } =
 	makeWatcherErrors("Test");
 
 const opts = {
-	authErrorClass: AuthError,
-	throttleErrorClass: ThrottleError,
-	notFoundErrorClass: NotFoundError,
+	authPredicate: (e: unknown) => e instanceof AuthError,
+	throttlePredicate: (e: unknown) => e instanceof ThrottleError,
+	notFoundPredicate: (e: unknown) => e instanceof NotFoundError,
 };
 
 describe("classifyWatcherError", () => {
@@ -101,14 +101,56 @@ describe("classifyWatcherError", () => {
 		expect(result.statusModifier).toBe("auth-error");
 	});
 
-	it("not_found_class_is_optional", () => {
+	it("not_found_predicate_is_optional", () => {
 		const err = new NotFoundError("ItemNotFoundException", "x");
 		const result = classifyWatcherError(err, {
-			authErrorClass: AuthError,
-			throttleErrorClass: ThrottleError,
-			// notFoundErrorClass omitted
+			authPredicate: (e) => e instanceof AuthError,
+			throttlePredicate: (e) => e instanceof ThrottleError,
+			// notFoundPredicate omitted
 		});
 		// Falls through to generic classification.
 		expect(result.kind).toBe("generic");
+	});
+});
+
+describe("classifyWatcherError — predicate support", () => {
+	it("authPredicate matches when error is not an AuthError instance", () => {
+		const err = Object.assign(new Error("creds"), { name: "CredentialsProviderError" });
+		const result = classifyWatcherError(err, {
+			authPredicate: (e) => (e as Error).name === "CredentialsProviderError",
+			throttlePredicate: (e) => e instanceof ThrottleError,
+		});
+		expect(result.kind).toBe("auth");
+		expect(result.shouldBackoff).toBe(true);
+	});
+
+	it("throttlePredicate matches when error is not a ThrottleError instance", () => {
+		const err = Object.assign(new Error("slow"), { name: "ThrottlingException" });
+		const result = classifyWatcherError(err, {
+			authPredicate: (e) => e instanceof AuthError,
+			throttlePredicate: (e) => (e as Error).name === "ThrottlingException",
+		});
+		expect(result.kind).toBe("throttle");
+	});
+
+	it("notFoundPredicate matches when error is not a NotFoundError instance", () => {
+		const err = Object.assign(new Error("missing"), { name: "EntityNotFoundException" });
+		const result = classifyWatcherError(err, {
+			authPredicate: (e) => e instanceof AuthError,
+			throttlePredicate: (e) => e instanceof ThrottleError,
+			notFoundPredicate: (e) => (e as Error).name === "EntityNotFoundException",
+		});
+		expect(result.kind).toBe("not_found");
+		expect(result.shouldBackoff).toBe(false);
+	});
+
+	it("user message is never derived from err when predicate matches", () => {
+		const err = Object.assign(new Error("sensitive internal detail"), { name: "CredentialsProviderError" });
+		const result = classifyWatcherError(err, {
+			authPredicate: (e) => (e as Error).name === "CredentialsProviderError",
+			throttlePredicate: (e) => e instanceof ThrottleError,
+		});
+		expect(result.userMessage).not.toContain("sensitive internal detail");
+		expect(result.userMessage).toContain("authentication");
 	});
 });

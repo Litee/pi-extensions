@@ -56,8 +56,8 @@ let scheduler: {
 	removeJob: ReturnType<typeof vi.fn>;
 	getNextRun: ReturnType<typeof vi.fn>;
 };
-let done: ReturnType<typeof vi.fn>;
-let requestRender: ReturnType<typeof vi.fn>;
+let done: () => void;
+let requestRender: () => void;
 
 beforeEach(() => {
 	cwd = mkdtempSync(join(tmpdir(), "pi-prompt-scheduler-jobsview-"));
