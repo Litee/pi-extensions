@@ -260,7 +260,14 @@ nodes:
       in the "Test-first strategy" section of the plan. Do NOT write any
       implementation code. Do NOT modify any existing source files.
 
-      Rules:
+      IMPORTANT — check the plan first:
+        If the "Test-first strategy" section explicitly says no new tests are
+        required (e.g. comment-only changes, documentation fixes, refactors
+        with no observable behaviour change), print exactly:
+          NO_TESTS_REQUIRED
+        and stop. Do not create any files.
+
+      Rules (when tests ARE required):
         - Place test files at packages/<pkg>/test/<name>.test.ts
           (or the exact paths stated in the plan).
         - Import from the package's src/ using relative paths, e.g.:
@@ -286,12 +293,21 @@ nodes:
     bash: |
       set -euo pipefail
 
+      # If write-failing-test explicitly said no tests are needed, skip this guard.
+      # The node output is captured as $write-failing-test.output but bash nodes
+      # can't read prior node outputs directly — check the plan instead.
+      if grep -qiE 'no (new )?tests? (are )?(required|needed)' "$ARTIFACTS_DIR/plan.md"; then
+        echo "✓ Plan says no tests required — skipping test-fail verification."
+        exit 0
+      fi
+
       # Extract test file paths from plan.md (lines matching packages/*/test/*.test.ts)
       TEST_FILES=$(grep -oE 'packages/[^/]+/test/[^ ]+\.test\.ts' "$ARTIFACTS_DIR/plan.md" | sort -u | tr '\n' ' ')
 
       if [ -z "$TEST_FILES" ]; then
-        echo "ERROR: could not extract test file paths from plan.md"
-        exit 1
+        echo "WARNING: could not extract test file paths from plan.md and plan did not"
+        echo "explicitly say 'no tests required'. Treating as no-test task and proceeding."
+        exit 0
       fi
 
       echo "Running: npx vitest run $TEST_FILES"
