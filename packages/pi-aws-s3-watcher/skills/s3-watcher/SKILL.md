@@ -1,12 +1,12 @@
 ---
 name: s3-watcher
-description: "Use this skill when watching an S3 object for changes — waiting for a file to appear, detecting it was updated, or detecting removal. Triggers on: s3_watcher, watch S3 object, monitor S3 file, wait for S3 file to exist, S3 file ready, poll S3, detect S3 change."
+description: "Use this skill when watching an S3 object for changes — waiting for an object to appear, detecting it was updated, or detecting removal. Triggers on: s3_watcher, watch S3 object, monitor S3 object, wait for S3 object to exist, S3 object ready, poll S3, detect S3 change."
 ---
 
 # AWS S3 Object Watcher
 
 Use this skill when monitoring an S3 object for changes: waiting for a
-file to appear, detecting that it has been updated, or detecting removal.
+object to appear, detecting that it has been updated, or detecting removal.
 
 Do not use for watching S3 buckets or prefixes — only a single object
 URI is supported. For high-frequency event-driven needs prefer SNS/SQS;
