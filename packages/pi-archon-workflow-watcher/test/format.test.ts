@@ -123,32 +123,34 @@ describe("buildStartupChatMessage", () => {
 // ---------------------------------------------------------------------------
 
 describe("buildStatusLine", () => {
-	it("shows 'active' mode when not paused", () => {
-		const line = buildStatusLine({ paused: false, runCount: 3, activeCount: 2 });
-		expect(line).toContain("active");
-		expect(line).not.toContain("paused");
+	it("renders active rows with accent alias and just the count", () => {
+		const r = buildStatusLine({ paused: false, runCount: 3, activeCount: 2 });
+		expect(r).toEqual({ text: "archon: 3", colorAlias: "accent" });
 	});
 
-	it("shows 'paused' mode when paused", () => {
-		const line = buildStatusLine({ paused: true, runCount: 3, activeCount: 2 });
-		expect(line).toContain("paused");
-		expect(line).not.toContain("active");
+	it("renders paused rows with muted alias and a (paused) suffix", () => {
+		const r = buildStatusLine({ paused: true, runCount: 3, activeCount: 2 });
+		expect(r).toEqual({ text: "archon: 3 (paused)", colorAlias: "muted" });
 	});
 
-	it("includes activeCount as 'running' and runCount as 'total'", () => {
-		const line = buildStatusLine({ paused: false, runCount: 5, activeCount: 3 });
-		expect(line).toContain("3 running");
-		expect(line).toContain("5 total");
+	it("ignores activeCount entirely — count is always runCount", () => {
+		const r = buildStatusLine({ paused: false, runCount: 5, activeCount: 3 });
+		expect(r.text).toBe("archon: 5");
 	});
 
 	it("works for zero counts", () => {
-		const line = buildStatusLine({ paused: false, runCount: 0, activeCount: 0 });
-		expect(line).toContain("0 running");
-		expect(line).toContain("0 total");
+		const r = buildStatusLine({ paused: false, runCount: 0, activeCount: 0 });
+		expect(r).toEqual({ text: "archon: 0", colorAlias: "accent" });
 	});
 
-	it("starts with 'archon-watcher:'", () => {
-		const line = buildStatusLine({ paused: false, runCount: 1, activeCount: 1 });
-		expect(line).toMatch(/^archon-watcher:/);
+	it("uses 'archon:' label (not 'archon-watcher:')", () => {
+		const r = buildStatusLine({ paused: false, runCount: 1, activeCount: 1 });
+		expect(r.text).toMatch(/^archon: /);
+		expect(r.text).not.toContain("archon-watcher");
+	});
+
+	it("never includes the mode word 'active'", () => {
+		const r = buildStatusLine({ paused: false, runCount: 2, activeCount: 1 });
+		expect(r.text).not.toMatch(/active/);
 	});
 });

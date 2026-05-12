@@ -91,21 +91,29 @@ export function makeRuntime(pi: Runtime["pi"], client: S3Client): Runtime {
 // Status-line helpers
 // ---------------------------------------------------------------------------
 
-export function colorize(theme: UiSurface["theme"], text: string): string {
-	return theme?.fg ? theme.fg("accent", text) : text;
+export function colorize(
+	theme: UiSurface["theme"],
+	aliasOrText: "accent" | "muted" | "warning" | string,
+	maybeText?: string,
+): string {
+	// Back-compat: colorize(theme, text) colours as accent; new shape is
+	// colorize(theme, alias, text).
+	const alias = maybeText === undefined ? "accent" : (aliasOrText as "accent" | "muted" | "warning");
+	const text = maybeText === undefined ? aliasOrText : maybeText;
+	return theme?.fg ? theme.fg(alias, text) : text;
 }
 
 export function refreshStatus(rt: Runtime): void {
 	const hasErrors = Object.values(rt.watches).some(
 		(w) => !w.terminal && w.consecutiveErrors >= POLL_ERROR_THRESHOLD,
 	);
-	const text = buildStatusLine({
+	const result = buildStatusLine({
 		watches: rt.watches,
 		paused: rt.paused,
 		pollIntervalMs: rt.scheduler.intervalMs,
 		hasErrors,
 	});
-	rt.ui?.setStatus?.(STATUS_KEY, colorize(rt.ui?.theme, text));
+	rt.ui?.setStatus?.(STATUS_KEY, colorize(rt.ui?.theme, result.colorAlias, result.text));
 }
 
 // ---------------------------------------------------------------------------

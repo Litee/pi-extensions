@@ -101,7 +101,14 @@ export function createExtensionWithClient(
 
 		if (paused) {
 			rt.paused = true;
-			rt.ui?.setStatus?.(STATUS_KEY, undefined);
+			// Restore watchedIds + snapshot so the muted "archon: N (paused)"
+			// status row carries the correct count across sessions. Do NOT
+			// start polling and do NOT emit change messages while paused.
+			if (state) {
+				for (const id of state.watchedIds) rt.watchedIds.add(id);
+				rt.snapshot = state.snapshot;
+			}
+			refreshStatus(rt);
 			return;
 		}
 
@@ -221,11 +228,20 @@ export function createExtensionWithClient(
 					rt.paused = true;
 					stopPolling(rt);
 					writeState(pi, { snapshot: rt.snapshot, watchedIds: rt.watchedIds, paused: true });
-					// Clear status via the command ctx UI (always available) and
-					// rt.ui (set by session_start, may be null or same object).
-					ui?.setStatus?.(STATUS_KEY, undefined);
-					if (rt.ui !== null && rt.ui !== ui) {
-						rt.ui.setStatus?.(STATUS_KEY, undefined);
+					// Paused-with-watched-runs now renders a muted "archon: N (paused)"
+					// row via refreshStatus; empty watch list still clears. Render
+					// through rt.ui when session_start attached one, and also through
+					// the command ctx ui when it differs (e.g. first toggle before
+					// session_start ran).
+					if (rt.ui !== null) refreshStatus(rt);
+					if (ui && ui !== rt.ui) {
+						const prev = rt.ui;
+						rt.ui = ui;
+						try {
+							refreshStatus(rt);
+						} finally {
+							rt.ui = prev;
+						}
 					}
 					ui?.notify?.("archon-workflow-watcher: paused", "info");
 					return;

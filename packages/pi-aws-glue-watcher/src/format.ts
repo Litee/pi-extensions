@@ -11,6 +11,13 @@ import type { GlueEvent, WatchMap } from "./types.js";
 // Status-line
 // ---------------------------------------------------------------------------
 
+export type StatusColorAlias = "accent" | "muted" | "warning";
+
+export interface StatusLineResult {
+	text: string;
+	colorAlias: StatusColorAlias;
+}
+
 export interface StatusLineInput {
 	watches: WatchMap;
 	paused: boolean;
@@ -20,20 +27,26 @@ export interface StatusLineInput {
 }
 
 /**
- * Build the text shown in the pi status-line row.
+ * Build the row shown in the pi status-line row.
  *
- * - Idle (no active watches): `☁ Glue: idle`
- * - Active:                   `☁ Glue: N job(s) | M workflow(s) | ⟳ 120s`
- * - Paused:                   `☁ Glue: N job(s) | M workflow(s) ⏸`
+ * | State            | Row                                    | Alias    |
+ * |------------------|----------------------------------------|----------|
+ * | Idle             | `☁ Glue: idle`                         | muted    |
+ * | Active           | `☁ Glue: 2 jobs`                       | accent   |
+ * | Active mixed     | `☁ Glue: 2 jobs | 1 workflow`          | accent   |
+ * | Active + errors  | `☁ Glue: 2 jobs | ⚠ errors`            | warning  |
+ * | Paused           | `☁ Glue: 2 jobs (paused)`              | muted    |
+ * | Paused + errors  | `☁ Glue: 2 jobs | ⚠ errors (paused)`   | warning  |
  *
- * Terminal watches are excluded from the counts; they no longer generate
- * events but remain in the list for reference until explicitly removed.
+ * Errors take priority over paused for colour. Terminal watches are excluded
+ * from the counts; the `pollIntervalMs` field is accepted for back-compat but
+ * no longer rendered.
  */
-export function buildStatusLine(input: StatusLineInput): string {
-	const { watches, paused, pollIntervalMs, hasErrors } = input;
+export function buildStatusLine(input: StatusLineInput): StatusLineResult {
+	const { watches, paused, hasErrors } = input;
 
 	const active = Object.values(watches).filter((w) => !w.terminal);
-	if (active.length === 0) return "☁ Glue: idle";
+	if (active.length === 0) return { text: "☁ Glue: idle", colorAlias: "muted" };
 
 	const jobs = active.filter((w) => w.type === "job").length;
 	const workflows = active.filter((w) => w.type === "workflow").length;
@@ -43,11 +56,11 @@ export function buildStatusLine(input: StatusLineInput): string {
 	if (workflows > 0) parts.push(`${workflows} workflow${workflows === 1 ? "" : "s"}`);
 	if (hasErrors) parts.push("⚠ errors");
 
-	const suffix = paused
-		? " ⏸"
-		: ` | ⟳ ${Math.round(pollIntervalMs / 1000)}s`;
+	const body = parts.join(" | ");
+	const text = paused ? `☁ Glue: ${body} (paused)` : `☁ Glue: ${body}`;
 
-	return `☁ Glue: ${parts.join(" | ")}${suffix}`;
+	const colorAlias: StatusColorAlias = hasErrors ? "warning" : paused ? "muted" : "accent";
+	return { text, colorAlias };
 }
 
 // ---------------------------------------------------------------------------

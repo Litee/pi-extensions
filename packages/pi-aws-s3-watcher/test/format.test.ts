@@ -26,34 +26,35 @@ function makeWatch(overrides: Partial<S3Watch> = {}): S3Watch {
 }
 
 describe("buildStatusLine", () => {
-	it("idle when no watches", () => {
+	it("idle → muted when no watches", () => {
 		expect(buildStatusLine({ watches: {}, paused: false, pollIntervalMs: 60_000 }))
-			.toBe("aws-s3: idle");
+			.toEqual({ text: "aws-s3: idle", colorAlias: "muted" });
 	});
 
-	it("shows watch count + poll interval when running", () => {
-		const watches: WatchMap = { a: makeWatch({ watchId: "a" }), b: makeWatch({ watchId: "b" }) };
+	it("active → accent, count only, no noun, no poll interval", () => {
+		const watches: WatchMap = { a: makeWatch({ watchId: "a" }), b: makeWatch({ watchId: "b" }), c: makeWatch({ watchId: "c" }) };
 		expect(buildStatusLine({ watches, paused: false, pollIntervalMs: 60_000 }))
-			.toBe("aws-s3: 2 watches | ⟳ 60s");
+			.toEqual({ text: "aws-s3: 3", colorAlias: "accent" });
 	});
 
-	it("singular when exactly one watch", () => {
-		const watches: WatchMap = { a: makeWatch() };
-		expect(buildStatusLine({ watches, paused: false, pollIntervalMs: 60_000 }))
-			.toBe("aws-s3: 1 watch | ⟳ 60s");
-	});
-
-	it("emits pause marker instead of interval when paused", () => {
-		const watches: WatchMap = { a: makeWatch() };
-		expect(buildStatusLine({ watches, paused: true, pollIntervalMs: 60_000 }))
-			.toBe("aws-s3: 1 watch ⏸");
-	});
-
-	it("appends error flag when hasErrors is true", () => {
+	it("active + errors → warning with ⚠ errors segment", () => {
 		const watches: WatchMap = { a: makeWatch() };
 		expect(
 			buildStatusLine({ watches, paused: false, pollIntervalMs: 60_000, hasErrors: true }),
-		).toBe("aws-s3: 1 watch | ⚠ errors | ⟳ 60s");
+		).toEqual({ text: "aws-s3: 1 | ⚠ errors", colorAlias: "warning" });
+	});
+
+	it("paused → muted, (paused) suffix, no ⏸ symbol", () => {
+		const watches: WatchMap = { a: makeWatch() };
+		expect(buildStatusLine({ watches, paused: true, pollIntervalMs: 60_000 }))
+			.toEqual({ text: "aws-s3: 1 (paused)", colorAlias: "muted" });
+	});
+
+	it("paused + errors → warning (errors take colour priority over paused)", () => {
+		const watches: WatchMap = { a: makeWatch(), b: makeWatch({ watchId: "b" }), c: makeWatch({ watchId: "c" }) };
+		expect(
+			buildStatusLine({ watches, paused: true, pollIntervalMs: 60_000, hasErrors: true }),
+		).toEqual({ text: "aws-s3: 3 | ⚠ errors (paused)", colorAlias: "warning" });
 	});
 
 	it("excludes terminal watches from the count", () => {
@@ -62,7 +63,7 @@ describe("buildStatusLine", () => {
 			b: makeWatch({ watchId: "b" }),
 		};
 		expect(buildStatusLine({ watches, paused: false, pollIntervalMs: 60_000 }))
-			.toBe("aws-s3: 1 watch | ⟳ 60s");
+			.toEqual({ text: "aws-s3: 1", colorAlias: "accent" });
 	});
 });
 

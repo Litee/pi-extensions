@@ -6,29 +6,48 @@
 
 import type { S3Event, WatchMap } from "./types.js";
 
+export type StatusColorAlias = "accent" | "muted" | "warning";
+
+export interface StatusLineResult {
+	text: string;
+	colorAlias: StatusColorAlias;
+}
+
 export interface StatusLineInput {
 	watches: WatchMap;
 	paused: boolean;
+	/** Kept for back-compat; no longer rendered. */
 	pollIntervalMs: number;
 	hasErrors?: boolean;
 }
 
 /**
- * Build the text shown in the pi status-line row.
+ * Build the row shown in the pi status-line.
  *
- * - Idle (no active watches): `aws-s3: idle`
- * - Active:                   `aws-s3: N watch(es) | ⟳ 60s`
- * - Paused:                   `aws-s3: N watch(es) ⏸`
+ * | State            | Row                               | Alias    |
+ * |------------------|-----------------------------------|----------|
+ * | Idle             | `aws-s3: idle`                    | muted    |
+ * | Active           | `aws-s3: 3`                       | accent   |
+ * | Active + errors  | `aws-s3: 3 | ⚠ errors`            | warning  |
+ * | Paused           | `aws-s3: 3 (paused)`              | muted    |
+ * | Paused + errors  | `aws-s3: 3 | ⚠ errors (paused)`   | warning  |
+ *
+ * Errors take priority over paused for colour. Terminal watches are excluded
+ * from the count. `pollIntervalMs` is accepted for back-compat but no longer
+ * rendered.
  */
-export function buildStatusLine(input: StatusLineInput): string {
-	const { watches, paused, pollIntervalMs, hasErrors } = input;
+export function buildStatusLine(input: StatusLineInput): StatusLineResult {
+	const { watches, paused, hasErrors } = input;
 	const active = Object.values(watches).filter((w) => !w.terminal);
-	if (active.length === 0) return "aws-s3: idle";
-	const noun = active.length === 1 ? "watch" : "watches";
-	const parts = [`${active.length} ${noun}`];
+	if (active.length === 0) return { text: "aws-s3: idle", colorAlias: "muted" };
+
+	const parts: string[] = [`${active.length}`];
 	if (hasErrors) parts.push("⚠ errors");
-	const suffix = paused ? " ⏸" : ` | ⟳ ${Math.round(pollIntervalMs / 1000)}s`;
-	return `aws-s3: ${parts.join(" | ")}${suffix}`;
+
+	const body = parts.join(" | ");
+	const text = paused ? `aws-s3: ${body} (paused)` : `aws-s3: ${body}`;
+	const colorAlias: StatusColorAlias = hasErrors ? "warning" : paused ? "muted" : "accent";
+	return { text, colorAlias };
 }
 
 function formatHm(date: Date): string {

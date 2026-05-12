@@ -31,11 +31,20 @@ export function buildStartupChatMessage(snapshot: RunSnapshot, date: Date): stri
 	return lines.join("\n");
 }
 
+export type StatusColorAlias = "accent" | "muted" | "warning";
+
+export interface StatusLineResult {
+	text: string;
+	colorAlias: StatusColorAlias;
+}
+
 export function buildStatusLine(state: {
 	paused: boolean;
 	runCount: number;
 	activeCount: number;
-}): string {
-	const mode = state.paused ? "paused" : "active";
-	return `archon-watcher: ${mode} (${state.activeCount} running, ${state.runCount} total)`;
+}): StatusLineResult {
+	if (state.paused) {
+		return { text: `archon: ${state.runCount} (paused)`, colorAlias: "muted" };
+	}
+	return { text: `archon: ${state.runCount}`, colorAlias: "accent" };
 }

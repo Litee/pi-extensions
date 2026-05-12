@@ -151,13 +151,14 @@ export function makeRuntime(pi: Runtime["pi"], client: ArchonClient): Runtime {
 // Status-line helpers
 // ---------------------------------------------------------------------------
 
-function colorize(theme: UiSurface["theme"], text: string): string {
-	return theme?.fg ? theme.fg("accent", text) : text;
+function colorize(theme: UiSurface["theme"], alias: "accent" | "muted" | "warning", text: string): string {
+	return theme?.fg ? theme.fg(alias, text) : text;
 }
 
 /**
  * Re-pin the extension status line with the current state + counts.
- * When paused, clears the status row instead of showing "paused".
+ * Clears the row when the watch list is empty. When paused with watched runs,
+ * renders a muted "archon: N (paused)" row so the user still sees the count.
  * Safe to call with no UI.
  */
 export function refreshStatus(rt: Runtime): void {
@@ -165,13 +166,13 @@ export function refreshStatus(rt: Runtime): void {
 	const activeCount = Object.values(rt.snapshot).filter(
 		(r) => !TERMINAL_STATUSES.has(r.status),
 	).length;
-	// Clear the status row when paused or watching nothing.
-	if (rt.paused || watchedCount === 0) {
+	// Empty watch list: clear the row entirely.
+	if (watchedCount === 0) {
 		rt.ui?.setStatus?.(STATUS_KEY, undefined);
 		return;
 	}
-	const text = buildStatusLine({ paused: false, runCount: watchedCount, activeCount });
-	rt.ui?.setStatus?.(STATUS_KEY, colorize(rt.ui.theme, text));
+	const result = buildStatusLine({ paused: rt.paused, runCount: watchedCount, activeCount });
+	rt.ui?.setStatus?.(STATUS_KEY, colorize(rt.ui.theme, result.colorAlias, result.text));
 }
 
 /**

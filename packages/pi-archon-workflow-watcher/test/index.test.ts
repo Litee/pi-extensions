@@ -299,7 +299,7 @@ describe("session_start — active (not paused)", () => {
 		expect(ours.length).toBeGreaterThanOrEqual(1);
 		const lastValue = ours[ours.length - 1]![1];
 		expect(typeof lastValue).toBe("string");
-		expect(lastValue).toContain("archon-watcher");
+		expect(lastValue).toContain("archon:");
 	});
 
 	it("emits a diff message when there is a baseline and runs changed", async () => {

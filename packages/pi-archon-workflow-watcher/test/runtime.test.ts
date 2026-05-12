@@ -316,7 +316,7 @@ describe("pollOnce", () => {
 // ---------------------------------------------------------------------------
 
 describe("refreshStatus", () => {
-	it("clears the status row when paused", () => {
+	it("clears the status row when paused with no watched runs", () => {
 		const pi = makePi();
 		const setStatus = vi.fn();
 		const rt = makeRuntime(pi as never, makeClient([]));
@@ -324,6 +324,21 @@ describe("refreshStatus", () => {
 		rt.ui = { setStatus };
 		refreshStatus(rt);
 		expect(setStatus).toHaveBeenCalledWith("pi-archon-workflow-watcher", undefined);
+	});
+
+	it("renders a muted status row when paused with watched runs", () => {
+		const pi = makePi();
+		const setStatus = vi.fn();
+		const fg = vi.fn((_color: string, text: string) => `<fg:${_color}>${text}</fg>`);
+		const rt = makeRuntime(pi as never, makeClient([]));
+		rt.paused = true;
+		rt.ui = { setStatus, theme: { fg } };
+		rt.snapshot = { r1: makeRun({ id: "r1", status: "running" }) };
+		rt.watchedIds.add("r1");
+		refreshStatus(rt);
+		expect(fg).toHaveBeenCalledWith("muted", expect.stringContaining("(paused)"));
+		const text = (setStatus.mock.calls[0] as [string, string])[1];
+		expect(text).toContain("<fg:muted>");
 	});
 
 	it("sets a status string when not paused", () => {
@@ -339,7 +354,7 @@ describe("refreshStatus", () => {
 			expect.any(String),
 		);
 		const text = (setStatus.mock.calls[0] as [string, string])[1];
-		expect(text).toContain("archon-watcher");
+		expect(text).toContain("archon:");
 	});
 
 	it("uses theme.fg for accent color when ui.theme is present (only when runs are active)", () => {
