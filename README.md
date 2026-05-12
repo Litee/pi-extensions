@@ -22,6 +22,7 @@ Personal collection of extensions for Pi Agent.
 | [`pi-skills-browser`](packages/pi-skills-browser) | Registers a `/skills` command that opens an interactive TUI listing every skill registered in the current session with its name and a description token estimate. Supports filter-as-you-type and toggling sort between alphabetical and token-count descending with `s`. |
 | [`pi-thinking-level-control`](packages/pi-thinking-level-control) | Separate `ctrl+]` / `ctrl+[` shortcuts for stepping thinking level up/down one rung at a time. No-op at the extremes; `xhigh` is clamped to `high` on decrease. |
 | [`pi-tools`](packages/pi-tools) | Registers a `/tools` command that lists every tool available in a pi session (builtin / sdk / extension / skill), with per-tool description, parameter schema, active/inactive state, and a compact `chars/4` token estimate. Supports `/tools <name>` to jump directly to a tool and `/tools --all` to dump all at once; press `t` in any view to toggle a tool on/off (persisted to session). |
+| [`pi-tools-runtime-manager`](packages/pi-tools-runtime-manager) | Registers a model-facing `manage_tools` tool so the LLM itself can list/activate/deactivate/reset the active tool set at runtime via pi's `setActiveTools` API. Changes apply on the next turn. `manage_tools` is self-protected so the LLM cannot lock itself out; `reset` restores the set captured at `session_start`. Complements `pi-tools` (the user-facing `/tools` TUI). |
 
 ## Shared libraries
 

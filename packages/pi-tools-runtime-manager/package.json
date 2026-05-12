@@ -1,0 +1,16 @@
+{
+  "name": "pi-tools-runtime-manager",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Pi extension that registers a manage_tools tool so the LLM can list, activate, deactivate, and reset its own tool set at runtime.",
+  "type": "module",
+  "keywords": ["pi-package"],
+  "pi": {
+    "extensions": ["./src/index.ts"]
+  },
+  "peerDependencies": {
+    "@earendil-works/pi-ai": "*",
+    "@earendil-works/pi-coding-agent": "*",
+    "typebox": "*"
+  }
+}
