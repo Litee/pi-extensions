@@ -6,6 +6,7 @@ import { makeRuntime, POLL_ERROR_THRESHOLD, POLL_INTERVAL_MS, pollOnce } from ".
 import {
 	handleToolAction,
 	registerToolIfNeeded,
+	removeToolFromActive,
 	resetToolRegisteredForTests,
 } from "../src/toolAction.js";
 import type { GlueWatch } from "../src/types.js";
@@ -101,6 +102,49 @@ describe("registerToolIfNeeded", () => {
 		expect(pi.registerTool).toHaveBeenCalledWith(
 			expect.objectContaining({ name: "glue_watcher" }),
 		);
+	});
+});
+
+// ---------------------------------------------------------------------------
+// tool active-state invariant
+// ---------------------------------------------------------------------------
+
+describe("tool active-state invariant: glue_watcher inactive when enabled=false", () => {
+	it("removes glue_watcher from active tools after registering when enabled=false", () => {
+		const pi = makePi();
+		(pi.getActiveTools as ReturnType<typeof vi.fn>).mockReturnValue([
+			"glue_watcher",
+			"read",
+			"bash",
+		]);
+		const client = makeClient();
+		const rt = makeRuntime(pi, client);
+		rt.enabled = false; // default
+
+		registerToolIfNeeded(pi as unknown as ExtensionAPI, rt);
+		removeToolFromActive(pi as unknown as ExtensionAPI);
+
+		expect(pi.setActiveTools).toHaveBeenCalledWith(
+			expect.not.arrayContaining(["glue_watcher"]),
+		);
+	});
+
+	it("does NOT call setActiveTools when enabled=true", () => {
+		const pi = makePi();
+		(pi.getActiveTools as ReturnType<typeof vi.fn>).mockReturnValue([
+			"glue_watcher",
+			"read",
+			"bash",
+		]);
+		const client = makeClient();
+		const rt = makeRuntime(pi, client);
+		rt.enabled = true;
+
+		// When enabled=true, registerToolIfNeeded is called but removeToolFromActive is NOT.
+		registerToolIfNeeded(pi as unknown as ExtensionAPI, rt);
+		// Do NOT call removeToolFromActive here — that's the invariant.
+
+		expect(pi.setActiveTools).not.toHaveBeenCalled();
 	});
 });
 

@@ -30,7 +30,7 @@ import {
 	type Runtime,
 	type UiSurface,
 } from "./runtime.js";
-import { registerToolIfNeeded } from "./toolAction.js";
+import { registerToolIfNeeded, removeToolFromActive } from "./toolAction.js";
 import { GlueWidget } from "./ui/glue-widget.js";
 
 /**
@@ -57,6 +57,7 @@ export function createExtensionWithClient(pi: ExtensionAPI, client: GlueClient):
 		// manage_tools({action:"activate",...}), or the user runs /glue-watcher enable
 		// as a manual escape hatch (which also activates it + starts polling/widget).
 		registerToolIfNeeded(pi, rt);
+		if (!rt.enabled) removeToolFromActive(pi);
 
 		if (!rt.enabled) return;
 
