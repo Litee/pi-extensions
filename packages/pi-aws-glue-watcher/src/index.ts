@@ -30,7 +30,7 @@ import {
 	type Runtime,
 	type UiSurface,
 } from "./runtime.js";
-import { addToolToActive, registerToolIfNeeded } from "./toolAction.js";
+import { registerToolIfNeeded } from "./toolAction.js";
 import { GlueWidget } from "./ui/glue-widget.js";
 
 /**
@@ -52,10 +52,13 @@ export function createExtensionWithClient(pi: ExtensionAPI, client: GlueClient):
 		rt.enabled = state?.enabled ?? false;
 		rt.displayMode = state?.displayMode ?? "widget";
 
-		if (!rt.enabled) return;
-
+		// Always register the tool into the registry so manage_tools({action:"list"})
+		// shows it. Tool stays INACTIVE at session_start — the LLM activates it via
+		// manage_tools({action:"activate",...}), or the user runs /glue-watcher enable
+		// as a manual escape hatch (which also activates it + starts polling/widget).
 		registerToolIfNeeded(pi, rt);
-		addToolToActive(pi);
+
+		if (!rt.enabled) return;
 
 		for (const watch of Object.values(rt.watches)) {
 			if (watch.terminal || watch.baseline !== undefined) continue;

@@ -106,8 +106,9 @@ export function registerToolIfNeeded(pi: ExtensionAPI, rt: Runtime): void {
 
 export function addToolToActive(pi: ExtensionAPI): void {
 	const active = pi.getActiveTools();
-	if (active.includes("glue_watcher")) return;
-	pi.setActiveTools([...active, "glue_watcher"]);
+	if (!active.includes("glue_watcher")) {
+		pi.setActiveTools([...active, "glue_watcher"]);
+	}
 }
 
 export function removeToolFromActive(pi: ExtensionAPI): void {

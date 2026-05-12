@@ -94,6 +94,9 @@ export async function runGlueWatcherCommand(
 				return;
 			}
 			rt.enabled = true;
+			// Manual escape hatch: register + activate the tool, and start the full
+			// polling/widget lifecycle. The LLM can also activate the tool alone via
+			// manage_tools({action:"activate",tools:["glue_watcher"]}).
 			registerToolIfNeeded(pi, rt);
 			addToolToActive(pi);
 			writeState(rt.pi, rt);
@@ -103,7 +106,7 @@ export async function runGlueWatcherCommand(
 			if (rt.displayMode === "widget") rt.widget?.show(ctx);
 			else rt.widget?.hide(ctx);
 			ui?.notify?.(
-				"glue-watcher: enabled. Use the glue_watcher tool to add job or workflow watches.",
+				"glue-watcher: enabled and activated. Use the glue_watcher tool to add job or workflow watches.",
 				"info",
 			);
 			return;
