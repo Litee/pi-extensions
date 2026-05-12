@@ -7,6 +7,7 @@ import {
 	stateStyle,
 	type WidgetTheme,
 } from "../src/ui/widgetRows.js";
+import { formatHeaderCountsSuffix } from "../src/ui/glue-widget.js";
 
 const plainTheme: WidgetTheme = { fg: (_c, t) => t };
 const taggedTheme: WidgetTheme = { fg: (c, t) => `[${c}]${t}[/]` };
@@ -223,5 +224,56 @@ describe("renderEntryLine", () => {
 			plainTheme,
 		);
 		expect(line).toContain("?");
+	});
+});
+
+// ---------------------------------------------------------------------------
+// formatHeaderCountsSuffix — header "(N)" reflects distinct non-terminal
+// watches, not expanded per-node rows. See aws-glue-watcher#0001.
+// ---------------------------------------------------------------------------
+
+describe("formatHeaderCountsSuffix", () => {
+	it("counts each workflow as 1 even when its graph expands into many nodes", () => {
+		const watches: Record<string, GlueWatch> = {
+			wf: {
+				watchId: "wf",
+				type: "workflow",
+				name: "my-wf",
+				runId: "wr_1",
+				profile: "p",
+				region: undefined,
+				addedAt: 1,
+				lastPolledAt: undefined,
+				baseline: {
+					state: "RUNNING",
+					errorMessage: "",
+					nodes: [
+						{ name: "step-1", state: "SUCCEEDED" },
+						{ name: "step-2", state: "RUNNING" },
+						{ name: "step-3", state: "RUNNING" },
+					],
+				},
+				terminal: false,
+				consecutiveErrors: 0,
+			},
+			j1: job({ watchId: "j1", name: "job-a" }),
+			j2: job({ watchId: "j2", name: "job-b" }),
+			j3: job({ watchId: "j3", name: "job-c" }),
+		};
+		// 1 workflow + 3 jobs = 4, NOT 3 nodes + 3 jobs = 6.
+		expect(formatHeaderCountsSuffix(watches, 120_000)).toBe(" (4)  poll: 120s");
+	});
+
+	it("excludes terminal watches from the count", () => {
+		const watches: Record<string, GlueWatch> = {
+			j1: job({ watchId: "j1", name: "a" }),
+			j2: job({ watchId: "j2", name: "b", terminal: true }),
+			j3: job({ watchId: "j3", name: "c" }),
+		};
+		expect(formatHeaderCountsSuffix(watches, 30_000)).toBe(" (2)  poll: 30s");
+	});
+
+	it("renders zero when no watches are present", () => {
+		expect(formatHeaderCountsSuffix({}, 60_000)).toBe(" (0)  poll: 60s");
 	});
 });
