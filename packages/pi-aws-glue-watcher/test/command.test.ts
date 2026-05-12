@@ -45,10 +45,10 @@ describe("parseSubcommand", () => {
 	it.each([
 		["enable", { kind: "enable" }],
 		["disable", { kind: "disable" }],
-		["jobs", { kind: "jobs" }],
+		["browse", { kind: "browse" }],
 		["status", { kind: "status" }],
-		["", { kind: "jobs" }],
-		["   ", { kind: "jobs" }],
+		["", { kind: "browse" }],
+		["   ", { kind: "browse" }],
 	] as const)("maps %j to %j", (input, expected) => {
 		expect(parseSubcommand(input)).toEqual(expected);
 	});
@@ -56,14 +56,19 @@ describe("parseSubcommand", () => {
 	it("is case-insensitive", () => {
 		expect(parseSubcommand("ENABLE")).toEqual({ kind: "enable" });
 		expect(parseSubcommand("  StAtUs  ")).toEqual({ kind: "status" });
+		expect(parseSubcommand("BROWSE")).toEqual({ kind: "browse" });
 	});
 
 	it("returns unknown for unrecognised subcommands preserving the raw form", () => {
 		expect(parseSubcommand("pause-now")).toEqual({ kind: "unknown", raw: "pause-now" });
 	});
 
-	it("returns jobs when called with undefined (no args)", () => {
-		expect(parseSubcommand(undefined)).toEqual({ kind: "jobs" });
+	it("returns unknown for the old 'jobs' subcommand name (no backwards-compat alias)", () => {
+		expect(parseSubcommand("jobs")).toEqual({ kind: "unknown", raw: "jobs" });
+	});
+
+	it("returns browse when called with undefined (no args)", () => {
+		expect(parseSubcommand(undefined)).toEqual({ kind: "browse" });
 	});
 });
 
@@ -208,7 +213,7 @@ describe("runGlueWatcherCommand", () => {
 		);
 	});
 
-	it("jobs: invokes ctx.ui.custom to open the watches overlay", async () => {
+	it("browse: invokes ctx.ui.custom to open the watches overlay", async () => {
 		// Arrange
 		const rt = freshRuntime();
 		const custom = vi.fn(() => undefined);
@@ -216,7 +221,7 @@ describe("runGlueWatcherCommand", () => {
 		const pi = makeFakePi();
 
 		// Act
-		await runGlueWatcherCommand("jobs", ctx, rt, pi, rt.client);
+		await runGlueWatcherCommand("browse", ctx, rt, pi, rt.client);
 
 		// Assert
 		expect(custom).toHaveBeenCalledTimes(1);

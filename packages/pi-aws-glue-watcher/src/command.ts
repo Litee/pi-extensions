@@ -33,14 +33,16 @@ import { WatchesView } from "./ui/watches-view.js";
 export type GlueWatcherSubcommand =
 	| { kind: "enable" }
 	| { kind: "disable" }
-	| { kind: "jobs" }
+	| { kind: "browse" }
 	| { kind: "status" }
 	| { kind: "unknown"; raw: string };
 
 /**
  * Parse the raw argument string passed to the `/glue-watcher` command.
- * Empty / whitespace-only strings and the explicit `"jobs"` subcommand both
- * resolve to `{kind: "jobs"}` — opening the watches view.
+ * Empty / whitespace-only strings and the explicit `"browse"` subcommand both
+ * resolve to `{kind: "browse"}` — opening the watches view. Matches the
+ * `browse` naming convention used by other pi watcher extensions
+ * (e.g. `/local-issue-watcher browse`).
  */
 export function parseSubcommand(args: string | undefined): GlueWatcherSubcommand {
 	const sub = (args ?? "").trim().toLowerCase();
@@ -50,8 +52,8 @@ export function parseSubcommand(args: string | undefined): GlueWatcherSubcommand
 		case "disable":
 			return { kind: "disable" };
 		case "":
-		case "jobs":
-			return { kind: "jobs" };
+		case "browse":
+			return { kind: "browse" };
 		case "status":
 			return { kind: "status" };
 		default:
@@ -126,7 +128,7 @@ export async function runGlueWatcherCommand(
 			return;
 		}
 
-		case "jobs": {
+		case "browse": {
 			const ctxWithCustom = ctx as {
 				ui: {
 					custom: <T>(
@@ -188,7 +190,7 @@ export async function runGlueWatcherCommand(
 
 		case "unknown":
 			ui?.notify?.(
-				`glue-watcher: unknown subcommand '${parsed.raw}'. Use: enable | disable | status | jobs (or no args)`,
+				`glue-watcher: unknown subcommand '${parsed.raw}'. Use: enable | disable | status | browse (or no args)`,
 				"warning",
 			);
 			return;

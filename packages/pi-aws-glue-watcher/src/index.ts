@@ -8,7 +8,7 @@
  *  - runtime.ts        — Runtime type + poll-loop control
  *  - toolAction.ts     — glue_watcher tool + registration guard
  *  - command.ts        — /glue-watcher subcommand dispatch
- *  - ui/watches-view.ts — `/glue-watcher jobs` overlay (shell)
+ *  - ui/watches-view.ts — `/glue-watcher browse` overlay (shell)
  *  - ui/glue-widget.ts  — below-editor widget (shell)
  *
  * This file is strictly session/lifecycle wiring.
@@ -149,8 +149,7 @@ export function createExtensionWithClient(pi: ExtensionAPI, client: GlueClient):
 	});
 
 	pi.registerCommand("glue-watcher", {
-		description:
-			"Manage Glue watcher. No args: open jobs view. Subcommands: enable, disable, status.",
+		description: "Control the Glue watcher (enable | disable | status | browse)",
 		handler: (args, ctx) => runGlueWatcherCommand(args, ctx, rt, pi, client),
 	});
 }
