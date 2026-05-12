@@ -69,8 +69,8 @@ the watch polls indefinitely until manually removed.
 
 Credentials resolve through `fromIni({ profile })`, so the same
 `~/.aws/credentials` / `~/.aws/config` layout used by the `aws` CLI is
-picked up. A SigV4 session token refresh from `aws sso login` or
-`aws sso login` is read on the next poll without restarting pi.
+picked up. A SigV4 session token refresh from `aws sso login`
+is read on the next poll without restarting pi.
 
 ## Security notes
 

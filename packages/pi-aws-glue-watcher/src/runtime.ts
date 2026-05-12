@@ -218,7 +218,7 @@ export async function pollOnce(rt: Runtime): Promise<void> {
 			const classified = classifyWatcherError(err, {
 				authPredicate: (e) => AUTH_ERROR_NAMES.has((e as Error)?.name ?? ""),
 				throttlePredicate: (e) => THROTTLE_ERROR_NAMES.has((e as Error)?.name ?? ""),
-				authMessage: "authentication expired — run aws sso login to re-authenticate",
+				authMessage: "authentication expired — run `aws sso login` to re-authenticate",
 			});
 			if (classified.shouldBackoff) {
 				rt.scheduler.noteBackoff();

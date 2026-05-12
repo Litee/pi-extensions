@@ -12,7 +12,7 @@
  * SDK clients are cached inside each {@link createGlueClient} call by
  * `"profile:region"` so we don't recreate them on every poll. The `fromIni`
  * credential provider re-reads credentials from disk whenever they expire,
- * so a `aws sso login` refresh is picked up automatically.
+ * so an `aws sso login` refresh is picked up automatically.
  *
  * The {@link GlueClient} interface is unchanged — tests inject a stub, and
  * the poll loop never touches this module directly.
