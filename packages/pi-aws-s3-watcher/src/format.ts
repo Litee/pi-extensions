@@ -16,19 +16,19 @@ export interface StatusLineInput {
 /**
  * Build the text shown in the pi status-line row.
  *
- * - Idle (no active watches): `☁ S3: idle`
- * - Active:                   `☁ S3: N watch(es) | ⟳ 60s`
- * - Paused:                   `☁ S3: N watch(es) ⏸`
+ * - Idle (no active watches): `aws-s3: idle`
+ * - Active:                   `aws-s3: N watch(es) | ⟳ 60s`
+ * - Paused:                   `aws-s3: N watch(es) ⏸`
  */
 export function buildStatusLine(input: StatusLineInput): string {
 	const { watches, paused, pollIntervalMs, hasErrors } = input;
 	const active = Object.values(watches).filter((w) => !w.terminal);
-	if (active.length === 0) return "☁ S3: idle";
+	if (active.length === 0) return "aws-s3: idle";
 	const noun = active.length === 1 ? "watch" : "watches";
 	const parts = [`${active.length} ${noun}`];
 	if (hasErrors) parts.push("⚠ errors");
 	const suffix = paused ? " ⏸" : ` | ⟳ ${Math.round(pollIntervalMs / 1000)}s`;
-	return `☁ S3: ${parts.join(" | ")}${suffix}`;
+	return `aws-s3: ${parts.join(" | ")}${suffix}`;
 }
 
 function formatHm(date: Date): string {

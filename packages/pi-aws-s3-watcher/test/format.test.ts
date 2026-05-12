@@ -28,32 +28,32 @@ function makeWatch(overrides: Partial<S3Watch> = {}): S3Watch {
 describe("buildStatusLine", () => {
 	it("idle when no watches", () => {
 		expect(buildStatusLine({ watches: {}, paused: false, pollIntervalMs: 60_000 }))
-			.toBe("☁ S3: idle");
+			.toBe("aws-s3: idle");
 	});
 
 	it("shows watch count + poll interval when running", () => {
 		const watches: WatchMap = { a: makeWatch({ watchId: "a" }), b: makeWatch({ watchId: "b" }) };
 		expect(buildStatusLine({ watches, paused: false, pollIntervalMs: 60_000 }))
-			.toBe("☁ S3: 2 watches | ⟳ 60s");
+			.toBe("aws-s3: 2 watches | ⟳ 60s");
 	});
 
 	it("singular when exactly one watch", () => {
 		const watches: WatchMap = { a: makeWatch() };
 		expect(buildStatusLine({ watches, paused: false, pollIntervalMs: 60_000 }))
-			.toBe("☁ S3: 1 watch | ⟳ 60s");
+			.toBe("aws-s3: 1 watch | ⟳ 60s");
 	});
 
 	it("emits pause marker instead of interval when paused", () => {
 		const watches: WatchMap = { a: makeWatch() };
 		expect(buildStatusLine({ watches, paused: true, pollIntervalMs: 60_000 }))
-			.toBe("☁ S3: 1 watch ⏸");
+			.toBe("aws-s3: 1 watch ⏸");
 	});
 
 	it("appends error flag when hasErrors is true", () => {
 		const watches: WatchMap = { a: makeWatch() };
 		expect(
 			buildStatusLine({ watches, paused: false, pollIntervalMs: 60_000, hasErrors: true }),
-		).toBe("☁ S3: 1 watch | ⚠ errors | ⟳ 60s");
+		).toBe("aws-s3: 1 watch | ⚠ errors | ⟳ 60s");
 	});
 
 	it("excludes terminal watches from the count", () => {
@@ -62,7 +62,7 @@ describe("buildStatusLine", () => {
 			b: makeWatch({ watchId: "b" }),
 		};
 		expect(buildStatusLine({ watches, paused: false, pollIntervalMs: 60_000 }))
-			.toBe("☁ S3: 1 watch | ⟳ 60s");
+			.toBe("aws-s3: 1 watch | ⟳ 60s");
 	});
 });
 
