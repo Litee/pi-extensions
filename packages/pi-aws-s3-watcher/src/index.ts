@@ -23,10 +23,7 @@ import {
 	type UiSurface,
 } from "./runtime.js";
 import { createS3Client, type S3Client } from "./s3-client.js";
-import {
-	addToolToActive,
-	registerToolIfNeeded,
-} from "./toolAction.js";
+import { registerToolIfNeeded } from "./toolAction.js";
 
 /**
  * Wire up the extension with a concrete or injected {@link S3Client}.
@@ -40,9 +37,10 @@ export function createExtensionWithClient(pi: ExtensionAPI, client: S3Client): v
 		const hasUI = anyCtx.hasUI ?? anyCtx.ui?.hasUI ?? anyCtx.ui !== undefined;
 		rt.ui = hasUI ? (anyCtx.ui ?? null) : null;
 
-		// Auto-enable: tool is always registered + active.
+		// Register the tool into the registry so it is visible via manage_tools
+		// ({action:"list"}) and can be activated by the LLM on demand.
+		// NOT added to the active set — the LLM must call manage_tools first.
 		registerToolIfNeeded(pi, rt);
-		addToolToActive(pi);
 
 		const state = rehydrateStateFromSession(ctx);
 		rt.watches = state?.watches ?? {};

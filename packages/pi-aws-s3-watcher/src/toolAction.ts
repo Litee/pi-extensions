@@ -1,8 +1,9 @@
 /**
  * Tool-action handling for pi-aws-s3-watcher.
  *
- * The `s3_watcher` tool is always registered — this extension is
- * auto-enabled (no /s3-watcher enable gate).
+ * The `s3_watcher` tool is registered into pi's tool registry at
+ * session_start but starts INACTIVE. The LLM must activate it via
+ * manage_tools({action:"activate",tools:["s3_watcher"]}) before use.
  */
 
 import { randomBytes } from "node:crypto";
@@ -108,12 +109,6 @@ export function registerToolIfNeeded(pi: ExtensionAPI, rt: Runtime): void {
 			return handleToolAction(rt, params);
 		},
 	});
-}
-
-export function addToolToActive(pi: ExtensionAPI): void {
-	const active = pi.getActiveTools();
-	if (active.includes("s3_watcher")) return;
-	pi.setActiveTools([...active, "s3_watcher"]);
 }
 
 // ---------------------------------------------------------------------------

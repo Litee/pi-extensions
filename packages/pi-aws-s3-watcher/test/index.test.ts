@@ -87,12 +87,12 @@ afterEach(() => {
 // ---------------------------------------------------------------------------
 
 describe("createExtensionWithClient — session lifecycle", () => {
-	it("registers the tool and message renderer from session_start (auto-enabled)", async () => {
+	it("registers the tool and message renderer from session_start (tool starts inactive)", async () => {
 		const { pi, handlers, registerTool, setActiveTools, registerMessageRenderer } = makePi();
 		createExtensionWithClient(pi, makeClient());
 		await handlers.sessionStart!({}, makeCtx());
 		expect(registerTool).toHaveBeenCalledOnce();
-		expect(setActiveTools).toHaveBeenCalledOnce();
+		expect(setActiveTools).not.toHaveBeenCalled();
 		expect(registerMessageRenderer).toHaveBeenCalledWith(
 			CUSTOM_MESSAGE_TYPE,
 			expect.any(Function),
