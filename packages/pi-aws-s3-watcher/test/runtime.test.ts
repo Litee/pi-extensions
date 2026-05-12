@@ -21,6 +21,7 @@ function makePi() {
 		sendMessage: vi.fn(),
 		appendEntry: vi.fn(),
 		getActiveTools: () => [] as string[],
+		setActiveTools: vi.fn(),
 		events: { emit: vi.fn(), on: vi.fn(), off: vi.fn() },
 	};
 }

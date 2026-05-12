@@ -61,16 +61,18 @@ export interface UiSurface {
 }
 
 export interface Runtime {
-	pi: Pick<ExtensionAPI, "sendMessage" | "appendEntry" | "events" | "getActiveTools">;
+	pi: Pick<ExtensionAPI, "sendMessage" | "appendEntry" | "events" | "getActiveTools" | "setActiveTools">;
 	client: S3Client;
 	watches: WatchMap;
 	paused: boolean;
+	/**
+	 * Whether the s3_watcher tool has been explicitly activated in this session.
+	 * Defaults to false — pi auto-adds extension tools on startup but we
+	 * immediately undo that unless persisted enabled=true.
+	 */
+	enabled: boolean;
 	scheduler: PollScheduler;
 	ui: UiSurface | null;
-	/**
-	 * Supplier for "now" in milliseconds. Overridable in tests to drive
-	 * deterministic timeout behaviour. Production: `Date.now`.
-	 */
 	now: () => number;
 }
 
@@ -80,6 +82,7 @@ export function makeRuntime(pi: Runtime["pi"], client: S3Client): Runtime {
 		client,
 		watches: {},
 		paused: false,
+		enabled: false,
 		scheduler: new PollScheduler({
 			baseMs: POLL_INTERVAL_MS,
 			maxMs: POLL_INTERVAL_MAX_MS,
@@ -107,11 +110,10 @@ export function colorize(
 }
 
 export function refreshStatus(rt: Runtime): void {
-	// The s3_watcher tool is registered but starts INACTIVE; the LLM must
-	// activate it via manage_tools before the status row is useful. Don't
-	// clutter the status bar for sessions that never enable the feature.
-	const active = rt.pi.getActiveTools?.() ?? [];
-	if (!active.includes(TOOL_NAME)) {
+	// Gate on persisted enabled flag, not getActiveTools(). Pi auto-activates
+	// all extension tools on session start regardless of user intent;
+	// rt.enabled is the reliable source of truth.
+	if (!rt.enabled) {
 		rt.ui?.setStatus?.(STATUS_KEY, undefined);
 		return;
 	}

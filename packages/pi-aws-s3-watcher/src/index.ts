@@ -19,6 +19,7 @@ import {
 	startPolling,
 	STATUS_KEY,
 	stopPolling,
+	TOOL_NAME,
 	type Runtime,
 	type UiSurface,
 } from "./runtime.js";
@@ -45,6 +46,17 @@ export function createExtensionWithClient(pi: ExtensionAPI, client: S3Client): v
 		const state = rehydrateStateFromSession(ctx);
 		rt.watches = state?.watches ?? {};
 		rt.paused = state?.paused ?? false;
+		rt.enabled = state?.enabled ?? false;
+
+		// Pi auto-activates all extension tools on session_start regardless of
+		// user intent. Undo that if we have no persisted enabled=true so the
+		// status row stays hidden until the user explicitly activates the tool.
+		if (!rt.enabled) {
+			const current = pi.getActiveTools();
+			if (current.includes(TOOL_NAME)) {
+				pi.setActiveTools(current.filter((t) => t !== TOOL_NAME));
+			}
+		}
 
 		// Re-seed any watch that never got a baseline (add-time seeding
 		// failed, or persistence dropped the baseline).
@@ -83,9 +95,23 @@ export function createExtensionWithClient(pi: ExtensionAPI, client: S3Client): v
 	});
 
 	pi.on("turn_end", () => {
-		// The LLM may have activated or deactivated `s3_watcher` via
-		// manage_tools during the turn — re-check and update the row.
-		refreshStatus(rt);
+		// Reconcile rt.enabled with the active-tools list. The user may have
+		// run manage_tools({action:"activate"}) or deactivate during the turn.
+		const isActive = pi.getActiveTools().includes(TOOL_NAME);
+		if (isActive && !rt.enabled) {
+			// User just activated the tool.
+			rt.enabled = true;
+			writeState(pi, rt);
+			const anyActive = Object.values(rt.watches).some((w) => !w.terminal);
+			if (!rt.paused && anyActive && !rt.scheduler.isRunning) startPolling(rt);
+			refreshStatus(rt);
+		} else if (!isActive && rt.enabled) {
+			// User just deactivated the tool.
+			rt.enabled = false;
+			stopPolling(rt);
+			writeState(pi, rt);
+			refreshStatus(rt);
+		}
 	});
 
 	pi.on("session_shutdown", () => {

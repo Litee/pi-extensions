@@ -87,16 +87,31 @@ afterEach(() => {
 // ---------------------------------------------------------------------------
 
 describe("createExtensionWithClient — session lifecycle", () => {
-	it("registers the tool and message renderer from session_start (tool starts inactive)", async () => {
-		const { pi, handlers, registerTool, setActiveTools, registerMessageRenderer } = makePi();
+	it("registers the tool and message renderer from session_start; removes auto-added tool when enabled=false", async () => {
+		const { pi, handlers, registerTool, setActiveTools, registerMessageRenderer } = makePi({
+			// pi auto-added s3_watcher on startup
+			activeTools: () => ["s3_watcher", "read"],
+		});
 		createExtensionWithClient(pi, makeClient());
 		await handlers.sessionStart!({}, makeCtx());
 		expect(registerTool).toHaveBeenCalledOnce();
-		expect(setActiveTools).not.toHaveBeenCalled();
+		// Must strip auto-added s3_watcher since enabled defaults to false
+		expect(setActiveTools).toHaveBeenCalledWith(["read"]);
 		expect(registerMessageRenderer).toHaveBeenCalledWith(
 			CUSTOM_MESSAGE_TYPE,
 			expect.any(Function),
 		);
+	});
+
+	it("does NOT remove tool from active when enabled=true is persisted", async () => {
+		const { pi, handlers, setActiveTools } = makePi({
+			activeTools: () => ["s3_watcher", "read"],
+		});
+		createExtensionWithClient(pi, makeClient());
+		await handlers.sessionStart!({}, makeCtx([
+			{ type: "custom", customType: STATE_CUSTOM_TYPE, data: { savedAt: 1, paused: false, watches: [], baselines: { enabled: true } } },
+		]));
+		expect(setActiveTools).not.toHaveBeenCalled();
 	});
 
 	it("registers the /s3-watcher command", () => {
@@ -111,6 +126,7 @@ describe("createExtensionWithClient — session lifecycle", () => {
 		const persisted = {
 			savedAt: 1,
 			paused: false,
+			baselines: { enabled: true },
 			watches: [{
 				watchId: "w1",
 				bucket: "b",
@@ -136,6 +152,7 @@ describe("createExtensionWithClient — session lifecycle", () => {
 		const persisted = {
 			savedAt: 1,
 			paused: false,
+			baselines: { enabled: true },
 			watches: [{
 				watchId: "w1",
 				bucket: "b",
@@ -218,8 +235,14 @@ describe("/s3-watcher command", () => {
 	});
 });
 
-describe("status-line visibility depends on tool-enabled state", () => {
-	it("hides the status row on session_start when s3_watcher is not in active tools", async () => {
+describe("status-line visibility depends on rt.enabled (not getActiveTools)", () => {
+	function makePersistedState(enabled: boolean) {
+		return [
+			{ type: "custom", customType: STATE_CUSTOM_TYPE, data: { savedAt: 1, paused: false, watches: [], baselines: { enabled } } },
+		];
+	}
+
+	it("hides the status row on session_start when enabled=false (no persisted state)", async () => {
 		const setStatus = vi.fn();
 		const { pi, handlers } = makePi({ activeTools: () => ["read", "bash"] });
 		createExtensionWithClient(pi, makeClient());
@@ -233,14 +256,14 @@ describe("status-line visibility depends on tool-enabled state", () => {
 		for (const call of ours) expect(call[1]).toBeUndefined();
 	});
 
-	it("pins the status row on session_start when s3_watcher is in active tools", async () => {
+	it("pins the status row on session_start when enabled=true is persisted", async () => {
 		const setStatus = vi.fn();
 		const { pi, handlers } = makePi({ activeTools: () => ["s3_watcher", "read"] });
 		createExtensionWithClient(pi, makeClient());
 		await handlers.sessionStart!({}, {
 			hasUI: true,
 			ui: { hasUI: true, setStatus, theme: { fg: (_c: string, t: string) => t } },
-			sessionManager: { getEntries: () => [] },
+			sessionManager: { getEntries: () => makePersistedState(true) },
 		});
 		const ours = setStatus.mock.calls.filter((c) => c[0] === STATUS_KEY);
 		const pinned = ours.filter((c) => typeof c[1] === "string");
@@ -248,10 +271,29 @@ describe("status-line visibility depends on tool-enabled state", () => {
 		expect(pinned.at(-1)![1]).toMatch(/^aws-s3: idle$/);
 	});
 
-	it("re-renders the row on turn_end when the LLM has just activated s3_watcher", async () => {
+	it("hides the row even if s3_watcher is in getActiveTools() but enabled=false", async () => {
+		// This is the regression test for the re-opened #0002:
+		// pi auto-activates the tool on session_start; without rt.enabled gating,
+		// the row would pin even though the user never activated the feature.
 		const setStatus = vi.fn();
+		const { pi, handlers } = makePi({ activeTools: () => ["s3_watcher", "read", "bash"] });
+		createExtensionWithClient(pi, makeClient());
+		await handlers.sessionStart!({}, {
+			hasUI: true,
+			ui: { hasUI: true, setStatus, theme: { fg: (_c: string, t: string) => t } },
+			sessionManager: { getEntries: () => [] }, // no persisted enabled=true
+		});
+		const ours = setStatus.mock.calls.filter((c) => c[0] === STATUS_KEY);
+		expect(ours.length).toBeGreaterThan(0);
+		for (const call of ours) expect(call[1]).toBeUndefined();
+	});
+
+	it("turn_end: activating s3_watcher persists enabled=true and pins the row", async () => {
+		const setStatus = vi.fn();
+		const appendEntry = vi.fn();
 		let active: string[] = ["read"];
 		const { pi, handlers } = makePi({ activeTools: () => active });
+		(pi as unknown as { appendEntry: typeof appendEntry }).appendEntry = appendEntry;
 		createExtensionWithClient(pi, makeClient());
 		const ctx = {
 			hasUI: true,
@@ -263,27 +305,41 @@ describe("status-line visibility depends on tool-enabled state", () => {
 		active = ["read", "s3_watcher"];
 		setStatus.mockClear();
 		await handlers.turnEnd!({}, ctx);
+		// enabled=true must have been persisted
+		const stateCalls = appendEntry.mock.calls.filter((c) => c[0] === STATE_CUSTOM_TYPE);
+		expect(stateCalls.length).toBeGreaterThan(0);
+		const lastData = stateCalls.at(-1)![1] as { baselines?: { enabled?: boolean } };
+		expect(lastData.baselines?.enabled).toBe(true);
+		// Status row must be pinned
 		const pinned = setStatus.mock.calls
 			.filter((c) => c[0] === STATUS_KEY)
 			.filter((c) => typeof c[1] === "string");
 		expect(pinned.length).toBeGreaterThan(0);
-		expect(pinned.at(-1)![1]).toMatch(/^aws-s3: idle$/);
 	});
 
-	it("clears the row on turn_end when the LLM has just deactivated s3_watcher", async () => {
+	it("turn_end: deactivating s3_watcher persists enabled=false and clears the row", async () => {
 		const setStatus = vi.fn();
+		const appendEntry = vi.fn();
 		let active: string[] = ["s3_watcher", "read"];
 		const { pi, handlers } = makePi({ activeTools: () => active });
+		(pi as unknown as { appendEntry: typeof appendEntry }).appendEntry = appendEntry;
 		createExtensionWithClient(pi, makeClient());
 		const ctx = {
 			hasUI: true,
 			ui: { hasUI: true, setStatus, theme: { fg: (_c: string, t: string) => t } },
-			sessionManager: { getEntries: () => [] },
+			sessionManager: { getEntries: () => makePersistedState(true) },
 		};
 		await handlers.sessionStart!({}, ctx);
 		active = ["read"];
 		setStatus.mockClear();
+		appendEntry.mockClear();
 		await handlers.turnEnd!({}, ctx);
+		// enabled=false must have been persisted
+		const stateCalls = appendEntry.mock.calls.filter((c) => c[0] === STATE_CUSTOM_TYPE);
+		expect(stateCalls.length).toBeGreaterThan(0);
+		const lastData = stateCalls.at(-1)![1] as { baselines?: { enabled?: boolean } };
+		expect(lastData.baselines?.enabled).toBe(false);
+		// Status row must be cleared
 		const ours = setStatus.mock.calls.filter((c) => c[0] === STATUS_KEY);
 		expect(ours.length).toBeGreaterThan(0);
 		for (const call of ours) expect(call[1]).toBeUndefined();

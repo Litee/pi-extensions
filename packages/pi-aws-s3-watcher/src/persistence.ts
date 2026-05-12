@@ -10,21 +10,27 @@ import type { S3Baseline, S3Watch, TargetCondition, WatchMap } from "./types.js"
 export const STATE_CUSTOM_TYPE = "pi-aws-s3-watcher:state";
 
 /**
- * Baselines payload carries only the UI-level "paused" preference.
- * (There is no "enabled" knob — the extension is always auto-enabled.)
+ * Baselines payload: enabled (false = tool deactivated / not yet turned on).
+ * Previously this was Record<string, never>; absence of the field is
+ * treated as false so old session logs default to disabled (per decision A).
  */
-type Baselines = Record<string, never>;
+type Baselines = { enabled: boolean };
 
 const _persistence = createPersistence<S3Watch[], Baselines>({
 	stateCustomType: STATE_CUSTOM_TYPE,
 	watchItemsKey: "watches",
 	normaliseItems: _normaliseWatchArray,
-	normaliseBaselines: () => ({}),
+	normaliseBaselines: (raw) => {
+		if (!raw || typeof raw !== "object" || Array.isArray(raw)) return { enabled: false };
+		const r = raw as Record<string, unknown>;
+		return { enabled: typeof r["enabled"] === "boolean" ? r["enabled"] : false };
+	},
 });
 
 export interface HydratedState {
 	savedAt: number;
 	paused: boolean;
+	enabled: boolean;
 	watches: WatchMap;
 }
 
@@ -36,18 +42,19 @@ export function rehydrateStateFromSession(
 	return {
 		savedAt: state.savedAt,
 		paused: state.paused,
+		enabled: state.baselines.enabled,
 		watches: _toWatchMap(state.items),
 	};
 }
 
 export function writeState(
 	pi: { appendEntry(customType: string, data: unknown): void },
-	snapshot: { paused: boolean; watches: WatchMap },
+	snapshot: { paused: boolean; enabled: boolean; watches: WatchMap },
 ): void {
 	_persistence.writeState(pi, {
 		items: Object.values(snapshot.watches),
 		paused: snapshot.paused,
-		baselines: {},
+		baselines: { enabled: snapshot.enabled },
 	});
 }
 
