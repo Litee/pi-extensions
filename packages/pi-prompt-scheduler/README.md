@@ -139,6 +139,12 @@ copying this package. Here is what you will be picking up on top of upstream
 - **Unit test coverage** added for the trimmed surface (storage, settings,
   pure scheduler helpers, tool execute flows, jobs-view input and render).
   Upstream has no test suite at all.
+- **Widget layout polish.** The Scheduled Prompts side-panel drops the
+  blank spacer between the title row and the first job bullet — keeps
+  vertical rhythm consistent with neighbouring panels (Watchers, Skills).
+- **LLM-message collapse.** `schedule_prompt`'s `Created`/`Updated cron job`
+  chat echo collapses prompts longer than ~120 chars or containing newlines
+  into a one-line summary; full prompt is reachable with Ctrl-o.
 
 ## License
 

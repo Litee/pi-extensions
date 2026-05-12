@@ -15,7 +15,7 @@
 import type { ExtensionAPI, ExtensionContext } from "@earendil-works/pi-coding-agent";
 import { DynamicBorder } from "@earendil-works/pi-coding-agent";
 import type { Theme } from "@earendil-works/pi-coding-agent";
-import { Container, Spacer, Text } from "@earendil-works/pi-tui";
+import { Container, Text } from "@earendil-works/pi-tui";
 import type { TUI } from "@earendil-works/pi-tui";
 import { CronScheduler, formatISOShort, humanizeCron } from "../scheduler.js";
 import type { CronStorage } from "../storage.js";
@@ -138,7 +138,6 @@ export class CronWidget {
         0
       )
     );
-    container.addChild(new Spacer(1));
 
     // Job rows
     const lines: string[] = [];
