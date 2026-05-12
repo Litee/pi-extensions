@@ -46,6 +46,9 @@ export const CUSTOM_MESSAGE_TYPE = "pi-aws-s3-watcher";
 
 export const STATUS_KEY = "pi-aws-s3-watcher";
 
+/** Name of the tool whose active-set membership controls status-row visibility. */
+export const TOOL_NAME = "s3_watcher";
+
 // ---------------------------------------------------------------------------
 // UI surface + runtime
 // ---------------------------------------------------------------------------
@@ -58,7 +61,7 @@ export interface UiSurface {
 }
 
 export interface Runtime {
-	pi: Pick<ExtensionAPI, "sendMessage" | "appendEntry" | "events">;
+	pi: Pick<ExtensionAPI, "sendMessage" | "appendEntry" | "events" | "getActiveTools">;
 	client: S3Client;
 	watches: WatchMap;
 	paused: boolean;
@@ -104,6 +107,14 @@ export function colorize(
 }
 
 export function refreshStatus(rt: Runtime): void {
+	// The s3_watcher tool is registered but starts INACTIVE; the LLM must
+	// activate it via manage_tools before the status row is useful. Don't
+	// clutter the status bar for sessions that never enable the feature.
+	const active = rt.pi.getActiveTools?.() ?? [];
+	if (!active.includes(TOOL_NAME)) {
+		rt.ui?.setStatus?.(STATUS_KEY, undefined);
+		return;
+	}
 	const hasErrors = Object.values(rt.watches).some(
 		(w) => !w.terminal && w.consecutiveErrors >= POLL_ERROR_THRESHOLD,
 	);

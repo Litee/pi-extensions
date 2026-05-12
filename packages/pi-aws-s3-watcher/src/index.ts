@@ -82,6 +82,12 @@ export function createExtensionWithClient(pi: ExtensionAPI, client: S3Client): v
 		}
 	});
 
+	pi.on("turn_end", () => {
+		// The LLM may have activated or deactivated `s3_watcher` via
+		// manage_tools during the turn — re-check and update the row.
+		refreshStatus(rt);
+	});
+
 	pi.on("session_shutdown", () => {
 		stopPolling(rt);
 		try {

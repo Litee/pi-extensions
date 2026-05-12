@@ -4,7 +4,7 @@ import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
 
 import { createExtensionWithClient } from "../src/index.js";
 import { STATE_CUSTOM_TYPE } from "../src/persistence.js";
-import { CUSTOM_MESSAGE_TYPE, POLL_INTERVAL_MS } from "../src/runtime.js";
+import { CUSTOM_MESSAGE_TYPE, POLL_INTERVAL_MS, STATUS_KEY } from "../src/runtime.js";
 import type { HeadObjectResult, S3Client } from "../src/s3-client.js";
 import { resetToolRegisteredForTests } from "../src/toolAction.js";
 
@@ -15,6 +15,7 @@ import { resetToolRegisteredForTests } from "../src/toolAction.js";
 interface Handlers {
 	sessionStart?: (event: unknown, ctx: unknown) => Promise<void> | void;
 	sessionShutdown?: (event: unknown, ctx: unknown) => Promise<void> | void;
+	turnEnd?: (event: unknown, ctx: unknown) => Promise<void> | void;
 }
 
 interface CommandSpec {
@@ -22,7 +23,7 @@ interface CommandSpec {
 	handler: (args: string, ctx: unknown) => Promise<void> | void;
 }
 
-function makePi(): {
+function makePi(opts: { activeTools?: () => string[] } = {}): {
 	pi: ExtensionAPI;
 	handlers: Handlers;
 	commands: Record<string, CommandSpec>;
@@ -42,14 +43,13 @@ function makePi(): {
 	const pi = {
 		on: (event: string, handler: (e: unknown, ctx: unknown) => Promise<void> | void) => {
 			if (event === "session_start") handlers.sessionStart = handler;
-			else if (event === "session_shutdown") {
-				handlers.sessionShutdown = handler;
-			}
+			else if (event === "session_shutdown") handlers.sessionShutdown = handler;
+			else if (event === "turn_end") handlers.turnEnd = handler;
 		},
 		sendMessage,
 		appendEntry,
 		registerTool,
-		getActiveTools: () => [],
+		getActiveTools: opts.activeTools ?? (() => []),
 		setActiveTools,
 		registerMessageRenderer,
 		registerCommand: (name: string, spec: CommandSpec) => {
@@ -215,5 +215,77 @@ describe("/s3-watcher command", () => {
 			expect.stringMatching(/unknown subcommand 'blarf'/),
 			"warning",
 		);
+	});
+});
+
+describe("status-line visibility depends on tool-enabled state", () => {
+	it("hides the status row on session_start when s3_watcher is not in active tools", async () => {
+		const setStatus = vi.fn();
+		const { pi, handlers } = makePi({ activeTools: () => ["read", "bash"] });
+		createExtensionWithClient(pi, makeClient());
+		await handlers.sessionStart!({}, {
+			hasUI: true,
+			ui: { hasUI: true, setStatus, theme: { fg: (_c: string, t: string) => t } },
+			sessionManager: { getEntries: () => [] },
+		});
+		const ours = setStatus.mock.calls.filter((c) => c[0] === STATUS_KEY);
+		expect(ours.length).toBeGreaterThan(0);
+		for (const call of ours) expect(call[1]).toBeUndefined();
+	});
+
+	it("pins the status row on session_start when s3_watcher is in active tools", async () => {
+		const setStatus = vi.fn();
+		const { pi, handlers } = makePi({ activeTools: () => ["s3_watcher", "read"] });
+		createExtensionWithClient(pi, makeClient());
+		await handlers.sessionStart!({}, {
+			hasUI: true,
+			ui: { hasUI: true, setStatus, theme: { fg: (_c: string, t: string) => t } },
+			sessionManager: { getEntries: () => [] },
+		});
+		const ours = setStatus.mock.calls.filter((c) => c[0] === STATUS_KEY);
+		const pinned = ours.filter((c) => typeof c[1] === "string");
+		expect(pinned.length).toBeGreaterThan(0);
+		expect(pinned.at(-1)![1]).toMatch(/^aws-s3: idle$/);
+	});
+
+	it("re-renders the row on turn_end when the LLM has just activated s3_watcher", async () => {
+		const setStatus = vi.fn();
+		let active: string[] = ["read"];
+		const { pi, handlers } = makePi({ activeTools: () => active });
+		createExtensionWithClient(pi, makeClient());
+		const ctx = {
+			hasUI: true,
+			ui: { hasUI: true, setStatus, theme: { fg: (_c: string, t: string) => t } },
+			sessionManager: { getEntries: () => [] },
+		};
+		await handlers.sessionStart!({}, ctx);
+		expect(handlers.turnEnd).toBeDefined();
+		active = ["read", "s3_watcher"];
+		setStatus.mockClear();
+		await handlers.turnEnd!({}, ctx);
+		const pinned = setStatus.mock.calls
+			.filter((c) => c[0] === STATUS_KEY)
+			.filter((c) => typeof c[1] === "string");
+		expect(pinned.length).toBeGreaterThan(0);
+		expect(pinned.at(-1)![1]).toMatch(/^aws-s3: idle$/);
+	});
+
+	it("clears the row on turn_end when the LLM has just deactivated s3_watcher", async () => {
+		const setStatus = vi.fn();
+		let active: string[] = ["s3_watcher", "read"];
+		const { pi, handlers } = makePi({ activeTools: () => active });
+		createExtensionWithClient(pi, makeClient());
+		const ctx = {
+			hasUI: true,
+			ui: { hasUI: true, setStatus, theme: { fg: (_c: string, t: string) => t } },
+			sessionManager: { getEntries: () => [] },
+		};
+		await handlers.sessionStart!({}, ctx);
+		active = ["read"];
+		setStatus.mockClear();
+		await handlers.turnEnd!({}, ctx);
+		const ours = setStatus.mock.calls.filter((c) => c[0] === STATUS_KEY);
+		expect(ours.length).toBeGreaterThan(0);
+		for (const call of ours) expect(call[1]).toBeUndefined();
 	});
 });
