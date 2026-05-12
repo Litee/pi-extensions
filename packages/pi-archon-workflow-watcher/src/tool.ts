@@ -97,12 +97,6 @@ export function registerToolIfNeeded(pi: ExtensionAPI, rt: Runtime): void {
 	});
 }
 
-export function addToolToActive(pi: ExtensionAPI): void {
-	const active = pi.getActiveTools();
-	if (active.includes("archon_watcher")) return;
-	pi.setActiveTools([...active, "archon_watcher"]);
-}
-
 // ---------------------------------------------------------------------------
 // Tool action handler
 // ---------------------------------------------------------------------------

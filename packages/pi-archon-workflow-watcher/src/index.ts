@@ -30,7 +30,7 @@ import {
 	createArchonClient,
 	type ArchonClient,
 } from "./archon-client.js";
-import { addToolToActive, registerToolIfNeeded } from "./tool.js";
+import { registerToolIfNeeded } from "./tool.js";
 import {
 	buildChangeChatMessage,
 	buildStartupChatMessage,
@@ -108,8 +108,9 @@ export function createExtensionWithClient(
 		rt.paused = false;
 
 		// Register the archon_watcher tool (once-only guard inside).
+		// NOT added to the active set — the LLM must activate it via
+		// manage_tools({action:"activate",tools:["archon_watcher"]}).
 		registerToolIfNeeded(pi, rt);
-		addToolToActive(pi);
 
 		// Rehydrate watched IDs and last-known snapshot.
 		// If no IDs are persisted, skip the archon CLI call entirely —
