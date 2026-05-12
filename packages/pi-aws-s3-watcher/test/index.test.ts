@@ -289,3 +289,63 @@ describe("status-line visibility depends on tool-enabled state", () => {
 		for (const call of ours) expect(call[1]).toBeUndefined();
 	});
 });
+
+describe("fork quiescence", () => {
+	it("auto-pauses inherited watches when session_start.reason === 'fork'", async () => {
+		const { pi, handlers, appendEntry } = makePi({ activeTools: () => ["s3_watcher"] });
+		const persisted = {
+			savedAt: 1,
+			paused: false,
+			watches: [{
+				watchId: "w1",
+				bucket: "b",
+				key: "k",
+				profile: "p",
+				target: "exists",
+				addedAt: 0,
+				baseline: { exists: true, etag: '"x"' },
+				terminal: false,
+				consecutiveErrors: 0,
+			}],
+		};
+		createExtensionWithClient(pi, makeClient());
+		await handlers.sessionStart!({ reason: "fork" }, makeCtx([
+			{ type: "custom", customType: STATE_CUSTOM_TYPE, data: persisted },
+		]));
+		// The forked session must persist paused=true so it doesn't double-poll
+		// alongside the parent. We look at the LATEST state entry appended.
+		const stateCalls = appendEntry.mock.calls.filter((c) => c[0] === STATE_CUSTOM_TYPE);
+		expect(stateCalls.length).toBeGreaterThan(0);
+		const lastData = stateCalls.at(-1)![1] as { paused?: boolean };
+		expect(lastData.paused).toBe(true);
+	});
+
+	it("does NOT auto-pause when session_start.reason === 'resume'", async () => {
+		const { pi, handlers, appendEntry } = makePi({ activeTools: () => ["s3_watcher"] });
+		const persisted = {
+			savedAt: 1,
+			paused: false,
+			watches: [{
+				watchId: "w1",
+				bucket: "b",
+				key: "k",
+				profile: "p",
+				target: "exists",
+				addedAt: 0,
+				baseline: { exists: true, etag: '"x"' },
+				terminal: false,
+				consecutiveErrors: 0,
+			}],
+		};
+		createExtensionWithClient(pi, makeClient());
+		await handlers.sessionStart!({ reason: "resume" }, makeCtx([
+			{ type: "custom", customType: STATE_CUSTOM_TYPE, data: persisted },
+		]));
+		const stateCalls = appendEntry.mock.calls.filter((c) => c[0] === STATE_CUSTOM_TYPE);
+		// Either no re-persist, or persisted with paused=false from the rehydrated state.
+		for (const call of stateCalls) {
+			const data = call[1] as { paused?: boolean };
+			expect(data.paused).toBe(false);
+		}
+	});
+});

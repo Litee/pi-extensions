@@ -9,6 +9,7 @@ import {
 	registerToolIfNeeded,
 	removeToolFromActive,
 	resetToolRegisteredForTests,
+	shouldQuiesceOnFork,
 	syncToolActiveState,
 } from "../src/toolAction.js";
 import type { GlueWatch } from "../src/types.js";
@@ -203,6 +204,23 @@ describe("reconcileToolActivation", () => {
 	it("treats an empty active-tool list as deactivation when enabled=true", () => {
 		expect(reconcileToolActivation(true, [])).toBe("deactivate");
 	});
+});
+
+describe("shouldQuiesceOnFork", () => {
+	it("returns true when reason is 'fork' and enabled is true", () => {
+		expect(shouldQuiesceOnFork("fork", true)).toBe(true);
+	});
+
+	it("returns false when reason is 'fork' but enabled is already false", () => {
+		expect(shouldQuiesceOnFork("fork", false)).toBe(false);
+	});
+
+	it.each(["startup", "reload", "new", "resume", undefined])(
+		"returns false when reason is %s (not a fork)",
+		(reason) => {
+			expect(shouldQuiesceOnFork(reason as string | undefined, true)).toBe(false);
+		},
+	);
 });
 
 // ---------------------------------------------------------------------------

@@ -46,6 +46,16 @@ export function createExtensionWithClient(pi: ExtensionAPI, client: S3Client): v
 		rt.watches = state?.watches ?? {};
 		rt.paused = state?.paused ?? false;
 
+		// Fork quiescence: if this session was forked from another, the parent
+		// is likely still polling the same S3 objects. Auto-pause the child to
+		// avoid double polling / duplicate change events. The user can run
+		// /s3-watcher resume explicitly to reactivate the fork's watcher.
+		const event = _event as { reason?: string };
+		if (event?.reason === "fork" && Object.keys(rt.watches).length > 0 && !rt.paused) {
+			rt.paused = true;
+			writeState(pi, rt);
+		}
+
 		// Re-seed any watch that never got a baseline (add-time seeding
 		// failed, or persistence dropped the baseline).
 		for (const watch of Object.values(rt.watches)) {

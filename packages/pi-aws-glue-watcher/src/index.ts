@@ -30,7 +30,12 @@ import {
 	type Runtime,
 	type UiSurface,
 } from "./runtime.js";
-import { reconcileToolActivation, registerToolIfNeeded, syncToolActiveState } from "./toolAction.js";
+import {
+	reconcileToolActivation,
+	registerToolIfNeeded,
+	shouldQuiesceOnFork,
+	syncToolActiveState,
+} from "./toolAction.js";
 import { GlueWidget } from "./ui/glue-widget.js";
 
 /**
@@ -51,6 +56,16 @@ export function createExtensionWithClient(pi: ExtensionAPI, client: GlueClient):
 		rt.paused = state?.paused ?? false;
 		rt.enabled = state?.enabled ?? false;
 		rt.displayMode = state?.displayMode ?? "widget";
+
+		// Fork quiescence: if this session was forked from another, the parent
+		// is likely still polling the same Glue resources. Force-disable the
+		// child's watcher so the fork doesn't double-poll / duplicate events.
+		// The user can run /glue-watcher enable explicitly to reactivate.
+		const event = _event as { reason?: string };
+		if (shouldQuiesceOnFork(event?.reason, rt.enabled)) {
+			rt.enabled = false;
+			writeState(rt.pi, rt);
+		}
 
 		// Always register the tool into the registry so manage_tools({action:"list"})
 		// shows it. Then sync its active-set membership with persisted `enabled`

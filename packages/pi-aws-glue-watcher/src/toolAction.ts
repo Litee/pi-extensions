@@ -144,6 +144,26 @@ export function reconcileToolActivation(
 }
 
 /**
+ * Decide whether the freshly-started session should force itself into the
+ * disabled state because it is a fork of another session.
+ *
+ * Forks inherit `STATE_CUSTOM_TYPE` entries (watches + enabled), but the
+ * parent is almost always still running the watcher against the same Glue
+ * resources — running two pollers in parallel just spams duplicate change
+ * events. Quiesce the child on arrival; the user can run
+ * `/glue-watcher enable` on the fork if they really want to keep polling.
+ *
+ * Returns `true` when the caller must write the change through
+ * `writeState(...)` to persist it.
+ */
+export function shouldQuiesceOnFork(
+	reason: string | undefined,
+	enabled: boolean,
+): boolean {
+	return reason === "fork" && enabled;
+}
+
+/**
  * Keep the `glue_watcher` tool's active-set membership in sync with
  * persisted `enabled` state. Called from `session_start` on every session
  * boot so a restart doesn't leave the persisted widget + polling visible
