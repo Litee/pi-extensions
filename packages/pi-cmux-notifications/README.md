@@ -11,36 +11,38 @@ package and can be installed independently.
 
 ## What it does
 
-Three-state sidebar pill:
+Four-state sidebar pill:
 
-| State     | When                                                     | Visual                 |
-|-----------|----------------------------------------------------------|------------------------|
-| `idle`    | pi session started or agent turn finished                | green checkmark        |
-| `working` | eligible user message received or attention tool ended   | orange bolt            |
-| `waiting` | attention tool started (today: `ask_user_question`)      | cyan bell + notify     |
+| State     | When                                                             | Visual                    |
+|-----------|------------------------------------------------------------------|---------------------------|
+| `idle`    | pi session started or pane receives focus after a completed turn | green checkmark            |
+| `working` | eligible user message received                                   | orange bolt               |
+| `waiting` | attention prompt open (e.g. `ask_user_question` dialog)         | cyan bell + desktop notify |
+| `done`    | agent turn finished; clears to `idle` on pane focus-in          | red circle                |
 
 Event wiring:
 
-| Pi event                                  | Effect                                                |
-|-------------------------------------------|-------------------------------------------------------|
-| `session_start`                           | pill → `idle`, log `pi session started`               |
-| `input` (interactive/rpc, non-slash)      | pill → `working`                                      |
-| `tool_execution_start` (attention tool)   | pill → `waiting`, desktop `notify`                    |
-| `tool_execution_end` (attention tool)     | pill → `working`                                      |
-| `pi.events` `need_user_attention`         | pill → `waiting`, desktop `notify`                    |
-| `pi.events` `user_attention_resolved`     | pill → `working`                                      |
-| `agent_end`                               | pill → `idle`, clear-progress, log (no desktop notify)  |
-| `session_shutdown`                        | clear progress, clear status pill                     |
+| Pi event                              | Effect                                                         |
+|---------------------------------------|----------------------------------------------------------------|
+| `session_start`                       | pill → `idle`, log `pi session started`                        |
+| `input` (interactive/rpc, non-slash)  | pill → `working`, clears pending dot                           |
+| `pi.events` `need_user_attention`     | pill → `waiting`, desktop `notify`                             |
+| `pi.events` `user_attention_resolved` | pill → `working`                                               |
+| `agent_end`                           | pill → `done` (red circle), clear-progress, log (no desktop notify); clears to `idle` on focus-in |
+| `session_shutdown`                    | clear progress, clear status pill                              |
 
-Two complementary attention mechanisms are wired up:
+**Event-based attention**: extensions that show a UI prompt emit
+`need_user_attention` / `user_attention_resolved` on `pi.events`; this
+extension subscribes and reacts — pill to `waiting` + desktop notify on
+attention needed, pill back to `working` when resolved. The
+`pi-ask-user-question` extension emits these events when the
+`ask_user_question` dialog opens and closes.
 
-**Tool-based**: `ATTENTION_TOOLS` (hardcoded allowlist in `src/index.ts`) catches tools like
-`ask_user_question` that block the agent waiting for user input.
-
-**Event-based**: extensions that show a UI prompt outside the tool pipeline (e.g. `pi-plan-mode`)
-emit `need_user_attention` / `user_attention_resolved` on `pi.events`; this extension subscribes
-and reacts identically — pill to `waiting` + desktop notify on attention needed, pill back to
-`working` when resolved.
+**Focus-in clearing**: after each agent turn the pill shows a red circle
+(`done`). When the cmux pane receives focus (DECSET ?1004 focus-in sequence),
+the pill automatically transitions to `idle` (green checkmark), so users who
+were in a different tab see a clear "response ready" signal without a noisy
+desktop notification.
 
 ## Configuration
 

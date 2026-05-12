@@ -122,7 +122,7 @@ describe("shortCwd", () => {
 // ---------------------------------------------------------------------------
 
 describe("default export — wiring", () => {
-	it("subscribes to the status-pill lifecycle events + ask_user_question attention wiring", () => {
+	it("subscribes to the status-pill lifecycle events", () => {
 		const pi = makeFakePi();
 		createExtension(pi as never);
 
@@ -132,14 +132,16 @@ describe("default export — wiring", () => {
 			"session_shutdown",
 			"input",
 			"agent_end",
-			"tool_execution_start",
-			"tool_execution_end",
 		]) {
 			expect(subscribed).toContain(evt);
 		}
 		// `before_agent_start` is intentionally not wired — the pill is
 		// flipped to 'working' from the `input` handler instead.
 		expect(subscribed).not.toContain("before_agent_start");
+		// tool_execution_start/end are no longer wired — attention for
+		// ask_user_question is now emitted by pi-ask-user-question via pi.events.
+		expect(subscribed).not.toContain("tool_execution_start");
+		expect(subscribed).not.toContain("tool_execution_end");
 	});
 
 	it("does NOT register the /cmux-rename command (that lives in pi-cmux-update-workspace-name)", () => {
@@ -178,72 +180,39 @@ describe("session lifecycle side-effects", () => {
 		expect(argvs.some((a) => a[0] === "log" && a.some((s) => s.includes("pi session started")))).toBe(true);
 	});
 
-	it("tool_execution_start is a no-op for tools outside the attention list", async () => {
-		const pi = makeFakePi();
-		createExtension(pi as never);
-		await pi.handlers.get("tool_execution_start")!({ toolName: "read" }, makeFakeCtx());
-		const argvs = spawner.mock.calls.map((c) => c[0] as string[]);
-		expect(argvs.some((a) => a[0] === "set-status")).toBe(false);
-		expect(argvs.some((a) => a[0] === "log")).toBe(false);
-		expect(argvs.some((a) => a[0] === "notify")).toBe(false);
-	});
-
-	it("tool_execution_end is a no-op for tools outside the attention list", async () => {
-		const pi = makeFakePi();
-		createExtension(pi as never);
-		await pi.handlers.get("tool_execution_end")!(
-			{ toolName: "bash", isError: true },
-			makeFakeCtx(),
-		);
-		const argvs = spawner.mock.calls.map((c) => c[0] as string[]);
-		expect(argvs.some((a) => a[0] === "set-status")).toBe(false);
-		expect(argvs.some((a) => a[0] === "log")).toBe(false);
-	});
-
-	it("tool_execution_start on ask_user_question flips pill to 'waiting' and fires a notify", async () => {
-		const pi = makeFakePi();
-		createExtension(pi as never);
-		await pi.handlers.get("tool_execution_start")!(
-			{ toolName: "ask_user_question" },
-			makeFakeCtx(),
-		);
-		const argvs = spawner.mock.calls.map((c) => c[0] as string[]);
-		expect(argvs.some((a) => a[0] === "set-status" && a[2] === "waiting")).toBe(
-			true,
-		);
-		expect(argvs.some((a) => a[0] === "notify")).toBe(true);
-	});
-
-	it("tool_execution_end on ask_user_question reverts pill to 'working'", async () => {
-		const pi = makeFakePi();
-		createExtension(pi as never);
-		await pi.handlers.get("tool_execution_start")!(
-			{ toolName: "ask_user_question" },
-			makeFakeCtx(),
-		);
-		spawner.mockClear();
-		await pi.handlers.get("tool_execution_end")!(
-			{ toolName: "ask_user_question" },
-			makeFakeCtx(),
-		);
-		const argvs = spawner.mock.calls.map((c) => c[0] as string[]);
-		expect(argvs.some((a) => a[0] === "set-status" && a[2] === "working")).toBe(
-			true,
-		);
-		expect(argvs.some((a) => a[0] === "notify")).toBe(false);
-	});
-
-	it("agent_end clears progress, sets idle pill, logs, but does NOT send a desktop notify", async () => {
+	it("agent_end clears progress, sets done pill (red circle), logs, but does NOT send a desktop notify", async () => {
 		const pi = makeFakePi();
 		createExtension(pi as never);
 		await pi.handlers.get("agent_end")!({}, makeFakeCtx());
 		const argvs = spawner.mock.calls.map((c) => c[0] as string[]);
 		expect(argvs).toContainEqual(["clear-progress"]);
-		expect(argvs.some((a) => a[0] === "set-status" && a[2] === "idle")).toBe(true);
+		expect(argvs.some((a) => a[0] === "set-status" && a[2] === "done")).toBe(true);
 		expect(argvs.some((a) => a[0] === "log" && a.some((s) => s.includes("Response complete")))).toBe(true);
 		// Desktop notification is intentionally suppressed — the sidebar log and
 		// status pill are sufficient when the agent merely finishes its turn.
 		expect(argvs.some((a) => a[0] === "notify")).toBe(false);
+	});
+
+	it("agent_end sets circle.fill red status pill (not idle checkmark)", async () => {
+		const pi = makeFakePi();
+		createExtension(pi as never);
+		await pi.handlers.get("agent_end")!({}, makeFakeCtx());
+		const argvs = spawner.mock.calls.map((c) => c[0] as string[]);
+		expect(argvs.some((a) => a[0] === "set-status" && a[2] === "done")).toBe(true);
+		expect(argvs.some((a) => a.includes("circle.fill"))).toBe(true);
+		expect(argvs.some((a) => a[0] === "set-status" && a[2] === "idle")).toBe(false);
+	});
+
+	it("input after agent_end clears the pending dot (pill changes to working, not idle)", async () => {
+		const pi = makeFakePi();
+		createExtension(pi as never);
+		await pi.handlers.get("agent_end")!({}, makeFakeCtx());
+		spawner.mockClear();
+		await pi.handlers.get("input")!({ source: "interactive", text: "hi" }, makeFakeCtx());
+		const argvs = spawner.mock.calls.map((c) => c[0] as string[]);
+		// Should flip to working, not idle
+		expect(argvs.some((a) => a[0] === "set-status" && a[2] === "working")).toBe(true);
+		expect(argvs.some((a) => a[0] === "set-status" && a[2] === "idle")).toBe(false);
 	});
 
 	it("session_shutdown clears progress and the status pill", async () => {

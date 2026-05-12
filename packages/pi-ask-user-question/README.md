@@ -23,6 +23,13 @@ model. Supported features:
 - runtime validation: rejects duplicate / reserved labels and out-of-range
   shapes before showing any UI
 
+## Event emission
+
+When the dialog opens and closes, the extension emits `need_user_attention` /
+`user_attention_resolved` on `pi.events`. Extensions like `pi-cmux-notifications`
+listen for these to display a "waiting" sidebar indicator and desktop
+notification.
+
 ## Architecture
 
 The extension is split into small single-purpose modules so the dialog's

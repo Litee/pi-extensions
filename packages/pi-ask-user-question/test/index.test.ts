@@ -15,7 +15,7 @@ function makeFakePi() {
 		tool = t;
 	});
 	return {
-		api: { registerTool } as unknown as ExtensionAPI,
+		api: { registerTool, events: { emit: vi.fn() } } as unknown as ExtensionAPI,
 		registerTool,
 		get tool(): ToolDefinition {
 			if (!tool) throw new Error("No tool registered");
@@ -143,6 +143,39 @@ describe("tool.execute() — happy path", () => {
 		createExtension(pi.api, { runDialog: run });
 		const ctx = makeCtx(true);
 		await expect(pi.tool.execute("tc-6", validParams, undefined, undefined, ctx)).rejects.toThrow(/tui crashed/);
+	});
+});
+
+describe("tool.execute() — event emission", () => {
+	it("emits need_user_attention before dialog and user_attention_resolved after", async () => {
+		const order: string[] = [];
+		let capturedTool: ToolDefinition | undefined;
+		const registerTool = vi.fn((t: ToolDefinition) => { capturedTool = t; });
+		const emit = vi.fn((channel: string) => { order.push(channel); });
+		const api = { registerTool, events: { emit } } as unknown as ExtensionAPI;
+		const run = vi.fn<RunDialogFn>().mockImplementation(() => {
+			order.push("dialog");
+			return Promise.resolve({ cancelled: false, answers: [] });
+		});
+		createExtension(api, { runDialog: run });
+		if (!capturedTool) throw new Error("No tool registered");
+		await capturedTool.execute("tc-events", validParams, undefined, undefined, makeCtx(true));
+		expect(order).toEqual(["need_user_attention", "dialog", "user_attention_resolved"]);
+	});
+
+	it("emits user_attention_resolved even when the dialog throws", async () => {
+		const emitted: string[] = [];
+		let capturedTool: ToolDefinition | undefined;
+		const registerTool = vi.fn((t: ToolDefinition) => { capturedTool = t; });
+		const emit = vi.fn((channel: string) => { emitted.push(channel); });
+		const api = { registerTool, events: { emit } } as unknown as ExtensionAPI;
+		const run = vi.fn<RunDialogFn>().mockRejectedValue(new Error("crash"));
+		createExtension(api, { runDialog: run });
+		if (!capturedTool) throw new Error("No tool registered");
+		await expect(
+			capturedTool.execute("tc-throw", validParams, undefined, undefined, makeCtx(true))
+		).rejects.toThrow("crash");
+		expect(emitted).toContain("user_attention_resolved");
 	});
 });
 

@@ -81,8 +81,13 @@ export default function askUserQuestion(pi: ExtensionAPI, options: RegisterOptio
 			if (!v.ok) {
 				return formatToolResult(emptyResult(true, v.message), typed.questions ?? []);
 			}
-			const result = await run(ctx, typed.questions);
-			return formatToolResult(result, typed.questions);
+			pi.events.emit("need_user_attention", { title: "Needs your input" });
+			try {
+				const result = await run(ctx, typed.questions);
+				return formatToolResult(result, typed.questions);
+			} finally {
+				pi.events.emit("user_attention_resolved", undefined);
+			}
 		},
 
 		renderCall(args, theme) {
