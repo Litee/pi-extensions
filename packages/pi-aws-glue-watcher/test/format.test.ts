@@ -237,6 +237,15 @@ describe("buildStartupChatMessage", () => {
 		const msg = buildStartupChatMessage(watches, FIXED_DATE);
 		expect(msg).toContain("watching 2 runs:");
 	});
+
+	it("uses a single newline (no blank line) between header and bullets", () => {
+		const watches: WatchMap = {
+			aa: makeJobWatch({ watchId: "aa" }),
+		};
+		const msg = buildStartupChatMessage(watches, FIXED_DATE);
+		expect(msg).not.toContain("\n\n");
+		expect(msg).toMatch(/watching 1 run:\n•/);
+	});
 });
 
 describe("buildStatusLine — hasErrors flag", () => {

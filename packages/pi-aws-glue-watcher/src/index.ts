@@ -16,6 +16,8 @@
 
 import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
 
+import { Box, Text } from "@earendil-works/pi-tui";
+
 import { createGlueClient, type GlueClient } from "./glue-client.js";
 import { buildStartupChatMessage } from "./format.js";
 import { rehydrateStateFromSession, writeState } from "./persistence.js";
@@ -103,7 +105,7 @@ export function createExtensionWithClient(pi: ExtensionAPI, client: GlueClient):
 						content: buildStartupChatMessage(rt.watches, new Date()),
 						display: true,
 					},
-					{ deliverAs: "followUp", triggerTurn: true },
+					{ deliverAs: "followUp", triggerTurn: false },
 				);
 			});
 		}
@@ -145,6 +147,20 @@ export function createExtensionWithClient(pi: ExtensionAPI, client: GlueClient):
 			/* noop — UI may already be torn down */
 		}
 		rt.ui = null;
+	});
+
+	pi.registerMessageRenderer(CUSTOM_MESSAGE_TYPE, (message, _options, theme) => {
+		const text =
+			typeof message.content === "string"
+				? message.content
+				: message.content
+						.filter((c): c is { type: "text"; text: string } => c.type === "text")
+						.map((c) => c.text)
+						.join("\n");
+		const label = theme.bold(theme.fg("customMessageLabel", "pi-aws-glue-watcher"));
+		const box = new Box(1, 1, (t) => theme.bg("customMessageBg", t));
+		box.addChild(new Text(`${label}\n\n${text}`, 0, 0));
+		return box;
 	});
 
 	pi.registerCommand("glue-watcher", {

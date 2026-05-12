@@ -118,5 +118,5 @@ export function buildStartupChatMessage(watches: WatchMap, date: Date): string {
 		const tag = w.terminal ? " [terminal]" : "";
 		return `• ${w.type}  ${w.name} (${w.runId}): state=${state}${tag}`;
 	});
-	return `${formatHm(date)} active — watching ${all.length} ${noun}:\n\n${lines.join("\n")}`;
+	return `${formatHm(date)} active — watching ${all.length} ${noun}:\n${lines.join("\n")}`;
 }

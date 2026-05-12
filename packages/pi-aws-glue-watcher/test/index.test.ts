@@ -18,14 +18,21 @@ import type { GlueWatch } from "../src/types.js";
 // Helpers
 // ---------------------------------------------------------------------------
 
-function makePi() {
+function makePi(opts: { handlers?: { sessionStart?: (e: unknown, c: unknown) => Promise<void> | void } } = {}) {
+	const handlers = opts.handlers ?? {};
 	return {
 		sendMessage: vi.fn(),
 		appendEntry: vi.fn(),
 		registerTool: vi.fn(),
 		getActiveTools: vi.fn().mockReturnValue([]),
 		setActiveTools: vi.fn(),
+		registerMessageRenderer: vi.fn(),
+		registerCommand: vi.fn(),
+		on: vi.fn((event: string, handler: (e: unknown, c: unknown) => Promise<void> | void) => {
+			if (event === "session_start") handlers.sessionStart = handler;
+		}),
 		events: { on: vi.fn().mockReturnValue(() => {}), emit: vi.fn() },
+		_handlers: handlers,
 	};
 }
 
@@ -203,6 +210,90 @@ describe("reconcileToolActivation", () => {
 
 	it("treats an empty active-tool list as deactivation when enabled=true", () => {
 		expect(reconcileToolActivation(true, [])).toBe("deactivate");
+	});
+});
+
+describe("startup chat message: triggerTurn + label", () => {
+	it("sends the startup chat message with triggerTurn: false so it doesn't kick off an LLM round-trip", async () => {
+		const { createExtensionWithClient } = await import("../src/index.js");
+		const pi = makePi();
+		const client = makeClient();
+		createExtensionWithClient(pi as unknown as ExtensionAPI, client);
+		expect(pi._handlers.sessionStart).toBeDefined();
+		const persistedData = {
+			savedAt: 1,
+			paused: false,
+			baselines: { enabled: true, displayMode: "widget" as const },
+			watches: [{
+				watchId: "w1",
+				type: "job" as const,
+				name: "etl",
+				runId: "jr_123",
+				profile: "p",
+				region: undefined,
+				baseline: { state: "RUNNING", errorMessage: "" },
+				timeoutAt: undefined,
+				addedAt: 0,
+				lastPolledAt: undefined,
+				terminal: false,
+				consecutiveErrors: 0,
+			}],
+		};
+		await pi._handlers.sessionStart!({}, {
+			hasUI: true,
+			ui: { hasUI: true },
+			sessionManager: {
+				getEntries: () => [
+					{ type: "custom", customType: "pi-aws-glue-watcher:state", data: persistedData },
+				],
+			},
+		});
+		// Flush setImmediate + microtasks.
+		await new Promise((resolve) => setImmediate(resolve));
+		expect(pi.sendMessage).toHaveBeenCalled();
+		const startupCall = pi.sendMessage.mock.calls.find(
+			(c) => (c[0] as { customType?: string }).customType === "pi-aws-glue-watcher",
+		);
+		expect(startupCall).toBeDefined();
+		const [, opts] = startupCall as [unknown, { triggerTurn?: boolean; deliverAs?: string }];
+		expect(opts.triggerTurn).toBe(false);
+		expect(opts.deliverAs).toBe("followUp");
+	});
+
+	it("registers a message renderer that labels output 'pi-aws-glue-watcher' (no square brackets)", async () => {
+		const { createExtensionWithClient } = await import("../src/index.js");
+		const pi = makePi();
+		createExtensionWithClient(pi as unknown as ExtensionAPI, makeClient());
+		expect(pi.registerMessageRenderer).toHaveBeenCalled();
+		const [customType, renderer] = pi.registerMessageRenderer.mock.calls[0] as [
+			string,
+			(m: unknown, o: unknown, t: unknown) => unknown,
+		];
+		expect(customType).toBe("pi-aws-glue-watcher");
+		const fakeTheme = {
+			bold: (s: string) => s,
+			fg: (_c: string, s: string) => s,
+			bg: (_c: string, s: string) => s,
+		};
+		const rendered = renderer(
+			{ content: [{ type: "text", text: "body" }] },
+			{},
+			fakeTheme,
+		);
+		// The renderer returns a pi-tui Component; we don't assert deep structure,
+		// we just assert the bracketed default pi label is not what it produces.
+		// Concretely: the renderer must apply the literal string "pi-aws-glue-watcher"
+		// (no brackets) via theme.fg("customMessageLabel", ...). Spy theme.fg above.
+		const labelCalls: string[] = [];
+		const spyTheme = {
+			bold: (s: string) => s,
+			fg: (_c: string, s: string) => { labelCalls.push(s); return s; },
+			bg: (_c: string, s: string) => s,
+		};
+		renderer({ content: [{ type: "text", text: "body" }] }, {}, spyTheme);
+		expect(labelCalls).toContain("pi-aws-glue-watcher");
+		expect(labelCalls.some((s) => s.includes("[") || s.includes("]"))).toBe(false);
+		void rendered; // silence unused
 	});
 });
 
