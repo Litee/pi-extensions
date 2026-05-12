@@ -15,6 +15,53 @@ import type { CronJob, CronJobType, CronToolDetails, } from "./types.js";
 import { CronToolParams } from "./types.js";
 
 /**
+ * Threshold above which the prompt body is hidden behind a `Ctrl-o` hint.
+ * Also collapsed when the prompt contains any newline, regardless of length.
+ * Intent: keep multi-screen backfill prompts out of the chat transcript.
+ */
+const PROMPT_COLLAPSE_MAX_CHARS = 120;
+
+/** True when the prompt is long enough, or multi-line, to warrant collapse. */
+export function shouldCollapsePrompt(prompt: string): boolean {
+  return prompt.includes("\n") || prompt.length > PROMPT_COLLAPSE_MAX_CHARS;
+}
+
+/**
+ * Build the multi-line job summary shown after `add` / `update`:
+ *   ✓ <Created|Updated> cron job "<name>" (<id>)
+ *   Type: <type>
+ *   Schedule: <schedule>
+ *   [Model: <model> (runs in subagent[, notifies parent])]
+ *   <Prompt: <body>  |  Ctrl-o to expand>
+ *
+ * When `collapse === true` the trailing prompt line is replaced with a
+ * `Ctrl-o to expand` hint. When `collapse === false` the full prompt is
+ * appended verbatim on its own line.
+ */
+export function buildJobSummaryLines(
+  verb: "Created" | "Updated",
+  job: Pick<CronJob, "name" | "id" | "type" | "schedule" | "prompt" | "model" | "notify">,
+  opts: { collapse: boolean },
+): string[] {
+  const lines: string[] = [
+    `✓ ${verb} cron job "${job.name}" (${job.id})`,
+    `Type: ${job.type}`,
+    `Schedule: ${job.schedule}`,
+  ];
+  if (job.model) {
+    lines.push(
+      `Model: ${job.model} (runs in subagent${job.notify ? ", notifies parent" : ""})`,
+    );
+  }
+  if (opts.collapse) {
+    lines.push("Ctrl-o to expand");
+  } else {
+    lines.push(`Prompt: ${job.prompt}`);
+  }
+  return lines;
+}
+
+/**
  * Create the schedule_prompt tool definition.
  * `getDefaultScope` is a getter so live setting toggles affect the next `add`.
  */
@@ -116,14 +163,11 @@ export function createCronTool(
             details.jobId = job.id;
             details.jobName = job.name;
 
-            const modelLine = job.model
-              ? `\nModel: ${job.model} (runs in subagent${job.notify ? ", notifies parent" : ""})`
-              : "";
             return Promise.resolve({
               content: [
                 {
                   type: "text",
-                  text: `✓ Created cron job "${job.name}" (${job.id})\nType: ${job.type}\nSchedule: ${job.schedule}\nPrompt: ${job.prompt}${modelLine}`,
+                  text: buildJobSummaryLines("Created", job, { collapse: shouldCollapsePrompt(job.prompt) }).join("\n"),
                 },
               ],
               details,
@@ -276,7 +320,7 @@ export function createCronTool(
               content: [
                 {
                   type: "text",
-                  text: `✓ Updated cron job "${updated.name}" (${params.jobId})`,
+                  text: buildJobSummaryLines("Updated", updated, { collapse: shouldCollapsePrompt(updated.prompt) }).join("\n"),
                 },
               ],
               details,
@@ -371,7 +415,7 @@ export function createCronTool(
       return new Text(text, 0, 0);
     },
 
-    renderResult(result, _options, theme) {
+    renderResult(result, options, theme) {
       if (!result.details) {
         const text = result.content.map((c) => (c.type === "text" ? c.text : "")).join("\n");
         return new Text(text, 0, 0);
@@ -380,14 +424,37 @@ export function createCronTool(
       const details = result.details;
       const lines: string[] = [];
 
-      // Show action result
+      // Error takes priority over action-specific rendering.
       if (details.error) {
         lines.push(theme.fg("error", `✗ Error: ${details.error}`));
-      } else {
-        const action = details.action;
-        const jobName = details.jobName || details.jobId || "";
-        lines.push(theme.fg("success", `✓ ${action} ${jobName}`));
+        return new Text(lines.join("\n"), 0, 0);
       }
+
+      // add / update: collapse the prompt body behind a `Ctrl-o to expand`
+      // hint unless the user has already expanded this result. See issue
+      // pi-prompt-scheduler#0001 — long backfill prompts flood the chat.
+      if ((details.action === "add" || details.action === "update") && details.jobs.length > 0) {
+        const job = details.jobs[0]!;
+        const verb = details.action === "add" ? "Created" : "Updated";
+        const expanded = options && typeof options === "object" && "expanded" in options
+          ? Boolean((options as { expanded?: boolean }).expanded)
+          : false;
+        const collapse = !expanded && shouldCollapsePrompt(job.prompt);
+        const summary = buildJobSummaryLines(verb, job, { collapse });
+        // Colour only the header line; the rest stay plain to match the
+        // existing success-line aesthetic.
+        const [header, ...rest] = summary;
+        lines.push(theme.fg("success", header!));
+        for (const line of rest) {
+          if (line === "Ctrl-o to expand") lines.push(theme.fg("dim", line));
+          else lines.push(line);
+        }
+        return new Text(lines.join("\n"), 0, 0);
+      }
+
+      const action = details.action;
+      const jobName = details.jobName || details.jobId || "";
+      lines.push(theme.fg("success", `✓ ${action} ${jobName}`));
 
       // Show job table for list action
       if (details.action === "list" && details.jobs.length > 0) {

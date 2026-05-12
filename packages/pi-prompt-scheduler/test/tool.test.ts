@@ -670,4 +670,156 @@ describe("schedule_prompt tool / renderResult", () => {
 		);
 		expect(String((rendered).text)).toBe("raw fallback");
 	});
+
+	// -------------------------------------------------------------------------
+	// add / update prompt-collapse behaviour (issue #0001)
+	// -------------------------------------------------------------------------
+
+	type RenderWithOpts = (
+		result: unknown,
+		opts: { expanded?: boolean },
+		theme: unknown,
+	) => { text?: string };
+
+	function renderAdd(
+		tool: ReturnType<typeof makeTool>,
+		job: Partial<CronJob>,
+		expanded: boolean,
+		action: "add" | "update" = "add",
+	): string {
+		const full: CronJob = {
+			id: "JOB123",
+			name: "myjob",
+			schedule: "0 * * * * *",
+			prompt: "short",
+			enabled: true,
+			type: "cron",
+			createdAt: "2030-01-01T00:00:00.000Z",
+			runCount: 0,
+			...job,
+		};
+		const rendered = (tool.renderResult as unknown as RenderWithOpts)(
+			{
+				content: [{ type: "text", text: "ignored" }],
+				details: { action, jobs: [full], jobName: full.name, jobId: full.id },
+			},
+			{ expanded },
+			fakeTheme,
+		);
+		return String((rendered).text);
+	}
+
+	it("add with a short single-line prompt: shows the prompt inline, no Ctrl-o hint", () => {
+		const tool = makeTool();
+		const text = renderAdd(tool, { prompt: "hello" }, false);
+		expect(text).toContain("Created cron job");
+		expect(text).toContain("myjob");
+		expect(text).toContain("Type: cron");
+		expect(text).toContain("Schedule: 0 * * * * *");
+		expect(text).toContain("Prompt: hello");
+		expect(text).not.toContain("Ctrl-o");
+	});
+
+	it("add with a long prompt, collapsed: hides the prompt and shows Ctrl-o hint", () => {
+		const tool = makeTool();
+		const long = "x".repeat(300);
+		const text = renderAdd(tool, { prompt: long }, false);
+		expect(text).toContain("Created cron job");
+		expect(text).toContain("Type: cron");
+		expect(text).toContain("Schedule:");
+		expect(text).toContain("Ctrl-o to expand");
+		expect(text).not.toContain(long);
+		expect(text).not.toMatch(/^Prompt:/m);
+	});
+
+	it("add with a long prompt, expanded: shows the full prompt, no Ctrl-o hint", () => {
+		const tool = makeTool();
+		const long = "x".repeat(300);
+		const text = renderAdd(tool, { prompt: long }, true);
+		expect(text).toContain(long);
+		expect(text).toContain("Prompt:");
+		expect(text).not.toContain("Ctrl-o");
+	});
+
+	it("add with a multi-line prompt is collapsed even if total length is short", () => {
+		const tool = makeTool();
+		const text = renderAdd(tool, { prompt: "one\ntwo" }, false);
+		expect(text).toContain("Ctrl-o to expand");
+		expect(text).not.toContain("one\ntwo");
+	});
+
+	it("update action uses 'Updated' prefix and the same collapse rules", () => {
+		const tool = makeTool();
+		const long = "x".repeat(300);
+		const collapsed = renderAdd(tool, { prompt: long }, false, "update");
+		expect(collapsed).toContain("Updated cron job");
+		expect(collapsed).toContain("Ctrl-o to expand");
+		const expanded = renderAdd(tool, { prompt: long }, true, "update");
+		expect(expanded).toContain(long);
+	});
+
+	it("add with a model line: surfaces Model: ... regardless of collapse state", () => {
+		const tool = makeTool();
+		const long = "x".repeat(300);
+		const collapsed = renderAdd(tool, { prompt: long, model: "anthropic/claude-haiku-4-5", notify: true }, false);
+		expect(collapsed).toContain("Model: anthropic/claude-haiku-4-5");
+		expect(collapsed).toContain("notifies parent");
+		const expanded = renderAdd(tool, { prompt: long, model: "anthropic/claude-haiku-4-5" }, true);
+		expect(expanded).toContain("Model: anthropic/claude-haiku-4-5");
+	});
+});
+
+// ---------------------------------------------------------------------------
+// content[].text for add: same collapse behaviour as renderResult (issue #0001)
+// ---------------------------------------------------------------------------
+
+describe("schedule_prompt tool / add content text", () => {
+	function textOf(result: unknown): string {
+		const r = result as { content: Array<{ type: string; text?: string }> };
+		return r.content
+			.filter((c) => c.type === "text")
+			.map((c) => c.text ?? "")
+			.join("\n");
+	}
+
+	it("inlines a short prompt", async () => {
+		const tool = makeTool();
+		const result = await exec(tool, {
+			action: "add",
+			schedule: "0 * * * * *",
+			prompt: "hello",
+			name: "short",
+		});
+		const text = textOf(result);
+		expect(text).toContain("Prompt: hello");
+		expect(text).not.toContain("Ctrl-o");
+	});
+
+	it("collapses a long prompt into a Ctrl-o hint and omits the prompt body", async () => {
+		const tool = makeTool();
+		const long = "x".repeat(300);
+		const result = await exec(tool, {
+			action: "add",
+			schedule: "0 * * * * *",
+			prompt: long,
+			name: "long",
+		});
+		const text = textOf(result);
+		expect(text).toContain("Ctrl-o to expand");
+		expect(text).not.toContain(long);
+		expect(text).not.toMatch(/^Prompt: /m);
+	});
+
+	it("collapses a multi-line prompt even when length is short", async () => {
+		const tool = makeTool();
+		const result = await exec(tool, {
+			action: "add",
+			schedule: "0 * * * * *",
+			prompt: "a\nb",
+			name: "multi",
+		});
+		const text = textOf(result);
+		expect(text).toContain("Ctrl-o to expand");
+		expect(text).not.toContain("a\nb");
+	});
 });
