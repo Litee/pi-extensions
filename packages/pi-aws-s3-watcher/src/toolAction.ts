@@ -26,6 +26,10 @@ import { parseS3Uri, S3UriError } from "./uri.js";
 // Tool parameters (TypeBox)
 // ---------------------------------------------------------------------------
 
+export const MAX_TIMEOUT_SECONDS = 72 * 60 * 60; // 259_200 s — hard ceiling for all watches
+
+// ---------------------------------------------------------------------------
+
 export const S3WatcherParams = Type.Object({
 	action: Type.Union(
 		[
@@ -73,7 +77,7 @@ export const S3WatcherParams = Type.Object({
 	timeoutSeconds: Type.Optional(
 		Type.Number({
 			description:
-				"Optional. Auto-remove the watch after this many seconds with a 'timeout' event if the target condition has not fired. Omit for no timeout.",
+				"Optional. Cap the watch at this many seconds; defaults to 72 h (259200 s) if omitted. Values above 72 h are silently capped at 72 h.",
 		}),
 	),
 	watchId: Type.Optional(
@@ -201,16 +205,19 @@ async function handleAdd(rt: Runtime, params: ToolParams): Promise<ToolResultCon
 	}
 	const region = params.region?.trim() || undefined;
 
-	const timeoutSeconds = params.timeoutSeconds;
-	let timeoutAt: number | undefined;
-	if (timeoutSeconds !== undefined) {
-		if (!Number.isFinite(timeoutSeconds) || timeoutSeconds <= 0) {
+	const requestedSeconds = params.timeoutSeconds;
+	if (requestedSeconds !== undefined) {
+		if (!Number.isFinite(requestedSeconds) || requestedSeconds <= 0) {
 			const message =
 				"s3-watcher: 'timeoutSeconds' must be a positive finite number.";
 			return { content: toolText(message), details: { action: "add", ok: false, message } };
 		}
-		timeoutAt = rt.now() + timeoutSeconds * 1000;
 	}
+	const capped = requestedSeconds !== undefined && requestedSeconds > MAX_TIMEOUT_SECONDS;
+	const effectiveSeconds = requestedSeconds !== undefined
+		? Math.min(requestedSeconds, MAX_TIMEOUT_SECONDS)
+		: MAX_TIMEOUT_SECONDS;
+	const timeoutAt = rt.now() + effectiveSeconds * 1000;
 
 	const watchId = randomBytes(4).toString("hex");
 	const watch: S3Watch = {
@@ -255,7 +262,8 @@ async function handleAdd(rt: Runtime, params: ToolParams): Promise<ToolResultCon
 		: watch.baseline.exists
 			? "present"
 			: "absent";
-	const timeoutLabel = timeoutSeconds !== undefined ? ` timeout=${timeoutSeconds}s` : "";
+	const cappedNote = capped ? ` (capped from ${requestedSeconds}s)` : "";
+	const timeoutLabel = ` timeout=${effectiveSeconds}s${cappedNote}`;
 	const message = seedError
 		? `s3-watcher: added watch ${watchId} for s3://${parsed.bucket}/${parsed.key} (target=${target}${timeoutLabel}), but seeding failed (${seedError}). Will retry on next poll.`
 		: `s3-watcher: added watch ${watchId} for s3://${parsed.bucket}/${parsed.key} (target=${target}${timeoutLabel}) — baseline=${stateLabel}.`;

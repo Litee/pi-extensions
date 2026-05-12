@@ -173,6 +173,7 @@ export {
 } from "./runtime.js";
 export {
 	handleToolAction,
+	MAX_TIMEOUT_SECONDS,
 	registerToolIfNeeded,
 	resetToolRegisteredForTests,
 } from "./toolAction.js";

@@ -2,7 +2,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import { makeRuntime } from "../src/runtime.js";
 import type { HeadObjectResult, S3Client } from "../src/s3-client.js";
-import { handleToolAction, resetToolRegisteredForTests } from "../src/toolAction.js";
+import { handleToolAction, MAX_TIMEOUT_SECONDS, resetToolRegisteredForTests } from "../src/toolAction.js";
 
 function makePi() {
 	return {
@@ -104,6 +104,31 @@ describe("handleToolAction add", () => {
 		expect(res.details.ok).toBe(true);
 		const w = rt.watches[res.details.watchId!]!;
 		expect(w.timeoutAt).toBe(10_000 + 60_000);
+	});
+
+	it("defaults timeoutAt to MAX_TIMEOUT_SECONDS when timeoutSeconds is omitted", async () => {
+		const rt = makeRuntime(makePi(), makeClient({ exists: false }));
+		rt.now = () => 10_000;
+		const res = await handleToolAction(rt, {
+			action: "add", uri: "s3://b/k", target: "exists", profile: "p",
+		});
+		expect(res.details.ok).toBe(true);
+		const w = rt.watches[res.details.watchId!]!;
+		expect(w.timeoutAt).toBe(10_000 + MAX_TIMEOUT_SECONDS * 1000);
+	});
+
+	it("caps timeoutSeconds at MAX_TIMEOUT_SECONDS and notes it in the message", async () => {
+		const rt = makeRuntime(makePi(), makeClient({ exists: false }));
+		rt.now = () => 10_000;
+		const over = MAX_TIMEOUT_SECONDS + 3600;
+		const res = await handleToolAction(rt, {
+			action: "add", uri: "s3://b/k", target: "exists", profile: "p",
+			timeoutSeconds: over,
+		});
+		expect(res.details.ok).toBe(true);
+		const w = rt.watches[res.details.watchId!]!;
+		expect(w.timeoutAt).toBe(10_000 + MAX_TIMEOUT_SECONDS * 1000);
+		expect(res.details.message).toMatch(/capped/);
 	});
 
 	it("rejects a negative timeoutSeconds", async () => {
