@@ -117,6 +117,33 @@ export function removeToolFromActive(pi: ExtensionAPI): void {
 }
 
 /**
+ * Determine whether `rt.enabled` and the presence of `glue_watcher` in
+ * `pi.getActiveTools()` agree, and what corrective action (if any) the
+ * extension should take on turn_end.
+ *
+ * - `activate`  — LLM ran `manage_tools({action:"activate",...})` after the
+ *                  watcher was disabled. Mirror that into `rt.enabled=true`
+ *                  so polling/widget resume.
+ * - `deactivate` — LLM ran `manage_tools({action:"deactivate",...})` after the
+ *                   watcher was enabled. Mirror that into `rt.enabled=false`
+ *                   so polling stops and the widget hides.
+ * - `noop`      — states already agree.
+ *
+ * Kept as a pure reducer so the reconciliation test doesn't need the full
+ * session/client machinery.
+ */
+export type ReconcileIntent = "activate" | "deactivate" | "noop";
+
+export function reconcileToolActivation(
+	enabled: boolean,
+	activeTools: readonly string[],
+): ReconcileIntent {
+	const isToolActive = activeTools.includes("glue_watcher");
+	if (isToolActive === enabled) return "noop";
+	return isToolActive ? "activate" : "deactivate";
+}
+
+/**
  * Keep the `glue_watcher` tool's active-set membership in sync with
  * persisted `enabled` state. Called from `session_start` on every session
  * boot so a restart doesn't leave the persisted widget + polling visible

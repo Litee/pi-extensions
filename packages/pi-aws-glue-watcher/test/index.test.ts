@@ -5,6 +5,7 @@ import type { GlueClient, JobRunResponse, WorkflowRunResponse } from "../src/glu
 import { makeRuntime, POLL_ERROR_THRESHOLD, POLL_INTERVAL_MS, pollOnce } from "../src/runtime.js";
 import {
 	handleToolAction,
+	reconcileToolActivation,
 	registerToolIfNeeded,
 	removeToolFromActive,
 	resetToolRegisteredForTests,
@@ -179,6 +180,28 @@ describe("syncToolActiveState: re-adds glue_watcher to active set when enabled=t
 		expect(pi.setActiveTools).toHaveBeenCalledWith(
 			expect.not.arrayContaining(["glue_watcher"]),
 		);
+	});
+});
+
+describe("reconcileToolActivation", () => {
+	it("returns 'noop' when enabled=true and glue_watcher is in active set", () => {
+		expect(reconcileToolActivation(true, ["glue_watcher", "read"])).toBe("noop");
+	});
+
+	it("returns 'noop' when enabled=false and glue_watcher is absent", () => {
+		expect(reconcileToolActivation(false, ["read", "bash"])).toBe("noop");
+	});
+
+	it("returns 'activate' when enabled=false but glue_watcher is in active set (LLM activated via manage_tools)", () => {
+		expect(reconcileToolActivation(false, ["read", "glue_watcher"])).toBe("activate");
+	});
+
+	it("returns 'deactivate' when enabled=true but glue_watcher is absent (LLM deactivated via manage_tools)", () => {
+		expect(reconcileToolActivation(true, ["read", "bash"])).toBe("deactivate");
+	});
+
+	it("treats an empty active-tool list as deactivation when enabled=true", () => {
+		expect(reconcileToolActivation(true, [])).toBe("deactivate");
 	});
 });
 

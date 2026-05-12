@@ -18,7 +18,7 @@ import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
 
 import { createGlueClient, type GlueClient } from "./glue-client.js";
 import { buildStartupChatMessage } from "./format.js";
-import { rehydrateStateFromSession } from "./persistence.js";
+import { rehydrateStateFromSession, writeState } from "./persistence.js";
 import { snapshotJobRun, snapshotWorkflowRun } from "./poller.js";
 import { runGlueWatcherCommand } from "./command.js";
 import {
@@ -30,7 +30,7 @@ import {
 	type Runtime,
 	type UiSurface,
 } from "./runtime.js";
-import { registerToolIfNeeded, syncToolActiveState } from "./toolAction.js";
+import { reconcileToolActivation, registerToolIfNeeded, syncToolActiveState } from "./toolAction.js";
 import { GlueWidget } from "./ui/glue-widget.js";
 
 /**
@@ -91,6 +91,33 @@ export function createExtensionWithClient(pi: ExtensionAPI, client: GlueClient):
 					{ deliverAs: "followUp", triggerTurn: true },
 				);
 			});
+		}
+	});
+
+	pi.on("turn_end", (_event, ctx) => {
+		// Reconcile rt.enabled with whether `glue_watcher` is currently active
+		// in pi's tool set. The LLM may have toggled the tool during this turn
+		// via manage_tools; mirror that into rt.enabled so polling/widget/status
+		// stay consistent with what the LLM can actually call.
+		const intent = reconcileToolActivation(rt.enabled, pi.getActiveTools());
+		if (intent === "noop") return;
+
+		if (intent === "activate") {
+			rt.enabled = true;
+			writeState(rt.pi, rt);
+			const activeWatches = Object.values(rt.watches).filter((w) => !w.terminal);
+			if (!rt.paused && activeWatches.length > 0 && !rt.scheduler.isRunning)
+				startPolling(rt);
+			refreshStatus(rt);
+			if (rt.displayMode === "widget") rt.widget?.show(ctx);
+			else rt.widget?.hide(ctx);
+		} else {
+			// deactivate
+			rt.enabled = false;
+			stopPolling(rt);
+			rt.widget?.hide(ctx);
+			writeState(rt.pi, rt);
+			refreshStatus(rt);
 		}
 	});
 
