@@ -5,9 +5,19 @@ Pi extension that watches a single S3 object URI for **existence**,
 condition is met — or when an optional per-watch timeout elapses — it
 fires exactly one chat notification (`customType:
 "pi-aws-s3-watcher"`, `triggerTurn: true`) and marks the watch
-terminal. The extension is auto-enabled: the `s3_watcher` tool is
-registered and active from `session_start` with no `/s3-watcher enable`
-gate required.
+terminal.
+
+The `s3_watcher` tool is registered into pi's tool registry at
+`session_start` but starts **inactive**. The LLM must activate it
+before use:
+
+```
+manage_tools({"action": "activate", "tools": ["s3_watcher"]})
+```
+
+`manage_tools` is provided by the `pi-tools-runtime-manager` extension
+(peer dependency). The tool becomes callable on the next turn after
+activation.
 
 ## Polling schedule
 
@@ -32,7 +42,7 @@ When every watch is terminal the poll loop stops.
 
 | Action   | Required params                               | Notes                                                                 |
 |----------|-----------------------------------------------|-----------------------------------------------------------------------|
-| `add`    | `uri`, `target`, `profile`                    | Optional: `region`, `timeoutSeconds`. Seeds a baseline via HeadObject.|
+| `add`    | `uri`, `target`, `profile`                    | Optional: `region`, `timeoutSeconds`. Seeds a baseline via HeadObject. `timeoutSeconds` defaults to 72 h (259200 s); capped at 72 h if higher.|
 | `remove` | `watchId`                                     | Stops polling the final active watch.                                 |
 | `list`   | —                                             | One line per watch: `[id] uri target state`.                          |
 | `pause`  | —                                             | Global. Persisted across session reload.                              |
@@ -53,8 +63,9 @@ A fired watch emits **one** bullet-list chat message then self-marks terminal. T
 
 `timeoutSeconds` (optional, positive number). If the target condition has
 not fired by `addedAt + timeoutSeconds`, the watcher emits a single
-`timeout` event and marks the watch terminal. Omit for no timeout —
-the watch polls indefinitely until manually removed.
+`timeout` event and marks the watch terminal. Defaults to 72 h
+(259200 s) when omitted. Values above 72 h are silently capped at 72 h.
+There is no indefinitely-polling mode.
 
 ## `/s3-watcher` command
 
@@ -97,6 +108,9 @@ src/
   persistence.ts   — createPersistence delegate
   format.ts        — chat message + status-line formatters
   index.ts         — session lifecycle + /s3-watcher command
+skills/
+  aws-s3-watcher/
+    SKILL.md       — LLM-facing usage guide (activation, actions, error handling)
 test/
   uri.test.ts
   sdk-client.test.ts
