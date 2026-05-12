@@ -30,7 +30,7 @@ import {
 	type Runtime,
 	type UiSurface,
 } from "./runtime.js";
-import { registerToolIfNeeded, removeToolFromActive } from "./toolAction.js";
+import { registerToolIfNeeded, syncToolActiveState } from "./toolAction.js";
 import { GlueWidget } from "./ui/glue-widget.js";
 
 /**
@@ -53,11 +53,12 @@ export function createExtensionWithClient(pi: ExtensionAPI, client: GlueClient):
 		rt.displayMode = state?.displayMode ?? "widget";
 
 		// Always register the tool into the registry so manage_tools({action:"list"})
-		// shows it. Tool stays INACTIVE at session_start — the LLM activates it via
-		// manage_tools({action:"activate",...}), or the user runs /glue-watcher enable
-		// as a manual escape hatch (which also activates it + starts polling/widget).
+		// shows it. Then sync its active-set membership with persisted `enabled`
+		// state — so a restart where the user had previously run
+		// /glue-watcher enable keeps the tool callable without forcing a
+		// re-enable. If enabled=false, the tool is yanked out of the active set.
 		registerToolIfNeeded(pi, rt);
-		if (!rt.enabled) removeToolFromActive(pi);
+		syncToolActiveState(pi, rt.enabled);
 
 		if (!rt.enabled) return;
 

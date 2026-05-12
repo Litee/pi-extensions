@@ -8,6 +8,7 @@ import {
 	registerToolIfNeeded,
 	removeToolFromActive,
 	resetToolRegisteredForTests,
+	syncToolActiveState,
 } from "../src/toolAction.js";
 import type { GlueWatch } from "../src/types.js";
 
@@ -145,6 +146,39 @@ describe("tool active-state invariant: glue_watcher inactive when enabled=false"
 		// Do NOT call removeToolFromActive here — that's the invariant.
 
 		expect(pi.setActiveTools).not.toHaveBeenCalled();
+	});
+});
+
+describe("syncToolActiveState: re-adds glue_watcher to active set when enabled=true", () => {
+	it("adds glue_watcher to the active set when enabled=true and the tool is absent", () => {
+		const pi = makePi();
+		(pi.getActiveTools as ReturnType<typeof vi.fn>).mockReturnValue(["read", "bash"]);
+		syncToolActiveState(pi as unknown as ExtensionAPI, true);
+		expect(pi.setActiveTools).toHaveBeenCalledWith(
+			expect.arrayContaining(["read", "bash", "glue_watcher"]),
+		);
+	});
+
+	it("is a no-op when enabled=true and glue_watcher is already in the active set", () => {
+		const pi = makePi();
+		(pi.getActiveTools as ReturnType<typeof vi.fn>).mockReturnValue([
+			"glue_watcher",
+			"read",
+		]);
+		syncToolActiveState(pi as unknown as ExtensionAPI, true);
+		expect(pi.setActiveTools).not.toHaveBeenCalled();
+	});
+
+	it("removes glue_watcher from the active set when enabled=false", () => {
+		const pi = makePi();
+		(pi.getActiveTools as ReturnType<typeof vi.fn>).mockReturnValue([
+			"glue_watcher",
+			"read",
+		]);
+		syncToolActiveState(pi as unknown as ExtensionAPI, false);
+		expect(pi.setActiveTools).toHaveBeenCalledWith(
+			expect.not.arrayContaining(["glue_watcher"]),
+		);
 	});
 });
 

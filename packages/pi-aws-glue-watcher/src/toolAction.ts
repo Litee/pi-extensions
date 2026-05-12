@@ -116,6 +116,20 @@ export function removeToolFromActive(pi: ExtensionAPI): void {
 	pi.setActiveTools(active.filter((n) => n !== "glue_watcher"));
 }
 
+/**
+ * Keep the `glue_watcher` tool's active-set membership in sync with
+ * persisted `enabled` state. Called from `session_start` on every session
+ * boot so a restart doesn't leave the persisted widget + polling visible
+ * while the LLM is locked out of the tool.
+ *
+ * Also fixes the complementary case (enabled=false, tool somehow active)
+ * by yanking the tool out.
+ */
+export function syncToolActiveState(pi: ExtensionAPI, enabled: boolean): void {
+	if (enabled) addToolToActive(pi);
+	else removeToolFromActive(pi);
+}
+
 // ---------------------------------------------------------------------------
 // Tool action handler
 // ---------------------------------------------------------------------------
