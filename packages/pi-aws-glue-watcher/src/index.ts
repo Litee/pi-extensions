@@ -20,6 +20,7 @@ import { Box, Text } from "@earendil-works/pi-tui";
 
 import { createGlueClient, type GlueClient } from "./glue-client.js";
 import { buildStartupChatMessage } from "./format.js";
+import type { WatchMap } from "./types.js";
 import { rehydrateStateFromSession, writeState } from "./persistence.js";
 import { snapshotJobRun, snapshotWorkflowRun } from "./poller.js";
 import { runGlueWatcherCommand } from "./command.js";
@@ -89,6 +90,7 @@ export function createExtensionWithClient(pi: ExtensionAPI, client: GlueClient):
 						customType: CUSTOM_MESSAGE_TYPE,
 						content: buildStartupChatMessage(rt.watches, new Date()),
 						display: true,
+						details: { watches: rt.watches, date: new Date().toISOString() },
 					},
 					{ deliverAs: "followUp", triggerTurn: false },
 				);
@@ -134,7 +136,11 @@ export function createExtensionWithClient(pi: ExtensionAPI, client: GlueClient):
 		rt.ui = null;
 	});
 
-	pi.registerMessageRenderer(CUSTOM_MESSAGE_TYPE, (message, _options, theme) => {
+	pi.registerMessageRenderer(CUSTOM_MESSAGE_TYPE, (message, options, theme) => {
+		const expanded =
+			options && typeof options === "object" && "expanded" in options
+				? Boolean((options as { expanded?: boolean }).expanded)
+				: false;
 		const text =
 			typeof message.content === "string"
 				? message.content
@@ -142,9 +148,31 @@ export function createExtensionWithClient(pi: ExtensionAPI, client: GlueClient):
 						.filter((c): c is { type: "text"; text: string } => c.type === "text")
 						.map((c) => c.text)
 						.join("\n");
+		// For startup messages we can re-render the full expanded form from
+		// the stored watches; for change messages the text is already the
+		// full event list (no sub-fields to hide).
+		const displayText = (() => {
+			if (
+				expanded &&
+				message.details &&
+				typeof message.details === "object" &&
+				"watches" in (message.details as object)
+			) {
+				const d = message.details as { watches: WatchMap; date: string };
+				return buildStartupChatMessage(d.watches, new Date(d.date), { expanded: true });
+			}
+			return text;
+		})();
 		const label = theme.bold(theme.fg("customMessageLabel", "pi-aws-glue-watcher"));
 		const box = new Box(1, 1, (t) => theme.bg("customMessageBg", t));
-		box.addChild(new Text(`${label}\n\n${text}`, 0, 0));
+		// Dim the expand hint line.
+		const rendered = displayText
+			.split("\n")
+			.map((line) =>
+				line === "  Ctrl-o to expand" ? theme.fg("dim", line) : line,
+			)
+			.join("\n");
+		box.addChild(new Text(`${label}\n\n${rendered}`, 0, 0));
 		return box;
 	});
 
@@ -174,7 +202,7 @@ export {
 } from "./runtime.js";
 export { handleToolAction, registerToolIfNeeded } from "./toolAction.js";
 export { STATE_CUSTOM_TYPE } from "./persistence.js";
-export { buildStatusLine, buildChangeChatMessage, buildStartupChatMessage } from "./format.js";
+export { buildStatusLine, buildChangeChatMessage, buildStartupChatMessage, buildWatchEntry } from "./format.js";
 export { snapshotJobRun, snapshotWorkflowRun, detectJobChanges, detectWorkflowChanges } from "./poller.js";
 export { createGlueClient, GlueCliError } from "./glue-client.js";
 export type { GlueClient } from "./glue-client.js";

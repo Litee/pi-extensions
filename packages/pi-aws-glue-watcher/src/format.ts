@@ -83,40 +83,113 @@ function formatHm(date: Date): string {
  * Format:
  * ```
  * [10:30] 2 changes detected
- *
- * • my-etl-job (jr_abc123): STARTING → RUNNING
- * • my-workflow (wr_def456): RUNNING → COMPLETED ✓
+ * 1. my-etl-job — STARTING → RUNNING
+ *    · run: jr_abc123
+ *    · type: job
+ * 2. my-workflow — RUNNING → COMPLETED ✓
+ *    · run: wr_def456
+ *    · type: workflow
  * ```
  */
 export function buildChangeChatMessage(events: GlueEvent[], date: Date): string {
 	const noun = events.length === 1 ? "change" : "changes";
 	const header = `${formatHm(date)} ${events.length} ${noun} detected`;
-	const bullets = events.map((e) => e.formatted).join("\n");
-	return `${header}\n\n${bullets}`;
+	const lines = events.map((e, i) => {
+		const primary = `${i + 1}. ${e.formatted}`;
+		// e.formatted already contains the name + transition; sub-fields live on the watch
+		// but events don't carry them — keep sub-field block empty for change messages
+		// so the numbered-list header alone is sufficient.
+		return primary;
+	});
+	return `${header}\n${lines.join("\n")}`;
+}
+
+// ---------------------------------------------------------------------------
+// Startup-message helpers
+// ---------------------------------------------------------------------------
+
+/**
+ * Render the detail sub-lines for one watch entry.
+ * ```
+ *    · run: jr_abc123
+ *    · type: job
+ *    · terminal
+ * ```
+ */
+function buildWatchSubLines(w: import("./types.js").GlueWatch, { terminal }: { terminal?: boolean } = {}): string[] {
+	const lines: string[] = [];
+	lines.push(`   \u00b7 run: ${w.runId}`);
+	lines.push(`   \u00b7 type: ${w.type}`);
+	if (terminal ?? w.terminal) lines.push(`   \u00b7 terminal`);
+	return lines;
 }
 
 /**
- * Build the content for the startup chat message emitted when the watcher
- * resumes with an existing watch list (session restart or `/glue-watcher enable`).
+ * Build summary and detail bodies for one watch entry.
  *
- * Format when watches are present:
+ * Returns `{ summary, detail }` where:
+ * - `summary` is the primary numbered line  (e.g. `1. etl-job \u2014 state=RUNNING`)
+ * - `detail` is the indented sub-field block (one string per line)
+ */
+export function buildWatchEntry(
+	watch: import("./types.js").GlueWatch,
+	index: number,
+): { summary: string; detail: string[] } {
+	const state = watch.baseline ? watch.baseline.state || "?" : "?";
+	const summary = `${index + 1}. ${watch.name} \u2014 state=${state}`;
+	const detail = buildWatchSubLines(watch);
+	return { summary, detail };
+}
+
+/**
+ * Build the content for the startup chat message.
+ *
+ * Full (expanded) format:
  * ```
- * [10:30] active — watching 2 runs:
+ * [10:30] active \u2014 watching 2 runs:
+ * 1. etl-job \u2014 state=RUNNING
+ *    \u00b7 run: jr_abc123
+ *    \u00b7 type: job
+ * 2. my-workflow \u2014 state=SUCCEEDED
+ *    \u00b7 run: wr_def456
+ *    \u00b7 type: workflow
+ * ```
  *
- * • job  my-etl-job (jr_abc123): state=RUNNING
- * • workflow  my-workflow (wr_def456): state=RUNNING [terminal]
+ * Collapsed format (used when `expanded=false`, shown as the stored
+ * `content.text`):
+ * ```
+ * [10:30] active \u2014 watching 2 runs:
+ * 1. etl-job \u2014 state=RUNNING
+ * 2. my-workflow \u2014 state=SUCCEEDED
+ *   Ctrl-o to expand
  * ```
  */
-export function buildStartupChatMessage(watches: WatchMap, date: Date): string {
+export function buildStartupChatMessage(
+	watches: WatchMap,
+	date: Date,
+	{ expanded = false }: { expanded?: boolean } = {},
+): string {
 	const all = Object.values(watches);
 	if (all.length === 0) {
-		return "active — no watches configured. Use the glue_watcher tool to add a job or workflow.";
+		return "active \u2014 no watches configured. Use the glue_watcher tool to add a job or workflow.";
 	}
 	const noun = all.length === 1 ? "run" : "runs";
-	const lines = all.map((w) => {
-		const state = w.baseline ? w.baseline.state || "?" : "?";
-		const tag = w.terminal ? " [terminal]" : "";
-		return `• ${w.type}  ${w.name} (${w.runId}): state=${state}${tag}`;
-	});
-	return `${formatHm(date)} active — watching ${all.length} ${noun}:\n${lines.join("\n")}`;
+	const header = `${formatHm(date)} active \u2014 watching ${all.length} ${noun}:`;
+
+	const entries = all.map((w, i) => buildWatchEntry(w, i));
+
+	if (expanded) {
+		const lines: string[] = [header];
+		for (const { summary, detail } of entries) {
+			lines.push(summary);
+			lines.push(...detail);
+		}
+		return lines.join("\n");
+	}
+
+	// Collapsed: primary lines only + expand hint.
+	const lines: string[] = [header];
+	for (const { summary } of entries) lines.push(summary);
+	lines.push("  Ctrl-o to expand");
+	return lines.join("\n");
 }

@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { buildChangeChatMessage, buildStartupChatMessage, buildStatusLine } from "../src/format.js";
+import { buildChangeChatMessage, buildStartupChatMessage, buildStatusLine, buildWatchEntry } from "../src/format.js";
 import type { GlueEvent, GlueWatch, WatchMap } from "../src/types.js";
 
 // ---------------------------------------------------------------------------
@@ -186,7 +186,7 @@ describe("buildStartupChatMessage", () => {
 		expect(msg).toContain("no watches configured");
 	});
 
-	it("lists each watch with type, name, runId, and state", () => {
+	it("uses numbered list: primary line is '<N>. <name> — state=<STATE>'", () => {
 		const watches: WatchMap = {
 			aa: makeJobWatch({
 				watchId: "aa",
@@ -196,12 +196,31 @@ describe("buildStartupChatMessage", () => {
 			}),
 		};
 		const msg = buildStartupChatMessage(watches, FIXED_DATE);
-		expect(msg).toContain("etl-job");
-		expect(msg).toContain("jr_123");
-		expect(msg).toContain("state=RUNNING");
+		expect(msg).toContain("1. etl-job — state=RUNNING");
+		expect(msg).not.toMatch(/•/);
 	});
 
-	it("marks terminal watches with [terminal] suffix", () => {
+	it("collapsed (default): sub-fields hidden, expand hint shown", () => {
+		const watches: WatchMap = {
+			aa: makeJobWatch({ watchId: "aa", name: "etl-job", runId: "jr_123" }),
+		};
+		const msg = buildStartupChatMessage(watches, FIXED_DATE);
+		expect(msg).not.toContain("· run:");
+		expect(msg).not.toContain("· type:");
+		expect(msg).toContain("Ctrl-o to expand");
+	});
+
+	it("expanded: sub-fields shown, no expand hint", () => {
+		const watches: WatchMap = {
+			aa: makeJobWatch({ watchId: "aa", name: "etl-job", runId: "jr_123" }),
+		};
+		const msg = buildStartupChatMessage(watches, FIXED_DATE, { expanded: true });
+		expect(msg).toContain("· run: jr_123");
+		expect(msg).toContain("· type: job");
+		expect(msg).not.toContain("Ctrl-o to expand");
+	});
+
+	it("expanded: terminal watch shows '· terminal' sub-field", () => {
 		const watches: WatchMap = {
 			aa: makeJobWatch({
 				watchId: "aa",
@@ -209,8 +228,8 @@ describe("buildStartupChatMessage", () => {
 				baseline: { state: "SUCCEEDED", errorMessage: "" },
 			}),
 		};
-		const msg = buildStartupChatMessage(watches, FIXED_DATE);
-		expect(msg).toContain("[terminal]");
+		const msg = buildStartupChatMessage(watches, FIXED_DATE, { expanded: true });
+		expect(msg).toContain("· terminal");
 	});
 
 	it("shows '?' for state when baseline is undefined", () => {
@@ -238,13 +257,68 @@ describe("buildStartupChatMessage", () => {
 		expect(msg).toContain("watching 2 runs:");
 	});
 
-	it("uses a single newline (no blank line) between header and bullets", () => {
-		const watches: WatchMap = {
-			aa: makeJobWatch({ watchId: "aa" }),
-		};
+	it("no blank line between header and first entry", () => {
+		const watches: WatchMap = { aa: makeJobWatch({ watchId: "aa" }) };
 		const msg = buildStartupChatMessage(watches, FIXED_DATE);
 		expect(msg).not.toContain("\n\n");
-		expect(msg).toMatch(/watching 1 run:\n•/);
+		expect(msg).toMatch(/watching 1 run:\n1\./);
+	});
+});
+
+describe("buildWatchEntry", () => {
+	it("returns 1-based numbered summary line", () => {
+		const w = makeJobWatch({ watchId: "w", name: "my-job", runId: "jr_abc", baseline: { state: "RUNNING", errorMessage: "" } });
+		const { summary } = buildWatchEntry(w, 0);
+		expect(summary).toBe("1. my-job — state=RUNNING");
+	});
+
+	it("detail block contains · run and · type lines", () => {
+		const w = makeJobWatch({ watchId: "w", name: "my-job", runId: "jr_abc" });
+		const { detail } = buildWatchEntry(w, 0);
+		expect(detail).toContain("   · run: jr_abc");
+		expect(detail).toContain("   · type: job");
+	});
+
+	it("detail block includes '· terminal' when watch is terminal", () => {
+		const w = makeJobWatch({ watchId: "w", name: "n", runId: "jr_x", terminal: true });
+		const { detail } = buildWatchEntry(w, 0);
+		expect(detail).toContain("   · terminal");
+	});
+});
+
+describe("buildChangeChatMessage", () => {
+	function makeEvent(overrides: Partial<GlueEvent> & { watchId: string; formatted: string }): GlueEvent {
+		return {
+			type: "job",
+			name: "my-job",
+			runId: "jr_1",
+			eventType: "state_changed",
+			previousState: "RUNNING",
+			newState: "SUCCEEDED",
+			summary: "RUNNING → SUCCEEDED",
+			isTerminal: true,
+			...overrides,
+		};
+	}
+
+	it("uses numbered list for events", () => {
+		const events: GlueEvent[] = [
+			makeEvent({ watchId: "w1", formatted: "my-job: RUNNING → SUCCEEDED ✓" }),
+			makeEvent({ watchId: "w2", name: "other-job", formatted: "other-job: STARTING → RUNNING" }),
+		];
+		const msg = buildChangeChatMessage(events, FIXED_DATE);
+		expect(msg).toContain("1. my-job: RUNNING → SUCCEEDED ✓");
+		expect(msg).toContain("2. other-job: STARTING → RUNNING");
+		expect(msg).not.toMatch(/•/);
+	});
+
+	it("no blank line between header and first event", () => {
+		const events: GlueEvent[] = [
+			makeEvent({ watchId: "w1", formatted: "my-job: SUCCEEDED" }),
+		];
+		const msg = buildChangeChatMessage(events, FIXED_DATE);
+		expect(msg).not.toContain("\n\n");
+		expect(msg).toMatch(/change detected\n1\./);
 	});
 });
 

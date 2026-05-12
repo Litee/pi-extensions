@@ -259,6 +259,109 @@ describe("startup chat message: triggerTurn + label", () => {
 		expect(opts.deliverAs).toBe("followUp");
 	});
 
+	it("startup sendMessage includes details.watches and details.date for renderer expand path", async () => {
+		const { createExtensionWithClient } = await import("../src/index.js");
+		const pi = makePi();
+		const client = makeClient();
+		createExtensionWithClient(pi as unknown as ExtensionAPI, client);
+		const persistedData = {
+			savedAt: 1,
+			paused: false,
+			baselines: { enabled: true, displayMode: "widget" as const },
+			watches: [{
+				watchId: "w1",
+				type: "job" as const,
+				name: "etl",
+				runId: "jr_123",
+				profile: "p",
+				region: undefined,
+				baseline: { state: "RUNNING", errorMessage: "" },
+				timeoutAt: undefined,
+				addedAt: 0,
+				lastPolledAt: undefined,
+				terminal: false,
+				consecutiveErrors: 0,
+			}],
+		};
+		await pi._handlers.sessionStart!({}, {
+			hasUI: true,
+			ui: { hasUI: true },
+			sessionManager: {
+				getEntries: () => [
+					{ type: "custom", customType: "pi-aws-glue-watcher:state", data: persistedData },
+				],
+			},
+		});
+		await new Promise((resolve) => setImmediate(resolve));
+		const startupCall = pi.sendMessage.mock.calls.find(
+			(c) => (c[0] as { customType?: string }).customType === "pi-aws-glue-watcher",
+		);
+		expect(startupCall).toBeDefined();
+		const msg = startupCall![0] as { details?: { watches?: unknown; date?: unknown } };
+		expect(msg.details?.watches).toBeDefined();
+		expect(msg.details?.date).toBeDefined();
+	});
+
+	it("renderer: collapsed (default) shows primary lines + expand hint, no sub-fields", async () => {
+		const { createExtensionWithClient } = await import("../src/index.js");
+		const pi = makePi();
+		createExtensionWithClient(pi as unknown as ExtensionAPI, makeClient());
+		const [, renderer] = pi.registerMessageRenderer.mock.calls[0] as [
+			string,
+			(m: unknown, o: unknown, t: unknown) => { render?: (w: number) => string[] },
+		];
+		const fakeTheme = {
+			bold: (s: string) => s,
+			fg: (_c: string, s: string) => s,
+			bg: (_c: string, s: string) => s,
+		};
+		const watches = {
+			w1: { watchId: "w1", type: "job" as const, name: "etl", runId: "jr_123",
+				profile: "p", region: undefined, baseline: { state: "RUNNING", errorMessage: "" },
+				timeoutAt: undefined, addedAt: 0, lastPolledAt: undefined, terminal: false, consecutiveErrors: 0 },
+		};
+		const msg = {
+			content: [{ type: "text", text: "[10:00] active — watching 1 run:\n1. etl — state=RUNNING\n  Ctrl-o to expand" }],
+			details: { watches, date: new Date().toISOString() },
+		};
+		const box = renderer(msg, { expanded: false }, fakeTheme);
+		const lines = box.render!(120);
+		const joined = lines.join("\n");
+		expect(joined).toContain("Ctrl-o to expand");
+		expect(joined).not.toContain("\u00b7 run:");
+		expect(joined).not.toContain("\u00b7 type:");
+	});
+
+	it("renderer: expanded shows sub-fields and no expand hint", async () => {
+		const { createExtensionWithClient } = await import("../src/index.js");
+		const pi = makePi();
+		createExtensionWithClient(pi as unknown as ExtensionAPI, makeClient());
+		const [, renderer] = pi.registerMessageRenderer.mock.calls[0] as [
+			string,
+			(m: unknown, o: unknown, t: unknown) => { render?: (w: number) => string[] },
+		];
+		const fakeTheme = {
+			bold: (s: string) => s,
+			fg: (_c: string, s: string) => s,
+			bg: (_c: string, s: string) => s,
+		};
+		const watches = {
+			w1: { watchId: "w1", type: "job" as const, name: "etl", runId: "jr_123",
+				profile: "p", region: undefined, baseline: { state: "RUNNING", errorMessage: "" },
+				timeoutAt: undefined, addedAt: 0, lastPolledAt: undefined, terminal: false, consecutiveErrors: 0 },
+		};
+		const msg = {
+			content: [{ type: "text", text: "[10:00] active — watching 1 run:\n1. etl — state=RUNNING\n  Ctrl-o to expand" }],
+			details: { watches, date: new Date().toISOString() },
+		};
+		const box = renderer(msg, { expanded: true }, fakeTheme);
+		const lines = box.render!(120);
+		const joined = lines.join("\n");
+		expect(joined).toContain("\u00b7 run: jr_123");
+		expect(joined).toContain("\u00b7 type: job");
+		expect(joined).not.toContain("Ctrl-o to expand");
+	});
+
 	it("registers a message renderer that labels output 'pi-aws-glue-watcher' (no square brackets)", async () => {
 		const { createExtensionWithClient } = await import("../src/index.js");
 		const pi = makePi();
