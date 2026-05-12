@@ -9,7 +9,6 @@ import {
 	registerToolIfNeeded,
 	removeToolFromActive,
 	resetToolRegisteredForTests,
-	shouldQuiesceOnFork,
 	syncToolActiveState,
 } from "../src/toolAction.js";
 import type { GlueWatch } from "../src/types.js";
@@ -295,23 +294,6 @@ describe("startup chat message: triggerTurn + label", () => {
 		expect(labelCalls.some((s) => s.includes("[") || s.includes("]"))).toBe(false);
 		void rendered; // silence unused
 	});
-});
-
-describe("shouldQuiesceOnFork", () => {
-	it("returns true when reason is 'fork' and enabled is true", () => {
-		expect(shouldQuiesceOnFork("fork", true)).toBe(true);
-	});
-
-	it("returns false when reason is 'fork' but enabled is already false", () => {
-		expect(shouldQuiesceOnFork("fork", false)).toBe(false);
-	});
-
-	it.each(["startup", "reload", "new", "resume", undefined])(
-		"returns false when reason is %s (not a fork)",
-		(reason) => {
-			expect(shouldQuiesceOnFork(reason as string | undefined, true)).toBe(false);
-		},
-	);
 });
 
 // ---------------------------------------------------------------------------
