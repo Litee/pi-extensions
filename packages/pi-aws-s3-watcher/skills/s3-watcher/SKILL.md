@@ -94,7 +94,3 @@ profile name you would use with `aws --profile <name>`.
    ```
 3. The agent returns immediately. When the condition is met, a chat
    notification is injected automatically and a new LLM turn starts.
-4. When done, deactivate to keep the tool list clean:
-   ```
-   manage_tools({"action": "deactivate", "tools": ["s3_watcher"]})
-   ```
