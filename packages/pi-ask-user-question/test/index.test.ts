@@ -147,7 +147,7 @@ describe("tool.execute() — happy path", () => {
 });
 
 describe("tool.execute() — event emission", () => {
-	it("emits need_user_attention before dialog and user_attention_resolved after", async () => {
+	it("emits user_attention_requested before dialog and user_attention_resolved after", async () => {
 		const order: string[] = [];
 		let capturedTool: ToolDefinition | undefined;
 		const registerTool = vi.fn((t: ToolDefinition) => { capturedTool = t; });
@@ -160,7 +160,7 @@ describe("tool.execute() — event emission", () => {
 		createExtension(api, { runDialog: run });
 		if (!capturedTool) throw new Error("No tool registered");
 		await capturedTool.execute("tc-events", validParams, undefined, undefined, makeCtx(true));
-		expect(order).toEqual(["need_user_attention", "dialog", "user_attention_resolved"]);
+		expect(order).toEqual(["user_attention_requested", "dialog", "user_attention_resolved"]);
 	});
 
 	it("emits user_attention_resolved even when the dialog throws", async () => {

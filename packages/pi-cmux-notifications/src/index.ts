@@ -181,7 +181,7 @@ export default function cmuxReportStatus(pi: ExtensionAPI): void {
 	});
 
 	// ── Inter-extension attention events ────────────────────────────────
-	pi.events.on("need_user_attention", (data: unknown) => {
+	pi.events.on("user_attention_requested", (data: unknown) => {
 		if (!cmuxAvailable()) return;
 		const payload = data as { title?: string } | undefined;
 		setAttention(payload?.title ?? "Needs your input");

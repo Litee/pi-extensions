@@ -96,7 +96,7 @@ describe("event wiring", () => {
 	it("subscribes to attention events on pi.events", () => {
 		const pi = makeFakePi();
 		createExtension(pi as never);
-		expect(pi.events.handlers.has("need_user_attention")).toBe(true);
+		expect(pi.events.handlers.has("user_attention_requested")).toBe(true);
 		expect(pi.events.handlers.has("user_attention_resolved")).toBe(true);
 	});
 });
@@ -162,7 +162,7 @@ describe("pill states", () => {
 	it("attention → red speech bubble + desktop notify", () => {
 		const pi = makeFakePi();
 		createExtension(pi as never);
-		pi.events.handlers.get("need_user_attention")!({ title: "What next?" });
+		pi.events.handlers.get("user_attention_requested")!({ title: "What next?" });
 		const argvs = spawner.mock.calls.map((c) => c[0] as string[]);
 		expect(argvs).toContainEqual(ATTENTION_ARGV);
 		expect(argvs.some((a) => a[0] === "notify" && a.some((s) => s.includes("What next?")))).toBe(true);
@@ -171,7 +171,7 @@ describe("pill states", () => {
 	it("attention with no title falls back to generic message", () => {
 		const pi = makeFakePi();
 		createExtension(pi as never);
-		pi.events.handlers.get("need_user_attention")!(undefined);
+		pi.events.handlers.get("user_attention_requested")!(undefined);
 		const argvs = spawner.mock.calls.map((c) => c[0] as string[]);
 		expect(argvs.some((a) => a[0] === "notify" && a.some((s) => s.includes("Needs your input")))).toBe(true);
 	});

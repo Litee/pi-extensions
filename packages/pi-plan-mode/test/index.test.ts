@@ -156,7 +156,7 @@ describe("plan-mode exit notification", () => {
 });
 
 describe("agent_end pi.events emissions", () => {
-	it("emits need_user_attention before ctx.ui.select and user_attention_resolved after", async () => {
+	it("emits user_attention_requested before ctx.ui.select and user_attention_resolved after", async () => {
 		// Arrange
 		const callOrder: string[] = [];
 		const pi = makeFakePi();
@@ -185,8 +185,8 @@ describe("agent_end pi.events emissions", () => {
 		await agentEndHandler({}, ctx);
 
 		// Assert — emit order: attention before select, resolved after
-		expect(callOrder).toEqual(["emit:need_user_attention", "select", "emit:user_attention_resolved"]);
-		expect(pi.events.emit).toHaveBeenCalledWith("need_user_attention", {
+		expect(callOrder).toEqual(["emit:user_attention_requested", "select", "emit:user_attention_resolved"]);
+		expect(pi.events.emit).toHaveBeenCalledWith("user_attention_requested", {
 			source: "plan-mode",
 			title: "Plan mode \u2014 what next?",
 		});

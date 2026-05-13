@@ -231,7 +231,7 @@ export default function planModeExtension(pi: ExtensionAPI): void {
 
 		// Signal to other extensions (e.g. pi-cmux-notifications) that the agent
 		// is now blocked waiting for user input at the UI level.
-		pi.events.emit("need_user_attention", { source: "plan-mode", title: "Plan mode — what next?" });
+		pi.events.emit("user_attention_requested", { source: "plan-mode", title: "Plan mode — what next?" });
 
 		const choice = await ctx.ui.select("Plan mode - what next?", [
 			"Execute the plan",
