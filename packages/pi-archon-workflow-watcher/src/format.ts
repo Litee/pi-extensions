@@ -1,4 +1,6 @@
 import type { ArchonEvent, RunSnapshot } from "./types.js";
+import { statusLineColorAlias, type StatusLineColorAlias } from "pi-watcher-core/status-line";
+export type { StatusLineColorAlias } from "pi-watcher-core/status-line";
 
 function header(date: Date): string {
 	return `archon-workflow-watcher — ${date.toISOString()}`;
@@ -31,11 +33,9 @@ export function buildStartupChatMessage(snapshot: RunSnapshot, date: Date): stri
 	return lines.join("\n");
 }
 
-export type StatusColorAlias = "accent" | "muted" | "warning";
-
 export interface StatusLineResult {
 	text: string;
-	colorAlias: StatusColorAlias;
+	colorAlias: StatusLineColorAlias;
 }
 
 export function buildStatusLine(state: {
@@ -43,8 +43,9 @@ export function buildStatusLine(state: {
 	runCount: number;
 	activeCount: number;
 }): StatusLineResult {
-	if (state.paused) {
-		return { text: `archon: ${state.runCount} (paused)`, colorAlias: "muted" };
-	}
-	return { text: `archon: ${state.runCount}`, colorAlias: "accent" };
+	const mode = state.paused ? "paused" : "active";
+	const text = state.paused
+		? `archon: ${state.runCount} (paused)`
+		: `archon: ${state.runCount}`;
+	return { text, colorAlias: statusLineColorAlias(mode) };
 }

@@ -13,6 +13,7 @@
 
 export type StatusLineMode = "active" | "paused";
 export type StatusLineModifier = "throttled" | "auth-error" | "none";
+export type StatusLineColorAlias = "accent" | "muted" | "warning";
 
 export interface StatusLineOptions {
 	/** Extension label shown at the start of the status row, e.g. `"ticket-watcher"`. */
@@ -22,6 +23,22 @@ export interface StatusLineOptions {
 	count: number;
 	/** Defaults to `"none"` when absent. */
 	modifier?: StatusLineModifier;
+}
+
+/**
+ * Returns the theme colour alias to use for a given mode + modifier.
+ *
+ * - `accent`  — active, no error
+ * - `muted`   — paused (modifier is ignored; paused takes precedence)
+ * - `warning` — throttled or auth-error
+ */
+export function statusLineColorAlias(
+	mode: StatusLineMode,
+	modifier: StatusLineModifier = "none",
+): StatusLineColorAlias {
+	if (mode === "paused") return "muted";
+	if (modifier === "throttled" || modifier === "auth-error") return "warning";
+	return "accent";
 }
 
 /**

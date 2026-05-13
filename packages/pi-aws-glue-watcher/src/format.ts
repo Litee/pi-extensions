@@ -6,16 +6,16 @@
  */
 
 import type { GlueEvent, WatchMap } from "./types.js";
+import { statusLineColorAlias, type StatusLineColorAlias } from "pi-watcher-core/status-line";
+export type { StatusLineColorAlias } from "pi-watcher-core/status-line";
 
 // ---------------------------------------------------------------------------
 // Status-line
 // ---------------------------------------------------------------------------
 
-export type StatusColorAlias = "accent" | "muted" | "warning";
-
 export interface StatusLineResult {
 	text: string;
-	colorAlias: StatusColorAlias;
+	colorAlias: StatusLineColorAlias;
 }
 
 export interface StatusLineInput {
@@ -59,7 +59,8 @@ export function buildStatusLine(input: StatusLineInput): StatusLineResult {
 	const body = parts.join(" | ");
 	const text = paused ? `☁ Glue: ${body} (paused)` : `☁ Glue: ${body}`;
 
-	const colorAlias: StatusColorAlias = hasErrors ? "warning" : paused ? "muted" : "accent";
+	const colorAlias: StatusLineColorAlias =
+		hasErrors ? "warning" : statusLineColorAlias(paused ? "paused" : "active");
 	return { text, colorAlias };
 }
 

@@ -5,12 +5,12 @@
  */
 
 import type { S3Event, WatchMap } from "./types.js";
-
-export type StatusColorAlias = "accent" | "muted" | "warning";
+import { statusLineColorAlias, type StatusLineColorAlias } from "pi-watcher-core/status-line";
+export type { StatusLineColorAlias } from "pi-watcher-core/status-line";
 
 export interface StatusLineResult {
 	text: string;
-	colorAlias: StatusColorAlias;
+	colorAlias: StatusLineColorAlias;
 }
 
 export interface StatusLineInput {
@@ -46,7 +46,8 @@ export function buildStatusLine(input: StatusLineInput): StatusLineResult {
 
 	const body = parts.join(" | ");
 	const text = paused ? `aws-s3: ${body} (paused)` : `aws-s3: ${body}`;
-	const colorAlias: StatusColorAlias = hasErrors ? "warning" : paused ? "muted" : "accent";
+	const colorAlias: StatusLineColorAlias =
+		hasErrors ? "warning" : statusLineColorAlias(paused ? "paused" : "active");
 	return { text, colorAlias };
 }
 

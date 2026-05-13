@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { buildStatusLine, formatWatchList } from "../src/status-line.js";
+import { buildStatusLine, formatWatchList, statusLineColorAlias } from "../src/status-line.js";
 
 describe("buildStatusLine", () => {
 	it("returns empty string for count 0", () => {
@@ -48,6 +48,18 @@ describe("buildStatusLine", () => {
 		expect(
 			buildStatusLine({ label: "x", mode: "paused", count: 2, modifier: "throttled" }),
 		).toBe("x: paused (2)");
+	});
+});
+
+describe("statusLineColorAlias", () => {
+	it("active + none → accent", () => expect(statusLineColorAlias("active", "none")).toBe("accent"));
+	it("active + throttled → warning", () => expect(statusLineColorAlias("active", "throttled")).toBe("warning"));
+	it("active + auth-error → warning", () => expect(statusLineColorAlias("active", "auth-error")).toBe("warning"));
+	it("paused + none → muted", () => expect(statusLineColorAlias("paused", "none")).toBe("muted"));
+	it("paused + throttled → muted (paused wins)", () => expect(statusLineColorAlias("paused", "throttled")).toBe("muted"));
+	it("modifier defaults to none", () => {
+		expect(statusLineColorAlias("active")).toBe("accent");
+		expect(statusLineColorAlias("paused")).toBe("muted");
 	});
 });
 
