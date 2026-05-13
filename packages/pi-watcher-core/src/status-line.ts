@@ -1,14 +1,15 @@
 /**
  * Generic status-line rendering primitives for pi watcher extensions.
  *
- * The format is harmonized across all watcher packages on the ticket-watcher
- * style: `<label>: <mode> [(<modifier>)] (<count>)`.
+ * The format is `<label>: <count> [(<modifier>)]` — the count is the primary
+ * signal; the mode is implicit when the row is visible at all; the modifier
+ * (paused / throttled / auth error) is the exception marker shown in parens.
  *
  * Examples:
- *   "ticket-watcher: active (3)"
- *   "ticket-watcher: paused (3)"
- *   "ticket-watcher: active (throttled) (3)"
- *   "ticket-watcher: active (auth error) (3)"
+ *   "tickets: 3"
+ *   "tickets: 3 (paused)"
+ *   "tickets: 3 (throttled)"
+ *   "tickets: 3 (auth error)"
  */
 
 export type StatusLineMode = "active" | "paused";
@@ -51,10 +52,10 @@ export function statusLineColorAlias(
 export function buildStatusLine(opts: StatusLineOptions): string {
 	if (opts.count === 0) return "";
 	const modifier = opts.modifier ?? "none";
-	if (opts.mode === "paused") return `${opts.label}: paused (${opts.count})`;
-	if (modifier === "throttled") return `${opts.label}: active (throttled) (${opts.count})`;
-	if (modifier === "auth-error") return `${opts.label}: active (auth error) (${opts.count})`;
-	return `${opts.label}: active (${opts.count})`;
+	if (opts.mode === "paused")    return `${opts.label}: ${opts.count} (paused)`;
+	if (modifier === "throttled")  return `${opts.label}: ${opts.count} (throttled)`;
+	if (modifier === "auth-error") return `${opts.label}: ${opts.count} (auth error)`;
+	return `${opts.label}: ${opts.count}`;
 }
 
 /**

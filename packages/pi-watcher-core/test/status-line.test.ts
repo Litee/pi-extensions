@@ -3,51 +3,51 @@ import { buildStatusLine, formatWatchList, statusLineColorAlias } from "../src/s
 
 describe("buildStatusLine", () => {
 	it("returns empty string for count 0", () => {
-		expect(buildStatusLine({ label: "test-watcher", mode: "active", count: 0 })).toBe("");
-		expect(buildStatusLine({ label: "test-watcher", mode: "paused", count: 0 })).toBe("");
+		expect(buildStatusLine({ label: "tickets", mode: "active", count: 0 })).toBe("");
+		expect(buildStatusLine({ label: "tickets", mode: "paused", count: 0 })).toBe("");
 	});
 
 	it("active with no modifier", () => {
 		expect(
-			buildStatusLine({ label: "test-watcher", mode: "active", count: 3 }),
-		).toBe("test-watcher: active (3)");
+			buildStatusLine({ label: "tickets", mode: "active", count: 3 }),
+		).toBe("tickets: 3");
 	});
 
 	it("paused", () => {
 		expect(
-			buildStatusLine({ label: "test-watcher", mode: "paused", count: 3 }),
-		).toBe("test-watcher: paused (3)");
+			buildStatusLine({ label: "tickets", mode: "paused", count: 3 }),
+		).toBe("tickets: 3 (paused)");
 	});
 
 	it("active throttled", () => {
 		expect(
-			buildStatusLine({ label: "test-watcher", mode: "active", count: 3, modifier: "throttled" }),
-		).toBe("test-watcher: active (throttled) (3)");
+			buildStatusLine({ label: "tickets", mode: "active", count: 3, modifier: "throttled" }),
+		).toBe("tickets: 3 (throttled)");
 	});
 
 	it("active auth-error", () => {
 		expect(
-			buildStatusLine({ label: "test-watcher", mode: "active", count: 3, modifier: "auth-error" }),
-		).toBe("test-watcher: active (auth error) (3)");
+			buildStatusLine({ label: "tickets", mode: "active", count: 3, modifier: "auth-error" }),
+		).toBe("tickets: 3 (auth error)");
 	});
 
 	it("modifier defaults to none when absent", () => {
 		expect(
 			buildStatusLine({ label: "x", mode: "active", count: 1 }),
-		).toBe("x: active (1)");
+		).toBe("x: 1");
 	});
 
 	it("modifier none is the same as absent", () => {
 		expect(
 			buildStatusLine({ label: "x", mode: "active", count: 1, modifier: "none" }),
-		).toBe("x: active (1)");
+		).toBe("x: 1");
 	});
 
 	it("paused ignores modifier", () => {
-		// Paused always shows "paused (N)" regardless of modifier.
+		// Paused always shows "N (paused)" regardless of modifier.
 		expect(
 			buildStatusLine({ label: "x", mode: "paused", count: 2, modifier: "throttled" }),
-		).toBe("x: paused (2)");
+		).toBe("x: 2 (paused)");
 	});
 });
 
