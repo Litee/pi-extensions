@@ -1,23 +1,30 @@
 /**
  * pi-cmux-notifications — pi extension.
  *
- * Mirrors pi lifecycle events into cmux. Three states only:
+ * Mirrors pi lifecycle events into cmux. Four states:
  *
- *   idle       — green checkmark, between turns. Set on `session_start`
- *                and `agent_end`.
- *   working    — orange bolt, agent turn in progress. Set on `input`
- *                AND on `before_agent_start` (belt-and-braces — turns
- *                triggered by slack-watcher, recovery, or other
- *                non-interactive sources still get the bolt).
- *   attention  — red speech bubble, agent blocked on a UI prompt
- *                (`ask_user_question`, plan-mode approval, …). The
- *                ONLY state that fires a desktop notification.
+ *   idle       — grey circle; the agent is waiting for input and you
+ *                have seen the last response (or the session just started).
+ *   working    — orange bolt; an agent turn is in progress.
+ *   unread     — blue circle; the agent finished a turn while you were
+ *                in another pane. Clears to `idle` when you focus back.
+ *   attention  — red speech bubble; the agent is blocked on a UI prompt
+ *                (`ask_user_question`, plan-mode approval, …). The ONLY
+ *                state that fires a desktop notification.
  *
- * No "done" pill, no agent_end desktop ping, no focus tracking — by
- * deliberate design choice. The user's signal that a response is ready
- * is the pill returning to idle and the sidebar log line. If the agent
- * actually needs human input, the attention extension emits
- * `need_user_attention` on `pi.events` and we ping there.
+ * The idle vs unread distinction lets you scan multiple cmux workspaces
+ * and immediately tell apart "I know why this session is quiet" (grey)
+ * from "something happened here while I was elsewhere" (blue).
+ *
+ * Focus tracking (DECSET ?1004):
+ *   - focus-out sets `focusedAway = true`.
+ *   - focus-in sets `focusedAway = false`; if the pill was `unread`,
+ *     clears it to `idle` — you're now looking at it.
+ *   - On `agent_end`: if `focusedAway`, pill → `unread`; otherwise
+ *     pill → `idle` (you were already watching, no need to flag it).
+ *   Focus reporting requires stdin + stdout to both be TTYs. When
+ *   unavailable (non-TTY, RPC-only sessions), `focusedAway` is always
+ *   false and `agent_end` goes straight to `idle`.
  *
  * All cmux calls are no-ops when not running inside cmux (see
  * `cmuxAvailable`), so loading this extension in a plain terminal is safe.
@@ -34,14 +41,13 @@ import {
 	notifyCmux,
 	setStatus,
 } from "./cmux.js";
+import { feedFocusBytes } from "./focusParser.js";
 import { resolveStatusKey } from "./config.js";
 
-/**
- * Per-session mutable state. Kept in a record so tests can inspect it
- * after invoking the default export.
- */
+const FOCUS_ENABLE = "\x1b[?1004h";
+const FOCUS_DISABLE = "\x1b[?1004l";
+
 export interface Runtime {
-	/** Sidebar status pill key (usually "pi"). */
 	statusKey: string;
 }
 
@@ -49,61 +55,108 @@ function makeRuntime(env: NodeJS.ProcessEnv = process.env): Runtime {
 	return { statusKey: resolveStatusKey(env) };
 }
 
-/** `shortCwd` — trailing path segment of `cwd`, or `"pi"` if cwd is blank. */
 export function shortCwd(cwd: string): string {
 	const segs = cwd.split("/").filter(Boolean);
 	return segs[segs.length - 1] ?? "pi";
 }
 
-// ── Pill colour / icon constants ──────────────────────────────────────────
-//
-// Centralised so a future cmux icon-set change is a one-line edit and tests
-// can assert on the constant rather than a magic string.
-const IDLE_ICON = "checkmark";
-const IDLE_COLOR = "#30d158"; // green
-const WORKING_ICON = "bolt";
-const WORKING_COLOR = "#ff9500"; // orange
-const ATTENTION_ICON = "bubble.left.fill";
+// ── Pill constants ────────────────────────────────────────────────────────
+
+const IDLE_ICON      = "circle.fill";
+const IDLE_COLOR     = "#8e8e93"; // grey  — "quiet, nothing to see"
+const WORKING_ICON   = "bolt";
+const WORKING_COLOR  = "#ff9500"; // orange
+const UNREAD_ICON    = "circle.fill";
+const UNREAD_COLOR   = "#007aff"; // blue  — "something happened while you were away"
+const ATTENTION_ICON  = "bubble.left.fill";
 const ATTENTION_COLOR = "#ff3b30"; // red
 
 export default function cmuxReportStatus(pi: ExtensionAPI): void {
 	const rt = makeRuntime();
 
+	// Focus state — updated by the stdin focus listener below.
+	let focusedAway = false;
+	let hasUnread   = false; // true while pill is in the `unread` state
+	let focusListener: ((chunk: Buffer) => void) | undefined;
+	let focusEnabled = false;
+
 	// ── Pill helpers ────────────────────────────────────────────────────
-	const setIdle = (): void =>
+	const setIdle = (): void => {
+		hasUnread = false;
 		setStatus(rt.statusKey, "idle", IDLE_ICON, IDLE_COLOR);
-	const setWorking = (): void =>
+	};
+	const setWorking = (): void => {
+		hasUnread = false;
 		setStatus(rt.statusKey, "working", WORKING_ICON, WORKING_COLOR);
+	};
+	const setUnread = (): void => {
+		hasUnread = true;
+		setStatus(rt.statusKey, "unread", UNREAD_ICON, UNREAD_COLOR);
+	};
 	const setAttention = (label: string): void => {
 		setStatus(rt.statusKey, "attention", ATTENTION_ICON, ATTENTION_COLOR);
 		notifyCmux(rt.statusKey, shortCwd(process.cwd()), `[${hhmm()}] ${label}`);
 	};
+
+	// ── Focus reporting ─────────────────────────────────────────────────
+	function attachFocusReporting(): void {
+		if (focusEnabled) return;
+		if (!process.stdout.isTTY || !process.stdin.isTTY) return;
+		try { process.stdout.write(FOCUS_ENABLE); } catch { return; }
+		let buf = "";
+		const listener = (chunk: Buffer) => {
+			try {
+				const { events, rest } = feedFocusBytes(buf, chunk.toString("binary"));
+				buf = rest;
+				for (const ev of events) {
+					if (ev === "out") {
+						focusedAway = true;
+					} else {
+						// focus-in: user is back on this pane
+						focusedAway = false;
+						if (hasUnread) setIdle();
+					}
+				}
+			} catch { /* best-effort */ }
+		};
+		process.stdin.on("data", listener);
+		focusListener = listener;
+		focusEnabled = true;
+	}
+
+	function detachFocusReporting(): void {
+		if (focusListener) {
+			try { process.stdin.off("data", focusListener); } catch { /* noop */ }
+			focusListener = undefined;
+		}
+		if (focusEnabled) {
+			try { process.stdout.write(FOCUS_DISABLE); } catch { /* noop */ }
+			focusEnabled = false;
+		}
+	}
 
 	// ── Session lifecycle ──────────────────────────────────────────────
 	pi.on("session_start", () => {
 		if (!cmuxAvailable()) return;
 		setIdle();
 		logLine(rt.statusKey, "info", `[${hhmm()}] pi session started`);
+		attachFocusReporting();
 	});
 
 	pi.on("session_shutdown", () => {
 		if (!cmuxAvailable()) return;
+		detachFocusReporting();
 		clearProgress();
 		clearStatus(rt.statusKey);
 	});
 
-	// ── User input → bolt ───────────────────────────────────────────────
-	// We wire BOTH `input` (immediate feedback on keystroke) and
-	// `before_agent_start` (belt-and-braces for turns kicked off by
-	// non-interactive sources, e.g. slack-watcher injection, recovery,
-	// API-source inputs). Either event lighting up the bolt is fine —
-	// `setStatus("working", …)` is idempotent.
+	// ── User input + agent start → bolt ────────────────────────────────
 	pi.on("input", (event) => {
 		if (!cmuxAvailable()) return;
 		if (event.source !== "interactive" && event.source !== "rpc") return;
 		const text = (event.text || "").trim();
 		if (!text) return;
-		if (text.startsWith("/")) return; // slash commands
+		if (text.startsWith("/")) return;
 		setWorking();
 	});
 
@@ -112,23 +165,22 @@ export default function cmuxReportStatus(pi: ExtensionAPI): void {
 		setWorking();
 	});
 
-	// ── Agent run lifecycle ────────────────────────────────────────────
+	// ── Agent end → idle or unread ─────────────────────────────────────
 	pi.on("agent_end", () => {
 		if (!cmuxAvailable()) return;
 		clearProgress();
-		setIdle();
+		// If the user is in another pane, mark as unread so they can spot
+		// which sessions finished while they were elsewhere. If they're
+		// already watching, go straight to idle — no need to flag it.
+		if (focusedAway) {
+			setUnread();
+		} else {
+			setIdle();
+		}
 		logLine(rt.statusKey, "success", `[${hhmm()}] Response complete`);
-		// No desktop notification on plain agent_end — the pill returning to
-		// idle and the sidebar log are the signal. Notifications are reserved
-		// for the `attention` state, where the agent is actually blocked on
-		// the user.
 	});
 
 	// ── Inter-extension attention events ────────────────────────────────
-	// Extensions that block on UI prompts outside the tool pipeline
-	// (pi-ask-user-question, pi-plan-mode's approval prompt) emit these
-	// events so we can flip the pill to red and fire a desktop notify
-	// without coupling.
 	pi.events.on("need_user_attention", (data: unknown) => {
 		if (!cmuxAvailable()) return;
 		const payload = data as { title?: string } | undefined;
@@ -140,10 +192,6 @@ export default function cmuxReportStatus(pi: ExtensionAPI): void {
 		setWorking();
 	});
 }
-
-// ---------------------------------------------------------------------------
-// Re-exports for convenience (makes the test surface explicit)
-// ---------------------------------------------------------------------------
 
 export { resolveStatusKey } from "./config.js";
 export {
