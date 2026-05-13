@@ -14,7 +14,9 @@
  *   session_start          → status "idle" + log "pi session started"
  *   input (any eligible)   → status "working" every turn; clears pending dot
  *   agent_end              → status "done" (red circle) + clear-progress + log;
- *                            cleared to "idle" (green checkmark) on focus-in
+ *                            focus-aware desktop notify (see notifyPolicy.ts);
+ *                            cleared to "idle" (green checkmark) on focus-out
+ *                            then focus-in.
  *   session_shutdown       → clear status pill + clear progress
  *
  * Additionally, two inter-extension events on pi.events are handled:
@@ -40,6 +42,8 @@ import {
 	setStatus,
 } from "./cmux.js";
 import { feedFocusBytes } from "./focusParser.js";
+import { applyFocusEvent, type FocusState } from "./focusState.js";
+import { resolveNotifyOnDoneMode, shouldNotifyOnDone } from "./notifyPolicy.js";
 import { resolveStatusKey } from "./config.js";
 
 const FOCUS_ENABLE = "\x1b[?1004h";
@@ -67,7 +71,10 @@ export function shortCwd(cwd: string): string {
 export default function cmuxReportStatus(pi: ExtensionAPI): void {
 	const rt = makeRuntime();
 
-	let hasPendingDot = false;
+	// `hasPendingDot` and `focusedAway` together drive the red-circle →
+	// green-checkmark transition. See focusState.ts for the rationale on
+	// why a focus-in alone is not enough to clear the dot.
+	let focusState: FocusState = { hasPendingDot: false, focusedAway: false };
 	let focusListener: ((chunk: Buffer) => void) | undefined;
 	let focusEnabled = false;
 
@@ -92,8 +99,9 @@ export default function cmuxReportStatus(pi: ExtensionAPI): void {
 				const { events: focusEvents, rest } = feedFocusBytes(buf, chunk.toString("binary"));
 				buf = rest;
 				for (const ev of focusEvents) {
-					if (ev === "in" && hasPendingDot) {
-						hasPendingDot = false;
+					const { nextState, transitionToIdle } = applyFocusEvent(focusState, ev);
+					focusState = nextState;
+					if (transitionToIdle) {
 						setStatus(rt.statusKey, "idle", "checkmark", "#30d158");
 					}
 				}
@@ -141,7 +149,7 @@ export default function cmuxReportStatus(pi: ExtensionAPI): void {
 		// pill to 'working' so the user gets immediate feedback that pi has
 		// accepted their turn. The pill stays 'working' across all tool calls
 		// in this turn and only returns to 'done' on `agent_end`.
-		hasPendingDot = false;
+		focusState = { hasPendingDot: false, focusedAway: focusState.focusedAway };
 		setStatus(rt.statusKey, "working", "bolt", "#ff9500");
 	});
 
@@ -150,12 +158,22 @@ export default function cmuxReportStatus(pi: ExtensionAPI): void {
 		if (!cmuxAvailable()) return;
 		clearProgress();
 		setStatus(rt.statusKey, "done", "circle.fill", "#ff3b30");
-		hasPendingDot = true;
+		// Mark the dot as pending. Crucially, we do NOT touch focusedAway
+		// here: if the user is already in another pane (focusedAway=true),
+		// the next focus-in must clear to idle; if they are still on the
+		// pi pane (focusedAway=false), spurious focus-in sequences emitted
+		// when the prompt redraws are ignored, so the red circle persists
+		// until the user actually leaves+returns or types a new message.
+		focusState = { ...focusState, hasPendingDot: true };
 		logLine(rt.statusKey, "success", `[${hhmm()}] Response complete`);
-		// No desktop notification here: agent finishing is surfaced via the
-		// status pill and sidebar log only. Notifications are reserved for
-		// states where the agent actively needs human input (attention tools).
-		// The red circle clears to idle (green checkmark) on the next focus-in.
+		// Focus-aware desktop notification: fire only when we have reason to
+		// believe the user is not staring at this pane. If focus reporting is
+		// off (non-TTY) we can't tell, so we ping; if it's on and the pane is
+		// focused, the red circle alone is enough. Override via
+		// $PI_CMUX_NOTIFY_ON_DONE = always | never | smart (default).
+		if (shouldNotifyOnDone(resolveNotifyOnDoneMode(), focusEnabled, focusState.focusedAway)) {
+			notifyCmux(rt.statusKey, shortCwd(process.cwd()), `[${hhmm()}] Response ready`);
+		}
 	});
 
 	// ── Inter-extension attention events ────────────────────────────────

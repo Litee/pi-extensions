@@ -180,7 +180,7 @@ describe("session lifecycle side-effects", () => {
 		expect(argvs.some((a) => a[0] === "log" && a.some((s) => s.includes("pi session started")))).toBe(true);
 	});
 
-	it("agent_end clears progress, sets done pill (red circle), logs, but does NOT send a desktop notify", async () => {
+	it("agent_end clears progress, sets done pill (red circle), logs, and fires a smart-mode desktop notify when focus state is unknown", async () => {
 		const pi = makeFakePi();
 		createExtension(pi as never);
 		await pi.handlers.get("agent_end")!({}, makeFakeCtx());
@@ -188,9 +188,40 @@ describe("session lifecycle side-effects", () => {
 		expect(argvs).toContainEqual(["clear-progress"]);
 		expect(argvs.some((a) => a[0] === "set-status" && a[2] === "done")).toBe(true);
 		expect(argvs.some((a) => a[0] === "log" && a.some((s) => s.includes("Response complete")))).toBe(true);
-		// Desktop notification is intentionally suppressed — the sidebar log and
-		// status pill are sufficient when the agent merely finishes its turn.
-		expect(argvs.some((a) => a[0] === "notify")).toBe(false);
+		// Smart mode (default): no TTY in tests means focus reporting is off,
+		// so we fall back to notifying — the user has no other way to tell.
+		expect(argvs.some((a) => a[0] === "notify" && a.some((s) => s.includes("Response ready")))).toBe(true);
+	});
+
+	it("agent_end stays silent when PI_CMUX_NOTIFY_ON_DONE=never", async () => {
+		const prev = process.env["PI_CMUX_NOTIFY_ON_DONE"];
+		process.env["PI_CMUX_NOTIFY_ON_DONE"] = "never";
+		try {
+			const pi = makeFakePi();
+			createExtension(pi as never);
+			await pi.handlers.get("agent_end")!({}, makeFakeCtx());
+			const argvs = spawner.mock.calls.map((c) => c[0] as string[]);
+			expect(argvs.some((a) => a[0] === "set-status" && a[2] === "done")).toBe(true);
+			expect(argvs.some((a) => a[0] === "notify")).toBe(false);
+		} finally {
+			if (prev === undefined) delete process.env["PI_CMUX_NOTIFY_ON_DONE"];
+			else process.env["PI_CMUX_NOTIFY_ON_DONE"] = prev;
+		}
+	});
+
+	it("agent_end always notifies when PI_CMUX_NOTIFY_ON_DONE=always", async () => {
+		const prev = process.env["PI_CMUX_NOTIFY_ON_DONE"];
+		process.env["PI_CMUX_NOTIFY_ON_DONE"] = "always";
+		try {
+			const pi = makeFakePi();
+			createExtension(pi as never);
+			await pi.handlers.get("agent_end")!({}, makeFakeCtx());
+			const argvs = spawner.mock.calls.map((c) => c[0] as string[]);
+			expect(argvs.some((a) => a[0] === "notify" && a.some((s) => s.includes("Response ready")))).toBe(true);
+		} finally {
+			if (prev === undefined) delete process.env["PI_CMUX_NOTIFY_ON_DONE"];
+			else process.env["PI_CMUX_NOTIFY_ON_DONE"] = prev;
+		}
 	});
 
 	it("agent_end sets circle.fill red status pill (not idle checkmark)", async () => {
