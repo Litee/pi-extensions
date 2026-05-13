@@ -157,6 +157,72 @@ describe("tool.execute — deactivate", () => {
 	});
 });
 
+// ---------------------------------------------------------------------------
+// Helper to pull the typed details out of an execute result.
+// ---------------------------------------------------------------------------
+
+interface DetailsShape {
+	action: string;
+	active: string[];
+	total: number;
+	rows: { name: string; active: boolean; description: string }[];
+	ignoredUnknown: string[];
+	ignoredProtected: string[];
+}
+
+function detailsOf(result: { details?: unknown }): DetailsShape {
+	return result.details as DetailsShape;
+}
+
+describe("tool.execute — details (TUI renderer data)", () => {
+	it("details.total equals the number of registered tools", async () => {
+		const pi = makeFakePi({ all: [...BASE_TOOLS], active: ["read", "bash"] });
+		createExtension(pi.api);
+		await pi.fireSessionStart();
+		// BASE_TOOLS (4) + manage_tools (1) = 5
+		const res = await exec(pi.tool, { action: "list" });
+		expect(detailsOf(res).total).toBe(5);
+	});
+
+	it("details.rows has one entry per tool with correct active flag", async () => {
+		const pi = makeFakePi({ all: [...BASE_TOOLS], active: ["read", "bash"] });
+		createExtension(pi.api);
+		await pi.fireSessionStart();
+		const res = await exec(pi.tool, { action: "list" });
+		const d = detailsOf(res);
+		expect(d.rows).toHaveLength(d.total);
+		expect(d.rows.find((r) => r.name === "read")?.active).toBe(true);
+		expect(d.rows.find((r) => r.name === "edit")?.active).toBe(false);
+	});
+
+	it("details.rows carries the tool description", async () => {
+		const pi = makeFakePi({ all: [...BASE_TOOLS], active: ["read"] });
+		createExtension(pi.api);
+		await pi.fireSessionStart();
+		const res = await exec(pi.tool, { action: "list" });
+		const bashRow = detailsOf(res).rows.find((r) => r.name === "bash");
+		expect(bashRow?.description).toBe("Run a shell command");
+	});
+
+	it("details.total and rows reflect state after activate", async () => {
+		const pi = makeFakePi({ all: [...BASE_TOOLS], active: ["read"] });
+		createExtension(pi.api);
+		await pi.fireSessionStart();
+		const res = await exec(pi.tool, { action: "activate", tools: ["edit"] });
+		const d = detailsOf(res);
+		expect(d.total).toBe(5);
+		expect(d.rows.find((r) => r.name === "edit")?.active).toBe(true);
+	});
+
+	it("details.rows reflects deactivated tools", async () => {
+		const pi = makeFakePi({ all: [...BASE_TOOLS], active: ["read", "bash", "edit"] });
+		createExtension(pi.api);
+		await pi.fireSessionStart();
+		const res = await exec(pi.tool, { action: "deactivate", tools: ["bash"] });
+		expect(detailsOf(res).rows.find((r) => r.name === "bash")?.active).toBe(false);
+	});
+});
+
 describe("tool.execute — reset", () => {
 	it("restores the active set captured at session_start", async () => {
 		const pi = makeFakePi({ all: [...BASE_TOOLS], active: ["read", "bash"] });

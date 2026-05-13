@@ -18,6 +18,7 @@
 
 import type { ExtensionAPI, ToolInfo } from "@earendil-works/pi-coding-agent";
 import { StringEnum } from "@earendil-works/pi-ai";
+import { Text } from "@earendil-works/pi-tui";
 import { Type } from "typebox";
 
 import { computeNext } from "./manager.js";
@@ -110,6 +111,49 @@ export default function manageToolsExtension(pi: ExtensionAPI): void {
 		promptGuidelines: PROMPT_GUIDELINES,
 		parameters: ParamsSchema,
 
+		renderResult(result, { expanded, isPartial }, theme) {
+			if (isPartial) return new Text(theme.fg("muted", "..."), 0, 0);
+
+			interface DetailsShape {
+				active: string[];
+				total: number;
+				rows: ListingRow[];
+				ignoredUnknown: string[];
+				ignoredProtected: string[];
+			}
+			const d = result.details as DetailsShape | undefined;
+			const activeCount = d?.active.length ?? 0;
+			const total = d?.total ?? 0;
+
+			let text =
+				theme.fg("success", `${activeCount} active`) +
+				theme.fg("dim", ` / ${total} total`);
+
+			if (!expanded) {
+				text += theme.fg("dim", " — Ctrl-o to expand");
+			} else {
+				const rows = d?.rows ?? [];
+				for (const row of rows) {
+					const mark = row.active
+						? theme.fg("success", "[x]")
+						: theme.fg("dim", "[ ]");
+					const desc = row.description
+						? theme.fg("dim", ` — ${row.description.split("\n")[0]}`)
+						: "";
+					text += `\n  ${mark} ${theme.bold(row.name)}${desc}`;
+				}
+			}
+
+			if (d?.ignoredUnknown?.length) {
+				text += `\n${theme.fg("warning", `Ignored unknown: ${d.ignoredUnknown.join(", ")}`)}` ;
+			}
+			if (d?.ignoredProtected?.length) {
+				text += `\n${theme.fg("warning", `Refused (protected): ${d.ignoredProtected.join(", ")}`)}` ;
+			}
+
+			return new Text(text, 0, 0);
+		},
+
 		execute(_toolCallId, params, _signal, _onUpdate, _ctx) {
 			const all = pi.getAllTools();
 			const knownTools = new Set(all.map((t) => t.name));
@@ -170,6 +214,8 @@ export default function manageToolsExtension(pi: ExtensionAPI): void {
 				details: {
 					action: params.action,
 					active: listing.filter((r) => r.active).map((r) => r.name),
+					total: listing.length,
+					rows: listing,
 					ignoredUnknown: result.ignoredUnknown,
 					ignoredProtected: result.ignoredProtected,
 				},
