@@ -52,8 +52,15 @@ export function createExtensionWithClient(pi: ExtensionAPI, client: GlueClient):
 		const state = rehydrateStateFromSession(ctx);
 		rt.watches = state?.watches ?? {};
 		rt.paused = state?.paused ?? false;
-		rt.enabled = state?.enabled ?? false;
 		rt.displayMode = state?.displayMode ?? "widget";
+
+		// If watches survived the session log, the user must have enabled and
+		// used the tool previously. Treat watches-present as an implicit
+		// enabled=true so the widget and polling are restored even when the
+		// session ended before turn_end could persist enabled=true (e.g. crash,
+		// force-kill, or mid-turn reload).
+		const hasActiveWatches = Object.values(rt.watches).some((w) => !w.terminal);
+		rt.enabled = (state?.enabled ?? false) || hasActiveWatches;
 
 		// Always register the tool into the registry so manage_tools({action:"list"})
 		// shows it. Then sync its active-set membership with persisted `enabled`

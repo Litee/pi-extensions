@@ -212,6 +212,77 @@ describe("reconcileToolActivation", () => {
 	});
 });
 
+describe("session resume: widget + polling restored from persisted watches", () => {
+	function makeCtxWithWidget(setWidget: ReturnType<typeof vi.fn>) {
+		return {
+			hasUI: true,
+			ui: { hasUI: true, setWidget, setStatus: vi.fn(), theme: { fg: (_c: string, t: string) => t } },
+			sessionManager: { getEntries: () => [] },
+		};
+	}
+
+	function persistedWithWatches(enabled: boolean) {
+		return [{
+			type: "custom",
+			customType: "pi-aws-glue-watcher:state",
+			data: {
+				savedAt: 1,
+				paused: false,
+				baselines: { enabled, displayMode: "widget" },
+				watches: [{
+					watchId: "w1",
+					type: "job",
+					name: "etl",
+					runId: "jr_123",
+					profile: "p",
+					baseline: { state: "RUNNING", errorMessage: "" },
+					addedAt: 0,
+					terminal: false,
+					consecutiveErrors: 0,
+				}],
+			},
+		}];
+	}
+
+	it("restores widget when enabled=true is persisted", async () => {
+		const { createExtensionWithClient } = await import("../src/index.js");
+		const pi = makePi();
+		const setWidget = vi.fn();
+		createExtensionWithClient(pi as unknown as ExtensionAPI, makeClient());
+		await pi._handlers.sessionStart!({}, {
+			...makeCtxWithWidget(setWidget),
+			sessionManager: { getEntries: () => persistedWithWatches(true) },
+		});
+		const widgetCalls = setWidget.mock.calls.filter((c) => c[0] === "glue-watcher" && c[1] !== undefined);
+		expect(widgetCalls.length).toBeGreaterThan(0);
+	});
+
+	it("restores widget when enabled=false but active non-terminal watches exist (crash-recovery path)", async () => {
+		// Regression for #0008: session ended before turn_end persisted enabled=true,
+		// but watches survived. Widget must still be restored.
+		const { createExtensionWithClient } = await import("../src/index.js");
+		const pi = makePi();
+		const setWidget = vi.fn();
+		createExtensionWithClient(pi as unknown as ExtensionAPI, makeClient());
+		await pi._handlers.sessionStart!({}, {
+			...makeCtxWithWidget(setWidget),
+			sessionManager: { getEntries: () => persistedWithWatches(false) },
+		});
+		const widgetCalls = setWidget.mock.calls.filter((c) => c[0] === "glue-watcher" && c[1] !== undefined);
+		expect(widgetCalls.length).toBeGreaterThan(0);
+	});
+
+	it("does NOT restore widget when there are no active watches", async () => {
+		const { createExtensionWithClient } = await import("../src/index.js");
+		const pi = makePi();
+		const setWidget = vi.fn();
+		createExtensionWithClient(pi as unknown as ExtensionAPI, makeClient());
+		await pi._handlers.sessionStart!({}, makeCtxWithWidget(setWidget));
+		const widgetCalls = setWidget.mock.calls.filter((c) => c[0] === "glue-watcher" && c[1] !== undefined);
+		expect(widgetCalls.length).toBe(0);
+	});
+});
+
 describe("startup chat message: triggerTurn + label", () => {
 	it("sends the startup chat message with triggerTurn: false so it doesn't kick off an LLM round-trip", async () => {
 		const { createExtensionWithClient } = await import("../src/index.js");
