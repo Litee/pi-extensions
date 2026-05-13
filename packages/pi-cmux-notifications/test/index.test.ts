@@ -102,9 +102,7 @@ function enterCmux(): () => void {
 
 describe("shortCwd", () => {
 	it("returns the trailing path component", () => {
-		expect(shortCwd("/path/to/pi-extensions")).toBe(
-			"pi-extensions",
-		);
+		expect(shortCwd("/path/to/pi-extensions")).toBe("pi-extensions");
 	});
 
 	it("handles trailing slashes", () => {
@@ -122,26 +120,34 @@ describe("shortCwd", () => {
 // ---------------------------------------------------------------------------
 
 describe("default export — wiring", () => {
-	it("subscribes to the status-pill lifecycle events", () => {
+	it("subscribes to the three-state lifecycle events", () => {
 		const pi = makeFakePi();
 		createExtension(pi as never);
 
 		const subscribed = pi.on.mock.calls.map((c) => c[0] as string);
+		// Both `input` and `before_agent_start` flip to bolt — belt & braces
+		// so non-interactive turn starts (slack-watcher injection, recovery)
+		// also light up the working pill.
 		for (const evt of [
 			"session_start",
 			"session_shutdown",
 			"input",
+			"before_agent_start",
 			"agent_end",
 		]) {
 			expect(subscribed).toContain(evt);
 		}
-		// `before_agent_start` is intentionally not wired — the pill is
-		// flipped to 'working' from the `input` handler instead.
-		expect(subscribed).not.toContain("before_agent_start");
-		// tool_execution_start/end are no longer wired — attention for
-		// ask_user_question is now emitted by pi-ask-user-question via pi.events.
+		// tool_execution_start/end are not wired — attention for
+		// ask_user_question is now emitted via pi.events.
 		expect(subscribed).not.toContain("tool_execution_start");
 		expect(subscribed).not.toContain("tool_execution_end");
+	});
+
+	it("subscribes to attention events on pi.events", () => {
+		const pi = makeFakePi();
+		createExtension(pi as never);
+		expect(pi.events.handlers.has("need_user_attention")).toBe(true);
+		expect(pi.events.handlers.has("user_attention_resolved")).toBe(true);
 	});
 
 	it("does NOT register the /cmux-rename command (that lives in pi-cmux-update-workspace-name)", () => {
@@ -152,7 +158,7 @@ describe("default export — wiring", () => {
 });
 
 // ---------------------------------------------------------------------------
-// session_start → idle pill, session_shutdown → clear
+// Session lifecycle
 // ---------------------------------------------------------------------------
 
 describe("session lifecycle side-effects", () => {
@@ -171,79 +177,53 @@ describe("session lifecycle side-effects", () => {
 		__setCmuxSpawnerForTests(null);
 	});
 
-	it("session_start emits set-status idle + a session-started log line", async () => {
+	it("session_start emits set-status idle (green checkmark) + a session-started log line", async () => {
 		const pi = makeFakePi();
 		createExtension(pi as never);
 		await pi.handlers.get("session_start")!({}, makeFakeCtx());
 		const argvs = spawner.mock.calls.map((c) => c[0] as string[]);
-		expect(argvs.some((a) => a[0] === "set-status" && a[2] === "idle")).toBe(true);
-		expect(argvs.some((a) => a[0] === "log" && a.some((s) => s.includes("pi session started")))).toBe(true);
+		expect(argvs).toContainEqual([
+			"set-status",
+			"pi",
+			"idle",
+			"--icon",
+			"checkmark",
+			"--color",
+			"#30d158",
+		]);
+		expect(
+			argvs.some(
+				(a) => a[0] === "log" && a.some((s) => s.includes("pi session started")),
+			),
+		).toBe(true);
 	});
 
-	it("agent_end clears progress, sets done pill (red circle), logs, and fires a smart-mode desktop notify when focus state is unknown", async () => {
+	it("agent_end clears progress, returns the pill to idle (green checkmark), logs, and does NOT desktop-notify", async () => {
 		const pi = makeFakePi();
 		createExtension(pi as never);
 		await pi.handlers.get("agent_end")!({}, makeFakeCtx());
 		const argvs = spawner.mock.calls.map((c) => c[0] as string[]);
 		expect(argvs).toContainEqual(["clear-progress"]);
-		expect(argvs.some((a) => a[0] === "set-status" && a[2] === "done")).toBe(true);
-		expect(argvs.some((a) => a[0] === "log" && a.some((s) => s.includes("Response complete")))).toBe(true);
-		// Smart mode (default): no TTY in tests means focus reporting is off,
-		// so we fall back to notifying — the user has no other way to tell.
-		expect(argvs.some((a) => a[0] === "notify" && a.some((s) => s.includes("Response ready")))).toBe(true);
-	});
-
-	it("agent_end stays silent when PI_CMUX_NOTIFY_ON_DONE=never", async () => {
-		const prev = process.env["PI_CMUX_NOTIFY_ON_DONE"];
-		process.env["PI_CMUX_NOTIFY_ON_DONE"] = "never";
-		try {
-			const pi = makeFakePi();
-			createExtension(pi as never);
-			await pi.handlers.get("agent_end")!({}, makeFakeCtx());
-			const argvs = spawner.mock.calls.map((c) => c[0] as string[]);
-			expect(argvs.some((a) => a[0] === "set-status" && a[2] === "done")).toBe(true);
-			expect(argvs.some((a) => a[0] === "notify")).toBe(false);
-		} finally {
-			if (prev === undefined) delete process.env["PI_CMUX_NOTIFY_ON_DONE"];
-			else process.env["PI_CMUX_NOTIFY_ON_DONE"] = prev;
-		}
-	});
-
-	it("agent_end always notifies when PI_CMUX_NOTIFY_ON_DONE=always", async () => {
-		const prev = process.env["PI_CMUX_NOTIFY_ON_DONE"];
-		process.env["PI_CMUX_NOTIFY_ON_DONE"] = "always";
-		try {
-			const pi = makeFakePi();
-			createExtension(pi as never);
-			await pi.handlers.get("agent_end")!({}, makeFakeCtx());
-			const argvs = spawner.mock.calls.map((c) => c[0] as string[]);
-			expect(argvs.some((a) => a[0] === "notify" && a.some((s) => s.includes("Response ready")))).toBe(true);
-		} finally {
-			if (prev === undefined) delete process.env["PI_CMUX_NOTIFY_ON_DONE"];
-			else process.env["PI_CMUX_NOTIFY_ON_DONE"] = prev;
-		}
-	});
-
-	it("agent_end sets circle.fill red status pill (not idle checkmark)", async () => {
-		const pi = makeFakePi();
-		createExtension(pi as never);
-		await pi.handlers.get("agent_end")!({}, makeFakeCtx());
-		const argvs = spawner.mock.calls.map((c) => c[0] as string[]);
-		expect(argvs.some((a) => a[0] === "set-status" && a[2] === "done")).toBe(true);
-		expect(argvs.some((a) => a.includes("circle.fill"))).toBe(true);
-		expect(argvs.some((a) => a[0] === "set-status" && a[2] === "idle")).toBe(false);
-	});
-
-	it("input after agent_end clears the pending dot (pill changes to working, not idle)", async () => {
-		const pi = makeFakePi();
-		createExtension(pi as never);
-		await pi.handlers.get("agent_end")!({}, makeFakeCtx());
-		spawner.mockClear();
-		await pi.handlers.get("input")!({ source: "interactive", text: "hi" }, makeFakeCtx());
-		const argvs = spawner.mock.calls.map((c) => c[0] as string[]);
-		// Should flip to working, not idle
-		expect(argvs.some((a) => a[0] === "set-status" && a[2] === "working")).toBe(true);
-		expect(argvs.some((a) => a[0] === "set-status" && a[2] === "idle")).toBe(false);
+		expect(argvs).toContainEqual([
+			"set-status",
+			"pi",
+			"idle",
+			"--icon",
+			"checkmark",
+			"--color",
+			"#30d158",
+		]);
+		expect(
+			argvs.some(
+				(a) => a[0] === "log" && a.some((s) => s.includes("Response complete")),
+			),
+		).toBe(true);
+		// Crucially, no desktop notification — the pill returning to idle and
+		// the sidebar log are the signal. Notifications are reserved for the
+		// `attention` state.
+		expect(argvs.some((a) => a[0] === "notify")).toBe(false);
+		// And no leftover "done" state from the old design.
+		expect(argvs.some((a) => a[0] === "set-status" && a[2] === "done")).toBe(false);
 	});
 
 	it("session_shutdown clears progress and the status pill", async () => {
@@ -255,18 +235,59 @@ describe("session lifecycle side-effects", () => {
 		expect(argvs).toContainEqual(["set-status", "pi", ""]);
 	});
 
-	it("pi.events need_user_attention flips pill to waiting and fires a desktop notify", () => {
+	it("before_agent_start flips the pill to working (orange bolt)", async () => {
+		const pi = makeFakePi();
+		createExtension(pi as never);
+		await pi.handlers.get("before_agent_start")!({}, makeFakeCtx());
+		const argvs = spawner.mock.calls.map((c) => c[0] as string[]);
+		expect(argvs).toContainEqual([
+			"set-status",
+			"pi",
+			"working",
+			"--icon",
+			"bolt",
+			"--color",
+			"#ff9500",
+		]);
+	});
+
+	it("pi.events need_user_attention sets the speech-bubble red attention pill and fires a desktop notify", () => {
 		const pi = makeFakePi();
 		createExtension(pi as never);
 		const handler = pi.events.handlers.get("need_user_attention")!;
 		expect(handler).toBeDefined();
 		handler({ source: "plan-mode", title: "Plan mode \u2014 what next?" });
 		const argvs = spawner.mock.calls.map((c) => c[0] as string[]);
-		expect(argvs.some((a) => a[0] === "set-status" && a[2] === "waiting")).toBe(true);
-		expect(argvs.some((a) => a[0] === "notify" && a.some((s) => s.includes("Plan mode")))).toBe(true);
+		expect(argvs).toContainEqual([
+			"set-status",
+			"pi",
+			"attention",
+			"--icon",
+			"bubble.left.fill",
+			"--color",
+			"#ff3b30",
+		]);
+		expect(
+			argvs.some(
+				(a) => a[0] === "notify" && a.some((s) => s.includes("Plan mode")),
+			),
+		).toBe(true);
 	});
 
-	it("pi.events user_attention_resolved flips pill back to working", () => {
+	it("pi.events need_user_attention falls back to a generic title when payload omits one", () => {
+		const pi = makeFakePi();
+		createExtension(pi as never);
+		const handler = pi.events.handlers.get("need_user_attention")!;
+		handler(undefined);
+		const argvs = spawner.mock.calls.map((c) => c[0] as string[]);
+		expect(
+			argvs.some(
+				(a) => a[0] === "notify" && a.some((s) => s.includes("Needs your input")),
+			),
+		).toBe(true);
+	});
+
+	it("pi.events user_attention_resolved flips pill back to working (bolt) silently", () => {
 		const pi = makeFakePi();
 		createExtension(pi as never);
 		const handler = pi.events.handlers.get("user_attention_resolved")!;
@@ -306,9 +327,7 @@ describe("input handler", () => {
 			makeFakeCtx(),
 		);
 		const argvs = spawner.mock.calls.map((c) => c[0] as string[]);
-		expect(argvs.some((a) => a[0] === "set-status" && a[2] === "working")).toBe(
-			false,
-		);
+		expect(argvs.some((a) => a[0] === "set-status" && a[2] === "working")).toBe(false);
 	});
 
 	it("ignores empty text", async () => {
@@ -319,12 +338,10 @@ describe("input handler", () => {
 			makeFakeCtx(),
 		);
 		const argvs = spawner.mock.calls.map((c) => c[0] as string[]);
-		expect(argvs.some((a) => a[0] === "set-status" && a[2] === "working")).toBe(
-			false,
-		);
+		expect(argvs.some((a) => a[0] === "set-status" && a[2] === "working")).toBe(false);
 	});
 
-	it("ignores non-interactive sources", async () => {
+	it("ignores non-interactive sources (covered by before_agent_start instead)", async () => {
 		const pi = makeFakePi();
 		createExtension(pi as never);
 		await pi.handlers.get("input")!(
@@ -332,9 +349,10 @@ describe("input handler", () => {
 			makeFakeCtx(),
 		);
 		const argvs = spawner.mock.calls.map((c) => c[0] as string[]);
-		expect(argvs.some((a) => a[0] === "set-status" && a[2] === "working")).toBe(
-			false,
-		);
+		// `input` from a non-interactive source is filtered, but the
+		// before_agent_start hook (tested elsewhere) still lights up the
+		// bolt for these turns.
+		expect(argvs.some((a) => a[0] === "set-status" && a[2] === "working")).toBe(false);
 	});
 
 	it("flips the pill to 'working' on an eligible user message", async () => {
