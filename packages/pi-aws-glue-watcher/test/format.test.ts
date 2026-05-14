@@ -263,6 +263,32 @@ describe("buildStartupChatMessage", () => {
 		expect(msg).not.toContain("\n\n");
 		expect(msg).toMatch(/watching 1 run:\n1\./);
 	});
+	it("appends ' — poll: Ns' suffix when pollMs is provided (#0009)", () => {
+		const watches: WatchMap = {
+			aa: makeJobWatch({ watchId: "aa", name: "etl-job", runId: "jr_123" }),
+		};
+		const msg = buildStartupChatMessage(watches, FIXED_DATE, { pollMs: 120_000 });
+		expect(msg).toContain("watching 1 run \u2014 poll: 120s:");
+	});
+
+	it("omits poll suffix when pollMs is undefined or 0", () => {
+		const watches: WatchMap = {
+			aa: makeJobWatch({ watchId: "aa", name: "etl-job", runId: "jr_123" }),
+		};
+		const noPoll = buildStartupChatMessage(watches, FIXED_DATE);
+		expect(noPoll).not.toContain("poll:");
+		const zeroPoll = buildStartupChatMessage(watches, FIXED_DATE, { pollMs: 0 });
+		expect(zeroPoll).not.toContain("poll:");
+	});
+
+	it("poll suffix is preserved in expanded form", () => {
+		const watches: WatchMap = {
+			aa: makeJobWatch({ watchId: "aa", name: "etl-job", runId: "jr_123" }),
+		};
+		const msg = buildStartupChatMessage(watches, FIXED_DATE, { expanded: true, pollMs: 60_000 });
+		expect(msg).toContain("watching 1 run \u2014 poll: 60s:");
+		expect(msg).toContain("\u00b7 run: jr_123");
+	});
 });
 
 describe("buildWatchEntry", () => {

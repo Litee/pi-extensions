@@ -92,12 +92,13 @@ export function createExtensionWithClient(pi: ExtensionAPI, client: GlueClient):
 
 		if (Object.keys(rt.watches).length > 0) {
 			setImmediate(() => {
+				const pollMs = rt.scheduler.intervalMs;
 				pi.sendMessage(
 					{
 						customType: CUSTOM_MESSAGE_TYPE,
-						content: buildStartupChatMessage(rt.watches, new Date()),
+						content: buildStartupChatMessage(rt.watches, new Date(), { pollMs }),
 						display: true,
-						details: { watches: rt.watches, date: new Date().toISOString() },
+						details: { watches: rt.watches, date: new Date().toISOString(), pollMs },
 					},
 					{ deliverAs: "followUp", triggerTurn: false },
 				);
@@ -165,8 +166,11 @@ export function createExtensionWithClient(pi: ExtensionAPI, client: GlueClient):
 				typeof message.details === "object" &&
 				"watches" in (message.details as object)
 			) {
-				const d = message.details as { watches: WatchMap; date: string };
-				return buildStartupChatMessage(d.watches, new Date(d.date), { expanded: true });
+				const d = message.details as { watches: WatchMap; date: string; pollMs?: number };
+				return buildStartupChatMessage(d.watches, new Date(d.date), {
+					expanded: true,
+					...(typeof d.pollMs === "number" ? { pollMs: d.pollMs } : {}),
+				});
 			}
 			return text;
 		})();

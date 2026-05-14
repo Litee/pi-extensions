@@ -168,14 +168,18 @@ export function buildWatchEntry(
 export function buildStartupChatMessage(
 	watches: WatchMap,
 	date: Date,
-	{ expanded = false }: { expanded?: boolean } = {},
+	{ expanded = false, pollMs }: { expanded?: boolean; pollMs?: number } = {},
 ): string {
 	const all = Object.values(watches);
 	if (all.length === 0) {
 		return "active \u2014 no watches configured. Use the glue_watcher tool to add a job or workflow.";
 	}
 	const noun = all.length === 1 ? "run" : "runs";
-	const header = `${formatHm(date)} active \u2014 watching ${all.length} ${noun}:`;
+	const pollSuffix =
+		typeof pollMs === "number" && pollMs > 0
+			? ` \u2014 poll: ${Math.round(pollMs / 1000)}s`
+			: "";
+	const header = `${formatHm(date)} active \u2014 watching ${all.length} ${noun}${pollSuffix}:`;
 
 	const entries = all.map((w, i) => buildWatchEntry(w, i));
 
