@@ -180,12 +180,12 @@ export function formatCompactStatusSummary(snapshot: Snapshot): string {
  * Build the `content` field of the `pi.sendMessage` payload the watcher
  * delivers whenever it detects ≥ 1 change. Structure:
  *
- *     [HH:MM:SS] N update(s):
+ *     [HH:MM] N update(s):
  *     - <rendered change 1>
  *     - <rendered change 2>
  *     ...
  *
- * `HH:MM:SS` is the local-time clock reading of `now` (typically the moment
+ * `HH:MM` is the local-time clock reading of `now` (typically the moment
  * the watcher observed the change), with zero-padded fields. Callers supply
  * the `Date` so tests can pin the value without clock mocking.
  *
@@ -194,7 +194,7 @@ export function formatCompactStatusSummary(snapshot: Snapshot): string {
  */
 export function buildChatMessageContent(changes: Change[], now: Date): string {
 	if (changes.length === 0) return "";
-	const stamp = formatLocalHms(now);
+	const stamp = formatLocalHm(now);
 	const header =
 		changes.length === 1
 			? `[${stamp}] 1 update:`
@@ -203,8 +203,8 @@ export function buildChatMessageContent(changes: Change[], now: Date): string {
 	return [header, ...bullets].join("\n");
 }
 
-/** Zero-padded local-time `HH:MM:SS` for a given Date. */
-function formatLocalHms(d: Date): string {
+/** Zero-padded local-time `HH:MM` for a given Date. */
+function formatLocalHm(d: Date): string {
 	const pad = (n: number): string => n.toString().padStart(2, "0");
-	return `${pad(d.getHours())}:${pad(d.getMinutes())}:${pad(d.getSeconds())}`;
+	return `${pad(d.getHours())}:${pad(d.getMinutes())}`;
 }
