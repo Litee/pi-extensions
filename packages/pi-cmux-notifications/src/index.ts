@@ -16,19 +16,25 @@
  * and immediately tell apart "I know why this session is quiet" (grey)
  * from "something happened here while I was elsewhere" (blue).
  *
- * Focus tracking (DECSET ?1004):
- *   - focus-out sets `focusedAway = true`.
- *   - focus-in sets `focusedAway = false`; if the pill was `unread`,
- *     clears it to `idle` — you're now looking at it.
- *   - On `agent_end`: if `focusedAway`, pill → `unread`; otherwise
- *     pill → `idle` (you were already watching, no need to flag it).
- *   Focus reporting requires stdin + stdout to both be TTYs. When
- *   unavailable (non-TTY, RPC-only sessions), `focusedAway` is always
- *   false and `agent_end` goes straight to `idle`.
+ * Focus tracking (cmux events stream):
+ *   Subscribes to `cmux events --reconnect` to watch:
+ *   - `workspace.selected` — fires on the newly active workspace;
+ *     if workspace_id matches CMUX_WORKSPACE_ID → focus-in, else → focus-out.
+ *   - `window.unkeyed` / `window.keyed` — OS-level window focus.
+ *   focusedAway = !windowKeyed || !workspaceSelected.
+ *   This correctly handles both cmux workspace switches AND app switches,
+ *   unlike the old DECSET ?1004 approach which cmux does not forward on
+ *   workspace-level switches.
  *
  * All cmux calls are no-ops when not running inside cmux (see
  * `cmuxAvailable`), so loading this extension in a plain terminal is safe.
+ *
+ * DEBUG: set PI_CMUX_NOTIFY_DEBUG=1 to log focus events and notifyCmux
+ * calls to /tmp/pi-cmux-debug.log.
  */
+
+import { appendFileSync } from "node:fs";
+import { spawn, type ChildProcess } from "node:child_process";
 
 import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
 
@@ -41,11 +47,15 @@ import {
 	notifyCmux,
 	setStatus,
 } from "./cmux.js";
-import { feedFocusBytes } from "./focusParser.js";
 import { resolveStatusKey } from "./config.js";
 
-const FOCUS_ENABLE = "\x1b[?1004h";
-const FOCUS_DISABLE = "\x1b[?1004l";
+// ── Debug logging (PI_CMUX_NOTIFY_DEBUG=1) ────────────────────────────────
+const DEBUG = process.env["PI_CMUX_NOTIFY_DEBUG"] === "1";
+const DEBUG_LOG = "/tmp/pi-cmux-debug.log";
+function dbg(msg: string): void {
+	if (!DEBUG) return;
+	try { appendFileSync(DEBUG_LOG, `${new Date().toISOString()} ${msg}\n`); } catch { /* ignore */ }
+}
 
 export interface Runtime {
 	statusKey: string;
@@ -74,11 +84,16 @@ const ATTENTION_COLOR = "#ff3b30"; // red
 export default function cmuxReportStatus(pi: ExtensionAPI): void {
 	const rt = makeRuntime();
 
-	// Focus state — updated by the stdin focus listener below.
-	let focusedAway = false;
-	let hasUnread   = false; // true while pill is in the `unread` state
-	let focusListener: ((chunk: Buffer) => void) | undefined;
-	let focusEnabled = false;
+	// Focus state — managed by cmux events subscription.
+	// windowKeyed:       true while the cmux OS window has keyboard focus.
+	// workspaceSelected: true while this workspace is the active one.
+	// Both default to true (assume we start in the active, focused workspace).
+	let windowKeyed       = true;
+	let workspaceSelected = true;
+	let hasUnread         = false; // true while pill is in the `unread` state
+	let focusChild: ChildProcess | undefined;
+
+	const isFocusedAway = (): boolean => !windowKeyed || !workspaceSelected;
 
 	// ── Pill helpers ────────────────────────────────────────────────────
 	const setIdle = (): void => {
@@ -98,41 +113,58 @@ export default function cmuxReportStatus(pi: ExtensionAPI): void {
 		notifyCmux(rt.statusKey, shortCwd(process.cwd()), `[${hhmm()}] ${label}`);
 	};
 
-	// ── Focus reporting ─────────────────────────────────────────────────
-	function attachFocusReporting(): void {
-		if (focusEnabled) return;
-		if (!process.stdout.isTTY || !process.stdin.isTTY) return;
-		try { process.stdout.write(FOCUS_ENABLE); } catch { return; }
-		let buf = "";
-		const listener = (chunk: Buffer) => {
-			try {
-				const { events, rest } = feedFocusBytes(buf, chunk.toString("binary"));
-				buf = rest;
-				for (const ev of events) {
-					if (ev === "out") {
-						focusedAway = true;
-					} else {
-						// focus-in: user is back on this pane
-						focusedAway = false;
-						if (hasUnread) setIdle();
+	// ── cmux events-based focus tracking ────────────────────────────────
+	function attachCmuxFocusTracking(): void {
+		if (focusChild) return;
+		const myWorkspaceId = process.env["CMUX_WORKSPACE_ID"];
+		if (!myWorkspaceId) return;
+		try {
+			const child = _focusSpawn("cmux", [
+				"events", "--reconnect", "--no-heartbeat",
+				"--name", "workspace.selected",
+				"--name", "window.keyed",
+				"--name", "window.unkeyed",
+			], { stdio: ["ignore", "pipe", "ignore"] });
+			focusChild = child;
+			let buf = "";
+			child.stdout?.on("data", (chunk: Buffer) => {
+				try {
+					buf += chunk.toString("utf8");
+					const lines = buf.split("\n");
+					buf = lines.pop() ?? "";
+					for (const line of lines) {
+						if (!line.trim()) continue;
+						try {
+							const ev = JSON.parse(line) as { type?: string; name?: string; workspace_id?: string };
+							if (ev.type !== "event") continue;
+							const wasAway = isFocusedAway();
+							if (ev.name === "workspace.selected") {
+								workspaceSelected = ev.workspace_id === myWorkspaceId;
+								dbg(`workspace.selected ws=${ev.workspace_id} mine=${myWorkspaceId} → workspaceSelected=${workspaceSelected}`);
+							} else if (ev.name === "window.unkeyed") {
+								windowKeyed = false;
+								dbg(`window.unkeyed → windowKeyed=false`);
+							} else if (ev.name === "window.keyed") {
+								windowKeyed = true;
+								dbg(`window.keyed → windowKeyed=true`);
+							}
+							const nowAway = isFocusedAway();
+							if (wasAway && !nowAway) {
+								dbg(`focus-in: hasUnread=${hasUnread}`);
+								if (hasUnread) setIdle();
+							}
+						} catch { /* ignore bad JSON line */ }
 					}
-				}
-			} catch { /* best-effort */ }
-		};
-		process.stdin.on("data", listener);
-		focusListener = listener;
-		focusEnabled = true;
+				} catch { /* ignore */ }
+			});
+			child.on("error", () => { focusChild = undefined; });
+			child.on("exit", () => { focusChild = undefined; });
+		} catch { /* spawn failed — cmux not on PATH */ }
 	}
 
-	function detachFocusReporting(): void {
-		if (focusListener) {
-			try { process.stdin.off("data", focusListener); } catch { /* noop */ }
-			focusListener = undefined;
-		}
-		if (focusEnabled) {
-			try { process.stdout.write(FOCUS_DISABLE); } catch { /* noop */ }
-			focusEnabled = false;
-		}
+	function detachCmuxFocusTracking(): void {
+		try { focusChild?.kill(); } catch { /* noop */ }
+		focusChild = undefined;
 	}
 
 	// ── Session lifecycle ──────────────────────────────────────────────
@@ -140,12 +172,13 @@ export default function cmuxReportStatus(pi: ExtensionAPI): void {
 		if (!cmuxAvailable()) return;
 		setIdle();
 		logLine(rt.statusKey, "info", `[${hhmm()}] pi session started`);
-		attachFocusReporting();
+		dbg(`session_start workspace=${process.env["CMUX_WORKSPACE_ID"]}`);
+		attachCmuxFocusTracking();
 	});
 
 	pi.on("session_shutdown", () => {
 		if (!cmuxAvailable()) return;
-		detachFocusReporting();
+		detachCmuxFocusTracking();
 		clearProgress();
 		clearStatus(rt.statusKey);
 	});
@@ -172,7 +205,8 @@ export default function cmuxReportStatus(pi: ExtensionAPI): void {
 		// If the user is in another pane, mark as unread so they can spot
 		// which sessions finished while they were elsewhere. If they're
 		// already watching, go straight to idle — no need to flag it.
-		if (focusedAway) {
+		dbg(`agent_end: isFocusedAway=${isFocusedAway()} windowKeyed=${windowKeyed} workspaceSelected=${workspaceSelected}`);
+		if (isFocusedAway()) {
 			setUnread();
 		} else {
 			setIdle();
@@ -184,7 +218,9 @@ export default function cmuxReportStatus(pi: ExtensionAPI): void {
 	pi.events.on("user_attention_requested", (data: unknown) => {
 		if (!cmuxAvailable()) return;
 		const payload = data as { title?: string } | undefined;
-		setAttention(payload?.title ?? "Needs your input");
+		const label = payload?.title ?? "Needs your input";
+		dbg(`need_user_attention: "${label}" → calling notifyCmux`);
+		setAttention(label);
 	});
 
 	pi.events.on("user_attention_resolved", () => {
@@ -201,3 +237,14 @@ export {
 	cmuxAvailable,
 	hhmm,
 } from "./cmux.js";
+
+// ---------------------------------------------------------------------------
+// Test seam: allow tests to inject a fake spawn for the focus-tracking child.
+// Production code always uses the real `spawn` imported above.
+// ---------------------------------------------------------------------------
+type SpawnFn = typeof spawn;
+let _focusSpawn: SpawnFn = spawn;
+export function __setFocusSpawnForTests(s: SpawnFn | null): void {
+	_focusSpawn = s ?? spawn;
+}
+export { _focusSpawn as __focusSpawn };

@@ -1,7 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { __setCmuxSpawnerForTests } from "../src/cmux.js";
-import createExtension, { shortCwd } from "../src/index.js";
+import createExtension, { __setFocusSpawnForTests, shortCwd } from "../src/index.js";
 
 // ---------------------------------------------------------------------------
 // Test doubles
@@ -196,58 +196,71 @@ describe("pill states", () => {
 });
 
 // ---------------------------------------------------------------------------
-// Unread state — focus-aware agent_end
+// Unread state — focus-aware agent_end (cmux events-based)
 // ---------------------------------------------------------------------------
 
 describe("unread state", () => {
 	let restore: () => void;
 	let spawner: ReturnType<typeof vi.fn>;
 
-	// Simulate a focus-out event arriving on stdin by invoking the stdin
-	// data listener that attachFocusReporting() registers. We capture it
-	// by monkey-patching process.stdin.on before session_start fires.
-	let stdinListeners: Array<(chunk: Buffer) => void> = [];
+	// Fake child process returned by _focusSpawn("cmux", ["events", ...])
+	let fakeStdoutListeners: Array<(chunk: Buffer) => void>;
+	let fakeChildEventListeners: Map<string, () => void>;
+
+	function makeFakeChild() {
+		fakeStdoutListeners = [];
+		fakeChildEventListeners = new Map();
+		return {
+			stdout: {
+				on: vi.fn((event: string, fn: (chunk: Buffer) => void) => {
+					if (event === "data") fakeStdoutListeners.push(fn);
+				}),
+			},
+			on: vi.fn((event: string, fn: () => void) => {
+				fakeChildEventListeners.set(event, fn);
+			}),
+			kill: vi.fn(),
+		};
+	}
+
+	function sendCmuxEvent(event: object): void {
+		const line = JSON.stringify(event) + "\n";
+		const buf = Buffer.from(line, "utf8");
+		for (const fn of fakeStdoutListeners) fn(buf);
+	}
+
+	const WS_ID = "WS-TEST-0001";
+	const OTHER_WS_ID = "WS-OTHER-0002";
+
+	function focusOut(): void {
+		sendCmuxEvent({ type: "event", name: "workspace.selected", workspace_id: OTHER_WS_ID });
+	}
+	function focusIn(): void {
+		sendCmuxEvent({ type: "event", name: "workspace.selected", workspace_id: WS_ID });
+	}
 
 	beforeEach(() => {
 		restore = enterCmux();
+		process.env["CMUX_WORKSPACE_ID"] = WS_ID;
 		spawner = vi.fn(async () => {});
 		__setCmuxSpawnerForTests(spawner as unknown as (args: string[]) => Promise<void>);
 
-		stdinListeners = [];
-
-		// Make stdin + stdout look like TTYs and capture the data listener.
-		Object.defineProperty(process.stdin, "isTTY", { value: true, configurable: true });
-		Object.defineProperty(process.stdout, "isTTY", { value: true, configurable: true });
-
-		vi.spyOn(process.stdin, "on").mockImplementation((event: string, listener: (...args: unknown[]) => void) => {
-			if (event === "data") stdinListeners.push(listener);
-			return process.stdin;
-		});
-		vi.spyOn(process.stdin, "off").mockImplementation(() => process.stdin);
-		vi.spyOn(process.stdout, "write").mockImplementation(() => true);
+		const fakeChild = makeFakeChild();
+		__setFocusSpawnForTests(vi.fn(() => fakeChild as never));
 	});
 
 	afterEach(() => {
 		restore();
 		__setCmuxSpawnerForTests(null);
-		vi.restoreAllMocks();
-		Object.defineProperty(process.stdin, "isTTY", { value: undefined, configurable: true });
-		Object.defineProperty(process.stdout, "isTTY", { value: undefined, configurable: true });
+		__setFocusSpawnForTests(null);
 	});
-
-	const FOCUS_OUT = Buffer.from("\x1b[O", "binary");
-	const FOCUS_IN  = Buffer.from("\x1b[I", "binary");
-
-	function sendFocus(buf: Buffer): void {
-		for (const listener of stdinListeners) listener(buf);
-	}
 
 	it("agent_end while focused away → blue circle unread", async () => {
 		const pi = makeFakePi();
 		createExtension(pi as never);
 		await pi.handlers.get("session_start")!({}, makeFakeCtx());
 
-		sendFocus(FOCUS_OUT); // user leaves the pane
+		focusOut(); // user switches to another workspace
 		spawner.mockClear();
 
 		await pi.handlers.get("agent_end")!({}, makeFakeCtx());
@@ -261,11 +274,11 @@ describe("unread state", () => {
 		createExtension(pi as never);
 		await pi.handlers.get("session_start")!({}, makeFakeCtx());
 
-		sendFocus(FOCUS_OUT);
+		focusOut();
 		await pi.handlers.get("agent_end")!({}, makeFakeCtx());
 		spawner.mockClear();
 
-		sendFocus(FOCUS_IN); // user returns to the pane
+		focusIn(); // user switches back to this workspace
 		const argvs = spawner.mock.calls.map((c) => c[0] as string[]);
 		expect(argvs).toContainEqual(IDLE_ARGV);
 	});
@@ -275,14 +288,34 @@ describe("unread state", () => {
 		createExtension(pi as never);
 		await pi.handlers.get("session_start")!({}, makeFakeCtx());
 
-		sendFocus(FOCUS_OUT);
+		focusOut();
 		await pi.handlers.get("before_agent_start")!({}, makeFakeCtx()); // pill = working
 		spawner.mockClear();
 
-		sendFocus(FOCUS_IN); // returns while agent still working — should not flip to idle
+		focusIn(); // returns while agent still working — should not flip to idle
 		const argvs = spawner.mock.calls.map((c) => c[0] as string[]);
 		expect(argvs).not.toContainEqual(IDLE_ARGV);
 		expect(argvs).not.toContainEqual(UNREAD_ARGV);
+	});
+
+	it("window.unkeyed alone sets focusedAway; window.keyed + workspaceSelected clears it", async () => {
+		const pi = makeFakePi();
+		createExtension(pi as never);
+		await pi.handlers.get("session_start")!({}, makeFakeCtx());
+
+		// OS window loses focus
+		sendCmuxEvent({ type: "event", name: "window.unkeyed", workspace_id: WS_ID });
+		spawner.mockClear();
+
+		await pi.handlers.get("agent_end")!({}, makeFakeCtx());
+		let argvs = spawner.mock.calls.map((c) => c[0] as string[]);
+		expect(argvs).toContainEqual(UNREAD_ARGV);
+		spawner.mockClear();
+
+		// OS window regains focus while workspace is still selected → clear unread
+		sendCmuxEvent({ type: "event", name: "window.keyed", workspace_id: WS_ID });
+		argvs = spawner.mock.calls.map((c) => c[0] as string[]);
+		expect(argvs).toContainEqual(IDLE_ARGV);
 	});
 
 	it("new input while unread (user types before looking) → clears to working", async () => {
@@ -290,7 +323,7 @@ describe("unread state", () => {
 		createExtension(pi as never);
 		await pi.handlers.get("session_start")!({}, makeFakeCtx());
 
-		sendFocus(FOCUS_OUT);
+		focusOut();
 		await pi.handlers.get("agent_end")!({}, makeFakeCtx());
 		spawner.mockClear();
 
@@ -305,7 +338,7 @@ describe("unread state", () => {
 		createExtension(pi as never);
 		await pi.handlers.get("session_start")!({}, makeFakeCtx());
 
-		sendFocus(FOCUS_OUT);
+		focusOut();
 		await pi.handlers.get("agent_end")!({}, makeFakeCtx());
 		await pi.handlers.get("before_agent_start")!({}, makeFakeCtx());
 		await pi.handlers.get("agent_end")!({}, makeFakeCtx());
