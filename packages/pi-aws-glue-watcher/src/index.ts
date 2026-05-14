@@ -164,7 +164,7 @@ export function createExtensionWithClient(pi: ExtensionAPI, client: GlueClient):
 				expanded &&
 				message.details &&
 				typeof message.details === "object" &&
-				"watches" in (message.details as object)
+				"watches" in message.details
 			) {
 				const d = message.details as { watches: WatchMap; date: string; pollMs?: number };
 				return buildStartupChatMessage(d.watches, new Date(d.date), {

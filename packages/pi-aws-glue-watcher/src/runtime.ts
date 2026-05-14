@@ -108,7 +108,7 @@ export function makeRuntime(pi: Runtime["pi"], client: GlueClient): Runtime {
 
 export function colorize(
 	theme: UiSurface["theme"],
-	aliasOrText: "accent" | "muted" | "warning" | string,
+	aliasOrText: "accent" | "muted" | "warning" | (string & {}),
 	maybeText?: string,
 ): string {
 	// Back-compat shim: colorize(theme, text) colours as `accent`; new shape is
