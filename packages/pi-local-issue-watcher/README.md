@@ -86,7 +86,7 @@ On every `session_start`:
    every change (status, title/description update, comment added/removed,
    file added/removed). The message carries:
    - `customType: "pi-local-issue-watcher"`
-   - `content`: a human-readable summary (`N issue update(s)` + bullet list)
+   - `content`: a human-readable summary (`N update(s):` + bullet list)
    - `details: { changes, changedPaths }` for programmatic consumers
    - delivery: `{ deliverAs: "followUp", triggerTurn: true }` — the agent is
      prompted to react.

@@ -284,7 +284,7 @@ describe("handleSessionStart", () => {
 		// chat-visible startup summary is also emitted with triggerTurn:false;
 		// that is tested separately in the 'startup chat message' block.)
 		const diffCalls = pi.sendMessage.mock.calls.filter(
-			(c) => (c[0] as { content: string }).content.includes("issue update"),
+			(c) => (c[0] as { content: string }).content.includes("update:"),
 		);
 		expect(diffCalls).toHaveLength(0);
 		expect(out.started).toBe(true);
@@ -346,7 +346,7 @@ describe("handleSessionStart", () => {
 		];
 		expect(payload.customType).toBe("pi-local-issue-watcher");
 		expect(payload.display).toBe(true);
-		expect(payload.content).toMatch(/issue update/);
+		expect(payload.content).toMatch(/\] \d+ updates?:/);
 		expect(payload.content).toMatch(/status changed/);
 		expect(opts).toMatchObject({ triggerTurn: true });
 
@@ -394,7 +394,7 @@ describe("handleSessionStart", () => {
 		// session_start (when not paused and dbRoot exists). The 'no real
 		// changes' assertion is now about the DIFF path not firing.
 		const diffCalls = pi.sendMessage.mock.calls.filter(
-			(c) => (c[0] as { content: string }).content.includes("issue update"),
+			(c) => (c[0] as { content: string }).content.includes("update:"),
 		);
 		expect(diffCalls).toHaveLength(0);
 		expect(pi.appendEntry).not.toHaveBeenCalled();
@@ -879,7 +879,7 @@ describe("polling lifecycle", () => {
 		// Fresh session emits the #0011 startup summary (with triggerTurn:false)
 		// but no diff message yet.
 		const diffCallsBefore = pi.sendMessage.mock.calls.filter(
-			(c) => (c[0] as { content: string }).content.includes("issue update"),
+			(c) => (c[0] as { content: string }).content.includes("update:"),
 		);
 		expect(diffCallsBefore).toHaveLength(0);
 
@@ -937,7 +937,7 @@ describe("polling lifecycle", () => {
 
 		await sessionStart({}, makeFakeCtx([]));
 		const diffsBefore = pi.sendMessage.mock.calls.filter(
-			(c) => (c[0] as { content: string }).content.includes("issue update"),
+			(c) => (c[0] as { content: string }).content.includes("update:"),
 		).length;
 		// shutdown should not throw and should leave the runtime in a clean state.
 		await sessionShutdown({}, makeFakeCtx([]));
@@ -949,7 +949,7 @@ describe("polling lifecycle", () => {
 		writeIssue("skill-a", "0001-a.json", { id: "0001", status: "done", skill: "skill-a" });
 		await vi.advanceTimersByTimeAsync(POLL_INTERVAL_MS * 2);
 		const diffsAfter = pi.sendMessage.mock.calls.filter(
-			(c) => (c[0] as { content: string }).content.includes("issue update"),
+			(c) => (c[0] as { content: string }).content.includes("update:"),
 		).length;
 		expect(diffsAfter).toBe(diffsBefore);
 	});
@@ -977,7 +977,7 @@ describe("polling lifecycle", () => {
 		const ctx = makeFakeCtx([runningRunstate()]);
 		await handler({}, ctx);
 		const diffsAfterStartup = pi.sendMessage.mock.calls.filter(
-			(c) => (c[0] as { content: string }).content.includes("issue update"),
+			(c) => (c[0] as { content: string }).content.includes("update:"),
 		).length;
 		expect(diffsAfterStartup).toBe(0);
 
@@ -993,7 +993,7 @@ describe("polling lifecycle", () => {
 
 		// No spurious `removed` message was sent — carry-forward kept the entry.
 		const diffsAfterMidwrite = pi.sendMessage.mock.calls.filter(
-			(c) => (c[0] as { content: string }).content.includes("issue update"),
+			(c) => (c[0] as { content: string }).content.includes("update:"),
 		).length;
 		expect(diffsAfterMidwrite).toBe(0);
 
@@ -1011,7 +1011,7 @@ describe("polling lifecycle", () => {
 		// Exactly ONE diff message, with a status_changed diff from the carried-forward
 		// baseline — not a spurious `new` pair.
 		const diffCalls = pi.sendMessage.mock.calls.filter(
-			(c) => (c[0] as { content: string }).content.includes("issue update"),
+			(c) => (c[0] as { content: string }).content.includes("update:"),
 		);
 		expect(diffCalls).toHaveLength(1);
 		const [payload] = diffCalls[0] as [
@@ -1216,7 +1216,7 @@ describe("run-state persistence", () => {
 			utimesSync(filePath, future, future);
 			await vi.advanceTimersByTimeAsync(POLL_INTERVAL_MS);
 			const diffCalls = pi.sendMessage.mock.calls.filter(
-				(c) => (c[0] as { content: string }).content.includes("issue update"),
+				(c) => (c[0] as { content: string }).content.includes("update:"),
 			);
 			expect(diffCalls).toHaveLength(1);
 		} finally {
@@ -1457,7 +1457,7 @@ describe("status line — refresh on every poll (#0016 supersedes #0009)", () =>
 			expect(statusAfter).toBeGreaterThanOrEqual(statusAtStart + 3);
 			// pollOnce does not emit chat messages when there are no diffs.
 			const pollDiffs = pi.sendMessage.mock.calls.filter(
-				(c) => (c[0] as { content: string }).content.includes("issue update"),
+				(c) => (c[0] as { content: string }).content.includes("update:"),
 			);
 			expect(pollDiffs).toHaveLength(0);
 		} finally {
@@ -1572,7 +1572,7 @@ describe("startup chat message (#0011)", () => {
 		// Exactly one: the diff message. No second startup-summary message on top.
 		expect(sent).toHaveLength(1);
 		const payload = sent[0]![0] as { content: string };
-		expect(payload.content).toMatch(/issue update/);
+		expect(payload.content).toMatch(/\] \d+ updates?:/);
 		expect(payload.content).not.toContain("active | dbRoot=");
 	});
 });

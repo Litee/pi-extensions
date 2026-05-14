@@ -180,7 +180,7 @@ export function formatCompactStatusSummary(snapshot: Snapshot): string {
  * Build the `content` field of the `pi.sendMessage` payload the watcher
  * delivers whenever it detects ≥ 1 change. Structure:
  *
- *     [HH:MM:SS] N issue update(s)
+ *     [HH:MM:SS] N update(s):
  *     - <rendered change 1>
  *     - <rendered change 2>
  *     ...
@@ -197,8 +197,8 @@ export function buildChatMessageContent(changes: Change[], now: Date): string {
 	const stamp = formatLocalHms(now);
 	const header =
 		changes.length === 1
-			? `[${stamp}] 1 issue update`
-			: `[${stamp}] ${changes.length} issue updates`;
+			? `[${stamp}] 1 update:`
+			: `[${stamp}] ${changes.length} updates:`;
 	const bullets = changes.map((c) => `- ${formatChange(c)}`);
 	return [header, ...bullets].join("\n");
 }
