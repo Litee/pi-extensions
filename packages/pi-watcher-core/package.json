@@ -12,6 +12,7 @@
     "./classify-error": "./src/classify-error.ts",
     "./format-aggregated-errors": "./src/format-aggregated-errors.ts",
     "./status-line": "./src/status-line.ts",
+    "./time": "./src/time.ts",
     "./renderer": "./src/renderer.ts",
     ".": "./src/lib.ts"
   },

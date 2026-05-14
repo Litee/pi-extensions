@@ -6,6 +6,7 @@
  */
 
 import type { GlueEvent, WatchMap } from "./types.js";
+import { formatShortTime } from "pi-watcher-core/time";
 import { statusLineColorAlias, type StatusLineColorAlias } from "pi-watcher-core/status-line";
 export type { StatusLineColorAlias } from "pi-watcher-core/status-line";
 
@@ -65,16 +66,6 @@ export function buildStatusLine(input: StatusLineInput): StatusLineResult {
 }
 
 // ---------------------------------------------------------------------------
-// Helpers
-// ---------------------------------------------------------------------------
-
-/** Format a Date as a compact local `[HH:mm]` stamp. */
-function formatHm(date: Date): string {
-	const pad = (n: number): string => n.toString().padStart(2, "0");
-	return `[${pad(date.getHours())}:${pad(date.getMinutes())}]`;
-}
-
-// ---------------------------------------------------------------------------
 // Chat messages
 // ---------------------------------------------------------------------------
 
@@ -94,7 +85,7 @@ function formatHm(date: Date): string {
  */
 export function buildChangeChatMessage(events: GlueEvent[], date: Date): string {
 	const noun = events.length === 1 ? "change" : "changes";
-	const header = `${formatHm(date)} ${events.length} ${noun} detected`;
+	const header = `[${formatShortTime(date)}] ${events.length} ${noun} detected`;
 	const lines = events.map((e, i) => {
 		const primary = `${i + 1}. ${e.formatted}`;
 		// e.formatted already contains the name + transition; sub-fields live on the watch
@@ -179,7 +170,7 @@ export function buildStartupChatMessage(
 		typeof pollMs === "number" && pollMs > 0
 			? ` \u2014 poll: ${Math.round(pollMs / 1000)}s`
 			: "";
-	const header = `${formatHm(date)} active \u2014 watching ${all.length} ${noun}${pollSuffix}:`;
+	const header = `[${formatShortTime(date)}] active \u2014 watching ${all.length} ${noun}${pollSuffix}:`;
 
 	const entries = all.map((w, i) => buildWatchEntry(w, i));
 

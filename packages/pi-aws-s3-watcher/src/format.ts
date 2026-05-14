@@ -5,6 +5,7 @@
  */
 
 import type { S3Event, WatchMap } from "./types.js";
+import { formatShortTime } from "pi-watcher-core/time";
 import { statusLineColorAlias, type StatusLineColorAlias } from "pi-watcher-core/status-line";
 export type { StatusLineColorAlias } from "pi-watcher-core/status-line";
 
@@ -51,11 +52,6 @@ export function buildStatusLine(input: StatusLineInput): StatusLineResult {
 	return { text, colorAlias };
 }
 
-function formatHm(date: Date): string {
-	const pad = (n: number): string => n.toString().padStart(2, "0");
-	return `[${pad(date.getHours())}:${pad(date.getMinutes())}]`;
-}
-
 /**
  * Build the chat-message content for a detected-change notification.
  *
@@ -69,7 +65,7 @@ function formatHm(date: Date): string {
  */
 export function buildChangeChatMessage(events: S3Event[], date: Date): string {
 	const noun = events.length === 1 ? "event" : "events";
-	const header = `${formatHm(date)} ${events.length} ${noun} detected`;
+	const header = `[${formatShortTime(date)}] ${events.length} ${noun} detected`;
 	const bullets = events.map((e) => e.formatted).join("\n");
 	return `${header}\n\n${bullets}`;
 }
@@ -93,5 +89,5 @@ export function buildStartupChatMessage(watches: WatchMap, date: Date): string {
 		const tag = w.terminal ? " [terminal]" : "";
 		return `• s3://${w.bucket}/${w.key} (target: ${w.target}) — state=${state}${tag}`;
 	});
-	return `${formatHm(date)} active — watching ${all.length} ${noun}:\n\n${lines.join("\n")}`;
+	return `[${formatShortTime(date)}] active — watching ${all.length} ${noun}:\n\n${lines.join("\n")}`;
 }

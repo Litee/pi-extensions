@@ -34,10 +34,10 @@ function makeEvent(overrides: Partial<ArchonEvent> = {}): ArchonEvent {
 // ---------------------------------------------------------------------------
 
 describe("buildChangeChatMessage", () => {
-	it("includes the ISO timestamp header", () => {
+	it("includes the [HH:MM] timestamp header", () => {
 		const msg = buildChangeChatMessage([makeEvent()], FIXED_DATE);
 		expect(msg).toContain("archon-workflow-watcher");
-		expect(msg).toContain("2024-06-15T10:00:00.000Z");
+		expect(msg).toMatch(/^\[\d{2}:\d{2}\] archon-workflow-watcher/);
 	});
 
 	it("reports '1 change' (singular) for a single event", () => {
@@ -69,9 +69,9 @@ describe("buildChangeChatMessage", () => {
 // ---------------------------------------------------------------------------
 
 describe("buildStartupChatMessage", () => {
-	it("includes the ISO timestamp header", () => {
+	it("includes the [HH:MM] timestamp header", () => {
 		const msg = buildStartupChatMessage({}, FIXED_DATE);
-		expect(msg).toContain("2024-06-15T10:00:00.000Z");
+		expect(msg).toMatch(/^\[\d{2}:\d{2}\] archon-workflow-watcher/);
 	});
 
 	it("says 'No active workflow runs' for an empty snapshot", () => {

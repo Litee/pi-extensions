@@ -2,6 +2,7 @@ import type { Change } from "./diff.js";
 import { formatChange } from "./diff.js";
 import { abbreviatePath } from "./path.js";
 import type { Snapshot } from "./types.js";
+import { formatShortTime } from "pi-watcher-core/time";
 
 /** The set of states the watcher status line can be in. */
 export type WatcherState = "active" | "paused";
@@ -194,17 +195,10 @@ export function formatCompactStatusSummary(snapshot: Snapshot): string {
  */
 export function buildChatMessageContent(changes: Change[], now: Date): string {
 	if (changes.length === 0) return "";
-	const stamp = formatLocalHm(now);
 	const header =
 		changes.length === 1
-			? `[${stamp}] 1 update:`
-			: `[${stamp}] ${changes.length} updates:`;
+			? `[${formatShortTime(now)}] 1 update:`
+			: `[${formatShortTime(now)}] ${changes.length} updates:`;
 	const bullets = changes.map((c) => `- ${formatChange(c)}`);
 	return [header, ...bullets].join("\n");
-}
-
-/** Zero-padded local-time `HH:MM` for a given Date. */
-function formatLocalHm(d: Date): string {
-	const pad = (n: number): string => n.toString().padStart(2, "0");
-	return `${pad(d.getHours())}:${pad(d.getMinutes())}`;
 }

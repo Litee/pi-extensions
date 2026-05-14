@@ -11,16 +11,6 @@ import { getMarkdownTheme, keyHint, Theme } from "@earendil-works/pi-coding-agen
 import { Box, Markdown, Spacer, Text, type Component } from "@earendil-works/pi-tui";
 
 // ---------------------------------------------------------------------------
-// Shared timestamp helper
-// ---------------------------------------------------------------------------
-
-/** Zero-padded local `HH:MM:SS` timestamp. Used by all watcher change messages. */
-export function formatLocalHms(d: Date): string {
-	const pad = (n: number): string => n.toString().padStart(2, "0");
-	return `${pad(d.getHours())}:${pad(d.getMinutes())}:${pad(d.getSeconds())}`;
-}
-
-// ---------------------------------------------------------------------------
 // toolText
 // ---------------------------------------------------------------------------
 

@@ -1,9 +1,10 @@
 import type { ArchonEvent, RunSnapshot } from "./types.js";
+import { formatShortTime } from "pi-watcher-core/time";
 import { statusLineColorAlias, type StatusLineColorAlias } from "pi-watcher-core/status-line";
 export type { StatusLineColorAlias } from "pi-watcher-core/status-line";
 
 function header(date: Date): string {
-	return `archon-workflow-watcher — ${date.toISOString()}`;
+	return `[${formatShortTime(date)}] archon-workflow-watcher`;
 }
 
 export function buildChangeChatMessage(events: ArchonEvent[], date: Date): string {
