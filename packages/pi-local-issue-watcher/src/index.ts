@@ -44,7 +44,6 @@ import {
 	buildMissingDbRootChatMessage,
 	buildMissingDbRootStatus,
 	buildStartupAnnouncement,
-	buildStartupChatMessage,
 	buildStatusDetailMessage,
 	type WatcherState,
 } from "./format.js";
@@ -316,17 +315,16 @@ export function handleSessionStart(
 	if (baseline === null) {
 		// First session, or state stale — adopt current as the new baseline.
 		persistSnapshot(pi, currentSnapshot);
-		// Fresh-session startup summary (#0011, #0013). `triggerTurn: true`
-		// so the LLM sees the tracker state at session start (reversed from
-		// the original #0011 decision in #0013). Only reachable when not
-		// paused (#0019).
+		// Startup status summary (#0011, #0013, #0002). Injected as a
+		// non-display entry so the LLM sees the tracker state but does not
+		// activate a new turn. Uses the same compact format as /status.
 		emit(
 			{
 				customType: CUSTOM_MESSAGE_TYPE,
-				content: buildStartupChatMessage(dbRoot, currentSnapshot),
-				display: true,
+				content: buildStatusDetailMessage(dbRoot, currentSnapshot, POLL_INTERVAL_MS),
+				display: false,
 			},
-			{ deliverAs: "followUp", triggerTurn: true },
+			{ deliverAs: "followUp", triggerTurn: false },
 		);
 		return Promise.resolve({ started: true, paused: false, snapshot: currentSnapshot });
 	}
@@ -353,16 +351,15 @@ export function handleSessionStart(
 		// LLM can see the watcher is active and knows which tracker it is
 		// monitoring (#0011). Never fired when a diff message already landed
 		// on this session_start (avoid two chat messages in rapid succession).
-		// `triggerTurn: true` so the LLM is aware of the tracker state at
-		// session start rather than waiting for the next user input
-		// (reversed from the original #0011 decision in #0013).
+		// No diff — emit the compact status block so the LLM sees watcher
+		// state without activating a new turn (#0002).
 		emit(
 			{
 				customType: CUSTOM_MESSAGE_TYPE,
-				content: buildStartupChatMessage(dbRoot, currentSnapshot),
-				display: true,
+				content: buildStatusDetailMessage(dbRoot, currentSnapshot, POLL_INTERVAL_MS),
+				display: false,
 			},
-			{ deliverAs: "followUp", triggerTurn: true },
+			{ deliverAs: "followUp", triggerTurn: false },
 		);
 	}
 

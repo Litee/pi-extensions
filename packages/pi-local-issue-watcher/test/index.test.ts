@@ -1487,7 +1487,7 @@ describe("startup chat message (#0011)", () => {
 		return p;
 	}
 
-	it("emits one chat-visible startup message with customType='local-issue-watcher' and triggerTurn=true on fresh session (issue #0013)", async () => {
+	it("emits compact status block with display:false and triggerTurn:false on fresh session (#0002)", async () => {
 		writeIssue("skill-a", "0001-a.json", { id: "0001", status: "open", skill: "skill-a" });
 		const pi = makeFakePi();
 		const ctx = makeFakeCtx([runningRunstate()]);
@@ -1502,13 +1502,14 @@ describe("startup chat message (#0011)", () => {
 			{ customType: string; content: string; display?: boolean },
 			{ triggerTurn?: boolean; deliverAs?: string },
 		];
-		expect(payload.content).toContain("active");
-		expect(payload.content).toMatch(/\d+ open/);
-		// #0013 reversed the original #0011 decision: the startup summary now
-		// triggers an agent turn so the LLM sees the tracker state at session
-		// start instead of waiting for the next user input.
-		expect(opts.triggerTurn).toBe(true);
-		expect(payload.display).toBe(true);
+		// Compact status block format (same as /status)
+		expect(payload.content).toContain("status: active");
+		expect(payload.content).toContain("poll:");
+		expect(payload.content).toContain("db:");
+		expect(payload.content).toMatch(/issues:.*open/);
+		// Must NOT trigger LLM turn, must NOT be display-visible (#0002)
+		expect(payload.display).toBe(false);
+		expect(opts.triggerTurn).toBe(false);
 	});
 
 	it("does NOT send a startup message when dbRoot is missing", async () => {
@@ -1628,8 +1629,8 @@ describe("handleSessionStart deferMessages (#0015)", () => {
 			{ triggerTurn?: boolean },
 		];
 		expect(payload.customType).toBe("pi-local-issue-watcher");
-		expect(payload.content).toContain("active");
-		expect(opts.triggerTurn).toBe(true);
+		expect(payload.content).toContain("status: active");
+		expect(opts.triggerTurn).toBe(false);
 	});
 });
 
