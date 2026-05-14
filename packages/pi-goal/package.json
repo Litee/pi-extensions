@@ -1,0 +1,25 @@
+{
+  "name": "pi-goal",
+  "version": "0.2.0",
+  "private": true,
+  "description": "Pi extension that adds a Codex-style /goal command: set an objective and pi works autonomously across turns until the agent calls update_goal, with token budgeting and a strict completion-audit prompt ported from openai/codex.",
+  "license": "MIT AND Apache-2.0",
+  "type": "module",
+  "keywords": ["pi-package"],
+  "pi": {
+    "extensions": ["./src/index.ts"]
+  },
+  "files": [
+    "src/**",
+    "LICENSE",
+    "LICENSE-APACHE-2.0",
+    "NOTICE",
+    "UPSTREAM.md",
+    "README.md"
+  ],
+  "peerDependencies": {
+    "@earendil-works/pi-coding-agent": "*",
+    "@earendil-works/pi-tui": "*",
+    "typebox": "*"
+  }
+}

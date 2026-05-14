@@ -107,6 +107,12 @@ export default defineConfig({
 				// pure helpers (formatISOShort, humanizeCron) it reads from
 				// live in scheduler.ts and are covered there.
 				"**/pi-prompt-scheduler/src/ui/cron-widget.ts",
+				// pi-goal/src/index.ts is lifecycle wiring: pi.on() event
+				// subscriptions, pi.registerCommand(), pi.registerShortcut(),
+				// and session_start restore logic, all of which require a live
+				// pi-coding-agent runtime. The pure logic (checker, helpers,
+				// prompt, state) is 100% covered by the other four test files.
+				"**/pi-goal/src/index.ts",
 			],
 			// `json-summary` makes the coverage output machine-readable so CI or
 			// review tooling (e.g. gh-action coverage comments, pi-session-recap
