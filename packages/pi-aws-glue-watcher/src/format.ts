@@ -153,7 +153,7 @@ export function buildWatchEntry(
  * [10:30] active \u2014 watching 2 runs:
  * 1. etl-job \u2014 state=RUNNING
  * 2. my-workflow \u2014 state=SUCCEEDED
- *   Ctrl-o to expand
+ *   … ctrl+o to expand
  * ```
  */
 export function buildStartupChatMessage(
@@ -186,6 +186,6 @@ export function buildStartupChatMessage(
 	// Collapsed: primary lines only + expand hint.
 	const lines: string[] = [header];
 	for (const { summary } of entries) lines.push(summary);
-	lines.push("  Ctrl-o to expand");
+	lines.push("… ctrl+o to expand");
 	return lines.join("\n");
 }

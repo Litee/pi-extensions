@@ -392,13 +392,13 @@ describe("startup chat message: triggerTurn + label", () => {
 				timeoutAt: undefined, addedAt: 0, lastPolledAt: undefined, terminal: false, consecutiveErrors: 0 },
 		};
 		const msg = {
-			content: [{ type: "text", text: "[10:00] active — watching 1 run:\n1. etl — state=RUNNING\n  Ctrl-o to expand" }],
+			content: [{ type: "text", text: "[10:00] active — watching 1 run:\n1. etl — state=RUNNING\n  … ctrl+o to expand" }],
 			details: { watches, date: new Date().toISOString() },
 		};
 		const box = renderer(msg, { expanded: false }, fakeTheme);
 		const lines = box.render!(120);
 		const joined = lines.join("\n");
-		expect(joined).toContain("Ctrl-o to expand");
+		expect(joined).toContain("… ctrl+o to expand");
 		expect(joined).not.toContain("\u00b7 run:");
 		expect(joined).not.toContain("\u00b7 type:");
 	});
@@ -422,7 +422,7 @@ describe("startup chat message: triggerTurn + label", () => {
 				timeoutAt: undefined, addedAt: 0, lastPolledAt: undefined, terminal: false, consecutiveErrors: 0 },
 		};
 		const msg = {
-			content: [{ type: "text", text: "[10:00] active — watching 1 run:\n1. etl — state=RUNNING\n  Ctrl-o to expand" }],
+			content: [{ type: "text", text: "[10:00] active — watching 1 run:\n1. etl — state=RUNNING\n  … ctrl+o to expand" }],
 			details: { watches, date: new Date().toISOString() },
 		};
 		const box = renderer(msg, { expanded: true }, fakeTheme);
@@ -430,7 +430,7 @@ describe("startup chat message: triggerTurn + label", () => {
 		const joined = lines.join("\n");
 		expect(joined).toContain("\u00b7 run: jr_123");
 		expect(joined).toContain("\u00b7 type: job");
-		expect(joined).not.toContain("Ctrl-o to expand");
+		expect(joined).not.toContain("… ctrl+o to expand");
 	});
 
 	it("registers a message renderer that labels output 'pi-aws-glue-watcher' (no square brackets)", async () => {

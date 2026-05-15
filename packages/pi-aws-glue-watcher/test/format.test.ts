@@ -207,7 +207,7 @@ describe("buildStartupChatMessage", () => {
 		const msg = buildStartupChatMessage(watches, FIXED_DATE);
 		expect(msg).not.toContain("· run:");
 		expect(msg).not.toContain("· type:");
-		expect(msg).toContain("Ctrl-o to expand");
+		expect(msg).toContain("… ctrl+o to expand");
 	});
 
 	it("expanded: sub-fields shown, no expand hint", () => {
@@ -217,7 +217,7 @@ describe("buildStartupChatMessage", () => {
 		const msg = buildStartupChatMessage(watches, FIXED_DATE, { expanded: true });
 		expect(msg).toContain("· run: jr_123");
 		expect(msg).toContain("· type: job");
-		expect(msg).not.toContain("Ctrl-o to expand");
+		expect(msg).not.toContain("… ctrl+o to expand");
 	});
 
 	it("expanded: terminal watch shows '· terminal' sub-field", () => {
