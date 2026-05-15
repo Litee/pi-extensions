@@ -727,7 +727,7 @@ describe("schedule_prompt tool / renderResult", () => {
 		expect(text).toContain("Created cron job");
 		expect(text).toContain("Type: cron");
 		expect(text).toContain("Schedule:");
-		expect(text).toContain("Ctrl-o to expand");
+		expect(text).toContain("… ctrl+o to expand");
 		expect(text).not.toContain(long);
 		expect(text).not.toMatch(/^Prompt:/m);
 	});
@@ -744,7 +744,7 @@ describe("schedule_prompt tool / renderResult", () => {
 	it("add with a multi-line prompt is collapsed even if total length is short", () => {
 		const tool = makeTool();
 		const text = renderAdd(tool, { prompt: "one\ntwo" }, false);
-		expect(text).toContain("Ctrl-o to expand");
+		expect(text).toContain("… ctrl+o to expand");
 		expect(text).not.toContain("one\ntwo");
 	});
 
@@ -753,7 +753,7 @@ describe("schedule_prompt tool / renderResult", () => {
 		const long = "x".repeat(300);
 		const collapsed = renderAdd(tool, { prompt: long }, false, "update");
 		expect(collapsed).toContain("Updated cron job");
-		expect(collapsed).toContain("Ctrl-o to expand");
+		expect(collapsed).toContain("… ctrl+o to expand");
 		const expanded = renderAdd(tool, { prompt: long }, true, "update");
 		expect(expanded).toContain(long);
 	});
@@ -805,7 +805,7 @@ describe("schedule_prompt tool / add content text", () => {
 			name: "long",
 		});
 		const text = textOf(result);
-		expect(text).toContain("Ctrl-o to expand");
+		expect(text).toContain("… ctrl+o to expand");
 		expect(text).not.toContain(long);
 		expect(text).not.toMatch(/^Prompt: /m);
 	});
@@ -819,7 +819,7 @@ describe("schedule_prompt tool / add content text", () => {
 			name: "multi",
 		});
 		const text = textOf(result);
-		expect(text).toContain("Ctrl-o to expand");
+		expect(text).toContain("… ctrl+o to expand");
 		expect(text).not.toContain("a\nb");
 	});
 });

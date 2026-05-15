@@ -180,7 +180,7 @@ export function createExtensionWithClient(pi: ExtensionAPI, client: GlueClient):
 		const rendered = displayText
 			.split("\n")
 			.map((line) =>
-				line === "  Ctrl-o to expand" ? theme.fg("dim", line) : line,
+				line === "… ctrl+o to expand" ? theme.fg("dim", line) : line,
 			)
 			.join("\n");
 		box.addChild(new Text(`${label}\n\n${rendered}`, 0, 0));

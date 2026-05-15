@@ -15,7 +15,7 @@ import type { CronJob, CronJobType, CronToolDetails, } from "./types.js";
 import { CronToolParams } from "./types.js";
 
 /**
- * Threshold above which the prompt body is hidden behind a `Ctrl-o` hint.
+ * Threshold above which the prompt body is hidden behind a `… ctrl+o to expand` hint.
  * Also collapsed when the prompt contains any newline, regardless of length.
  * Intent: keep multi-screen backfill prompts out of the chat transcript.
  */
@@ -32,10 +32,10 @@ export function shouldCollapsePrompt(prompt: string): boolean {
  *   Type: <type>
  *   Schedule: <schedule>
  *   [Model: <model> (runs in subagent[, notifies parent])]
- *   <Prompt: <body>  |  Ctrl-o to expand>
+ *   <Prompt: <body>  |  … ctrl+o to expand>
  *
  * When `collapse === true` the trailing prompt line is replaced with a
- * `Ctrl-o to expand` hint. When `collapse === false` the full prompt is
+ * `… ctrl+o to expand` hint. When `collapse === false` the full prompt is
  * appended verbatim on its own line.
  */
 export function buildJobSummaryLines(
@@ -54,7 +54,7 @@ export function buildJobSummaryLines(
     );
   }
   if (opts.collapse) {
-    lines.push("Ctrl-o to expand");
+    lines.push("… ctrl+o to expand");
   } else {
     lines.push(`Prompt: ${job.prompt}`);
   }
@@ -430,7 +430,7 @@ export function createCronTool(
         return new Text(lines.join("\n"), 0, 0);
       }
 
-      // add / update: collapse the prompt body behind a `Ctrl-o to expand`
+      // add / update: collapse the prompt body behind a `… ctrl+o to expand`
       // hint unless the user has already expanded this result. See issue
       // pi-prompt-scheduler#0001 — long backfill prompts flood the chat.
       if ((details.action === "add" || details.action === "update") && details.jobs.length > 0) {
@@ -446,7 +446,7 @@ export function createCronTool(
         const [header, ...rest] = summary;
         lines.push(theme.fg("success", header!));
         for (const line of rest) {
-          if (line === "Ctrl-o to expand") lines.push(theme.fg("dim", line));
+          if (line === "… ctrl+o to expand") lines.push(theme.fg("dim", line));
           else lines.push(line);
         }
         return new Text(lines.join("\n"), 0, 0);

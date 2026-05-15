@@ -130,7 +130,7 @@ export default function manageToolsExtension(pi: ExtensionAPI): void {
 				theme.fg("dim", ` / ${total} total`);
 
 			if (!expanded) {
-				text += theme.fg("dim", " — Ctrl-o to expand");
+				text += theme.fg("dim", " — … ctrl+o to expand");
 			} else {
 				const rows = d?.rows ?? [];
 				for (const row of rows) {
