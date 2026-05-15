@@ -1356,6 +1356,48 @@ describe("btw runtime behavior", () => {
     expect(transcript.indexOf("second question")).toBeGreaterThan(transcript.indexOf("────────────────"));
   });
 
+  it("expands tabs in tool result content so the BTW overlay never emits literal \\t bytes", async () => {
+    // Regression for pi-crash.log 2026-05-15: pi-tui's `visibleWidth()` normalises \t to 3 spaces
+    // for measurement, but the literal \t byte is rendered by the terminal to the next tab stop
+    // (typically 8 cols). Tool output containing tabs (e.g. `\t[inferno] progress: ...`) caused
+    // the BTW frame's measured width to disagree with pi-tui's per-line render-time check, firing
+    // "Rendered line N exceeds terminal width" and crashing the agent.
+    const harness = createHarness();
+    const tabbedToolResult = ["\t[inferno] progress: processed=112,205 errors=647 elapsed=5760s tps=19.5", "\tsecond\tline"].join("\n");
+
+    promptStreamMock.mockImplementationOnce(function* () {
+      yield { type: "tool_execution_start" as const, toolName: "bash", args: { command: "true" } };
+      yield {
+        type: "tool_execution_end" as const,
+        toolName: "bash",
+        result: { content: [{ type: "text", text: tabbedToolResult }] },
+      };
+      yield { type: "text_delta" as const, delta: "ok" };
+      yield {
+        type: "done" as const,
+        message: {
+          ...makeAssistantMessage("ok"),
+          content: buildAssistantContent("", "ok"),
+        },
+      };
+    });
+
+    await harness.runSessionStart();
+    await harness.command("btw", "trigger tabbed tool output");
+
+    const overlay = harness.latestOverlayComponent();
+    overlay.refresh();
+    const transcriptLines = overlay.transcript.children.map((child) => child.text);
+
+    // Sanity: the visible-cue from the tool output reaches the transcript.
+    expect(transcriptLines.join("\n")).toContain("[inferno] progress");
+
+    // The actual fix: no rendered transcript line still contains a literal tab byte.
+    for (const line of transcriptLines) {
+      expect(line).not.toContain("\t");
+    }
+  });
+
   it("transcript inspection exposes streaming and failure state", async () => {
     const harness = createHarness();
     const failing = createStreamingFailureStream();

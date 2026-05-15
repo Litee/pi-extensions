@@ -806,7 +806,21 @@ function getCompletedExchangeCount(entries: BtwTranscript): number {
   return entries.filter((entry) => entry.type === "assistant-text" && !entry.streaming).length;
 }
 
-function buildOverlayTranscript(entries: BtwTranscript, theme: ExtensionContext["ui"]["theme"]): string[] {
+// pi-tui's `visibleWidth()` normalises `\t` → 3 spaces for measurement, but the
+// literal `\t` byte we emit is expanded by the terminal to the next tab stop
+// (typically 8 cols). That mismatch made the BTW overlay's framed-line width
+// disagree with pi-tui's per-line render-time check the moment any tool output
+// containing a tab landed in the transcript, crashing with
+// "Rendered line N exceeds terminal width". Expand tabs to spaces here so the
+// rendered byte stream matches what visibleWidth measures. Persisted/handed-off
+// content is unaffected — this only sanitises the on-screen render.
+const BTW_TAB_REPLACEMENT = "    ";
+function sanitizeTranscriptTextForDisplay(text: string): string {
+  if (!text) return text;
+  return text.includes("\t") ? text.replace(/\t/g, BTW_TAB_REPLACEMENT) : text;
+}
+
+export function buildOverlayTranscript(entries: BtwTranscript, theme: ExtensionContext["ui"]["theme"]): string[] {
   if (entries.length === 0) {
     return [theme.fg("dim", "No BTW thread yet. Ask a side question to start one.")];
   }
@@ -831,7 +845,7 @@ function buildOverlayTranscript(entries: BtwTranscript, theme: ExtensionContext[
     text: string,
     options: { blankBefore?: boolean; style?: (value: string) => string } = {},
   ) => {
-    const bodyLines = text.split("\n");
+    const bodyLines = sanitizeTranscriptTextForDisplay(text).split("\n");
     const style = options.style ?? ((value: string) => value);
     if (options.blankBefore !== false) {
       pushBlankLine();
@@ -849,7 +863,7 @@ function buildOverlayTranscript(entries: BtwTranscript, theme: ExtensionContext[
     text: string,
     options: { blankBefore?: boolean; indent?: string; style?: (value: string) => string } = {},
   ) => {
-    const bodyLines = text.split("\n");
+    const bodyLines = sanitizeTranscriptTextForDisplay(text).split("\n");
     const indent = options.indent ?? blockIndent;
     const style = options.style ?? ((value: string) => value);
     if (options.blankBefore !== false) {
@@ -886,7 +900,7 @@ function buildOverlayTranscript(entries: BtwTranscript, theme: ExtensionContext[
 
     if (entry.type === "tool-call") {
       const toolLabel = theme.fg("warning", theme.bold(entry.toolName));
-      const argsLabel = entry.args ? theme.fg("dim", ` · ${entry.args}`) : "";
+      const argsLabel = entry.args ? theme.fg("dim", ` · ${sanitizeTranscriptTextForDisplay(entry.args)}`) : "";
       pushInlineBlock(toolBadge, `${toolLabel}${argsLabel}`);
       continue;
     }
