@@ -172,13 +172,14 @@ export default function piGoal(pi: ExtensionAPI): void {
 		reason: string,
 		ctx: ExtensionContext,
 	): void {
+		const tokensUsed = tokensUsedSinceStart(ctx);
 		disableGoal(ctx);
 		persistState();
 		ctx.ui.notify(`✓ Goal achieved after ${iterations} turn(s).`, "info");
 		pi.sendMessage(
 			{
 				customType: STATUS_MESSAGE_TYPE,
-				content: `Goal complete: "${objective}" — ${iterations} turn(s).\n${reason}`,
+				content: `Goal complete: "${objective}" — ${iterations} turn(s), ${tokensUsed.toLocaleString()} tokens used.\n${reason}`,
 				display: true,
 			},
 			{ deliverAs: "followUp" },
@@ -188,13 +189,14 @@ export default function piGoal(pi: ExtensionAPI): void {
 	function endGoalAborted(reason: string, ctx: ExtensionContext): void {
 		const objective = goalObjective;
 		const iterations = goalIterations;
+		const tokensUsed = tokensUsedSinceStart(ctx);
 		disableGoal(ctx);
 		persistState();
 		ctx.ui.notify(reason, "warning");
 		pi.sendMessage(
 			{
 				customType: STATUS_MESSAGE_TYPE,
-				content: `Goal mode ended: "${objective}" (${iterations} turn(s)).\n${reason}`,
+				content: `Goal mode ended: "${objective}" (${iterations} turn(s), ${tokensUsed.toLocaleString()} tokens used).\n${reason}`,
 				display: true,
 			},
 			{ deliverAs: "followUp" },
