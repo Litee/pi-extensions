@@ -14,10 +14,10 @@ below to diff against upstream and pick up future changes.
 
 | Local file | Upstream commit | Upstream commit date | Upstream commit subject |
 |---|---|---|---|
-| `src/index.ts` | [`6de3c06`](https://github.com/dbachelder/pi-btw/commit/6de3c06a2ff4f685bc581d84a04646e733bcd32e) | 2026-05-07 | `chore: release v0.4.0 — @earendil-works namespace, pi 0.74` |
-| `test/btw.runtime.test.ts` | [`6de3c06`](https://github.com/dbachelder/pi-btw/commit/6de3c06a2ff4f685bc581d84a04646e733bcd32e) | 2026-05-07 | `chore: release v0.4.0 — @earendil-works namespace, pi 0.74` |
-| `skills/btw/SKILL.md` | [`6de3c06`](https://github.com/dbachelder/pi-btw/commit/6de3c06a2ff4f685bc581d84a04646e733bcd32e) | 2026-05-07 | `chore: release v0.4.0 — @earendil-works namespace, pi 0.74` |
-| `LICENSE` | [`6de3c06`](https://github.com/dbachelder/pi-btw/commit/6de3c06a2ff4f685bc581d84a04646e733bcd32e) | 2026-05-07 | `chore: release v0.4.0 — @earendil-works namespace, pi 0.74` |
+| `src/index.ts` | [`88980a4`](https://github.com/dbachelder/pi-btw/commit/88980a42076eb0f5e197345ad0e5d78697d00231) | 2026-05-12 | `feat: add mouse and arrow transcript scrolling (#16)` |
+| `test/btw.runtime.test.ts` | [`88980a4`](https://github.com/dbachelder/pi-btw/commit/88980a42076eb0f5e197345ad0e5d78697d00231) | 2026-05-12 | `feat: add mouse and arrow transcript scrolling (#16)` |
+| `skills/btw/SKILL.md` | [`88980a4`](https://github.com/dbachelder/pi-btw/commit/88980a42076eb0f5e197345ad0e5d78697d00231) | 2026-05-12 | `feat: add mouse and arrow transcript scrolling (#16)` |
+| `LICENSE` | [`88980a4`](https://github.com/dbachelder/pi-btw/commit/88980a42076eb0f5e197345ad0e5d78697d00231) | 2026-05-12 | `feat: add mouse and arrow transcript scrolling (#16)` |
 
 Upstream layout is `extensions/btw.ts`; locally it lives at `src/index.ts`
 to match this workspace's per-package convention.
@@ -32,5 +32,5 @@ copied and how to diff against future upstream work.
 ```bash
 UP=$(mktemp -d)/dbachelder-pi-btw
 git clone --quiet https://github.com/dbachelder/pi-btw.git "$UP"
-git -C "$UP" log --follow 6de3c06..origin/HEAD -- extensions/btw.ts tests/btw.runtime.test.ts skills/btw/SKILL.md
+git -C "$UP" log --follow 88980a4..origin/HEAD -- extensions/btw.ts tests/btw.runtime.test.ts skills/btw/SKILL.md
 ```

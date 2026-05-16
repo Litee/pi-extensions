@@ -1616,6 +1616,108 @@ describe("btw runtime behavior", () => {
     expect(inputHandleSpy).not.toHaveBeenCalledWith("\x06");
   });
 
+  it("scrolls up 3 lines and pauses follow on a mouse-wheel up SGR sequence", async () => {
+    const harness = createHarness();
+    const longAnswer = Array.from({ length: 60 }, (_, index) => `answer line ${index + 1}`).join("\n");
+    promptStreamMock.mockImplementation(() => streamAnswer(longAnswer));
+
+    await harness.runSessionStart();
+    await harness.command("btw", "fill the transcript");
+
+    const overlay = harness.latestOverlayComponent();
+    const inputHandleSpy = vi.spyOn(overlay.input!, "handleInput");
+
+    // Render once so the viewport math runs and the offset clamps to the bottom.
+    overlay.render(80);
+    const offsetBefore = overlay.transcriptScrollOffset;
+    expect(offsetBefore).toBeGreaterThan(2);
+    expect(overlay.followTranscript).toBe(true);
+
+    // SGR mouse wheel up: button 64 (= 0b1000000), low bit clear → scroll up.
+    overlay.handleInput("\x1b[<64;1;1M");
+
+    expect(overlay.transcriptScrollOffset).toBe(offsetBefore - 3);
+    expect(overlay.followTranscript).toBe(false);
+    expect(inputHandleSpy).not.toHaveBeenCalledWith("\x1b[<64;1;1M");
+  });
+
+  it("scrolls down 3 lines on a mouse-wheel down SGR sequence", async () => {
+    const harness = createHarness();
+    const longAnswer = Array.from({ length: 60 }, (_, index) => `answer line ${index + 1}`).join("\n");
+    promptStreamMock.mockImplementation(() => streamAnswer(longAnswer));
+
+    await harness.runSessionStart();
+    await harness.command("btw", "fill the transcript");
+
+    const overlay = harness.latestOverlayComponent();
+    const inputHandleSpy = vi.spyOn(overlay.input!, "handleInput");
+
+    // Render once and scroll up first so we have headroom to scroll back down.
+    overlay.render(80);
+    overlay.handleInput("\x1b[<64;1;1M"); // wheel up by 3
+    overlay.handleInput("\x1b[<64;1;1M"); // wheel up by 3 (total -6)
+    const offsetAfterUp = overlay.transcriptScrollOffset;
+    expect(overlay.followTranscript).toBe(false);
+
+    // SGR mouse wheel down: button 65 (= 0b1000001), low bit set → scroll down.
+    overlay.handleInput("\x1b[<65;1;1M");
+
+    expect(overlay.transcriptScrollOffset).toBe(offsetAfterUp + 3);
+    expect(inputHandleSpy).not.toHaveBeenCalledWith("\x1b[<65;1;1M");
+  });
+
+  it("scrolls one line on Arrow Up / Arrow Down without forwarding the bytes to the composer", async () => {
+    const harness = createHarness();
+    const longAnswer = Array.from({ length: 60 }, (_, index) => `answer line ${index + 1}`).join("\n");
+    promptStreamMock.mockImplementation(() => streamAnswer(longAnswer));
+
+    await harness.runSessionStart();
+    await harness.command("btw", "fill the transcript");
+
+    const overlay = harness.latestOverlayComponent();
+    const inputHandleSpy = vi.spyOn(overlay.input!, "handleInput");
+
+    overlay.render(80);
+    const offsetBefore = overlay.transcriptScrollOffset;
+    expect(offsetBefore).toBeGreaterThan(0);
+
+    // Arrow Up — single-line scroll back, pauses follow.
+    overlay.handleInput("\x1b[A");
+    expect(overlay.transcriptScrollOffset).toBe(offsetBefore - 1);
+    expect(overlay.followTranscript).toBe(false);
+
+    // Arrow Down — single-line scroll forward.
+    overlay.handleInput("\x1b[B");
+    expect(overlay.transcriptScrollOffset).toBe(offsetBefore);
+
+    expect(inputHandleSpy).not.toHaveBeenCalledWith("\x1b[A");
+    expect(inputHandleSpy).not.toHaveBeenCalledWith("\x1b[B");
+  });
+
+  it("does not treat a non-wheel SGR mouse sequence (button 0 click) as a scroll event", async () => {
+    const harness = createHarness();
+    const longAnswer = Array.from({ length: 60 }, (_, index) => `answer line ${index + 1}`).join("\n");
+    promptStreamMock.mockImplementation(() => streamAnswer(longAnswer));
+
+    await harness.runSessionStart();
+    await harness.command("btw", "fill the transcript");
+
+    const overlay = harness.latestOverlayComponent();
+    const inputHandleSpy = vi.spyOn(overlay.input!, "handleInput");
+
+    overlay.render(80);
+    const offsetBefore = overlay.transcriptScrollOffset;
+    const followBefore = overlay.followTranscript;
+
+    // SGR mouse click: button 0 — must NOT be interpreted as a scroll wheel event.
+    overlay.handleInput("\x1b[<0;1;1M");
+
+    expect(overlay.transcriptScrollOffset).toBe(offsetBefore);
+    expect(overlay.followTranscript).toBe(followBefore);
+    // Falls through to the embedded Input (which ignores it in tests).
+    expect(inputHandleSpy).toHaveBeenCalledWith("\x1b[<0;1;1M");
+  });
+
   it("hint text only mentions shortcuts that the overlay actually handles", async () => {
     const harness = createHarness();
     promptStreamMock.mockImplementation(() => streamAnswer("ok"));

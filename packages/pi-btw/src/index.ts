@@ -1127,6 +1127,9 @@ class BtwOverlayComponent extends Container implements Focusable {
 
     this.hintsText = new Text("", 1, 0);
 
+    // Enable SGR mouse reporting so wheel/touchpad events reach handleInput().
+    this.tui.terminal?.write?.("\x1b[?1000h\x1b[?1006h");
+
     const originalHandleInput = this.input.handleInput.bind(this.input);
     this.input.handleInput = (data: string) => {
       if (keybindings.matches(data, "app.clear")) {
@@ -1188,6 +1191,32 @@ class BtwOverlayComponent extends Container implements Focusable {
     return Math.max(18, Math.min(32, Math.floor(terminalRows * 0.78)));
   }
 
+  private scrollTranscript(delta: number): void {
+    if (delta < 0) {
+      this.followTranscript = false;
+    }
+    this.transcriptScrollOffset = Math.max(0, this.transcriptScrollOffset + delta);
+    this.tui.requestRender();
+  }
+
+  dispose(): void {
+    this.tui.terminal?.write?.("\x1b[?1000l\x1b[?1006l");
+  }
+
+  private getMouseScrollDelta(data: string): number | null {
+    const match = data.match(/^\x1b\[<(\d+);\d+;\d+[Mm]$/);
+    if (!match) {
+      return null;
+    }
+
+    const button = Number(match[1]);
+    if ((button & 64) !== 64) {
+      return null;
+    }
+
+    return (button & 1) === 0 ? -3 : 3;
+  }
+
   handleInput(data: string): void {
     if (matchesBtwFocusShortcut(data)) {
       this.onUnfocusCallback();
@@ -1199,16 +1228,21 @@ class BtwOverlayComponent extends Container implements Focusable {
       return;
     }
 
-    if (matchesKey(data, Key.pageUp) || matchesKey(data, Key.ctrl("b"))) {
-      this.followTranscript = false;
-      this.transcriptScrollOffset = Math.max(0, this.transcriptScrollOffset - Math.max(1, this.transcriptViewportHeight - 1));
-      this.tui.requestRender();
+    const mouseScrollDelta = this.getMouseScrollDelta(data);
+    if (mouseScrollDelta !== null) {
+      this.scrollTranscript(mouseScrollDelta);
       return;
     }
 
-    if (matchesKey(data, Key.pageDown) || matchesKey(data, Key.ctrl("f"))) {
-      this.transcriptScrollOffset += Math.max(1, this.transcriptViewportHeight - 1);
-      this.tui.requestRender();
+    if (matchesKey(data, Key.pageUp) || matchesKey(data, Key.ctrl("b")) || matchesKey(data, Key.up)) {
+      const step = matchesKey(data, Key.up) ? 1 : Math.max(1, this.transcriptViewportHeight - 1);
+      this.scrollTranscript(-step);
+      return;
+    }
+
+    if (matchesKey(data, Key.pageDown) || matchesKey(data, Key.ctrl("f")) || matchesKey(data, Key.down)) {
+      const step = matchesKey(data, Key.down) ? 1 : Math.max(1, this.transcriptViewportHeight - 1);
+      this.scrollTranscript(step);
       return;
     }
 
@@ -1331,7 +1365,7 @@ class BtwOverlayComponent extends Container implements Focusable {
     const status = this.getStatus() ?? "Ready. Enter submits; Escape dismisses without clearing.";
     this.statusTextValue = status;
     this.statusText.setText(this.statusTextValue);
-    this.hintsTextValue = "Enter submit · Ctrl+B/F or PgUp/PgDn scroll · Ctrl+\\ toggle focus · Ctrl+L clear thread · Escape dismiss";
+    this.hintsTextValue = "Scroll wheel ↑↓ PgUp/PgDn Ctrl+B/F · Enter · Ctrl+\\ focus · Ctrl+L clear · Escape";
     this.hintsText.setText(this.hintsTextValue);
     this.tui.requestRender();
   }
@@ -1729,6 +1763,7 @@ export default function (pi: ExtensionAPI) {
           };
           runtime.close = () => {
             overlayDraft = overlay.getDraft();
+            overlay.dispose();
             closeRuntime();
           };
 
