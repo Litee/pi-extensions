@@ -7,7 +7,11 @@
  */
 
 import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
-import { Box, Text } from "@earendil-works/pi-tui";
+
+import { createWatcherMessageRenderer } from "pi-watcher-core/renderer";
+import { seedMissingBaselines } from "pi-watcher-core/seed-baselines";
+import { reconcileToolActivation, removeToolFromActive } from "pi-watcher-core/tool-activation";
+import { extractUiSurface } from "pi-watcher-core/ui-surface";
 
 import { buildStartupChatMessage } from "./format.js";
 import { rehydrateStateFromSession, writeState } from "./persistence.js";
@@ -21,7 +25,6 @@ import {
 	stopPolling,
 	TOOL_NAME,
 	type Runtime,
-	type UiSurface,
 } from "./runtime.js";
 import { createS3Client, type S3Client } from "./s3-client.js";
 import { registerToolIfNeeded } from "./toolAction.js";
@@ -34,9 +37,7 @@ export function createExtensionWithClient(pi: ExtensionAPI, client: S3Client): v
 	const rt: Runtime = makeRuntime(pi, client);
 
 	pi.on("session_start", async (_event, ctx) => {
-		const anyCtx = ctx as unknown as { hasUI?: boolean; ui?: UiSurface };
-		const hasUI = anyCtx.hasUI ?? anyCtx.ui?.hasUI ?? anyCtx.ui !== undefined;
-		rt.ui = hasUI ? (anyCtx.ui ?? null) : null;
+		rt.ui = extractUiSurface(ctx);
 
 		// Register the tool into the registry so it is visible via manage_tools
 		// ({action:"list"}) and can be activated by the LLM on demand.
@@ -52,26 +53,21 @@ export function createExtensionWithClient(pi: ExtensionAPI, client: S3Client): v
 		// user intent. Undo that if we have no persisted enabled=true so the
 		// status row stays hidden until the user explicitly activates the tool.
 		if (!rt.enabled) {
-			const current = pi.getActiveTools();
-			if (current.includes(TOOL_NAME)) {
-				pi.setActiveTools(current.filter((t) => t !== TOOL_NAME));
-			}
+			removeToolFromActive(pi, TOOL_NAME);
 		}
 
 		// Re-seed any watch that never got a baseline (add-time seeding
 		// failed, or persistence dropped the baseline).
-		for (const watch of Object.values(rt.watches)) {
-			if (watch.terminal || watch.baseline !== undefined) continue;
-			try {
-				watch.baseline = await snapshotObject(client, watch);
-			} catch (err) {
+		await seedMissingBaselines(Object.values(rt.watches), {
+			snapshot: (watch) => snapshotObject(client, watch),
+			onError: (watch, err) => {
 				rt.pi.appendEntry("s3-watcher:seed-error", {
 					bucket: watch.bucket,
 					key: watch.key,
 					message: (err as Error).message,
 				});
-			}
-		}
+			},
+		});
 
 		const activeWatches = Object.values(rt.watches).filter((w) => !w.terminal);
 		if (!rt.paused && activeWatches.length > 0) startPolling(rt);
@@ -97,16 +93,15 @@ export function createExtensionWithClient(pi: ExtensionAPI, client: S3Client): v
 	pi.on("turn_end", () => {
 		// Reconcile rt.enabled with the active-tools list. The user may have
 		// run manage_tools({action:"activate"}) or deactivate during the turn.
-		const isActive = pi.getActiveTools().includes(TOOL_NAME);
-		if (isActive && !rt.enabled) {
-			// User just activated the tool.
+		const intent = reconcileToolActivation(TOOL_NAME, rt.enabled, pi.getActiveTools());
+		if (intent === "noop") return;
+		if (intent === "activate") {
 			rt.enabled = true;
 			writeState(pi, rt);
 			const anyActive = Object.values(rt.watches).some((w) => !w.terminal);
 			if (!rt.paused && anyActive && !rt.scheduler.isRunning) startPolling(rt);
 			refreshStatus(rt);
-		} else if (!isActive && rt.enabled) {
-			// User just deactivated the tool.
+		} else {
 			rt.enabled = false;
 			stopPolling(rt);
 			writeState(pi, rt);
@@ -124,26 +119,15 @@ export function createExtensionWithClient(pi: ExtensionAPI, client: S3Client): v
 		rt.ui = null;
 	});
 
-	pi.registerMessageRenderer(CUSTOM_MESSAGE_TYPE, (message, _options, theme) => {
-		const text =
-			typeof message.content === "string"
-				? message.content
-				: message.content
-						.filter((c): c is { type: "text"; text: string } => c.type === "text")
-						.map((c) => c.text)
-						.join("\n");
-		const label = theme.bold(theme.fg("customMessageLabel", "pi-aws-s3-watcher"));
-		const box = new Box(1, 1, (t) => theme.bg("customMessageBg", t));
-		box.addChild(new Text(`${label}\n\n${text}`, 0, 0));
-		return box;
-	});
+	pi.registerMessageRenderer(
+		CUSTOM_MESSAGE_TYPE,
+		createWatcherMessageRenderer("pi-aws-s3-watcher"),
+	);
 
 	pi.registerCommand("s3-watcher", {
 		description: "Control the S3 object watcher (pause | resume | status)",
 		handler: (args, ctx) => {
-			const anyCtx = ctx as unknown as { hasUI?: boolean; ui?: UiSurface };
-			const hasUI = anyCtx.hasUI ?? anyCtx.ui?.hasUI ?? anyCtx.ui !== undefined;
-			const ui = hasUI ? anyCtx.ui : undefined;
+			const ui = extractUiSurface(ctx);
 			const sub = (args ?? "").trim().toLowerCase();
 			switch (sub) {
 				case "pause": {

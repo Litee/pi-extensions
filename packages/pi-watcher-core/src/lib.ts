@@ -4,3 +4,7 @@ export * from "./format-aggregated-errors.js";
 export * from "./persistence.js";
 export * from "./status-line.js";
 export * from "./renderer.js";
+export * from "./ui-surface.js";
+export * from "./error-tracker.js";
+export * from "./tool-activation.js";
+export * from "./seed-baselines.js";

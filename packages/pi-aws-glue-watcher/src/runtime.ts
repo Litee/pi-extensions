@@ -6,8 +6,9 @@
  */
 
 import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
-import { classifyWatcherError } from "pi-watcher-core/classify-error";
+import { DEFAULT_POLL_ERROR_THRESHOLD, noteWatchFailure, noteWatchSuccess } from "pi-watcher-core/error-tracker";
 import { PollScheduler } from "pi-watcher-core/poll-scheduler";
+import { colorize, type UiSurface } from "pi-watcher-core/ui-surface";
 
 import type { GlueClient } from "./glue-client.js";
 import { buildChangeChatMessage, buildStatusLine } from "./format.js";
@@ -15,6 +16,9 @@ import { writeState } from "./persistence.js";
 import { detectJobChanges, detectWorkflowChanges } from "./poller.js";
 import type { GlueEvent, WatchMap } from "./types.js";
 import type { GlueWidget } from "./ui/glue-widget.js";
+
+export type { UiSurface } from "pi-watcher-core/ui-surface";
+export { colorize, extractUiSurface } from "pi-watcher-core/ui-surface";
 
 const AUTH_ERROR_NAMES = new Set([
 	"CredentialsProviderError",
@@ -45,7 +49,7 @@ export const POLL_INTERVAL_MAX_MS = 900_000;
  * message is injected. The same threshold triggers the ⚠ indicator in the
  * status line.
  */
-export const POLL_ERROR_THRESHOLD = 5;
+export const POLL_ERROR_THRESHOLD = DEFAULT_POLL_ERROR_THRESHOLD;
 
 /** customType on every chat message this extension injects. */
 export const CUSTOM_MESSAGE_TYPE = "pi-aws-glue-watcher";
@@ -56,13 +60,6 @@ export const STATUS_KEY = "glue-watcher";
 // ---------------------------------------------------------------------------
 // UI surface + runtime
 // ---------------------------------------------------------------------------
-
-export interface UiSurface {
-	notify?: (msg: string, level?: string) => void;
-	setStatus?: (key: string, text: string | undefined) => void;
-	theme?: { fg?: (color: string, text: string) => string };
-	hasUI?: boolean;
-}
 
 /** Mutable per-process runtime. One instance per `createExtensionWithClient` call. */
 export interface Runtime {
@@ -105,18 +102,6 @@ export function makeRuntime(pi: Runtime["pi"], client: GlueClient): Runtime {
 // ---------------------------------------------------------------------------
 // Status-line helpers
 // ---------------------------------------------------------------------------
-
-export function colorize(
-	theme: UiSurface["theme"],
-	aliasOrText: "accent" | "muted" | "warning" | (string & {}),
-	maybeText?: string,
-): string {
-	// Back-compat shim: colorize(theme, text) colours as `accent`; new shape is
-	// colorize(theme, alias, text).
-	const alias = maybeText === undefined ? "accent" : (aliasOrText as "accent" | "muted" | "warning");
-	const text = maybeText === undefined ? aliasOrText : maybeText;
-	return theme?.fg ? theme.fg(alias, text) : text;
-}
 
 export function refreshStatus(rt: Runtime): void {
 	if (!rt.enabled || rt.displayMode !== "statusline") {
@@ -196,23 +181,22 @@ export async function pollOnce(rt: Runtime): Promise<void> {
 					? await detectJobChanges(rt.client, watch)
 					: await detectWorkflowChanges(rt.client, watch);
 
-			const prevErrors = watch.consecutiveErrors;
-			watch.consecutiveErrors = 0;
+			noteWatchSuccess(watch, {
+				onRecover: (prevErrors) => {
+					rt.pi.sendMessage(
+						{
+							customType: CUSTOM_MESSAGE_TYPE,
+							content:
+								`✓ ${watch.type} '${watch.name}' (${watch.watchId}) ` +
+								`recovered after ${prevErrors} consecutive error(s).`,
+							display: true,
+						},
+						{ deliverAs: "followUp", triggerTurn: false },
+					);
+				},
+			});
 			watch.baseline = result.newBaseline;
 			watch.lastPolledAt = Date.now();
-
-			if (prevErrors >= POLL_ERROR_THRESHOLD) {
-				rt.pi.sendMessage(
-					{
-						customType: CUSTOM_MESSAGE_TYPE,
-						content:
-							`✓ ${watch.type} '${watch.name}' (${watch.watchId}) ` +
-							`recovered after ${prevErrors} consecutive error(s).`,
-						display: true,
-					},
-					{ deliverAs: "followUp", triggerTurn: false },
-				);
-			}
 
 			if (result.events.length > 0) {
 				anyUpdate = true;
@@ -222,29 +206,35 @@ export async function pollOnce(rt: Runtime): Promise<void> {
 				}
 			}
 		} catch (err) {
-			watch.consecutiveErrors = watch.consecutiveErrors + 1;
-			const classified = classifyWatcherError(err, {
-				authPredicate: (e) => AUTH_ERROR_NAMES.has((e as Error)?.name ?? ""),
-				throttlePredicate: (e) => THROTTLE_ERROR_NAMES.has((e as Error)?.name ?? ""),
-				authMessage: "authentication expired — run `aws sso login` to re-authenticate",
+			noteWatchFailure(watch, {
+				err,
+				classifyOpts: {
+					authPredicate: (e) => AUTH_ERROR_NAMES.has((e as Error)?.name ?? ""),
+					throttlePredicate: (e) => THROTTLE_ERROR_NAMES.has((e as Error)?.name ?? ""),
+					authMessage: "authentication expired — run `aws sso login` to re-authenticate",
+				},
+				scheduler: rt.scheduler,
+				onAppendError: (_classified, raw) => {
+					rt.pi.appendEntry("glue-watcher:poll-error", {
+						type: watch.type,
+						name: watch.name,
+						message: (raw as Error)?.message ?? String(raw),
+					});
+				},
+				onThresholdMessage: (classified) => {
+					rt.pi.sendMessage(
+						{
+							customType: CUSTOM_MESSAGE_TYPE,
+							content:
+								`⚠ ${watch.type} '${watch.name}' (${watch.watchId}) ` +
+								`has failed ${POLL_ERROR_THRESHOLD} consecutive polls. ` +
+								`Last error: ${classified.userMessage}`,
+							display: true,
+						},
+						{ deliverAs: "followUp", triggerTurn: true },
+					);
+				},
 			});
-			if (classified.shouldBackoff) {
-				rt.scheduler.noteBackoff();
-			}
-			rt.pi.appendEntry("glue-watcher:poll-error", { type: watch.type, name: watch.name, message: (err as Error)?.message ?? String(err) });
-			if (watch.consecutiveErrors === POLL_ERROR_THRESHOLD) {
-				rt.pi.sendMessage(
-					{
-						customType: CUSTOM_MESSAGE_TYPE,
-						content:
-							`⚠ ${watch.type} '${watch.name}' (${watch.watchId}) ` +
-							`has failed ${POLL_ERROR_THRESHOLD} consecutive polls. ` +
-							`Last error: ${classified.userMessage}`,
-						display: true,
-					},
-					{ deliverAs: "followUp", triggerTurn: true },
-				);
-			}
 		}
 	}
 

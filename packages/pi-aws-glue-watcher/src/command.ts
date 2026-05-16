@@ -8,6 +8,8 @@
  */
 
 import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
+import { addToolToActive, removeToolFromActive } from "pi-watcher-core/tool-activation";
+import { extractUiSurface } from "pi-watcher-core/ui-surface";
 
 import type { GlueClient } from "./glue-client.js";
 import { writeState } from "./persistence.js";
@@ -17,13 +19,8 @@ import {
 	stopPolling,
 	toggleDisplayMode,
 	type Runtime,
-	type UiSurface,
 } from "./runtime.js";
-import {
-	addToolToActive,
-	registerToolIfNeeded,
-	removeToolFromActive,
-} from "./toolAction.js";
+import { registerToolIfNeeded } from "./toolAction.js";
 import { WatchesView } from "./ui/watches-view.js";
 
 // ---------------------------------------------------------------------------
@@ -65,17 +62,6 @@ export function parseSubcommand(args: string | undefined): GlueWatcherSubcommand
 // Executor
 // ---------------------------------------------------------------------------
 
-/** Context-shaped object the command handler reads from. Kept narrow. */
-interface CtxWithUi {
-	hasUI?: boolean;
-	ui?: (UiSurface & {
-		custom?: <T>(
-			factory: (tui: unknown, theme: unknown, kb: unknown, done: (v: T) => void) => unknown,
-			options?: unknown,
-		) => Promise<T>;
-	}) | null;
-}
-
 export async function runGlueWatcherCommand(
 	args: string | undefined,
 	ctx: unknown,
@@ -83,9 +69,7 @@ export async function runGlueWatcherCommand(
 	pi: ExtensionAPI,
 	client: GlueClient,
 ): Promise<void> {
-	const anyCtx = ctx as CtxWithUi;
-	const hasUI = anyCtx.hasUI ?? anyCtx.ui?.hasUI ?? anyCtx.ui !== undefined;
-	const ui = hasUI ? (anyCtx.ui ?? null) : null;
+	const ui = extractUiSurface(ctx);
 
 	const parsed = parseSubcommand(args);
 
@@ -100,7 +84,7 @@ export async function runGlueWatcherCommand(
 			// polling/widget lifecycle. The LLM can also activate the tool alone via
 			// manage_tools({action:"activate",tools:["glue_watcher"]}).
 			registerToolIfNeeded(pi, rt);
-			addToolToActive(pi);
+			addToolToActive(pi, "glue_watcher");
 			writeState(rt.pi, rt);
 			const activeWatches = Object.values(rt.watches).filter((w) => !w.terminal);
 			if (!rt.paused && activeWatches.length > 0 && !rt.scheduler.isRunning) startPolling(rt);
@@ -122,7 +106,7 @@ export async function runGlueWatcherCommand(
 			rt.enabled = false;
 			stopPolling(rt);
 			rt.widget?.hide(ctx);
-			removeToolFromActive(pi);
+			removeToolFromActive(pi, "glue_watcher");
 			writeState(rt.pi, rt);
 			ui?.notify?.("glue-watcher: disabled. Tool removed.", "info");
 			return;

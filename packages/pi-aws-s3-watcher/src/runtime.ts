@@ -3,8 +3,12 @@
  */
 
 import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
-import { classifyWatcherError } from "pi-watcher-core/classify-error";
+import { DEFAULT_POLL_ERROR_THRESHOLD, noteWatchFailure, noteWatchSuccess } from "pi-watcher-core/error-tracker";
 import { PollScheduler } from "pi-watcher-core/poll-scheduler";
+import { colorize, type UiSurface } from "pi-watcher-core/ui-surface";
+
+export type { UiSurface } from "pi-watcher-core/ui-surface";
+export { colorize } from "pi-watcher-core/ui-surface";
 
 import { buildChangeChatMessage, buildStatusLine } from "./format.js";
 import { writeState } from "./persistence.js";
@@ -40,7 +44,7 @@ export const POLL_INTERVAL_MS = 60_000;
 export const POLL_INTERVAL_MAX_MS = 900_000;
 
 /** Consecutive per-watch poll failures before a ⚠ warning is injected. */
-export const POLL_ERROR_THRESHOLD = 5;
+export const POLL_ERROR_THRESHOLD = DEFAULT_POLL_ERROR_THRESHOLD;
 
 export const CUSTOM_MESSAGE_TYPE = "pi-aws-s3-watcher";
 
@@ -52,13 +56,6 @@ export const TOOL_NAME = "s3_watcher";
 // ---------------------------------------------------------------------------
 // UI surface + runtime
 // ---------------------------------------------------------------------------
-
-export interface UiSurface {
-	notify?: (msg: string, level?: string) => void;
-	setStatus?: (key: string, text: string | undefined) => void;
-	theme?: { fg?: (color: string, text: string) => string };
-	hasUI?: boolean;
-}
 
 export interface Runtime {
 	pi: Pick<ExtensionAPI, "sendMessage" | "appendEntry" | "events" | "getActiveTools" | "setActiveTools">;
@@ -96,18 +93,6 @@ export function makeRuntime(pi: Runtime["pi"], client: S3Client): Runtime {
 // ---------------------------------------------------------------------------
 // Status-line helpers
 // ---------------------------------------------------------------------------
-
-export function colorize(
-	theme: UiSurface["theme"],
-	aliasOrText: "accent" | "muted" | "warning" | (string & {}),
-	maybeText?: string,
-): string {
-	// Back-compat: colorize(theme, text) colours as accent; new shape is
-	// colorize(theme, alias, text).
-	const alias = maybeText === undefined ? "accent" : (aliasOrText as "accent" | "muted" | "warning");
-	const text = maybeText === undefined ? aliasOrText : maybeText;
-	return theme?.fg ? theme.fg(alias, text) : text;
-}
 
 export function refreshStatus(rt: Runtime): void {
 	// Gate on persisted enabled flag, not getActiveTools(). Pi auto-activates
@@ -170,23 +155,22 @@ export async function pollOnce(rt: Runtime): Promise<void> {
 
 		try {
 			const result = await detectChanges(rt.client, watch);
-			const prevErrors = watch.consecutiveErrors;
-			watch.consecutiveErrors = 0;
+			noteWatchSuccess(watch, {
+				onRecover: (prevErrors) => {
+					rt.pi.sendMessage(
+						{
+							customType: CUSTOM_MESSAGE_TYPE,
+							content:
+								`✓ s3://${watch.bucket}/${watch.key} (${watch.watchId}) ` +
+								`recovered after ${prevErrors} consecutive error(s).`,
+							display: true,
+						},
+						{ deliverAs: "followUp", triggerTurn: false },
+					);
+				},
+			});
 			watch.baseline = result.newBaseline;
 			watch.lastPolledAt = nowTs;
-
-			if (prevErrors >= POLL_ERROR_THRESHOLD) {
-				rt.pi.sendMessage(
-					{
-						customType: CUSTOM_MESSAGE_TYPE,
-						content:
-							`✓ s3://${watch.bucket}/${watch.key} (${watch.watchId}) ` +
-							`recovered after ${prevErrors} consecutive error(s).`,
-						display: true,
-					},
-					{ deliverAs: "followUp", triggerTurn: false },
-				);
-			}
 
 			if (result.observedChange) anyObservedChange = true;
 			if (result.events.length > 0) {
@@ -194,31 +178,35 @@ export async function pollOnce(rt: Runtime): Promise<void> {
 				watch.terminal = true; // target fired exactly once → stop polling this watch.
 			}
 		} catch (err) {
-			watch.consecutiveErrors += 1;
-			const classified = classifyWatcherError(err, {
-				authPredicate: (e) => AUTH_ERROR_NAMES.has((e as Error)?.name ?? ""),
-				throttlePredicate: (e) => THROTTLE_ERROR_NAMES.has((e as Error)?.name ?? ""),
-				authMessage: "authentication expired — refresh AWS credentials",
+			noteWatchFailure(watch, {
+				err,
+				classifyOpts: {
+					authPredicate: (e) => AUTH_ERROR_NAMES.has((e as Error)?.name ?? ""),
+					throttlePredicate: (e) => THROTTLE_ERROR_NAMES.has((e as Error)?.name ?? ""),
+					authMessage: "authentication expired — refresh AWS credentials",
+				},
+				scheduler: rt.scheduler,
+				onAppendError: (_classified, raw) => {
+					rt.pi.appendEntry("s3-watcher:poll-error", {
+						bucket: watch.bucket,
+						key: watch.key,
+						message: (raw as Error)?.message ?? String(raw),
+					});
+				},
+				onThresholdMessage: (classified) => {
+					rt.pi.sendMessage(
+						{
+							customType: CUSTOM_MESSAGE_TYPE,
+							content:
+								`⚠ s3://${watch.bucket}/${watch.key} (${watch.watchId}) ` +
+								`has failed ${POLL_ERROR_THRESHOLD} consecutive polls. ` +
+								`Last error: ${classified.userMessage}`,
+							display: true,
+						},
+						{ deliverAs: "followUp", triggerTurn: true },
+					);
+				},
 			});
-			if (classified.shouldBackoff) rt.scheduler.noteBackoff();
-			rt.pi.appendEntry("s3-watcher:poll-error", {
-				bucket: watch.bucket,
-				key: watch.key,
-				message: (err as Error)?.message ?? String(err),
-			});
-			if (watch.consecutiveErrors === POLL_ERROR_THRESHOLD) {
-				rt.pi.sendMessage(
-					{
-						customType: CUSTOM_MESSAGE_TYPE,
-						content:
-							`⚠ s3://${watch.bucket}/${watch.key} (${watch.watchId}) ` +
-							`has failed ${POLL_ERROR_THRESHOLD} consecutive polls. ` +
-							`Last error: ${classified.userMessage}`,
-						display: true,
-					},
-					{ deliverAs: "followUp", triggerTurn: true },
-				);
-			}
 		}
 	}
 

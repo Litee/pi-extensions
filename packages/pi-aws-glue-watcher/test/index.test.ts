@@ -1,6 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
+import { initTheme } from "@earendil-works/pi-coding-agent";
 import type { GlueClient, JobRunResponse, WorkflowRunResponse } from "../src/glue-client.js";
 import { makeRuntime, POLL_ERROR_THRESHOLD, POLL_INTERVAL_MS, pollOnce } from "../src/runtime.js";
 import {
@@ -284,6 +285,9 @@ describe("session resume: widget + polling restored from persisted watches", () 
 });
 
 describe("startup chat message: triggerTurn + label", () => {
+	// Markdown.render() requires initTheme() to be called; do so once for all
+	// tests in this describe block that exercise the expanded renderer path.
+	beforeEach(() => { initTheme(undefined); });
 	it("sends the startup chat message with triggerTurn: false so it doesn't kick off an LLM round-trip", async () => {
 		const { createExtensionWithClient } = await import("../src/index.js");
 		const pi = makePi();
@@ -464,8 +468,9 @@ describe("startup chat message: triggerTurn + label", () => {
 			bg: (_c: string, s: string) => s,
 		};
 		renderer({ content: [{ type: "text", text: "body" }] }, {}, spyTheme);
-		expect(labelCalls).toContain("pi-aws-glue-watcher");
-		expect(labelCalls.some((s) => s.includes("[") || s.includes("]"))).toBe(false);
+		const stripped = labelCalls.map((s) => s.replace(/\x1b\[[^m]*m/g, ""));
+		expect(stripped).toContain("pi-aws-glue-watcher");
+		expect(stripped.some((s) => s.includes("[") || s.includes("]"))).toBe(false);
 		void rendered; // silence unused
 	});
 });

@@ -14,6 +14,10 @@
     "./status-line": "./src/status-line.ts",
     "./time": "./src/time.ts",
     "./renderer": "./src/renderer.ts",
+    "./ui-surface": "./src/ui-surface.ts",
+    "./error-tracker": "./src/error-tracker.ts",
+    "./tool-activation": "./src/tool-activation.ts",
+    "./seed-baselines": "./src/seed-baselines.ts",
     ".": "./src/lib.ts"
   },
   "peerDependencies": {

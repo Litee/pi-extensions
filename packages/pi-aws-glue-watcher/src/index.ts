@@ -16,7 +16,10 @@
 
 import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
 
-import { Box, Text } from "@earendil-works/pi-tui";
+import { createWatcherMessageRenderer } from "pi-watcher-core/renderer";
+import { seedMissingBaselines } from "pi-watcher-core/seed-baselines";
+import { reconcileToolActivation, syncToolActiveState } from "pi-watcher-core/tool-activation";
+import { extractUiSurface } from "pi-watcher-core/ui-surface";
 
 import { createGlueClient, type GlueClient } from "./glue-client.js";
 import { buildStartupChatMessage } from "./format.js";
@@ -31,9 +34,8 @@ import {
 	startPolling,
 	stopPolling,
 	type Runtime,
-	type UiSurface,
 } from "./runtime.js";
-import { reconcileToolActivation, registerToolIfNeeded, syncToolActiveState } from "./toolAction.js";
+import { registerToolIfNeeded } from "./toolAction.js";
 import { GlueWidget } from "./ui/glue-widget.js";
 
 /**
@@ -45,9 +47,7 @@ export function createExtensionWithClient(pi: ExtensionAPI, client: GlueClient):
 	rt.widget = new GlueWidget(pi, () => rt.watches, () => rt.scheduler.intervalMs);
 
 	pi.on("session_start", async (_event, ctx) => {
-		const anyCtx = ctx as unknown as { hasUI?: boolean; ui?: UiSurface };
-		const hasUI = anyCtx.hasUI ?? anyCtx.ui?.hasUI ?? anyCtx.ui !== undefined;
-		rt.ui = hasUI ? (anyCtx.ui ?? null) : null;
+		rt.ui = extractUiSurface(ctx);
 
 		const state = rehydrateStateFromSession(ctx);
 		rt.watches = state?.watches ?? {};
@@ -68,21 +68,23 @@ export function createExtensionWithClient(pi: ExtensionAPI, client: GlueClient):
 		// /glue-watcher enable keeps the tool callable without forcing a
 		// re-enable. If enabled=false, the tool is yanked out of the active set.
 		registerToolIfNeeded(pi, rt);
-		syncToolActiveState(pi, rt.enabled);
+		syncToolActiveState(pi, "glue_watcher", rt.enabled);
 
 		if (!rt.enabled) return;
 
-		for (const watch of Object.values(rt.watches)) {
-			if (watch.terminal || watch.baseline !== undefined) continue;
-			try {
-				watch.baseline =
-					watch.type === "job"
-						? await snapshotJobRun(client, watch)
-						: await snapshotWorkflowRun(client, watch);
-			} catch (err) {
-				rt.pi.appendEntry("glue-watcher:seed-error", { type: watch.type, name: watch.name, message: (err as Error).message });
-			}
-		}
+		await seedMissingBaselines(Object.values(rt.watches), {
+			snapshot: (watch) =>
+				watch.type === "job"
+					? snapshotJobRun(client, watch)
+					: snapshotWorkflowRun(client, watch),
+			onError: (watch, err) => {
+				rt.pi.appendEntry("glue-watcher:seed-error", {
+					type: watch.type,
+					name: watch.name,
+					message: (err as Error).message,
+				});
+			},
+		});
 
 		const activeWatches = Object.values(rt.watches).filter((w) => !w.terminal);
 		if (!rt.paused && activeWatches.length > 0) startPolling(rt);
@@ -111,7 +113,7 @@ export function createExtensionWithClient(pi: ExtensionAPI, client: GlueClient):
 		// in pi's tool set. The LLM may have toggled the tool during this turn
 		// via manage_tools; mirror that into rt.enabled so polling/widget/status
 		// stay consistent with what the LLM can actually call.
-		const intent = reconcileToolActivation(rt.enabled, pi.getActiveTools());
+		const intent = reconcileToolActivation("glue_watcher", rt.enabled, pi.getActiveTools());
 		if (intent === "noop") return;
 
 		if (intent === "activate") {
@@ -144,48 +146,25 @@ export function createExtensionWithClient(pi: ExtensionAPI, client: GlueClient):
 		rt.ui = null;
 	});
 
-	pi.registerMessageRenderer(CUSTOM_MESSAGE_TYPE, (message, options, theme) => {
-		const expanded =
-			options && typeof options === "object" && "expanded" in options
-				? Boolean((options as { expanded?: boolean }).expanded)
-				: false;
-		const text =
-			typeof message.content === "string"
-				? message.content
-				: message.content
-						.filter((c): c is { type: "text"; text: string } => c.type === "text")
-						.map((c) => c.text)
-						.join("\n");
-		// For startup messages we can re-render the full expanded form from
-		// the stored watches; for change messages the text is already the
-		// full event list (no sub-fields to hide).
-		const displayText = (() => {
-			if (
-				expanded &&
-				message.details &&
-				typeof message.details === "object" &&
-				"watches" in message.details
-			) {
-				const d = message.details as { watches: WatchMap; date: string; pollMs?: number };
-				return buildStartupChatMessage(d.watches, new Date(d.date), {
-					expanded: true,
-					...(typeof d.pollMs === "number" ? { pollMs: d.pollMs } : {}),
-				});
-			}
-			return text;
-		})();
-		const label = theme.bold(theme.fg("customMessageLabel", "pi-aws-glue-watcher"));
-		const box = new Box(1, 1, (t) => theme.bg("customMessageBg", t));
-		// Dim the expand hint line.
-		const rendered = displayText
-			.split("\n")
-			.map((line) =>
-				line === "… ctrl+o to expand" ? theme.fg("dim", line) : line,
-			)
-			.join("\n");
-		box.addChild(new Text(`${label}\n\n${rendered}`, 0, 0));
-		return box;
-	});
+	pi.registerMessageRenderer(
+		CUSTOM_MESSAGE_TYPE,
+		createWatcherMessageRenderer("pi-aws-glue-watcher", {
+			expandedTextOverride: (message) => {
+				if (
+					message.details &&
+					typeof message.details === "object" &&
+					"watches" in message.details
+				) {
+					const d = message.details as { watches: WatchMap; date: string; pollMs?: number };
+					return buildStartupChatMessage(d.watches, new Date(d.date), {
+						expanded: true,
+						...(typeof d.pollMs === "number" ? { pollMs: d.pollMs } : {}),
+					});
+				}
+				return undefined;
+			},
+		}),
+	);
 
 	pi.registerCommand("glue-watcher", {
 		description: "Control the Glue watcher (enable | disable | status | browse)",

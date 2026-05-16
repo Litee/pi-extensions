@@ -10,6 +10,13 @@ import { randomBytes } from "node:crypto";
 
 import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
 import { Type } from "typebox";
+import {
+	addToolToActive,
+	reconcileToolActivation as coreReconcileToolActivation,
+	removeToolFromActive as coreRemoveToolFromActive,
+	syncToolActiveState as coreSyncToolActiveState,
+} from "pi-watcher-core/tool-activation";
+export type { ReconcileIntent } from "pi-watcher-core/tool-activation";
 
 import { writeState } from "./persistence.js";
 import { snapshotJobRun, snapshotWorkflowRun } from "./poller.js";
@@ -104,57 +111,32 @@ export function registerToolIfNeeded(pi: ExtensionAPI, rt: Runtime): void {
 	});
 }
 
-export function addToolToActive(pi: ExtensionAPI): void {
-	const active = pi.getActiveTools();
-	if (!active.includes("glue_watcher")) {
-		pi.setActiveTools([...active, "glue_watcher"]);
-	}
+// ---------------------------------------------------------------------------
+// Backward-compat wrappers (glue-specific, tool name pre-bound)
+// These preserve the old call signatures for tests and existing code.
+// ---------------------------------------------------------------------------
+
+/** @deprecated Use `addToolToActive(pi, "glue_watcher")` from pi-watcher-core/tool-activation. */
+export function addToolToActiveGlue(pi: ExtensionAPI): void {
+	addToolToActive(pi, "glue_watcher");
 }
 
+/** @deprecated Use `removeToolFromActive(pi, "glue_watcher")` from pi-watcher-core/tool-activation. */
 export function removeToolFromActive(pi: ExtensionAPI): void {
-	const active = pi.getActiveTools();
-	pi.setActiveTools(active.filter((n) => n !== "glue_watcher"));
+	coreRemoveToolFromActive(pi, "glue_watcher");
 }
 
-/**
- * Determine whether `rt.enabled` and the presence of `glue_watcher` in
- * `pi.getActiveTools()` agree, and what corrective action (if any) the
- * extension should take on turn_end.
- *
- * - `activate`  — LLM ran `manage_tools({action:"activate",...})` after the
- *                  watcher was disabled. Mirror that into `rt.enabled=true`
- *                  so polling/widget resume.
- * - `deactivate` — LLM ran `manage_tools({action:"deactivate",...})` after the
- *                   watcher was enabled. Mirror that into `rt.enabled=false`
- *                   so polling stops and the widget hides.
- * - `noop`      — states already agree.
- *
- * Kept as a pure reducer so the reconciliation test doesn't need the full
- * session/client machinery.
- */
-export type ReconcileIntent = "activate" | "deactivate" | "noop";
+/** @deprecated Use `syncToolActiveState(pi, "glue_watcher", enabled)` from pi-watcher-core/tool-activation. */
+export function syncToolActiveState(pi: ExtensionAPI, enabled: boolean): void {
+	coreSyncToolActiveState(pi, "glue_watcher", enabled);
+}
 
+/** @deprecated Use `reconcileToolActivation("glue_watcher", enabled, activeTools)` from pi-watcher-core/tool-activation. */
 export function reconcileToolActivation(
 	enabled: boolean,
 	activeTools: readonly string[],
-): ReconcileIntent {
-	const isToolActive = activeTools.includes("glue_watcher");
-	if (isToolActive === enabled) return "noop";
-	return isToolActive ? "activate" : "deactivate";
-}
-
-/**
- * Keep the `glue_watcher` tool's active-set membership in sync with
- * persisted `enabled` state. Called from `session_start` on every session
- * boot so a restart doesn't leave the persisted widget + polling visible
- * while the LLM is locked out of the tool.
- *
- * Also fixes the complementary case (enabled=false, tool somehow active)
- * by yanking the tool out.
- */
-export function syncToolActiveState(pi: ExtensionAPI, enabled: boolean): void {
-	if (enabled) addToolToActive(pi);
-	else removeToolFromActive(pi);
+): import("pi-watcher-core/tool-activation").ReconcileIntent {
+	return coreReconcileToolActivation("glue_watcher", enabled, activeTools);
 }
 
 // ---------------------------------------------------------------------------

@@ -65,9 +65,18 @@ function extractText(content: unknown): string {
 // ---------------------------------------------------------------------------
 
 /** Minimal message shape accepted by the renderer. */
-interface WatcherMessage {
+export interface WatcherMessage {
 	content: unknown;
 	details?: unknown;
+}
+
+export interface WatcherMessageRendererOptions {
+	/**
+	 * When provided and `expanded === true`, this callback may return an
+	 * alternative text string to render as Markdown instead of the message
+	 * content. Return `undefined` to fall through to the default rendering.
+	 */
+	expandedTextOverride?: (message: WatcherMessage) => string | undefined;
 }
 
 /**
@@ -81,13 +90,17 @@ interface WatcherMessage {
  *   hint is appended on a new line so users know how to see the full message.
  *
  * **Expanded** (`expanded === true`):
- *   Bold label + full content rendered as `Markdown`.
+ *   Bold label + full content rendered as `Markdown`. When
+ *   `opts.expandedTextOverride` is provided and returns a non-undefined
+ *   string, that string is used instead of the message content.
  *
  * @param label - The bold label shown at the top of every message bubble,
  *   e.g. `"pi-ticket-watcher"`.
+ * @param opts  - Optional rendering overrides.
  */
 export function createWatcherMessageRenderer(
 	label: string,
+	opts: WatcherMessageRendererOptions = {},
 ): (
 	message: WatcherMessage,
 	options: { expanded: boolean },
@@ -103,8 +116,10 @@ export function createWatcherMessageRenderer(
 		const text = extractText(message.content);
 
 		if (expanded) {
+			const override = opts.expandedTextOverride?.(message);
+			const displayText = override ?? text;
 			box.addChild(
-				new Markdown(text, 0, 0, getMarkdownTheme(), {
+				new Markdown(displayText, 0, 0, getMarkdownTheme(), {
 					color: (t: string) => theme.fg("customMessageText", t),
 				}),
 			);
