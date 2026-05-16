@@ -409,6 +409,8 @@ describe("buildStatusLine", () => {
 		idleSeconds: 120,
 		focusMinSeconds: 3 as number | null,
 		disabledFlags: [] as ReadonlyArray<"--recap-disable" | "--recap-disable-focus">,
+		triggerCount: 0,
+		tokenUsage: null,
 	};
 
 	it("shows `(from --recap-model)` when the CLI override resolves", () => {
@@ -428,6 +430,7 @@ describe("buildStatusLine", () => {
 				"  Auto-recap:     enabled",
 				"  Idle trigger:   120s after turn_end",
 				"  Focus trigger:  enabled (min 3s away)",
+				"  Triggers:       0 (this session)",
 				"  Disabled flags: (none)",
 			].join("\n"),
 		);
@@ -450,6 +453,7 @@ describe("buildStatusLine", () => {
 				"  Auto-recap:     enabled",
 				"  Idle trigger:   120s after turn_end",
 				"  Focus trigger:  enabled (min 3s away)",
+				"  Triggers:       0 (this session)",
 				"  Disabled flags: (none)",
 			].join("\n"),
 		);
@@ -463,6 +467,7 @@ describe("buildStatusLine", () => {
 				"  Auto-recap:     enabled",
 				"  Idle trigger:   120s after turn_end",
 				"  Focus trigger:  enabled (min 3s away)",
+				"  Triggers:       0 (this session)",
 				"  Disabled flags: (none)",
 			].join("\n"),
 		);
@@ -486,6 +491,7 @@ describe("buildStatusLine", () => {
 				"  Auto-recap:     enabled",
 				"  Idle trigger:   120s after turn_end",
 				"  Focus trigger:  enabled (min 3s away)",
+				"  Triggers:       0 (this session)",
 				"  Disabled flags: (none)",
 			].join("\n"),
 		);
@@ -497,6 +503,8 @@ describe("buildStatusLine", () => {
 			override: null,
 			autoRecapEnabled: false,
 			disabledFlags: ["--recap-disable"],
+			triggerCount: 0,
+			tokenUsage: null,
 		});
 		expect(out).toContain("Auto-recap:     disabled");
 		expect(out).toContain("Disabled flags: --recap-disable");
@@ -508,6 +516,8 @@ describe("buildStatusLine", () => {
 			override: null,
 			focusMinSeconds: null,
 			disabledFlags: ["--recap-disable-focus"],
+			triggerCount: 0,
+			tokenUsage: null,
 		});
 		expect(out).toContain("Focus trigger:  disabled");
 		expect(out).toContain("Disabled flags: --recap-disable-focus");
@@ -539,7 +549,44 @@ describe("buildStatusLine", () => {
 			autoRecapEnabled: false,
 			focusMinSeconds: null,
 			disabledFlags: ["--recap-disable", "--recap-disable-focus"],
+			triggerCount: 0,
+			tokenUsage: null,
 		});
 		expect(out).toContain("Disabled flags: --recap-disable, --recap-disable-focus");
 	});
+	it("shows Triggers: 0 when triggerCount is 0", () => {
+		const out = buildStatusLine({ ...base, override: null, triggerCount: 0, tokenUsage: null });
+		expect(out).toContain("Triggers:       0 (this session)");
+	});
+
+	it("shows Triggers: N for non-zero triggerCount", () => {
+		const out = buildStatusLine({ ...base, override: null, triggerCount: 7, tokenUsage: null });
+		expect(out).toContain("Triggers:       7 (this session)");
+	});
+
+	it("omits Token usage line when tokenUsage is null", () => {
+		const out = buildStatusLine({ ...base, override: null, triggerCount: 0, tokenUsage: null });
+		expect(out).not.toContain("Token usage:");
+	});
+
+	it("shows Token usage with toLocaleString formatting when tokenUsage is non-null", () => {
+		const out = buildStatusLine({ ...base, override: null, triggerCount: 3, tokenUsage: { input: 12450, output: 3820 } });
+		expect(out).toContain("Token usage:");
+		expect(out).toContain("in");
+		expect(out).toContain("out");
+		expect(out).toContain("(this session)");
+	});
+
+	it("places Triggers and Token usage between Focus trigger and Disabled flags", () => {
+		const out = buildStatusLine({ ...base, override: null, triggerCount: 2, tokenUsage: { input: 1000, output: 500 } });
+		const lines = out.split("\n");
+		const focusIdx = lines.findIndex((l) => l.includes("Focus trigger:"));
+		const triggersIdx = lines.findIndex((l) => l.includes("Triggers:"));
+		const tokenIdx = lines.findIndex((l) => l.includes("Token usage:"));
+		const flagsIdx = lines.findIndex((l) => l.includes("Disabled flags:"));
+		expect(focusIdx).toBeLessThan(triggersIdx);
+		expect(triggersIdx).toBeLessThan(tokenIdx);
+		expect(tokenIdx).toBeLessThan(flagsIdx);
+	});
+
 });

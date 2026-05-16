@@ -193,6 +193,13 @@ export interface StatusLineOptions {
 	focusMinSeconds: number | null;
 	/** Active disabled-flags, in presentation order. */
 	disabledFlags: ReadonlyArray<DisabledFlag>;
+	/** Number of recap triggers fired this session (idle + focus + manual). */
+	triggerCount: number;
+	/**
+	 * Cumulative token usage for recap LLM calls this session.
+	 * `null` when no successful recap call has completed yet.
+	 */
+	tokenUsage: { input: number; output: number } | null;
 }
 
 /**
@@ -227,6 +234,10 @@ export function buildStatusLine(opts: StatusLineOptions): string {
 		lines.push(`  Focus trigger:  enabled (min ${opts.focusMinSeconds}s away)`);
 	}
 	const flags = opts.disabledFlags.length > 0 ? opts.disabledFlags.join(", ") : "(none)";
+	lines.push(`  Triggers:       ${opts.triggerCount} (this session)`);
+	if (opts.tokenUsage !== null) {
+		lines.push(`  Token usage:    ${opts.tokenUsage.input.toLocaleString()} in / ${opts.tokenUsage.output.toLocaleString()} out  (this session)`);
+	}
 	lines.push(`  Disabled flags: ${flags}`);
 
 	return lines.join("\n");

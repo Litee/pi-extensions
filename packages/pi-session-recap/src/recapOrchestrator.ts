@@ -45,6 +45,10 @@ export interface RecapOrchestratorDeps {
 	statusKey?: string;
 	/** Called with unexpected errors from the model call (non-abort). */
 	onError?: (err: unknown) => void;
+	/** Called each time a recap is triggered (before the model call). */
+	onTrigger?: () => void;
+	/** Called after each successful model call with the token usage. */
+	onUsage?: (usage: { input: number; output: number }) => void;
 }
 
 const DEFAULT_WIDGET_KEY = "pi-session-recap";
@@ -72,7 +76,7 @@ async function runModelCall(
 	transcript: string,
 	deps: RecapOrchestratorDeps,
 	signal: AbortSignal,
-): Promise<string | undefined> {
+): Promise<{ text: string; usage: { input: number; output: number } } | undefined> {
 	const { completeSimple, getModel, ctx, config } = deps;
 
 	let model: Model | undefined = ctx.model;
@@ -118,7 +122,7 @@ async function runModelCall(
 		.join("\n")
 		.trim();
 
-	return firstLine(text);
+	return { text: firstLine(text) ?? "", usage: { input: response.usage?.input ?? 0, output: response.usage?.output ?? 0 } };
 }
 
 export interface RecapOrchestrator {
@@ -232,14 +236,18 @@ export function createRecapOrchestrator(deps: RecapOrchestratorDeps): RecapOrche
 		if (showStatus && ctx.hasUI)
 			ctx.ui.setStatus(statusKey, ctx.ui.theme.fg("dim", "✦ drafting recap…"));
 
+		deps.onTrigger?.();
+
 		try {
-			const recap = await runModelCall(transcript, deps, controller.signal);
-			if (!recap || controller.signal.aborted) return;
+			const result = await runModelCall(transcript, deps, controller.signal);
+			if (!result || !result.text || controller.signal.aborted) return;
 			if (getLeafId() !== startLeaf) return;
 
+			deps.onUsage?.(result.usage);
 			lastDraftedLeafId = startLeaf;
 			clearTimer();
 
+			const recap = result.text;
 			if (opts.reason === "focus") {
 				if (focusedOutAt === undefined) showRecap(recap);
 				else pendingRecap = recap;

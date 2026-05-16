@@ -32,6 +32,7 @@ interface StubPi {
 	registerFlag: ReturnType<typeof vi.fn>;
 	registerMessageRenderer: ReturnType<typeof vi.fn>;
 	sendMessage: ReturnType<typeof vi.fn>;
+	appendEntry: ReturnType<typeof vi.fn>;
 	getFlag: ReturnType<typeof vi.fn>;
 	readonly commands: Map<
 		string,
@@ -87,6 +88,7 @@ function makeFakePi(
 		},
 	);
 	const sendMessage = vi.fn();
+	const appendEntry = vi.fn();
 	// Return undefined for any flag unless the test seeded a value (or a
 	// custom `getFlag` is wired in for regression tests).
 	const flagValues = opts.flagValues ?? {};
@@ -99,6 +101,7 @@ function makeFakePi(
 		registerFlag,
 		registerMessageRenderer,
 		sendMessage,
+		appendEntry,
 		getFlag,
 		commands,
 		handlers,
@@ -520,6 +523,8 @@ describe("/recap subcommand renderer (#0008)", () => {
 			idleSeconds: 120,
 			focusMinSeconds: 3,
 			disabledFlags: [],
+			triggerCount: 0,
+			tokenUsage: null,
 		}).split("\n")[0];
 		expect(lines[0]).toBe(expectedFirst);
 		expect(lines[0]).toBe("recap status");

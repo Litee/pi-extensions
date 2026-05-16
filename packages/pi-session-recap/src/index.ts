@@ -105,6 +105,46 @@ export default function (pi: ExtensionAPI) {
 	};
 
 	// Orchestrator is keyed per-ctx: pi delivers each lifecycle callback with
+	// --- session-level counters --------------------------------------------
+	// Persisted via pi.appendEntry("session-recap:stats", ...) and rehydrated
+	// on session_start from the most recent such entry.
+	const STATS_ENTRY_TYPE = "session-recap:stats";
+	let triggerCount = 0;
+	let totalInputTokens = 0;
+	let totalOutputTokens = 0;
+
+	const persistStats = () => {
+		pi.appendEntry(STATS_ENTRY_TYPE, { triggerCount, totalInputTokens, totalOutputTokens });
+	};
+
+	const rehydrateStats = (ctx: ExtensionContext) => {
+		try {
+			const entries = ctx.sessionManager.getEntries();
+			for (let i = entries.length - 1; i >= 0; i--) {
+				const e = entries[i];
+				if (
+					e &&
+					typeof e === "object" &&
+					"type" in e &&
+					e.type === "custom" &&
+					"customType" in e &&
+					e.customType === STATS_ENTRY_TYPE &&
+					"data" in e &&
+					typeof e.data === "object" &&
+					e.data !== null
+				) {
+					const d = e.data as Record<string, unknown>;
+					if (typeof d["triggerCount"] === "number") triggerCount = d["triggerCount"] as number;
+					if (typeof d["totalInputTokens"] === "number") totalInputTokens = d["totalInputTokens"] as number;
+					if (typeof d["totalOutputTokens"] === "number") totalOutputTokens = d["totalOutputTokens"] as number;
+					break;
+				}
+			}
+		} catch {
+			/* defensive — stale ctx or missing sessionManager */
+		}
+	};
+
 	// the same ExtensionContext instance, so we cache by identity. This keeps
 	// the deps object plain (no globals) while allowing every `pi.on(...)`
 	// callback to delegate without threading a second argument.
@@ -124,6 +164,15 @@ export default function (pi: ExtensionAPI) {
 				pi.appendEntry("session-recap:error", {
 					message: err instanceof Error ? err.message : String(err),
 				}),
+			onTrigger: () => {
+				triggerCount += 1;
+				persistStats();
+			},
+			onUsage: (usage) => {
+				totalInputTokens += usage.input;
+				totalOutputTokens += usage.output;
+				persistStats();
+			},
 		});
 		return orchestrator;
 	};
@@ -222,6 +271,7 @@ export default function (pi: ExtensionAPI) {
 		} catch {
 			/* defensive */
 		}
+		rehydrateStats(ctx);
 		// Cancel any in-flight recap or pending timer from the prior session.
 		if (orchestratorCtx !== ctx) orchestrator?.reset();
 		attachFocusReporting(ctx);
@@ -266,6 +316,10 @@ export default function (pi: ExtensionAPI) {
 			idleSeconds: idleSeconds(),
 			focusMinSeconds: focusOff ? null : focusMinSeconds(),
 			disabledFlags,
+			triggerCount,
+			tokenUsage: totalInputTokens > 0 || totalOutputTokens > 0
+				? { input: totalInputTokens, output: totalOutputTokens }
+				: null,
 		};
 	};
 

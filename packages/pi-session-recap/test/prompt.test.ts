@@ -50,6 +50,7 @@ interface StubPi {
 	registerFlag: ReturnType<typeof vi.fn>;
 	registerMessageRenderer: ReturnType<typeof vi.fn>;
 	sendMessage: ReturnType<typeof vi.fn>;
+	appendEntry: ReturnType<typeof vi.fn>;
 	getFlag: ReturnType<typeof vi.fn>;
 	readonly commands: Map<
 		string,
@@ -70,6 +71,7 @@ function makeFakePi(): StubPi {
 		registerFlag: vi.fn(),
 		registerMessageRenderer: vi.fn(),
 		sendMessage: vi.fn(),
+		appendEntry: vi.fn(),
 		// No flags seeded — defaults apply. `--recap-model` and `--recap-disable`
 		// read as undefined, so the manual path uses ctx.model and runs.
 		getFlag: vi.fn(() => undefined),
