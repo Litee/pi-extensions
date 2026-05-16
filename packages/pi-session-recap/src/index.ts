@@ -134,9 +134,9 @@ export default function (pi: ExtensionAPI) {
 					e.data !== null
 				) {
 					const d = e.data as Record<string, unknown>;
-					if (typeof d["triggerCount"] === "number") triggerCount = d["triggerCount"] as number;
-					if (typeof d["totalInputTokens"] === "number") totalInputTokens = d["totalInputTokens"] as number;
-					if (typeof d["totalOutputTokens"] === "number") totalOutputTokens = d["totalOutputTokens"] as number;
+					if (typeof d["triggerCount"] === "number") triggerCount = d["triggerCount"];
+					if (typeof d["totalInputTokens"] === "number") totalInputTokens = d["totalInputTokens"];
+					if (typeof d["totalOutputTokens"] === "number") totalOutputTokens = d["totalOutputTokens"];
 					break;
 				}
 			}
