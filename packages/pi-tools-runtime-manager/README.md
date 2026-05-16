@@ -2,7 +2,7 @@
 
 Pi extension that gives the **LLM** a `manage_tools` tool so it can list, activate, deactivate, and reset its own tool set at runtime. Built on top of pi's native runtime tool-management API (`pi.getAllTools` / `pi.getActiveTools` / `pi.setActiveTools`).
 
-Changes take effect on the **next** LLM call, not the current one — `setActiveTools()` rebuilds the system prompt between turns.
+When the LLM activates a tool (or `reset` flips one back on), the extension automatically continues the agent run so the newly available tool becomes callable on the very next assistant message — no human nudge required.
 
 ## How this differs from `pi-tools`
 
@@ -64,9 +64,30 @@ manage_tools({ action: "reset" });
 
 The snapshot is retaken on every `session_start` event (`startup`, `new`, `resume`, `fork`), so "reset" always means "back to whatever was active when this session became current."
 
-## Timing caveat
+## Timing — auto-continue
 
-`setActiveTools()` changes apply on the next LLM call, not the current one. The LLM cannot activate a tool and then call it in the same assistant turn. The tool's `promptGuidelines` state this explicitly.
+pi's agent loop snapshots the tool list once per `agent.prompt()` call. Inside one run that snapshot is frozen, so a tool added via `pi.setActiveTools()` mid-run is invisible to the rest of that run — even though pi's internal `_state.tools` has been mutated. The new tool list only becomes visible on the next fresh `agent.prompt()` invocation.
+
+This extension papers over that in two complementary ways:
+
+1. When `manage_tools` flipped at least one tool from inactive → active, the tool result carries `terminate: true`. The agent loop honors `terminate` only when **every** member of the same tool batch sets it (`pi-agent-core/dist/agent-loop.js:315`), so this ends the run early when `manage_tools` is alone in its batch and is silently ignored when batched with other tools.
+2. An `agent_end` listener detects the run ended with a pending tool addition and fires `pi.sendMessage({display:false, customType:"pi-tools-runtime-manager:refresh"}, {triggerTurn:true})`. By the time `agent_end` listeners run the agent is provably idle, so `triggerTurn` starts a brand-new `agent.prompt()` whose snapshot does include the new tool. The injected message is invisible in the TUI but persisted in the transcript and visible to the LLM.
+
+Guards on the auto-continue:
+
+- **Activate then deactivate same run** — pendingRefresh is filtered against the live active set at `agent_end`. A tool flipped on then off doesn't get advertised.
+- **Loop guard** — if the LLM already called any of the newly activated tools after the last `manage_tools` toolCall in the run, no nudge.
+- **Stop reason** — only auto-continue on `"stop"` or `"toolUse"`. Skip `"error"`, `"aborted"`, `"length"`.
+- **Race / collision** — `ctx.isIdle()` checked before `pi.sendMessage`. If another extension (e.g. plan-mode) has already kicked off the next run, bail.
+- **Counter cap** — at most 3 consecutive auto-refreshes between user-initiated turns. The 4th in a row is suppressed and surfaced via `ctx.ui.notify`. Counter resets when the user types a fresh prompt.
+
+If the auto-continue does not happen for any of these reasons, the user can simply type a follow-up message — `setActiveTools` already updated `_state.tools`, so the next `agent.prompt()` will pick it up regardless.
+
+## Interaction with `pi-plan-mode`
+
+Both extensions listen on `agent_end` and may try to fire `pi.sendMessage({triggerTurn:true})`. If both are installed and both decide to trigger for the same `agent_end`, only the first one wins; the second hits `"Agent is already processing"` from `agent.prompt()` and gets swallowed (pi's bound `sendMessage` has a `.catch(() => {})`). The `ctx.isIdle()` guard makes this safe — the second listener detects the race and bails — but in either ordering you'll get exactly one auto-triggered run.
+
+`pi-tools-runtime-manager` also bypasses `pi-plan-mode`'s tool restrictions by design: the LLM can re-enable `write` / `edit` even while plan mode disabled them. If plan-mode's restrictions are load-bearing for you, fork this extension to add the plan-mode tool set to `PROTECTED` while plan mode is active.
 
 ## Protected tools
 
@@ -74,7 +95,7 @@ By default `manage_tools` itself. Hard-coded — there is no configuration hook.
 
 ## What happens if you combine with `/plan` (pi-plan-mode)
 
-`pi-plan-mode` also calls `pi.setActiveTools()`. If both are installed, the LLM can re-enable `write`/`edit` that plan-mode disabled — **`pi-tools-runtime-manager` effectively bypasses plan-mode's safety gate**. If plan-mode's restrictions are load-bearing for you, don't install this extension, or fork it to add the plan-mode tools to `PROTECTED` when plan mode is active.
+See [Interaction with `pi-plan-mode`](#interaction-with-pi-plan-mode) above.
 
 ## Install
 

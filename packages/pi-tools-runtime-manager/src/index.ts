@@ -4,9 +4,49 @@
  * Registers a `manage_tools` tool so the LLM can list, activate, deactivate,
  * and reset its own tool set at runtime. Built on top of pi's own runtime
  * tool-management API (`pi.getAllTools` / `pi.getActiveTools` /
- * `pi.setActiveTools`). Changes take effect on the next LLM call.
+ * `pi.setActiveTools`).
  *
- * Design decisions:
+ * ## Auto-continue
+ *
+ * pi's agent loop snapshots `tools` once per `agent.prompt()` call (see
+ * `@earendil-works/pi-agent-core/dist/agent.js` createContextSnapshot, which
+ * does `tools: this._state.tools.slice()`). Inside one run that snapshot is
+ * frozen — even though `pi.setActiveTools()` mutates `_state.tools` live,
+ * subsequent LLM calls within the same run still see the stale tool list.
+ * Steering and follow-up queues drained mid-run reuse the same stale snapshot.
+ * The new tool list only becomes visible on the next fresh `agent.prompt()`.
+ *
+ * To paper over this, this extension:
+ *
+ * 1. Returns `terminate: true` on tool results that flipped tools from
+ *    inactive→active. The agent loop only honors `terminate` when EVERY tool
+ *    in a batch sets it (`agent-loop.js:315`), so this ends the run early
+ *    when `manage_tools` is alone in its batch and is silently ignored when
+ *    batched with other tools.
+ *
+ * 2. Listens on `agent_end`. When the run that just finished saw at least one
+ *    tool flip on, fires `pi.sendMessage({display:false}, {triggerTurn:true})`,
+ *    which (because the agent is provably idle by the time `agent_end`
+ *    listeners run — `_handleAgentEvent` returns synchronously, then
+ *    `finishRun()` clears `isStreaming` before extension dispatch — see
+ *    `agent-session.js` _handleAgentEvent / runWithLifecycle) starts a fresh
+ *    `agent.prompt()` whose snapshot does include the new tool.
+ *
+ * Several guards keep the auto-continue from going wrong:
+ *
+ * - Activate-then-deactivate in the same run: filter `pendingRefresh` against
+ *   the live active set at `agent_end` and skip if empty.
+ * - Loop guard: if the LLM already used any of the newly activated tools
+ *   after the last manage_tools toolCall in the run, don't nudge.
+ * - Stop reason: only auto-continue on "stop" or "toolUse" (clean turn ends).
+ *   Skip "error", "aborted", "length".
+ * - Race / extension collision: bail out of `pi.sendMessage` if `ctx.isIdle()`
+ *   reports false. Defends against e.g. plan-mode also triggering a turn.
+ * - Counter cap: at most `MAX_AUTO_REFRESHES` consecutive auto-refreshes
+ *   between user-initiated turns; surface via `ctx.ui.notify` if exceeded.
+ *
+ * ## Other design decisions
+ *
  *   - `manage_tools` itself is PROTECTED: deactivating it is silently refused
  *     so the LLM can't lock itself out.
  *   - `reset` restores the active set captured at `session_start`. The
@@ -16,7 +56,15 @@
  *   - No filesystem or network I/O. Only pi APIs are touched.
  */
 
-import type { ExtensionAPI, ToolInfo } from "@earendil-works/pi-coding-agent";
+import type { AgentMessage } from "@earendil-works/pi-agent-core";
+import type {
+	AgentEndEvent,
+	AgentStartEvent,
+	AgentToolResult,
+	ExtensionAPI,
+	ExtensionContext,
+	ToolInfo,
+} from "@earendil-works/pi-coding-agent";
 import { StringEnum } from "@earendil-works/pi-ai";
 import { Text } from "@earendil-works/pi-tui";
 import { Type } from "typebox";
@@ -25,6 +73,26 @@ import { computeNext } from "./manager.js";
 
 const TOOL_NAME = "manage_tools";
 const PROTECTED: ReadonlySet<string> = new Set([TOOL_NAME]);
+
+/**
+ * Cap on consecutive auto-refreshes between user-initiated turns. After this
+ * many in a row without an intervening user turn, suppress and surface a
+ * warning via `ctx.ui.notify` so the user knows to take over.
+ */
+const MAX_AUTO_REFRESHES = 3;
+
+/** Custom-message type used for the auto-refresh transcript artifact. */
+const REFRESH_CUSTOM_TYPE = "pi-tools-runtime-manager:refresh";
+
+/**
+ * Stop reasons that count as a clean end-of-turn (we may auto-continue).
+ * Other values ("error", "aborted", "length") indicate the run did not end
+ * cleanly and the user (or another extension) should drive the next step.
+ *
+ * `StopReason` from `@earendil-works/pi-ai` is `"stop" | "length" | "toolUse"
+ * | "error" | "aborted"`.
+ */
+const SAFE_STOP_REASONS: ReadonlySet<string> = new Set(["stop", "toolUse"]);
 
 const DESCRIPTION = `List, activate, deactivate, or reset the tools available to you. Use this to focus your toolbox for a subtask — for example, disable edit/write during pure exploration, or activate a dynamically-registered tool you need.
 
@@ -35,13 +103,13 @@ Actions:
 - "reset": restore the active set that was in effect at session_start. Useful to undo your own changes after a subtask.
 
 Notes:
-- Changes take effect on the NEXT turn, not the current one. If you activate a tool, you cannot call it in the same assistant turn.
+- After activating (or after reset re-enables tools), the agent usually auto-continues so newly available tools become callable on the very next assistant message — no human nudge required. If for any reason the auto-continue does not happen (e.g. another extension already triggered a turn), the user can re-prompt.
 - manage_tools can never deactivate itself. You always retain the ability to reset.
 - Activate/deactivate accept multiple tool names at once via the "tools" array.`;
 
 const PROMPT_GUIDELINES = [
 	"Prefer manage_tools when the user asks to narrow or expand the toolbox, instead of asking them to toggle tools by hand.",
-	"manage_tools changes apply on the next turn. Do not call a freshly-activated tool in the same turn.",
+	"After activating, the agent will usually auto-continue so newly activated tools become callable on the next assistant message.",
 	"manage_tools cannot disable itself, so you can always call manage_tools({action:\"reset\"}) to recover.",
 	"Use manage_tools({action:\"list\"}) before activating unfamiliar tools so you see their real names and descriptions.",
 ];
@@ -81,8 +149,82 @@ function renderListing(rows: ListingRow[]): string {
 	return [header, ...lines].join("\n");
 }
 
+/**
+ * Names that are in `after` but not `before`. Pure helper.
+ */
+function pickAddedFromDiff(
+	before: ReadonlySet<string>,
+	after: ReadonlySet<string>,
+): Set<string> {
+	const added = new Set<string>();
+	for (const name of after) {
+		if (!before.has(name)) added.add(name);
+	}
+	return added;
+}
+
+/**
+ * Last assistant message's stopReason in the run, if any.
+ */
+function lastAssistantStopReason(messages: readonly AgentMessage[]): string | undefined {
+	for (let i = messages.length - 1; i >= 0; i--) {
+		const m = messages[i];
+		if (m && m.role === "assistant") {
+			const sr = (m as { stopReason?: unknown }).stopReason;
+			return typeof sr === "string" ? sr : undefined;
+		}
+	}
+	return undefined;
+}
+
+/**
+ * True iff some assistant message AFTER the last `manage_tools` toolCall
+ * issued a toolCall whose name is in `names`. This is the loop guard for
+ * auto-continue: if the LLM has already exercised the freshly-activated
+ * tools, there's nothing for us to nudge.
+ *
+ * We deliberately scope to "after the last manage_tools call" rather than
+ * "anywhere in the run" so that an unrelated earlier toolCall of the same
+ * name (e.g. activate-deactivate-reactivate) doesn't suppress a legitimate
+ * refresh.
+ */
+function calledAnyAfterLastActivation(
+	messages: readonly AgentMessage[],
+	names: ReadonlySet<string>,
+): boolean {
+	let lastIdx = -1;
+	for (let i = 0; i < messages.length; i++) {
+		const m = messages[i];
+		if (!m || m.role !== "assistant") continue;
+		for (const c of m.content) {
+			if (c.type === "toolCall" && c.name === TOOL_NAME) lastIdx = i;
+		}
+	}
+	if (lastIdx === -1) return false;
+	for (let i = lastIdx + 1; i < messages.length; i++) {
+		const m = messages[i];
+		if (!m || m.role !== "assistant") continue;
+		for (const c of m.content) {
+			if (c.type === "toolCall" && names.has(c.name)) return true;
+		}
+	}
+	return false;
+}
+
 export default function manageToolsExtension(pi: ExtensionAPI): void {
 	let startupActive: Set<string> = new Set();
+
+	// --- Auto-continue closure state -----------------------------------------
+	// Names that flipped inactive→active during the current run. Cleared on
+	// every agent_end (whether we fire a refresh or skip).
+	let pendingRefresh: Set<string> | null = null;
+	// Consecutive auto-refreshes, reset on user-initiated agent_start.
+	let consecutiveAutoRefreshes = 0;
+	// Set when we fire a refresh so the next agent_start knows the upcoming
+	// run was triggered by us (don't reset the counter), and unset otherwise
+	// (a fresh user prompt does reset).
+	let lastWasAutoRefresh = false;
+	// -------------------------------------------------------------------------
 
 	pi.on("session_start", (_event, _ctx) => {
 		// Defensive: make sure PROTECTED tools are actually in the live active
@@ -100,6 +242,79 @@ export default function manageToolsExtension(pi: ExtensionAPI): void {
 		if (mutated) pi.setActiveTools([...liveActive]);
 
 		startupActive = new Set(liveActive);
+
+		// Reset auto-continue state on every session_start (new/resume/fork)
+		// so a resumed session never replays a stale pending refresh.
+		pendingRefresh = null;
+		consecutiveAutoRefreshes = 0;
+		lastWasAutoRefresh = false;
+	});
+
+	pi.on("agent_start", (_event: AgentStartEvent, _ctx: ExtensionContext) => {
+		// If the run we're starting was kicked off by our own auto-refresh,
+		// keep the counter intact so a long bounce eventually trips the cap.
+		// Otherwise reset — a user-initiated turn is fresh ground.
+		if (lastWasAutoRefresh) {
+			lastWasAutoRefresh = false;
+		} else {
+			consecutiveAutoRefreshes = 0;
+		}
+	});
+
+	pi.on("agent_end", (event: AgentEndEvent, ctx: ExtensionContext) => {
+		// Drain pendingRefresh unconditionally — if we bail below, we still
+		// don't want to act on it later.
+		const refresh = pendingRefresh;
+		pendingRefresh = null;
+		if (!refresh || refresh.size === 0) return;
+
+		// Race / extension-collision guard. By the time agent_end listeners
+		// run, the agent is normally idle (see file-level docblock for the
+		// trace). If something else has already kicked off the next run, bail.
+		if (typeof ctx.isIdle === "function" && !ctx.isIdle()) return;
+
+		// Only auto-continue on clean turn ends.
+		const stopReason = lastAssistantStopReason(event.messages);
+		if (stopReason !== undefined && !SAFE_STOP_REASONS.has(stopReason)) return;
+
+		// Filter against the live active set: a tool flipped on then off in
+		// the same run shouldn't be advertised in the refresh message.
+		const live = new Set(pi.getActiveTools());
+		const trulyAvailable = new Set<string>();
+		for (const name of refresh) {
+			if (live.has(name)) trulyAvailable.add(name);
+		}
+		if (trulyAvailable.size === 0) return;
+
+		// Loop guard: if the LLM already used any of these AFTER the last
+		// manage_tools toolCall, there's nothing to nudge.
+		if (calledAnyAfterLastActivation(event.messages, trulyAvailable)) return;
+
+		// Cap consecutive auto-refreshes between user-initiated turns.
+		if (consecutiveAutoRefreshes >= MAX_AUTO_REFRESHES) {
+			ctx.ui?.notify?.(
+				`manage_tools auto-continue suppressed (>= ${MAX_AUTO_REFRESHES} in a row). Type a follow-up to continue.`,
+				"warning",
+			);
+			return;
+		}
+
+		const sorted = [...trulyAvailable].sort();
+		const content = `Continue. Newly available tools: ${sorted.join(", ")}. Use them as appropriate for the current task.`;
+
+		// Mark BEFORE sending: the new agent_start fires synchronously inside
+		// pi.sendMessage's triggerTurn path, so flag must be set first.
+		consecutiveAutoRefreshes += 1;
+		lastWasAutoRefresh = true;
+
+		pi.sendMessage(
+			{
+				customType: REFRESH_CUSTOM_TYPE,
+				content,
+				display: false,
+			},
+			{ triggerTurn: true },
+		);
 	});
 
 	pi.registerTool({
@@ -107,7 +322,7 @@ export default function manageToolsExtension(pi: ExtensionAPI): void {
 		label: "Manage Tools",
 		description: DESCRIPTION,
 		promptSnippet:
-			"List, activate, deactivate, or reset your own tools at runtime (takes effect next turn).",
+			"List, activate, deactivate, or reset your own tools at runtime. After activating, the agent usually auto-continues so the new tools are callable on the next assistant message.",
 		promptGuidelines: PROMPT_GUIDELINES,
 		parameters: ParamsSchema,
 
@@ -168,8 +383,21 @@ export default function manageToolsExtension(pi: ExtensionAPI): void {
 				protectedTools: PROTECTED,
 			});
 
+			let added: Set<string> = new Set();
 			if (result.nextActive) {
+				added = pickAddedFromDiff(currentActive, result.nextActive);
 				pi.setActiveTools([...result.nextActive]);
+			}
+
+			// Auto-continue accumulator. ANY flip from inactive→active counts —
+			// including via reset. Accumulate across multiple manage_tools calls
+			// in the same run rather than overwriting.
+			if (added.size > 0) {
+				if (pendingRefresh) {
+					for (const n of added) pendingRefresh.add(n);
+				} else {
+					pendingRefresh = new Set(added);
+				}
 			}
 
 			// Compose the response for the LLM.
@@ -209,7 +437,7 @@ export default function manageToolsExtension(pi: ExtensionAPI): void {
 				}
 			}
 
-			return Promise.resolve({
+			const toolResult: AgentToolResult<unknown> = {
 				content: [{ type: "text", text: parts.join("\n") }],
 				details: {
 					action: params.action,
@@ -219,7 +447,19 @@ export default function manageToolsExtension(pi: ExtensionAPI): void {
 					ignoredUnknown: result.ignoredUnknown,
 					ignoredProtected: result.ignoredProtected,
 				},
-			});
+			};
+
+			// Hint the loop to terminate when manage_tools actually flipped
+			// something on. This ends the run early when manage_tools is alone
+			// in its tool batch (so the auto-continue can build a fresh
+			// snapshot and let the LLM use the new tool ASAP). When batched
+			// with other tools, the loop only honors `terminate` if EVERY
+			// member of the batch sets it, so this is silently ignored — and
+			// the agent_end listener fires at the natural end of the run
+			// instead.
+			if (added.size > 0) toolResult.terminate = true;
+
+			return Promise.resolve(toolResult);
 		},
 	});
 }
