@@ -88,6 +88,44 @@ describe("startPolling / stopPolling", () => {
 });
 
 // ---------------------------------------------------------------------------
+// Re-activation hint when tool is inactive
+// ---------------------------------------------------------------------------
+
+describe("pollOnce — re-activation hint when tool is inactive", () => {
+	it("omits hint when rt.enabled=true", async () => {
+		const pi = makePi();
+		const client = makeResolvingClient({ exists: true, etag: '"a"', contentLength: 1 });
+		const rt = makeRuntime(pi, client);
+		rt.enabled = true;
+		// baseline: exists=false so target=exists fires on first poll
+		rt.watches["w1"] = makeWatch("exists", { exists: false });
+
+		await pollOnce(rt);
+
+		expect(pi.sendMessage).toHaveBeenCalledOnce();
+		const [msg] = pi.sendMessage.mock.calls[0] as [{ content: string }, unknown];
+		expect(msg.content).not.toContain("manage_tools");
+	});
+
+	it("appends manage_tools hint when rt.enabled=false and a change is detected", async () => {
+		const pi = makePi();
+		const client = makeResolvingClient({ exists: true, etag: '"a"', contentLength: 1 });
+		const rt = makeRuntime(pi, client);
+		rt.enabled = false;
+		// baseline: exists=false so target=exists fires on first poll
+		rt.watches["w1"] = makeWatch("exists", { exists: false });
+
+		await pollOnce(rt);
+
+		expect(pi.sendMessage).toHaveBeenCalledOnce();
+		const [msg] = pi.sendMessage.mock.calls[0] as [{ content: string }, unknown];
+		expect(msg.content).toContain("manage_tools");
+		expect(msg.content).toContain("s3_watcher");
+		expect(msg.content).toContain("activate");
+	});
+});
+
+// ---------------------------------------------------------------------------
 // Target firing + single-shot termination
 // ---------------------------------------------------------------------------
 

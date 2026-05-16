@@ -95,13 +95,8 @@ export function makeRuntime(pi: Runtime["pi"], client: S3Client): Runtime {
 // ---------------------------------------------------------------------------
 
 export function refreshStatus(rt: Runtime): void {
-	// Gate on persisted enabled flag, not getActiveTools(). Pi auto-activates
-	// all extension tools on session start regardless of user intent;
-	// rt.enabled is the reliable source of truth.
-	if (!rt.enabled) {
-		rt.ui?.setStatus?.(STATUS_KEY, undefined);
-		return;
-	}
+	// Show status whenever watches are present — regardless of rt.enabled.
+	// rt.enabled only controls tool active-set membership, not polling.
 	const hasErrors = Object.values(rt.watches).some(
 		(w) => !w.terminal && w.consecutiveErrors >= POLL_ERROR_THRESHOLD,
 	);
@@ -211,10 +206,15 @@ export async function pollOnce(rt: Runtime): Promise<void> {
 	}
 
 	if (allEvents.length > 0) {
+		const baseContent = buildChangeChatMessage(allEvents, new Date(nowTs));
+		const content = rt.enabled
+			? baseContent
+			: baseContent +
+			  '\nRun manage_tools({action:"activate", tools:["s3_watcher"]}) to manage this watcher.';
 		rt.pi.sendMessage(
 			{
 				customType: CUSTOM_MESSAGE_TYPE,
-				content: buildChangeChatMessage(allEvents, new Date(nowTs)),
+				content,
 				display: true,
 				details: { events: allEvents },
 			},

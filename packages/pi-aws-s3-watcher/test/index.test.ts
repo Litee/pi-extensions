@@ -235,14 +235,14 @@ describe("/s3-watcher command", () => {
 	});
 });
 
-describe("status-line visibility depends on rt.enabled (not getActiveTools)", () => {
+describe("status-line visibility: always shown (decoupled from rt.enabled)", () => {
 	function makePersistedState(enabled: boolean) {
 		return [
 			{ type: "custom", customType: STATE_CUSTOM_TYPE, data: { savedAt: 1, paused: false, watches: [], baselines: { enabled } } },
 		];
 	}
 
-	it("hides the status row on session_start when enabled=false (no persisted state)", async () => {
+	it("shows idle status on session_start even when enabled=false (no persisted state)", async () => {
 		const setStatus = vi.fn();
 		const { pi, handlers } = makePi({ activeTools: () => ["read", "bash"] });
 		createExtensionWithClient(pi, makeClient());
@@ -253,7 +253,9 @@ describe("status-line visibility depends on rt.enabled (not getActiveTools)", ()
 		});
 		const ours = setStatus.mock.calls.filter((c) => c[0] === STATUS_KEY);
 		expect(ours.length).toBeGreaterThan(0);
-		for (const call of ours) expect(call[1]).toBeUndefined();
+		// Status row is always shown (idle when no watches)
+		const pinned = ours.filter((c) => typeof c[1] === "string");
+		expect(pinned.length).toBeGreaterThan(0);
 	});
 
 	it("pins the status row on session_start when enabled=true is persisted", async () => {
@@ -271,21 +273,20 @@ describe("status-line visibility depends on rt.enabled (not getActiveTools)", ()
 		expect(pinned.at(-1)![1]).toMatch(/^aws-s3: idle$/);
 	});
 
-	it("hides the row even if s3_watcher is in getActiveTools() but enabled=false", async () => {
-		// This is the regression test for the re-opened #0002:
-		// pi auto-activates the tool on session_start; without rt.enabled gating,
-		// the row would pin even though the user never activated the feature.
+	it("still shows status even if s3_watcher is NOT in getActiveTools() (decoupled)", async () => {
+		// rt.enabled=false no longer hides the status row — polling and status
+		// are decoupled from tool active state.
 		const setStatus = vi.fn();
-		const { pi, handlers } = makePi({ activeTools: () => ["s3_watcher", "read", "bash"] });
+		const { pi, handlers } = makePi({ activeTools: () => ["read", "bash"] });
 		createExtensionWithClient(pi, makeClient());
 		await handlers.sessionStart!({}, {
 			hasUI: true,
 			ui: { hasUI: true, setStatus, theme: { fg: (_c: string, t: string) => t } },
-			sessionManager: { getEntries: () => [] }, // no persisted enabled=true
+			sessionManager: { getEntries: () => [] },
 		});
 		const ours = setStatus.mock.calls.filter((c) => c[0] === STATUS_KEY);
-		expect(ours.length).toBeGreaterThan(0);
-		for (const call of ours) expect(call[1]).toBeUndefined();
+		const pinned = ours.filter((c) => typeof c[1] === "string");
+		expect(pinned.length).toBeGreaterThan(0);
 	});
 
 	it("turn_end: activating s3_watcher persists enabled=true and pins the row", async () => {
@@ -317,7 +318,7 @@ describe("status-line visibility depends on rt.enabled (not getActiveTools)", ()
 		expect(pinned.length).toBeGreaterThan(0);
 	});
 
-	it("turn_end: deactivating s3_watcher persists enabled=false and clears the row", async () => {
+	it("turn_end: deactivating s3_watcher persists enabled=false but keeps status row (polling continues)", async () => {
 		const setStatus = vi.fn();
 		const appendEntry = vi.fn();
 		let active: string[] = ["s3_watcher", "read"];
@@ -339,9 +340,104 @@ describe("status-line visibility depends on rt.enabled (not getActiveTools)", ()
 		expect(stateCalls.length).toBeGreaterThan(0);
 		const lastData = stateCalls.at(-1)![1] as { baselines?: { enabled?: boolean } };
 		expect(lastData.baselines?.enabled).toBe(false);
-		// Status row must be cleared
-		const ours = setStatus.mock.calls.filter((c) => c[0] === STATUS_KEY);
-		expect(ours.length).toBeGreaterThan(0);
-		for (const call of ours) expect(call[1]).toBeUndefined();
+		// Status row stays visible (shows idle) — polling is NOT stopped on deactivate
+		const ourCalls = setStatus.mock.calls.filter((c) => c[0] === STATUS_KEY);
+		expect(ourCalls.length).toBeGreaterThan(0);
+		for (const call of ourCalls) expect(call[1]).toBeDefined();
+	});
+});
+
+describe("polling decoupled from rt.enabled (#0003)", () => {
+	function makePersistedWithWatch(enabled: boolean) {
+		return [
+			{
+				type: "custom",
+				customType: STATE_CUSTOM_TYPE,
+				data: {
+					savedAt: 1,
+					paused: false,
+					baselines: { enabled },
+					watches: [
+						{
+							watchId: "w1",
+							bucket: "my-bucket",
+							key: "my/key",
+							profile: "default",
+							target: "exists",
+							timeoutAt: Date.now() + 3_600_000,
+							addedAt: Date.now(),
+							baseline: { exists: false }, // seeded: absent → poll will detect transition to present
+							terminal: false,
+							consecutiveErrors: 0,
+						},
+					],
+				},
+			},
+		];
+	}
+
+	it("starts polling on session_start even when enabled=false but watches exist", async () => {
+		vi.useFakeTimers();
+		const client = makeClient({ exists: false });
+		const { pi, handlers } = makePi({ activeTools: () => [] });
+		createExtensionWithClient(pi, client);
+		await handlers.sessionStart!({}, makeCtx(makePersistedWithWatch(false)));
+		// Advance past one poll cycle
+		await vi.advanceTimersByTimeAsync(65_000);
+		expect((client.headObject as ReturnType<typeof vi.fn>).mock.calls.length).toBeGreaterThan(0);
+	});
+
+	it("keeps polling after turn_end deactivation", async () => {
+		vi.useFakeTimers();
+		const client = makeClient({ exists: false });
+		let active = ["s3_watcher", "read"];
+		const { pi, handlers } = makePi({ activeTools: () => active });
+		createExtensionWithClient(pi, client);
+		await handlers.sessionStart!({}, makeCtx(makePersistedWithWatch(true)));
+		// Deactivate
+		active = ["read"];
+		await handlers.turnEnd!({}, makeCtx());
+		// Clear prior calls
+		(client.headObject as ReturnType<typeof vi.fn>).mockClear();
+		// Advance past a poll cycle — polling must still be running
+		await vi.advanceTimersByTimeAsync(65_000);
+		expect((client.headObject as ReturnType<typeof vi.fn>).mock.calls.length).toBeGreaterThan(0);
+	});
+
+	it("change notification when disabled includes re-activation hint", async () => {
+		vi.useFakeTimers();
+		// Client returns exists=true on first poll (target=exists → fires)
+		const client = makeClient({ exists: true });
+		const { pi, handlers, sendMessage } = makePi({ activeTools: () => [] });
+		createExtensionWithClient(pi, client);
+		await handlers.sessionStart!({}, makeCtx(makePersistedWithWatch(false)));
+		await vi.advanceTimersByTimeAsync(65_000);
+		const changeCalls = (sendMessage as ReturnType<typeof vi.fn>).mock.calls.filter(
+			(c) => (c[0] as { customType: string }).customType === CUSTOM_MESSAGE_TYPE &&
+				(c[0] as { content: string }).content.includes("detected"),
+		);
+		expect(changeCalls.length).toBeGreaterThan(0);
+		const content = (changeCalls[0]![0] as { content: string }).content;
+		expect(content).toContain("manage_tools");
+		expect(content).toContain("activate");
+	});
+
+	it("change notification when enabled does NOT include re-activation hint", async () => {
+		vi.useFakeTimers();
+		const client = makeClient({ exists: true });
+		let active = ["s3_watcher", "read"];
+		const { pi, handlers, sendMessage } = makePi({ activeTools: () => active });
+		createExtensionWithClient(pi, client);
+		await handlers.sessionStart!({}, makeCtx(makePersistedWithWatch(true)));
+		// Deactivation must NOT have happened
+		expect(active).toContain("s3_watcher");
+		await vi.advanceTimersByTimeAsync(65_000);
+		const changeCalls = (sendMessage as ReturnType<typeof vi.fn>).mock.calls.filter(
+			(c) => (c[0] as { customType: string }).customType === CUSTOM_MESSAGE_TYPE &&
+				(c[0] as { content: string }).content.includes("detected"),
+		);
+		expect(changeCalls.length).toBeGreaterThan(0);
+		const content = (changeCalls[0]![0] as { content: string }).content;
+		expect(content).not.toContain("manage_tools");
 	});
 });

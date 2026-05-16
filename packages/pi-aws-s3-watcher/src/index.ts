@@ -51,7 +51,7 @@ export function createExtensionWithClient(pi: ExtensionAPI, client: S3Client): v
 
 		// Pi auto-activates all extension tools on session_start regardless of
 		// user intent. Undo that if we have no persisted enabled=true so the
-		// status row stays hidden until the user explicitly activates the tool.
+		// tool stays inactive (matching persisted state).
 		if (!rt.enabled) {
 			removeToolFromActive(pi, TOOL_NAME);
 		}
@@ -69,6 +69,8 @@ export function createExtensionWithClient(pi: ExtensionAPI, client: S3Client): v
 			},
 		});
 
+		// Polling runs whenever there are active watches — regardless of
+		// rt.enabled. Tool active state only controls LLM tool access.
 		const activeWatches = Object.values(rt.watches).filter((w) => !w.terminal);
 		if (!rt.paused && activeWatches.length > 0) startPolling(rt);
 		refreshStatus(rt);
@@ -102,8 +104,9 @@ export function createExtensionWithClient(pi: ExtensionAPI, client: S3Client): v
 			if (!rt.paused && anyActive && !rt.scheduler.isRunning) startPolling(rt);
 			refreshStatus(rt);
 		} else {
+			// Deactivate: remove tool from active set and persist, but keep
+			// polling running — notifications still fire with a re-activation hint.
 			rt.enabled = false;
-			stopPolling(rt);
 			writeState(pi, rt);
 			refreshStatus(rt);
 		}
