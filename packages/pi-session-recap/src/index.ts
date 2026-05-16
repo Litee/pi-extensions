@@ -242,10 +242,11 @@ export default function (pi: ExtensionAPI) {
 		const orch = getOrchestrator(ctx);
 		orch.invalidateDraft();
 		orch.scheduleRecap();
+		orch.checkDeferredFocus();
 	});
 
 	pi.on("turn_start", (_event, ctx) => {
-		getOrchestrator(ctx).clearTimer();
+		getOrchestrator(ctx).onTurnStart();
 	});
 
 	pi.on("input", (_event, ctx) => {
@@ -257,7 +258,12 @@ export default function (pi: ExtensionAPI) {
 	pi.on("agent_start", (_event, ctx) => {
 		const orch = getOrchestrator(ctx);
 		orch.reset();
+		orch.onAgentStart();
 		clearRecapWidget(ctx);
+	});
+
+	pi.on("agent_end", (_event, ctx) => {
+		getOrchestrator(ctx).onAgentEnd();
 	});
 
 	pi.on("session_shutdown", () => {
@@ -275,7 +281,7 @@ export default function (pi: ExtensionAPI) {
 		// Cancel any in-flight recap or pending timer from the prior session.
 		if (orchestratorCtx !== ctx) orchestrator?.reset();
 		attachFocusReporting(ctx);
-		if (isDisabled()) return;
+		if (isDisabled() || !ctx.hasUI) return;
 		if (event.reason === "resume" || event.reason === "fork") {
 			const orch = getOrchestrator(ctx);
 			setTimeout(() => {

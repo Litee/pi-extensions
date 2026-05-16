@@ -112,7 +112,10 @@ async function runModelCall(
 			apiKey: auth.apiKey,
 			...(auth.headers ? { headers: auth.headers } : {}),
 			signal,
-			...(model.reasoning ? { reasoning: "minimal" as const } : {}),
+			// Recaps are tiny, throwaway UI hints — don't pay for prompt-cache
+			// entries and don't spend reasoning tokens on them.
+			cacheRetention: "none" as const,
+			maxTokens: 256,
 		},
 	);
 
@@ -134,8 +137,19 @@ export interface RecapOrchestrator {
 	runGenerateAndShow(opts: { reason: RecapReason }): Promise<void>;
 	/** Event hook: clear draft bookkeeping on new turn / input / agent_start. */
 	invalidateDraft(): void;
-	/** Event hook: clear pending + detach for session_shutdown. */
+	/** Event hook: clear all pending state + detach for session_shutdown. */
 	reset(): void;
+	/** Event hook: agent turn started — defer focus recaps until agent_end. */
+	onAgentStart(): void;
+	/** Event hook: agent turn ended — flush any deferred focus recap. */
+	onAgentEnd(): void;
+	/**
+	 * Event hook for turn_start: clear timer, cancel active, clear pending state.
+	 * More aggressive than clearTimer() alone; mirrors Claude Code's turn_start logic.
+	 */
+	onTurnStart(): void;
+	/** Check and fire any deferred focus recap (called from turn_end). */
+	checkDeferredFocus(): void;
 }
 
 /**
@@ -152,6 +166,10 @@ export function createRecapOrchestrator(deps: RecapOrchestratorDeps): RecapOrche
 	let focusedOutAt: number | undefined;
 	let pendingRecap: string | undefined;
 	let lastDraftedLeafId: string | undefined;
+	// Agent activity tracking: defer focus recaps that arrive while the model
+	// is still running, mirroring Claude Code's away-summary pending-bit logic.
+	let agentActive = false;
+	let focusDraftAfterAgent = false;
 
 	const getLeafId = (): string | undefined => {
 		try {
@@ -285,8 +303,25 @@ export function createRecapOrchestrator(deps: RecapOrchestratorDeps): RecapOrche
 		}, deps.config.idleMs());
 	};
 
+	const maybeGenerateDeferredFocusRecap = () => {
+		if (!focusDraftAfterAgent) return;
+		if (focusedOutAt === undefined) return;
+		if (agentActive) return;
+		focusDraftAfterAgent = false;
+		void runGenerateAndShow({ reason: "focus" }).catch((err: unknown) => {
+			if (isStaleCtxError(err)) return;
+			deps.onError?.(err);
+		});
+	};
+
 	const onFocusOut = () => {
 		focusedOutAt = Date.now();
+		// If the agent is mid-turn, don't draft against the half-written branch.
+		// Park the request and flush it once agent_end (or turn_end) fires.
+		if (agentActive) {
+			focusDraftAfterAgent = true;
+			return;
+		}
 		if (deps.config.isDisabled() || activeController) return;
 
 		const leaf = getLeafId();
@@ -302,6 +337,7 @@ export function createRecapOrchestrator(deps: RecapOrchestratorDeps): RecapOrche
 	};
 
 	const onFocusIn = () => {
+		focusDraftAfterAgent = false;
 		const outAt = focusedOutAt;
 		focusedOutAt = undefined;
 		if (outAt === undefined) return;
@@ -324,11 +360,33 @@ export function createRecapOrchestrator(deps: RecapOrchestratorDeps): RecapOrche
 	};
 
 	const reset = () => {
+		agentActive = false;
+		focusDraftAfterAgent = false;
 		clearTimer();
 		cancelActive();
 		focusedOutAt = undefined;
 		pendingRecap = undefined;
 		lastDraftedLeafId = undefined;
+	};
+
+	const onAgentStart = () => {
+		agentActive = true;
+	};
+
+	const onAgentEnd = () => {
+		agentActive = false;
+		maybeGenerateDeferredFocusRecap();
+	};
+
+	const onTurnStart = () => {
+		clearTimer();
+		cancelActive();
+		pendingRecap = undefined;
+		lastDraftedLeafId = undefined;
+	};
+
+	const checkDeferredFocus = () => {
+		maybeGenerateDeferredFocusRecap();
 	};
 
 	return {
@@ -340,5 +398,9 @@ export function createRecapOrchestrator(deps: RecapOrchestratorDeps): RecapOrche
 		runGenerateAndShow,
 		invalidateDraft,
 		reset,
+		onAgentStart,
+		onAgentEnd,
+		onTurnStart,
+		checkDeferredFocus,
 	};
 }

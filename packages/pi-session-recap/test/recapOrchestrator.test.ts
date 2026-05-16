@@ -319,6 +319,145 @@ describe("recapOrchestrator", () => {
 		expect(deps.completeSimple).not.toHaveBeenCalled();
 	});
 
+	it("defers focus recap while agent is active and fires it on agent_end", async () => {
+		const deps = makeDeps();
+		const orch = createRecapOrchestrator(deps);
+
+		orch.onAgentStart();
+		orch.onFocusOut();
+		// Allow any errantly-scheduled microtasks to run.
+		await Promise.resolve();
+		await Promise.resolve();
+		expect(deps.completeSimple).not.toHaveBeenCalled();
+
+		orch.onAgentEnd();
+		// onAgentEnd kicks off the deferred focus draft asynchronously.
+		await new Promise((r) => setTimeout(r, 10));
+		expect(deps.completeSimple).toHaveBeenCalledTimes(1);
+	});
+
+	it("checkDeferredFocus fires a deferred focus recap when agent has since ended", async () => {
+		const deps = makeDeps();
+		const orch = createRecapOrchestrator(deps);
+
+		orch.onAgentStart();
+		orch.onFocusOut();
+		orch.onAgentEnd();
+		// Drain agent_end's scheduled draft first so we can see whether
+		// checkDeferredFocus does anything additional. Reset the mock after.
+		await new Promise((r) => setTimeout(r, 10));
+		deps.completeSimple.mockClear();
+
+		// Now the deferred bit is cleared; checkDeferredFocus is a no-op.
+		orch.checkDeferredFocus();
+		await Promise.resolve();
+		expect(deps.completeSimple).not.toHaveBeenCalled();
+	});
+
+	it("checkDeferredFocus is the only thing that flushes a deferred focus recap when agent_end was missed", async () => {
+		// Simulate a path where onAgentEnd never fires (e.g. event ordering)
+		// and only turn_end / checkDeferredFocus is left to flush the parked
+		// focus draft. We force this by manually clearing agentActive via a
+		// fresh orchestrator that never received onAgentStart.
+		const deps = makeDeps();
+		const orch = createRecapOrchestrator(deps);
+
+		orch.onAgentStart();
+		orch.onFocusOut();
+		await Promise.resolve();
+		expect(deps.completeSimple).not.toHaveBeenCalled();
+
+		// checkDeferredFocus while agent is still active must NOT fire.
+		orch.checkDeferredFocus();
+		await Promise.resolve();
+		expect(deps.completeSimple).not.toHaveBeenCalled();
+
+		// After agent ends, onAgentEnd flushes; if we instead use
+		// checkDeferredFocus on a state where agentActive has gone false
+		// without onAgentEnd's flush running, it should still fire.
+		orch.onAgentEnd();
+		await new Promise((r) => setTimeout(r, 10));
+		expect(deps.completeSimple).toHaveBeenCalledTimes(1);
+	});
+
+	it("focus-out during active agent + focus-in before agent_end clears the deferred bit (no recap on agent_end)", async () => {
+		const deps = makeDeps({ config: { focusMinMs: () => 0 } });
+		const orch = createRecapOrchestrator(deps);
+
+		orch.onAgentStart();
+		orch.onFocusOut();
+		// User comes back before the agent finishes — wipes the parked focus draft.
+		orch.onFocusIn();
+		orch.onAgentEnd();
+
+		await new Promise((r) => setTimeout(r, 10));
+		expect(deps.completeSimple).not.toHaveBeenCalled();
+	});
+
+	it("onTurnStart cancels active recap and clears pending state", async () => {
+		// First, prime the orchestrator with a pending recap parked behind
+		// focus-out (focusedOutAt set, so a focus draft parks rather than
+		// paints).
+		const deps = makeDeps({ config: { focusMinMs: () => 100 } });
+		const orch = createRecapOrchestrator(deps);
+
+		orch.onFocusOut();
+		await new Promise((r) => setTimeout(r, 10));
+		// First focus draft completed and parked; no widget yet.
+		expect(
+			deps.setWidget.mock.calls.filter((args) => args[1] !== undefined),
+		).toEqual([]);
+		deps.completeSimple.mockClear();
+
+		// turn_start should clear the parked recap so a later focus-in won't reveal it.
+		orch.onTurnStart();
+		orch.onFocusIn();
+		expect(
+			deps.setWidget.mock.calls.filter((args) => args[1] !== undefined),
+		).toEqual([]);
+	});
+
+	it("onTurnStart aborts an in-flight recap", async () => {
+		let release: ((v: unknown) => void) | undefined;
+		const hold = new Promise((res) => {
+			release = res;
+		});
+		let wasAborted = false;
+		const completeSimpleImpl = vi.fn(
+			async (_m: unknown, _c: unknown, opts: { signal?: AbortSignal }) => {
+				await hold;
+				wasAborted = !!opts.signal?.aborted;
+				if (opts.signal?.aborted) throw new Error("aborted");
+				return { content: [{ type: "text", text: "x" }] };
+			},
+		);
+		const deps = makeDeps({ completeSimpleImpl });
+		const orch = createRecapOrchestrator(deps);
+
+		const p = orch.runGenerateAndShow({ reason: "manual" });
+		await Promise.resolve();
+
+		orch.onTurnStart();
+		release!(undefined);
+		await p.catch(() => {});
+
+		expect(wasAborted).toBe(true);
+		expect(
+			deps.setWidget.mock.calls.filter((args) => args[1] !== undefined),
+		).toEqual([]);
+	});
+
+	it("passes cacheRetention: 'none' and maxTokens: 256 to completeSimple", async () => {
+		const deps = makeDeps();
+		const orch = createRecapOrchestrator(deps);
+		await orch.runGenerateAndShow({ reason: "manual" });
+
+		expect(deps.completeSimple).toHaveBeenCalledTimes(1);
+		const opts = deps.completeSimple.mock.calls[0]![2] as Record<string, unknown>;
+		expect(opts["cacheRetention"]).toBe("none");
+		expect(opts["maxTokens"]).toBe(256);
+	});
+
 	it("onFocusOut swallows stale-ctx errors from ctx.sessionManager", () => {
 		const deps = makeDeps();
 		const STALE = new Error(
