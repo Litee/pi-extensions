@@ -104,7 +104,7 @@ export function makeRuntime(pi: Runtime["pi"], client: GlueClient): Runtime {
 // ---------------------------------------------------------------------------
 
 export function refreshStatus(rt: Runtime): void {
-	if (!rt.enabled || rt.displayMode !== "statusline") {
+	if (rt.displayMode !== "statusline") {
 		rt.ui?.setStatus?.(STATUS_KEY, undefined);
 		return;
 	}
@@ -163,7 +163,7 @@ export function stopPolling(rt: Runtime): void {
  * the others. The combined event batch lands as a single chat message.
  */
 export async function pollOnce(rt: Runtime): Promise<void> {
-	if (rt.paused || !rt.enabled) return;
+	if (rt.paused) return;
 
 	const active = Object.values(rt.watches).filter((w) => !w.terminal);
 	if (active.length === 0) {
@@ -239,10 +239,15 @@ export async function pollOnce(rt: Runtime): Promise<void> {
 	}
 
 	if (allEvents.length > 0) {
+		const baseContent = buildChangeChatMessage(allEvents, new Date());
+		const content = rt.enabled
+			? baseContent
+			: baseContent +
+			  '\nRun manage_tools({action:"activate", tools:["glue_watcher"]}) to manage this watcher.';
 		rt.pi.sendMessage(
 			{
 				customType: CUSTOM_MESSAGE_TYPE,
-				content: buildChangeChatMessage(allEvents, new Date()),
+				content,
 				display: true,
 				details: { events: allEvents },
 			},

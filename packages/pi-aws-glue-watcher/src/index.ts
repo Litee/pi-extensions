@@ -70,8 +70,6 @@ export function createExtensionWithClient(pi: ExtensionAPI, client: GlueClient):
 		registerToolIfNeeded(pi, rt);
 		syncToolActiveState(pi, "glue_watcher", rt.enabled);
 
-		if (!rt.enabled) return;
-
 		await seedMissingBaselines(Object.values(rt.watches), {
 			snapshot: (watch) =>
 				watch.type === "job"
@@ -126,10 +124,9 @@ export function createExtensionWithClient(pi: ExtensionAPI, client: GlueClient):
 			if (rt.displayMode === "widget") rt.widget?.show(ctx);
 			else rt.widget?.hide(ctx);
 		} else {
-			// deactivate
+			// deactivate: only remove from active tool set; keep polling and widget
+			// running so change events still wake the LLM via triggerTurn: true.
 			rt.enabled = false;
-			stopPolling(rt);
-			rt.widget?.hide(ctx);
 			writeState(rt.pi, rt);
 			refreshStatus(rt);
 		}

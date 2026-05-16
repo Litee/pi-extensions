@@ -802,7 +802,7 @@ describe("pollOnce", () => {
 		expect(pi.sendMessage).not.toHaveBeenCalled();
 	});
 
-	it("does nothing when not enabled", async () => {
+	it("polls even when not enabled (rt.enabled only controls tool active-set)", async () => {
 		const pi = makePi();
 		const client = makeClient();
 		const rt = makeRuntime(pi, client);
@@ -811,7 +811,8 @@ describe("pollOnce", () => {
 
 		await pollOnce(rt);
 
-		expect(client.getJobRun).not.toHaveBeenCalled();
+		// Should still poll — rt.enabled only gates tool active-set membership
+		expect(client.getJobRun).toHaveBeenCalled();
 	});
 
 	it("does not call sendMessage when there are no events", async () => {
@@ -910,6 +911,40 @@ describe("pollOnce", () => {
 		await pollOnce(rt);
 
 		expect(pi.appendEntry).toHaveBeenCalled();
+	});
+	it("change notification omits re-activation hint when tool is enabled", async () => {
+		const pi = makePi();
+		const client = makeClient();
+		const rt = makeRuntime(pi, client);
+		rt.enabled = true;
+		rt.watches["aa"] = makeWatch({
+			watchId: "aa",
+			baseline: { state: "STARTING", errorMessage: "" },
+		});
+
+		await pollOnce(rt);
+
+		const [msg] = pi.sendMessage.mock.calls[0] as [{ content: string }, unknown];
+		expect(msg.content).not.toContain("manage_tools");
+	});
+
+	it("change notification includes re-activation hint when tool is inactive", async () => {
+		const pi = makePi();
+		const client = makeClient();
+		const rt = makeRuntime(pi, client);
+		rt.enabled = false;
+		rt.watches["aa"] = makeWatch({
+			watchId: "aa",
+			baseline: { state: "STARTING", errorMessage: "" },
+		});
+
+		await pollOnce(rt);
+
+		expect(pi.sendMessage).toHaveBeenCalledOnce();
+		const [msg] = pi.sendMessage.mock.calls[0] as [{ content: string }, unknown];
+		expect(msg.content).toContain("manage_tools");
+		expect(msg.content).toContain("glue_watcher");
+		expect(msg.content).toContain("activate");
 	});
 });
 
