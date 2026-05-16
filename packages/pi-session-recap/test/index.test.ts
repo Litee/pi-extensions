@@ -584,7 +584,7 @@ describe("orchestrator lifecycle — session replacement", () => {
 			const ctx2 = makeFakeCtx();
 			await pi.handlers.get("session_start")?.({ reason: "startup" }, ctx2);
 
-			// Advance past the default idle timeout (180 s)
+			// Advance past the default idle timeout (300 s)
 			await vi.advanceTimersByTimeAsync(200_000);
 
 			// The old orchestrator's timer must have been cleared — ctx1 was never accessed

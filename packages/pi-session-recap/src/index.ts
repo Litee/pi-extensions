@@ -40,7 +40,7 @@ type Model = Parameters<typeof completeSimple>[0];
 export const WIDGET_KEY = "pi-session-recap";
 export const STATUS_KEY = "pi-session-recap";
 
-const DEFAULT_IDLE_SECONDS = 180;
+const DEFAULT_IDLE_SECONDS = 300;
 const DEFAULT_FOCUS_MIN_SECONDS = 3;
 
 const FOCUS_ENABLE = "\x1b[?1004h";
