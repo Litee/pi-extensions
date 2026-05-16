@@ -240,10 +240,13 @@ export function createRecapOrchestrator(deps: RecapOrchestratorDeps): RecapOrche
 
 		try {
 			const result = await runModelCall(transcript, deps, controller.signal);
-			if (!result || !result.text || controller.signal.aborted) return;
-			if (getLeafId() !== startLeaf) return;
+			if (!result || controller.signal.aborted) return;
 
+			// Accumulate token usage regardless of whether recap text is empty.
 			deps.onUsage?.(result.usage);
+
+			if (!result.text) return;
+			if (getLeafId() !== startLeaf) return;
 			lastDraftedLeafId = startLeaf;
 			clearTimer();
 
