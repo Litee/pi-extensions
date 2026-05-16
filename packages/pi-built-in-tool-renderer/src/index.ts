@@ -25,12 +25,15 @@ import {
 	createReadTool,
 	createWriteTool,
 } from "@earendil-works/pi-coding-agent";
+import type { Component } from "@earendil-works/pi-tui";
 import { Text } from "@earendil-works/pi-tui";
 
 import {
 	type BashRenderState,
 	type RenderContext,
+	type ThemeLike,
 	renderBash,
+	renderBashCallLines,
 	renderEdit,
 	renderFind,
 	renderGrep,
@@ -77,8 +80,9 @@ export default function (pi: ExtensionAPI) {
 			return originalBash.execute(toolCallId, params, signal, onUpdate);
 		},
 		renderCall(bashArgs, theme, ctx) {
-			const view = renderBash(bashArgs, undefined, theme, ctxWithBashState(ctx));
-			return new Text(view.call, 0, 0);
+			// Side effect only: prime the timer state on the first exec tick.
+			renderBash(bashArgs, undefined, theme, ctxWithBashState(ctx));
+			return new BashCallLines(bashArgs.command, theme, ctx.expanded);
 		},
 		renderResult(result, { expanded, isPartial }, theme, ctx) {
 			const state = stateAs<BashRenderState>(ctx);
@@ -235,4 +239,27 @@ function ctxWithBashState(ctx: CtxLike): RenderContext<BashRenderState> {
 	// `ctx.state` is typed as `any` in the ExtensionAPI; narrow it here once
 	// so renderers.ts sees the concrete shape.
 	return ctx as unknown as RenderContext<BashRenderState>;
+}
+
+/**
+ * Width-aware component for the bash call line.
+ *
+ * Recomputed every render so the result re-clips / re-wraps when the pane
+ * resizes. `expanded` is captured at construction time — pi rebuilds the
+  * component on each render pass with the latest `ctx.expanded`.
+ */
+class BashCallLines implements Component {
+	constructor(
+		private readonly command: string | undefined,
+		private readonly theme: ThemeLike,
+		private readonly expanded: boolean,
+	) {}
+
+	render(width: number): string[] {
+		return renderBashCallLines(this.command, this.theme, this.expanded, width);
+	}
+
+	invalidate(): void {
+		// Stateless — nothing to invalidate. Width changes are handled in render().
+	}
 }

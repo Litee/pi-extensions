@@ -10,6 +10,8 @@
  * `@earendil-works/pi-coding-agent`).
  */
 
+import { truncateToWidth, wrapTextWithAnsi } from "@earendil-works/pi-tui";
+
 import { countLines, describeBashFailure, formatDuration } from "./helpers.js";
 
 // ---------------------------------------------------------------------------
@@ -193,8 +195,6 @@ function renderReadResult(
 // Bash
 // ---------------------------------------------------------------------------
 
-const BASH_COLLAPSED_LIMIT = 80;
-
 export function renderBash(
 	args: { command: string; timeout?: number },
 	result: ToolResultLike | undefined,
@@ -208,14 +208,43 @@ export function renderBash(
 		ctx.state.endedAt = undefined;
 	}
 
-	const cmd =
-		!ctx.expanded && args.command.length > BASH_COLLAPSED_LIMIT
-			? `${args.command.slice(0, BASH_COLLAPSED_LIMIT - 3)}...`
-			: args.command;
-	let call = theme.fg("toolTitle", theme.bold(`$ ${cmd}`));
-	if (args.timeout) call += theme.fg("muted", ` (timeout: ${args.timeout}s)`);
+	// `call` is kept here for backward-compat / non-width consumers (and tests):
+	// it returns the full styled command without any pre-clipping. The actual UI
+	// path runs through `renderBashCallLines(width)` from a custom Component in
+	// index.ts so collapsed/expanded behaviour can adapt to the pane width.
+	const call = theme.fg("toolTitle", theme.bold(`$ ${args.command}`));
 
-	return { call, result: result ? renderBashResult(result, theme, ctx, now) : "" };
+	return { call, result: result ? renderBashResult(result, theme, ctx, now, args.timeout) : "" };
+}
+
+/**
+ * Width-aware bash command renderer for the call line.
+ *
+ * - Collapsed: take the first physical line of the command and clip it to
+ *   `width` with no ellipsis (so a wide pane shows the whole one-liner; a
+ *   narrow pane just cuts off the tail).
+ * - Expanded: word-wrap the full command (preserving ANSI styling) so heredocs
+ *   and `\\\n`-chained pipelines stay legible.
+ *
+ * Pure: no side effects, no theme/state mutation. Safe to call once per
+ * `Component#render(width)`.
+ */
+export function renderBashCallLines(
+	command: string | undefined,
+	theme: ThemeLike,
+	expanded: boolean,
+	width: number,
+): string[] {
+	if (width <= 0) return [""];
+	const cmd = command ?? "";
+	if (!expanded) {
+		const firstLine = cmd.split("\n", 1)[0] ?? "";
+		const styled = theme.fg("toolTitle", theme.bold(`$ ${firstLine}`));
+		return [truncateToWidth(styled, width, "")];
+	}
+	const styled = theme.fg("toolTitle", theme.bold(`$ ${cmd}`));
+	const wrapped = wrapTextWithAnsi(styled, width);
+	return wrapped.length > 0 ? wrapped : [""];
 }
 
 function renderBashResult(
@@ -223,12 +252,16 @@ function renderBashResult(
 	theme: ThemeLike,
 	ctx: RenderContext<BashRenderState>,
 	now: number,
+	timeout?: number,
 ): string {
 	const tick = tickBashTimer(ctx.state, now, ctx.isPartial, ctx.isError);
 
-	// Still running: short-circuit on the running label.
+	// Still running: short-circuit on the running label, but surface the
+	// timeout next to it so the user can see the deadline before completion.
 	if (ctx.isPartial && !ctx.isError) {
-		return theme.fg("muted", tick.label);
+		let running = theme.fg("muted", tick.label);
+		if (timeout) running += theme.fg("muted", ` · timeout ${timeout}s`);
+		return running;
 	}
 
 	const duration =
@@ -250,6 +283,9 @@ function renderBashResult(
 	}
 	if (details?.truncation?.truncated) text += theme.fg("warning", " [truncated]");
 	if (duration) text += theme.fg("muted", ` · ${duration}`);
+	// Timeout used to live on the call line; we surface it next to the duration
+	// instead so the call line stays a single uncluttered string we can clip.
+	if (timeout) text += theme.fg("muted", ` · timeout ${timeout}s`);
 
 	if (ctx.expanded) {
 		const lines = output.split("\n").slice(0, 20);

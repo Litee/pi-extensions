@@ -1,8 +1,10 @@
 import { describe, expect, it } from "vitest";
+import { visibleWidth } from "@earendil-works/pi-tui";
 
 import type { BashRenderState, RenderContext, ThemeLike, ToolResultLike } from "../src/renderers.js";
 import {
 	renderBash,
+	renderBashCallLines,
 	renderEdit,
 	renderFind,
 	renderGrep,
@@ -109,23 +111,29 @@ describe("renderRead", () => {
 // ---------------------------------------------------------------------------
 
 describe("renderBash", () => {
-	it("call crops long commands in collapsed mode", () => {
+	it("call returns the full styled command (no pre-clipping)", () => {
 		const cmd = "x".repeat(200);
 		const { call } = renderBash({ command: cmd }, undefined, plainTheme, ctx());
-		expect(call).toContain(`${"x".repeat(77)}...`);
-		expect(call).not.toContain("x".repeat(78));
-	});
-
-	it("call shows the full command in expanded mode", () => {
-		const cmd = "x".repeat(200);
-		const { call } = renderBash({ command: cmd }, undefined, plainTheme, ctx({ expanded: true }));
 		expect(call).toContain(cmd);
 		expect(call).not.toContain("...");
 	});
 
-	it("call appends the timeout hint when set", () => {
+	it("call no longer carries the timeout hint", () => {
 		const { call } = renderBash({ command: "ls", timeout: 30 }, undefined, taggedTheme, ctx());
-		expect(call).toContain("<muted> (timeout: 30s)</>");
+		expect(call).not.toContain("timeout");
+	});
+
+	it("result surfaces the timeout next to the duration", () => {
+		const state: BashRenderState = { startedAt: 1000 };
+		const { result } = renderBash(
+			{ command: "ls", timeout: 30 },
+			textResult("a"),
+			taggedTheme,
+			ctx<BashRenderState>({ state, isPartial: false }),
+			/*now*/ 2000,
+		);
+		expect(result).toContain("<muted> · 1.0s</>");
+		expect(result).toContain("<muted> · timeout 30s</>");
 	});
 
 	it("initialises startedAt from `now` on first exec tick", () => {
@@ -151,6 +159,19 @@ describe("renderBash", () => {
 			/*now*/ 3500,
 		);
 		expect(result).toBe("<muted>Running · 2.5s</>");
+	});
+
+	it("result shows the timeout next to the running label while partial", () => {
+		const state: BashRenderState = { startedAt: 1000 };
+		const { result } = renderBash(
+			{ command: "sleep 30", timeout: 30 },
+			textResult(""),
+			taggedTheme,
+			ctx<BashRenderState>({ state, isPartial: true }),
+			/*now*/ 3500,
+		);
+		expect(result).toContain("<muted>Running · 2.5s</>");
+		expect(result).toContain("<muted> · timeout 30s</>");
 	});
 
 	it("result on completion shows line count and duration in muted", () => {
@@ -182,6 +203,63 @@ describe("renderBash", () => {
 		);
 		expect(result).toContain("<warning>exit 137</>");
 		expect(result).toContain("<warning> [truncated]</>");
+	});
+});
+
+// ---------------------------------------------------------------------------
+// renderBashCallLines (width-aware: collapsed=clip, expanded=wrap)
+// ---------------------------------------------------------------------------
+
+describe("renderBashCallLines", () => {
+	it("collapsed: clips a long command to pane width with no ellipsis", () => {
+		const cmd = "x".repeat(200);
+		const lines = renderBashCallLines(cmd, plainTheme, /*expanded*/ false, /*width*/ 40);
+		expect(lines).toHaveLength(1);
+		expect(lines[0]).not.toContain("...");
+		// `truncateToWidth` always appends a SGR reset — measure visible width.
+		expect(visibleWidth(lines[0]!)).toBe(40);
+	});
+
+	it("collapsed: leaves a short command intact when the pane is wide", () => {
+		const lines = renderBashCallLines("ls -la", plainTheme, false, 200);
+		expect(lines).toEqual(["$ ls -la"]);
+	});
+
+	it("collapsed: keeps only the first physical line of a multi-line command", () => {
+		const cmd = "first line\nsecond line\nthird line";
+		const lines = renderBashCallLines(cmd, plainTheme, false, 200);
+		expect(lines).toEqual(["$ first line"]);
+	});
+
+	it("expanded: wraps the full command across multiple lines", () => {
+		const cmd = "alpha bravo charlie delta echo foxtrot golf hotel india juliet";
+		const lines = renderBashCallLines(cmd, plainTheme, /*expanded*/ true, /*width*/ 20);
+		expect(lines.length).toBeGreaterThan(1);
+		for (const line of lines) expect(visibleWidth(line)).toBeLessThanOrEqual(20);
+		const joined = lines.join(" ");
+		for (const word of cmd.split(" ")) expect(joined).toContain(word);
+	});
+
+	it("expanded: preserves embedded newlines from heredocs", () => {
+		const cmd = "cat <<EOF\nhello\nEOF";
+		const lines = renderBashCallLines(cmd, plainTheme, true, 80);
+		expect(lines.length).toBeGreaterThanOrEqual(3);
+		expect(lines.some((l) => l.includes("hello"))).toBe(true);
+	});
+
+	it("width=0 is handled defensively", () => {
+		expect(renderBashCallLines("ls", plainTheme, false, 0)).toEqual([""]);
+	});
+
+	it("undefined command (streamed args, command not yet present) does not throw", () => {
+		// Regression: pi calls renderCall while tool args are still streaming, so
+		// `bashArgs.command` can be undefined for a few frames before the JSON
+		// field arrives.
+		expect(() => renderBashCallLines(undefined, plainTheme, false, 80)).not.toThrow();
+		expect(() => renderBashCallLines(undefined, plainTheme, true, 80)).not.toThrow();
+		const lines = renderBashCallLines(undefined, plainTheme, false, 80);
+		expect(lines).toHaveLength(1);
+		expect(visibleWidth(lines[0]!)).toBeLessThanOrEqual(80);
 	});
 });
 
