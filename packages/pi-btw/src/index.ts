@@ -1234,14 +1234,32 @@ class BtwOverlayComponent extends Container implements Focusable {
       return;
     }
 
-    if (matchesKey(data, Key.pageUp) || matchesKey(data, Key.ctrl("b")) || matchesKey(data, Key.up)) {
-      const step = matchesKey(data, Key.up) ? 1 : Math.max(1, this.transcriptViewportHeight - 1);
+    if (matchesKey(data, Key.up)) {
+      this.scrollTranscript(-1);
+      return;
+    }
+
+    if (matchesKey(data, Key.down)) {
+      this.scrollTranscript(1);
+      return;
+    }
+
+    if (
+      matchesKey(data, Key.pageUp) ||
+      matchesKey(data, Key.ctrl("b")) ||
+      matchesKey(data, Key.alt("up"))
+    ) {
+      const step = Math.max(1, this.transcriptViewportHeight - 1);
       this.scrollTranscript(-step);
       return;
     }
 
-    if (matchesKey(data, Key.pageDown) || matchesKey(data, Key.ctrl("f")) || matchesKey(data, Key.down)) {
-      const step = matchesKey(data, Key.down) ? 1 : Math.max(1, this.transcriptViewportHeight - 1);
+    if (
+      matchesKey(data, Key.pageDown) ||
+      matchesKey(data, Key.ctrl("f")) ||
+      matchesKey(data, Key.alt("down"))
+    ) {
+      const step = Math.max(1, this.transcriptViewportHeight - 1);
       this.scrollTranscript(step);
       return;
     }
@@ -1365,7 +1383,7 @@ class BtwOverlayComponent extends Container implements Focusable {
     const status = this.getStatus() ?? "Ready. Enter submits; Escape dismisses without clearing.";
     this.statusTextValue = status;
     this.statusText.setText(this.statusTextValue);
-    this.hintsTextValue = "Scroll wheel ↑↓ PgUp/PgDn Ctrl+B/F · Enter · Ctrl+\\ focus · Ctrl+L clear · Escape";
+    this.hintsTextValue = "Scroll wheel ↑↓ Option+↑↓ PgUp/PgDn · Enter · Ctrl+\\ focus · Ctrl+L clear · Escape";
     this.hintsText.setText(this.hintsTextValue);
     this.tui.requestRender();
   }

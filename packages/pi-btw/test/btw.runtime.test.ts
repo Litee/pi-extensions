@@ -1666,6 +1666,38 @@ describe("btw runtime behavior", () => {
     expect(inputHandleSpy).not.toHaveBeenCalledWith("\x1b[<65;1;1M");
   });
 
+  it("scrolls a page on Option+Up / Option+Down (xterm CSI sequence)", async () => {
+    const harness = createHarness();
+    const longAnswer = Array.from({ length: 60 }, (_, index) => `answer line ${index + 1}`).join("\n");
+    promptStreamMock.mockImplementation(() => streamAnswer(longAnswer));
+
+    await harness.runSessionStart();
+    await harness.command("btw", "fill the transcript");
+
+    const overlay = harness.latestOverlayComponent();
+    const inputHandleSpy = vi.spyOn(overlay.input!, "handleInput");
+
+    // Prime the viewport height so the page step is > 1.
+    overlay.render(80);
+    const offsetBefore = overlay.transcriptScrollOffset;
+    const pageStep = Math.max(1, (overlay["transcriptViewportHeight"] as number) - 1);
+    expect(pageStep).toBeGreaterThan(1);
+    expect(offsetBefore).toBeGreaterThanOrEqual(pageStep);
+
+    // Option+Up (xterm CSI) — page back, pauses follow.
+    overlay.handleInput("\x1b[1;3A");
+    const offsetAfterAltUp = overlay.transcriptScrollOffset;
+    expect(offsetAfterAltUp).toBe(offsetBefore - pageStep);
+    expect(overlay.followTranscript).toBe(false);
+
+    // Option+Down (xterm CSI) — page forward.
+    overlay.handleInput("\x1b[1;3B");
+    expect(overlay.transcriptScrollOffset).toBe(offsetAfterAltUp + pageStep);
+
+    expect(inputHandleSpy).not.toHaveBeenCalledWith("\x1b[1;3A");
+    expect(inputHandleSpy).not.toHaveBeenCalledWith("\x1b[1;3B");
+  });
+
   it("scrolls one line on Arrow Up / Arrow Down without forwarding the bytes to the composer", async () => {
     const harness = createHarness();
     const longAnswer = Array.from({ length: 60 }, (_, index) => `answer line ${index + 1}`).join("\n");
@@ -1734,7 +1766,7 @@ describe("btw runtime behavior", () => {
     const claimedTokens = [
       "Ctrl+\\",
       "Ctrl+L",
-      "Ctrl+B/F",
+      "Option+↑↓",
       "PgUp/PgDn",
       "Escape",
       "Enter",

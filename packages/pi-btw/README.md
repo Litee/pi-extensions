@@ -50,9 +50,10 @@ inject the result back into the main agent when you are ready.
   without closing the overlay.
 - `Ctrl+L` clears the current BTW thread while keeping the overlay open,
   ready for a fresh question (equivalent to `/btw:clear` but non-dismissing).
-- `Ctrl+F` / `Ctrl+B` scroll the transcript forward / back by a page
-  (MacBook-friendly alternative to `PgUp` / `PgDn`; follows the less/vim
-  convention of forward = down, back = up).
+- `Option+↑` / `Option+↓` (`⌥↑↓`) scroll the transcript back / forward
+  by a page — MacBook-friendly equivalent to `PgUp` / `PgDn`. `Ctrl+B` /
+  `Ctrl+F` keep working as a less/vim-style fallback (forward = down,
+  back = up).
 - `Esc` dismisses BTW immediately while the overlay is focused.
 - The composer's prompt glyph tracks keyboard focus: a bright `▶` when
   BTW is receiving your input, a dim `>` when the main editor owns focus.
