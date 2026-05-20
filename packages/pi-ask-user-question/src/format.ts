@@ -45,6 +45,13 @@ export interface ToolResultPayload {
  *  - `content[0].text` is a human-readable summary the model sees inline
  *  - `details` is the raw Result so downstream renderers / loggers can
  *    introspect individual answers
+ *
+ * Wording rules:
+ *  - Multi-question results get a `User has answered your questions:` header
+ *    followed by one `Q<n> (...): <answer>` line per question.
+ *  - Single-question results skip the header and the `Q1 (...): ` prefix
+ *    entirely — the answer line is the whole payload, since there is
+ *    nothing to summarise.
  */
 export function formatToolResult(result: Result, questions: TQuestion[]): ToolResultPayload {
 	if (result.error !== undefined && result.error !== "") {
@@ -58,31 +65,37 @@ export function formatToolResult(result: Result, questions: TQuestion[]): ToolRe
 		};
 	}
 
+	if (questions.length === 1) {
+		const text = formatAnswer(result.answers[0] ?? null);
+		return { content: [{ type: "text", text }], details: result };
+	}
+
 	const lines: string[] = ["User has answered your questions:"];
 	for (let qi = 0; qi < questions.length; qi++) {
 		const q = questions[qi];
 		const a = result.answers[qi] ?? null;
 		const header = `Q${qi + 1} (${q?.question ?? ""}):`;
-		if (a === null) {
-			lines.push(`${header} (no answer)`);
-			continue;
-		}
-		if (a.kind === "single") {
-			const note = a.note !== undefined && a.note !== "" ? ` — note: ${a.note}` : "";
-			lines.push(`${header} selected ${a.index + 1}. ${a.label}${note}`);
-		} else if (a.kind === "multi") {
-			const parts = a.indices.map((idx, k) => {
-				const noteText = a.notes[idx];
-				const note = noteText !== undefined && noteText !== "" ? ` — note: ${noteText}` : "";
-				return `${idx + 1}. ${a.labels[k] ?? "?"}${note}`;
-			});
-			lines.push(`${header} selected [${parts.join(", ")}]`);
-		} else if (a.kind === "text") {
-			lines.push(`${header} user typed: ${a.text}`);
-		} else {
-			// kind === "chat"
-			lines.push(`${header} user chose 'Chat about this': ${a.text}`);
-		}
+		lines.push(`${header} ${formatAnswer(a)}`);
 	}
 	return { content: [{ type: "text", text: lines.join("\n") }], details: result };
+}
+
+/** Render a single answer slot as the right-hand side of a `Q<n> (...): ` line. */
+function formatAnswer(a: Answer | null): string {
+	if (a === null) return "(no answer)";
+	if (a.kind === "single") {
+		const note = a.note !== undefined && a.note !== "" ? ` — note: ${a.note}` : "";
+		return `selected ${a.index + 1}. ${a.label}${note}`;
+	}
+	if (a.kind === "multi") {
+		const parts = a.indices.map((idx, k) => {
+			const noteText = a.notes[idx];
+			const note = noteText !== undefined && noteText !== "" ? ` — note: ${noteText}` : "";
+			return `${idx + 1}. ${a.labels[k] ?? "?"}${note}`;
+		});
+		return `selected [${parts.join(", ")}]`;
+	}
+	if (a.kind === "text") return `user typed: ${a.text}`;
+	// kind === "chat"
+	return `user chose 'Chat about this': ${a.text}`;
 }

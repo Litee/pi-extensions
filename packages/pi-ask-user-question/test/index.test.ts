@@ -120,7 +120,7 @@ describe("tool.execute() — happy path", () => {
 		expect(run).toHaveBeenCalledTimes(1);
 		expect(run.mock.calls[0]?.[0]).toBe(ctx);
 		expect(run.mock.calls[0]?.[1]).toEqual(validParams.questions);
-		expect((result.content[0] as { text?: string } | undefined)?.text).toMatch(/Q1 \(Pick one\): selected 2\. B/);
+		expect((result.content[0] as { text?: string } | undefined)?.text).toBe("selected 2. B");
 		expect(result.details).toMatchObject({ cancelled: false });
 	});
 

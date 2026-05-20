@@ -59,30 +59,26 @@ describe("formatToolResult()", () => {
 		expect(out.content[0]?.text).toBe("User cancelled the questionnaire.");
 	});
 
-	it("summarises a single-select answer with 1-based index", () => {
+	it("renders a single-question single-select answer without the summary wrapper", () => {
 		const single: Answer = { kind: "single", index: 1, label: "Blue" };
 		const r: Result = { answers: [single], cancelled: false };
 		const out = formatToolResult(r, [twoQuestions[0]!]);
-		expect(out.content[0]?.text).toBe(
-			["User has answered your questions:", "Q1 (Colour?): selected 2. Blue"].join("\n"),
-		);
+		expect(out.content[0]?.text).toBe("selected 2. Blue");
 	});
 
-	it("appends a note to a single-select summary when present", () => {
+	it("appends a note to a single-question single-select answer when present", () => {
 		const single: Answer = { kind: "single", index: 0, label: "Red", note: "matches logo" };
 		const out = formatToolResult({ answers: [single], cancelled: false }, [twoQuestions[0]!]);
-		expect(out.content[0]?.text).toContain("selected 1. Red — note: matches logo");
+		expect(out.content[0]?.text).toBe("selected 1. Red — note: matches logo");
 	});
 
-	it("treats an empty-string note on a single-select as no note", () => {
+	it("treats an empty-string note on a single-question single-select as no note", () => {
 		const single: Answer = { kind: "single", index: 0, label: "Red", note: "" };
 		const out = formatToolResult({ answers: [single], cancelled: false }, [twoQuestions[0]!]);
-		expect(out.content[0]?.text).toBe(
-			["User has answered your questions:", "Q1 (Colour?): selected 1. Red"].join("\n"),
-		);
+		expect(out.content[0]?.text).toBe("selected 1. Red");
 	});
 
-	it("summarises a multi-select answer with per-index notes", () => {
+	it("renders a single-question multi-select answer without the summary wrapper", () => {
 		const multi: Answer = {
 			kind: "multi",
 			indices: [0, 1],
@@ -90,12 +86,10 @@ describe("formatToolResult()", () => {
 			notes: { 1: "calmer" },
 		};
 		const out = formatToolResult({ answers: [multi], cancelled: false }, [twoQuestions[0]!]);
-		expect(out.content[0]?.text).toBe(
-			["User has answered your questions:", "Q1 (Colour?): selected [1. Red, 2. Blue — note: calmer]"].join("\n"),
-		);
+		expect(out.content[0]?.text).toBe("selected [1. Red, 2. Blue — note: calmer]");
 	});
 
-	it("uses '?' when a label is missing from a multi-select answer", () => {
+	it("uses '?' when a label is missing from a single-question multi-select answer", () => {
 		const multi: Answer = {
 			kind: "multi",
 			indices: [0, 1],
@@ -103,10 +97,10 @@ describe("formatToolResult()", () => {
 			notes: {},
 		};
 		const out = formatToolResult({ answers: [multi], cancelled: false }, [twoQuestions[0]!]);
-		expect(out.content[0]?.text).toContain("[1. Red, 2. ?]");
+		expect(out.content[0]?.text).toBe("selected [1. Red, 2. ?]");
 	});
 
-	it("ignores empty-string notes on multi-select answers", () => {
+	it("ignores empty-string notes on a single-question multi-select answer", () => {
 		const multi: Answer = {
 			kind: "multi",
 			indices: [0],
@@ -114,20 +108,40 @@ describe("formatToolResult()", () => {
 			notes: { 0: "" },
 		};
 		const out = formatToolResult({ answers: [multi], cancelled: false }, [twoQuestions[0]!]);
-		expect(out.content[0]?.text).toContain("selected [1. Red]");
+		expect(out.content[0]?.text).toBe("selected [1. Red]");
 		expect(out.content[0]?.text).not.toContain("note:");
 	});
 
-	it("summarises a free-text answer", () => {
+	it("renders a single-question free-text answer without the summary wrapper", () => {
 		const text: Answer = { kind: "text", text: "something else" };
 		const out = formatToolResult({ answers: [text], cancelled: false }, [twoQuestions[0]!]);
-		expect(out.content[0]?.text).toContain("Q1 (Colour?): user typed: something else");
+		expect(out.content[0]?.text).toBe("user typed: something else");
 	});
 
-	it("summarises a chat answer", () => {
+	it("renders a single-question chat answer without the summary wrapper", () => {
 		const chat: Answer = { kind: "chat", text: "too broad" };
 		const out = formatToolResult({ answers: [chat], cancelled: false }, [twoQuestions[0]!]);
-		expect(out.content[0]?.text).toContain("Q1 (Colour?): user chose 'Chat about this': too broad");
+		expect(out.content[0]?.text).toBe("user chose 'Chat about this': too broad");
+	});
+
+	it("renders a single-question skipped answer without the summary wrapper", () => {
+		const out = formatToolResult({ answers: [null], cancelled: false }, [twoQuestions[0]!]);
+		expect(out.content[0]?.text).toBe("(no answer)");
+	});
+
+	it("keeps the summary wrapper for multi-question results (single-select sample)", () => {
+		const answers: Answer[] = [
+			{ kind: "single", index: 1, label: "Blue" },
+			{ kind: "single", index: 0, label: "S" },
+		];
+		const out = formatToolResult({ answers, cancelled: false }, twoQuestions);
+		expect(out.content[0]?.text).toBe(
+			[
+				"User has answered your questions:",
+				"Q1 (Colour?): selected 2. Blue",
+				"Q2 (Size?): selected 1. S",
+			].join("\n"),
+		);
 	});
 
 	it("emits '(no answer)' for null slots (when earlier questions were skipped)", () => {
