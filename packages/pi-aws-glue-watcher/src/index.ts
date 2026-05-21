@@ -170,7 +170,7 @@ export function createExtensionWithClient(pi: ExtensionAPI, client: GlueClient):
 	);
 
 	pi.registerCommand("glue-watcher", {
-		description: "Control the Glue watcher (enable | disable | status | browse)",
+		description: "Control the Glue watcher (status | browse | settings)",
 		handler: (args, ctx) => runGlueWatcherCommand(args, ctx, rt, pi, client),
 	});
 }
