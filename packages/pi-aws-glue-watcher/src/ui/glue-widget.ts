@@ -19,20 +19,36 @@ import {
 	COL_FIXED_OVERHEAD,
 	COL_NAME_MIN,
 	renderEntryLine,
+	stateStyle,
 } from "./widgetRows.js";
+
+// Mirrors runtime.ts POLL_ERROR_THRESHOLD (DEFAULT_POLL_ERROR_THRESHOLD = 5).
+// keep in sync with runtime.ts
+const WIDGET_POLL_ERROR_THRESHOLD = 5;
 
 /**
  * Format the right-hand side of the widget header:
- * `" (N)"` where N is the count of non-terminal watches the
- * user added (not the number of expanded rows — one workflow can expand
- * into many rows, but it only counts as one watch).
+ * `" (M/N)"` where M = succeeded/completed watches and N = total watch count.
+ * Appends ` ⚠` when errors are present.
+ *
+ * @param watches   The current watch map.
+ * @param _pollIntervalMs  Accepted for back-compat; not rendered.
+ * @param opts      Optional `{ hasErrors }` flag (e.g. from consecutive-error
+ *                  threshold). Error state is also derived directly from
+ *                  watches so the caller only needs to pass extra sources.
  */
 export function formatHeaderCountsSuffix(
 	watches: WatchMap,
 	_pollIntervalMs?: number,
+	opts?: { hasErrors?: boolean },
 ): string {
-	const activeWatchCount = Object.values(watches).filter((w) => !w.terminal).length;
-	return ` (${activeWatchCount})`;
+	const all = Object.values(watches);
+	const N = all.length;
+	const M = all.filter((w) => w.baseline && stateStyle(w.baseline.state) === "success").length;
+	// keep in sync with runtime.ts hasErrors derivation
+	const errorInStates = all.some((w) => stateStyle(w.baseline?.state ?? "") === "error");
+	const effectiveHasErrors = errorInStates || (opts?.hasErrors ?? false);
+	return effectiveHasErrors ? ` (${M}/${N}) ⚠` : ` (${M}/${N})`;
 }
 
 // ---------------------------------------------------------------------------
@@ -99,8 +115,7 @@ export class GlueWidget {
 	show(ctx: unknown): void {
 		this.ctx = ctx;
 
-		const active = Object.values(this.getWatches()).filter((w) => !w.terminal);
-		if (active.length === 0) {
+		if (Object.values(this.getWatches()).length === 0) {
 			this.hide(ctx);
 			return;
 		}
@@ -153,7 +168,15 @@ export class GlueWidget {
 			bold: (text: string) => string;
 		};
 
-		const entries = buildWidgetEntries(this.getWatches());
+		const watches = this.getWatches();
+		const entries = buildWidgetEntries(watches);
+
+		// Derive hasErrors: any watch in an error state OR consecutive-error
+		// threshold reached. keep in sync with runtime.ts hasErrors derivation.
+		const watchList = Object.values(watches);
+		const widgetHasErrors =
+			watchList.some((w) => stateStyle(w.baseline?.state ?? "") === "error") ||
+			watchList.some((w) => !w.terminal && w.consecutiveErrors >= WIDGET_POLL_ERROR_THRESHOLD);
 
 		const container = new Container();
 		const borderColor = (s: string) => t.fg("accent", s);
@@ -162,7 +185,7 @@ export class GlueWidget {
 		container.addChild(
 			new Text(
 				t.fg("accent", t.bold("Glue Watcher")) +
-					t.fg("dim", formatHeaderCountsSuffix(this.getWatches(), this.getPollIntervalMs())),
+					t.fg("dim", formatHeaderCountsSuffix(watches, this.getPollIntervalMs(), { hasErrors: widgetHasErrors })),
 				1,
 				0,
 			),

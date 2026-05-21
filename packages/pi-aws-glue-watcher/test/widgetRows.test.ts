@@ -70,12 +70,17 @@ describe("stateStyle", () => {
 // ---------------------------------------------------------------------------
 
 describe("buildWidgetEntries", () => {
-	it("excludes terminal watches", () => {
+	it("includes terminal watches with isTerminal=true", () => {
 		const entries = buildWidgetEntries({
 			a: job({ watchId: "a", name: "live" }),
 			b: job({ watchId: "b", name: "done", terminal: true }),
 		});
-		expect(entries.map((e) => e.displayName)).toEqual(["live"]);
+		expect(entries.map((e) => e.displayName)).toContain("live");
+		expect(entries.map((e) => e.displayName)).toContain("done");
+		const doneEntry = entries.find((e) => e.displayName === "done");
+		expect(doneEntry?.isTerminal).toBe(true);
+		const liveEntry = entries.find((e) => e.displayName === "live");
+		expect(liveEntry?.isTerminal).toBe(false);
 	});
 
 	it("emits a single entry per job watch", () => {
@@ -93,13 +98,14 @@ describe("buildWidgetEntries", () => {
 			}),
 		});
 		expect(entries).toEqual([
-			{
+			expect.objectContaining({
 				displayName: "j",
 				state: "RUNNING",
 				startedOn: "2024-01-01T00:00:00Z",
 				numberOfWorkers: 2,
 				workerType: "G.2X",
-			},
+				isTerminal: false,
+			}),
 		]);
 	});
 
@@ -141,7 +147,7 @@ describe("buildWidgetEntries", () => {
 				},
 			}),
 		});
-		expect(entries).toEqual([{ displayName: "wf", state: "RUNNING" }]);
+		expect(entries).toEqual([expect.objectContaining({ displayName: "wf", state: "RUNNING", isTerminal: false })]);
 	});
 
 	it("deduplicates entries that share a displayName", () => {
@@ -153,8 +159,18 @@ describe("buildWidgetEntries", () => {
 	});
 
 	// -------------------------------------------------------------------------
-	// Sorting: priority order + startedOn tiebreak
+	// Sorting: terminal entries always after non-terminal
 	// -------------------------------------------------------------------------
+
+	it("terminal entries sort after non-terminal even when terminal state has priority 0 (FAILED)", () => {
+		// A terminal FAILED job should come AFTER a non-terminal RUNNING job.
+		const entries = buildWidgetEntries({
+			a: job({ watchId: "a", name: "running-active", terminal: false, baseline: { state: "RUNNING", errorMessage: "" } }),
+			b: job({ watchId: "b", name: "failed-done", terminal: true, baseline: { state: "FAILED", errorMessage: "" } }),
+		});
+		const names = entries.map((e) => e.displayName);
+		expect(names.indexOf("running-active")).toBeLessThan(names.indexOf("failed-done"));
+	});
 
 	it("sorts workflow nodes so RUNNING appears before SUCCEEDED", () => {
 		const entries = buildWidgetEntries({
@@ -175,10 +191,12 @@ describe("buildWidgetEntries", () => {
 				},
 			}),
 		});
-		expect(entries.map((e) => e.displayName)).toEqual(["wf/step-2", "wf/step-1"]);
+		const names = entries.map((e) => e.displayName);
+		// RUNNING (non-terminal) before SUCCEEDED (terminal)
+		expect(names.indexOf("wf/step-2")).toBeLessThan(names.indexOf("wf/step-1"));
 	});
 
-	it("orders entries: FAILED > RUNNING = PENDING > SUCCEEDED", () => {
+	it("orders entries: non-terminal (RUNNING/PENDING) before terminal (FAILED/SUCCEEDED)", () => {
 		const entries = buildWidgetEntries({
 			w: workflow({
 				watchId: "w",
@@ -199,12 +217,12 @@ describe("buildWidgetEntries", () => {
 				},
 			}),
 		});
-		expect(entries.map((e) => e.displayName)).toEqual([
-			"wf/f", // FAILED  → error   rank 0
-			"wf/r", // RUNNING → active  rank 1
-			"wf/p", // PENDING → active  rank 1
-			"wf/s", // SUCCEEDED → success rank 2
-		]);
+		const names = entries.map((e) => e.displayName);
+		// Non-terminal first (RUNNING=warning rank1, PENDING=none rank1), then terminal (FAILED, SUCCEEDED)
+		expect(names.indexOf("wf/r")).toBeLessThan(names.indexOf("wf/f"));
+		expect(names.indexOf("wf/r")).toBeLessThan(names.indexOf("wf/s"));
+		expect(names.indexOf("wf/p")).toBeLessThan(names.indexOf("wf/f"));
+		expect(names.indexOf("wf/p")).toBeLessThan(names.indexOf("wf/s"));
 	});
 
 	it("within the same priority, sorts by startedOn descending (newest first)", () => {
@@ -234,6 +252,55 @@ describe("buildWidgetEntries", () => {
 		});
 		expect(entries.map((e) => e.displayName)).toEqual(["has-start", "no-start"]);
 	});
+
+	// -------------------------------------------------------------------------
+	// isTerminal derivation for workflow nodes
+	// -------------------------------------------------------------------------
+
+	it("marks workflow node entries as isTerminal=true when node state is success or error", () => {
+		const entries = buildWidgetEntries({
+			w: workflow({
+				watchId: "w",
+				name: "wf",
+				baseline: {
+					state: "RUNNING",
+					totalActions: 3,
+					succeededActions: 1,
+					failedActions: 1,
+					runningActions: 1,
+					reportedFailedNodes: [],
+					nodes: [
+						{ name: "running-node", state: "RUNNING" },
+						{ name: "succeeded-node", state: "SUCCEEDED" },
+						{ name: "failed-node", state: "FAILED" },
+					],
+				},
+			}),
+		});
+		const byName = Object.fromEntries(entries.map((e) => [e.displayName, e]));
+		expect(byName["wf/running-node"]?.isTerminal).toBe(false);
+		expect(byName["wf/succeeded-node"]?.isTerminal).toBe(true);
+		expect(byName["wf/failed-node"]?.isTerminal).toBe(true);
+	});
+
+	it("workflow fallback entry (no nodes) uses watch.terminal for isTerminal", () => {
+		const entries = buildWidgetEntries({
+			w: workflow({
+				watchId: "w",
+				name: "wf",
+				terminal: true,
+				baseline: {
+					state: "SUCCEEDED",
+					totalActions: 0,
+					succeededActions: 0,
+					failedActions: 0,
+					runningActions: 0,
+					reportedFailedNodes: [],
+				},
+			}),
+		});
+		expect(entries[0]?.isTerminal).toBe(true);
+	});
 });
 
 // ---------------------------------------------------------------------------
@@ -243,7 +310,7 @@ describe("buildWidgetEntries", () => {
 describe("renderEntryLine", () => {
 	it("pads the name column to colName width", () => {
 		const line = renderEntryLine(
-			{ displayName: "j", state: "RUNNING" },
+			{ displayName: "j", state: "RUNNING", isTerminal: false },
 			10,
 			plainTheme,
 		);
@@ -253,7 +320,7 @@ describe("renderEntryLine", () => {
 
 	it("truncates a long name with ellipsis", () => {
 		const line = renderEntryLine(
-			{ displayName: "very-long-name", state: "RUNNING" },
+			{ displayName: "very-long-name", state: "RUNNING", isTerminal: false },
 			8,
 			plainTheme,
 		);
@@ -262,7 +329,7 @@ describe("renderEntryLine", () => {
 
 	it("renders '-' for workers when numberOfWorkers is absent", () => {
 		const line = renderEntryLine(
-			{ displayName: "j", state: "RUNNING" },
+			{ displayName: "j", state: "RUNNING", isTerminal: false },
 			10,
 			plainTheme,
 		);
@@ -271,7 +338,7 @@ describe("renderEntryLine", () => {
 
 	it("renders N×type for workers when present", () => {
 		const line = renderEntryLine(
-			{ displayName: "j", state: "RUNNING", numberOfWorkers: 3, workerType: "G.1X" },
+			{ displayName: "j", state: "RUNNING", numberOfWorkers: 3, workerType: "G.1X", isTerminal: false },
 			10,
 			plainTheme,
 		);
@@ -280,7 +347,7 @@ describe("renderEntryLine", () => {
 
 	it("applies the appropriate colour to the state slot", () => {
 		const line = renderEntryLine(
-			{ displayName: "j", state: "SUCCEEDED" },
+			{ displayName: "j", state: "SUCCEEDED", isTerminal: false },
 			10,
 			taggedTheme,
 		);
@@ -289,7 +356,7 @@ describe("renderEntryLine", () => {
 
 	it("leaves unknown states uncoloured", () => {
 		const line = renderEntryLine(
-			{ displayName: "j", state: "MYSTERY" },
+			{ displayName: "j", state: "MYSTERY", isTerminal: false },
 			10,
 			taggedTheme,
 		);
@@ -302,11 +369,29 @@ describe("renderEntryLine", () => {
 
 	it("renders '?' when state is empty", () => {
 		const line = renderEntryLine(
-			{ displayName: "j", state: "" },
+			{ displayName: "j", state: "", isTerminal: false },
 			10,
 			plainTheme,
 		);
 		expect(line).toContain("?");
+	});
+
+	it("wraps the entire line in [dim]...[/] when isTerminal is true", () => {
+		const line = renderEntryLine(
+			{ displayName: "j", state: "SUCCEEDED", isTerminal: true },
+			10,
+			taggedTheme,
+		);
+		expect(line).toMatch(/^\[dim\].+\[\/\]$/);
+	});
+
+	it("does NOT wrap line in dim when isTerminal is false", () => {
+		const line = renderEntryLine(
+			{ displayName: "j", state: "RUNNING", isTerminal: false },
+			10,
+			taggedTheme,
+		);
+		expect(line).not.toMatch(/^\[dim\]/);
 	});
 });
 
@@ -354,6 +439,7 @@ describe("renderEntryLine + completedOn", () => {
 				state: "SUCCEEDED",
 				startedOn: "2000-01-01T00:00:00Z",
 				completedOn: "2000-01-01T00:02:00Z",
+				isTerminal: true,
 			},
 			20,
 			plainTheme,
@@ -417,11 +503,32 @@ describe("buildWidgetEntries + completedOn", () => {
 });
 
 // ---------------------------------------------------------------------------
-// formatHeaderCountsSuffix — header "(N)" reflects distinct non-terminal
-// watches, not expanded per-node rows. See aws-glue-watcher#0001.
+// formatHeaderCountsSuffix — header "(M/N)" reflects M succeeded / N total
 // ---------------------------------------------------------------------------
 
 describe("formatHeaderCountsSuffix", () => {
+	it("returns ' (0/0)' when no watches are present", () => {
+		expect(formatHeaderCountsSuffix({}, 60_000)).toBe(" (0/0)");
+	});
+
+	it("returns ' (0/N)' when all watches are active (none succeeded)", () => {
+		const watches: Record<string, GlueWatch> = {
+			j1: job({ watchId: "j1", name: "a" }),
+			j2: job({ watchId: "j2", name: "b" }),
+			j3: job({ watchId: "j3", name: "c" }),
+		};
+		expect(formatHeaderCountsSuffix(watches, 120_000)).toBe(" (0/3)");
+	});
+
+	it("returns ' (M/N)' when some watches have succeeded", () => {
+		const watches: Record<string, GlueWatch> = {
+			j1: job({ watchId: "j1", name: "a", baseline: { state: "SUCCEEDED", errorMessage: "" } }),
+			j2: job({ watchId: "j2", name: "b" }),
+			j3: job({ watchId: "j3", name: "c", baseline: { state: "COMPLETED", errorMessage: "" } }),
+		};
+		expect(formatHeaderCountsSuffix(watches, 120_000)).toBe(" (2/3)");
+	});
+
 	it("counts each workflow as 1 even when its graph expands into many nodes", () => {
 		const watches: Record<string, GlueWatch> = {
 			wf: {
@@ -449,21 +556,34 @@ describe("formatHeaderCountsSuffix", () => {
 			j2: job({ watchId: "j2", name: "job-b" }),
 			j3: job({ watchId: "j3", name: "job-c" }),
 		};
-		// 1 workflow + 3 jobs = 4, NOT 3 nodes + 3 jobs = 6.
-		expect(formatHeaderCountsSuffix(watches, 120_000)).toBe(" (4)");
+		// workflow not succeeded + 3 RUNNING jobs → M=0, N=4
+		expect(formatHeaderCountsSuffix(watches, 120_000)).toBe(" (0/4)");
 	});
 
-	it("excludes terminal watches from the count", () => {
+	it("includes terminal watches in N count", () => {
 		const watches: Record<string, GlueWatch> = {
 			j1: job({ watchId: "j1", name: "a" }),
-			j2: job({ watchId: "j2", name: "b", terminal: true }),
+			j2: job({ watchId: "j2", name: "b", terminal: true, baseline: { state: "SUCCEEDED", errorMessage: "" } }),
 			j3: job({ watchId: "j3", name: "c" }),
 		};
-		expect(formatHeaderCountsSuffix(watches, 30_000)).toBe(" (2)");
+		// 1 succeeded (j2), 3 total → " (1/3)"
+		expect(formatHeaderCountsSuffix(watches, 30_000)).toBe(" (1/3)");
 	});
 
-	it("renders zero when no watches are present", () => {
-		expect(formatHeaderCountsSuffix({}, 60_000)).toBe(" (0)");
+	it("appends \" ⚠\" when a watch has a FAILED state", () => {
+		const watches: Record<string, GlueWatch> = {
+			j1: job({ watchId: "j1", name: "a", baseline: { state: "SUCCEEDED", errorMessage: "" } }),
+			j2: job({ watchId: "j2", name: "b", baseline: { state: "FAILED", errorMessage: "oops" } }),
+			j3: job({ watchId: "j3", name: "c" }),
+		};
+		expect(formatHeaderCountsSuffix(watches, 120_000)).toBe(" (1/3) ⚠");
+	});
+
+	it("appends \" ⚠\" when hasErrors flag is true", () => {
+		const watches: Record<string, GlueWatch> = {
+			j1: job({ watchId: "j1", name: "a" }),
+			j2: job({ watchId: "j2", name: "b" }),
+		};
+		expect(formatHeaderCountsSuffix(watches, 120_000, { hasErrors: true })).toBe(" (0/2) ⚠");
 	});
 });
-

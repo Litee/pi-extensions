@@ -35,6 +35,8 @@ export interface WidgetEntry {
 	workerType?: string;
 	/** Per-watch poll interval in ms. Undefined means default (120s). */
 	pollIntervalMs?: number;
+	/** True when this entry represents a watch (or node) that has reached a terminal state. */
+	isTerminal: boolean;
 }
 
 export interface WidgetTheme {
@@ -83,7 +85,7 @@ export function entryPriority(state: string): number {
  * so non-terminal states (RUNNING, STARTING) rise to the top.
  */
 export function buildWidgetEntries(watchMap: WatchMap): WidgetEntry[] {
-	const watches = Object.values(watchMap).filter((w) => !w.terminal);
+	const watches = Object.values(watchMap);
 	const entries: WidgetEntry[] = [];
 
 	function pollIntervalSpread(w: GlueWatch) {
@@ -101,6 +103,7 @@ export function buildWidgetEntries(watchMap: WatchMap): WidgetEntry[] {
 				...(b?.numberOfWorkers !== undefined ? { numberOfWorkers: b.numberOfWorkers } : {}),
 				...(b?.workerType !== undefined ? { workerType: b.workerType } : {}),
 				...pollIntervalSpread(watch),
+				isTerminal: watch.terminal,
 			});
 		} else {
 			const b = watch.baseline as WorkflowBaseline | undefined;
@@ -110,6 +113,7 @@ export function buildWidgetEntries(watchMap: WatchMap): WidgetEntry[] {
 					new Map(nodes.filter((n) => n.state !== "").map((n) => [n.name, n])).values(),
 				);
 				for (const node of uniqueNodes) {
+					const nodeStyle = stateStyle(node.state);
 					entries.push({
 						displayName: `${watch.name}/${node.name}`,
 						state: node.state,
@@ -118,10 +122,11 @@ export function buildWidgetEntries(watchMap: WatchMap): WidgetEntry[] {
 						...(node.numberOfWorkers !== undefined ? { numberOfWorkers: node.numberOfWorkers } : {}),
 						...(node.workerType !== undefined ? { workerType: node.workerType } : {}),
 						...pollIntervalSpread(watch),
+						isTerminal: nodeStyle === "success" || nodeStyle === "error",
 					});
 				}
 			} else {
-				entries.push({ displayName: watch.name, state: b?.state ?? "", ...pollIntervalSpread(watch) });
+				entries.push({ displayName: watch.name, state: b?.state ?? "", ...pollIntervalSpread(watch), isTerminal: watch.terminal });
 			}
 		}
 	}
@@ -134,10 +139,15 @@ export function buildWidgetEntries(watchMap: WatchMap): WidgetEntry[] {
 	});
 
 	return deduped.sort((a, b) => {
-		const pa = entryPriority(a.state);
-		const pb = entryPriority(b.state);
-		if (pa !== pb) return pa - pb;
-		// Same priority: newest startedOn first.
+		// Terminal entries always go after non-terminal ones.
+		if (a.isTerminal !== b.isTerminal) return a.isTerminal ? 1 : -1;
+		// Within non-terminal entries: sort by state priority.
+		if (!a.isTerminal) {
+			const pa = entryPriority(a.state);
+			const pb = entryPriority(b.state);
+			if (pa !== pb) return pa - pb;
+		}
+		// Same group (and same priority for non-terminal): newest startedOn first.
 		// Entries without a start time trail within their rank.
 		if (a.startedOn && b.startedOn) return a.startedOn > b.startedOn ? -1 : a.startedOn < b.startedOn ? 1 : 0;
 		if (a.startedOn) return -1;
@@ -181,5 +191,6 @@ export function renderEntryLine(
 		: undefined;
 	const intervalStr = theme.fg("dim", (intervalSec !== undefined ? `${intervalSec}s` : "-").padEnd(COL_INTERVAL));
 
-	return ` ${name} ${stateStr} ${started} ${workers} ${intervalStr}`;
+	const line = ` ${name} ${stateStr} ${started} ${workers} ${intervalStr}`;
+	return entry.isTerminal ? theme.fg("dim", line) : line;
 }

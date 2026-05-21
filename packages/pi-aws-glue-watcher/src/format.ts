@@ -27,41 +27,58 @@ export interface StatusLineInput {
 	hasErrors?: boolean;
 }
 
+/** Returns true when the given Glue state string maps to an error outcome. */
+function isGlueErrorState(state: string | undefined): boolean {
+	return (
+		state === "FAILED" ||
+		state === "ERROR" ||
+		state === "TIMEOUT" ||
+		state === "STOPPED"
+	);
+}
+
+/** Returns true when the given Glue state string maps to a successful outcome. */
+function isGlueSuccessState(state: string | undefined): boolean {
+	return state === "SUCCEEDED" || state === "COMPLETED";
+}
+
 /**
  * Build the row shown in the pi status-line row.
  *
- * | State            | Row                                    | Alias    |
- * |------------------|----------------------------------------|----------|
- * | Idle             | `☁ Glue: idle`                         | muted    |
- * | Active           | `☁ Glue: 2 jobs`                       | accent   |
- * | Active mixed     | `☁ Glue: 2 jobs | 1 workflow`          | accent   |
- * | Active + errors  | `☁ Glue: 2 jobs | ⚠ errors`            | warning  |
- * | Paused           | `☁ Glue: 2 jobs (paused)`              | muted    |
- * | Paused + errors  | `☁ Glue: 2 jobs | ⚠ errors (paused)`   | warning  |
+ * | State              | Row                       | Alias   |
+ * |--------------------|---------------------------|----------|
+ * | Idle               | `☁ Glue: idle`            | muted   |
+ * | Active             | `☁ Glue: M/N`             | accent  |
+ * | Active + errors    | `☁ Glue: ⚠ M/N`           | warning |
+ * | Paused             | `☁ Glue: M/N (paused)`    | muted   |
+ * | Paused + errors    | `☁ Glue: ⚠ M/N (paused)`  | warning |
  *
- * Errors take priority over paused for colour. Terminal watches are excluded
- * from the counts; the `pollIntervalMs` field is accepted for back-compat but
- * no longer rendered.
+ * M = watches whose baseline.state is SUCCEEDED or COMPLETED.
+ * N = total watch count.
+ * Errors (hasErrors flag or any error-state watch) take priority over paused.
+ * `pollIntervalMs` is accepted for back-compat but no longer rendered.
  */
 export function buildStatusLine(input: StatusLineInput): StatusLineResult {
 	const { watches, paused, hasErrors } = input;
 
-	const active = Object.values(watches).filter((w) => !w.terminal);
-	if (active.length === 0) return { text: "☁ Glue: idle", colorAlias: "muted" };
+	const allWatches = Object.values(watches);
 
-	const jobs = active.filter((w) => w.type === "job").length;
-	const workflows = active.filter((w) => w.type === "workflow").length;
+	if (allWatches.length === 0) {
+		return { text: "☁ Glue: idle", colorAlias: "muted" };
+	}
 
-	const parts: string[] = [];
-	if (jobs > 0) parts.push(`${jobs} job${jobs === 1 ? "" : "s"}`);
-	if (workflows > 0) parts.push(`${workflows} workflow${workflows === 1 ? "" : "s"}`);
-	if (hasErrors) parts.push("⚠ errors");
+	const N = allWatches.length;
+	const M = allWatches.filter((w) => w.baseline && isGlueSuccessState(w.baseline.state)).length;
 
-	const body = parts.join(" | ");
+	// Errors win if the caller flagged them OR if any watch is in a terminal-error state.
+	const errorInStates = allWatches.some((w) => isGlueErrorState(w.baseline?.state));
+	const effectiveHasErrors = (hasErrors ?? false) || errorInStates;
+
+	const body = effectiveHasErrors ? `⚠ ${M}/${N}` : `${M}/${N}`;
 	const text = paused ? `☁ Glue: ${body} (paused)` : `☁ Glue: ${body}`;
 
 	const colorAlias: StatusLineColorAlias =
-		hasErrors ? "warning" : statusLineColorAlias(paused ? "paused" : "active");
+		effectiveHasErrors ? "warning" : statusLineColorAlias(paused ? "paused" : "active");
 	return { text, colorAlias };
 }
 

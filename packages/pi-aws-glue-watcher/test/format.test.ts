@@ -52,53 +52,82 @@ describe("buildStatusLine", () => {
 		expect(r).toEqual({ text: "☁ Glue: idle", colorAlias: "muted" });
 	});
 
-	it("returns idle with muted alias when all watches are terminal", () => {
-		const watches: WatchMap = {
-			aa: makeJobWatch({ watchId: "aa", terminal: true }),
-		};
-		const r = buildStatusLine({ watches, paused: false, pollIntervalMs: 120_000 });
-		expect(r).toEqual({ text: "☁ Glue: idle", colorAlias: "muted" });
-	});
-
-	it("shows singular 'job' for one active job watch", () => {
-		const watches: WatchMap = { aa: makeJobWatch({ watchId: "aa" }) };
-		const r = buildStatusLine({ watches, paused: false, pollIntervalMs: 120_000 });
-		expect(r).toEqual({ text: "☁ Glue: 1 job", colorAlias: "accent" });
-	});
-
-	it("shows plural 'jobs' for two active job watches", () => {
+	it("shows 0/N with accent alias when no watches have succeeded (all active)", () => {
 		const watches: WatchMap = {
 			aa: makeJobWatch({ watchId: "aa" }),
 			bb: makeJobWatch({ watchId: "bb" }),
+			cc: makeJobWatch({ watchId: "cc" }),
 		};
 		const r = buildStatusLine({ watches, paused: false, pollIntervalMs: 120_000 });
-		expect(r).toEqual({ text: "☁ Glue: 2 jobs", colorAlias: "accent" });
+		expect(r).toEqual({ text: "☁ Glue: 0/3", colorAlias: "accent" });
 	});
 
-	it("shows singular 'workflow' for one active workflow watch", () => {
+	it("shows M/N with accent alias when some watches have succeeded", () => {
 		const watches: WatchMap = {
-			aa: makeJobWatch({ watchId: "aa", type: "workflow", runId: "wr_xyz" }),
-		};
-		const r = buildStatusLine({ watches, paused: false, pollIntervalMs: 60_000 });
-		expect(r).toEqual({ text: "☁ Glue: 1 workflow", colorAlias: "accent" });
-	});
-
-	it("shows both job and workflow counts separated by |", () => {
-		const watches: WatchMap = {
-			aa: makeJobWatch({ watchId: "aa" }),
-			bb: makeJobWatch({ watchId: "bb", type: "workflow", runId: "wr_xyz" }),
+			aa: makeJobWatch({ watchId: "aa", baseline: { state: "SUCCEEDED", errorMessage: "" } }),
+			bb: makeJobWatch({ watchId: "bb" }),
+			cc: makeJobWatch({ watchId: "cc" }),
 		};
 		const r = buildStatusLine({ watches, paused: false, pollIntervalMs: 120_000 });
-		expect(r).toEqual({ text: "☁ Glue: 1 job | 1 workflow", colorAlias: "accent" });
+		expect(r).toEqual({ text: "☁ Glue: 1/3", colorAlias: "accent" });
 	});
 
-	it("appends (paused) suffix and uses muted alias when paused", () => {
+	it("shows N/N with accent alias when all watches have succeeded", () => {
+		const watches: WatchMap = {
+			aa: makeJobWatch({ watchId: "aa", baseline: { state: "SUCCEEDED", errorMessage: "" } }),
+			bb: makeJobWatch({ watchId: "bb", baseline: { state: "COMPLETED", errorMessage: "" } }),
+			cc: makeJobWatch({ watchId: "cc", baseline: { state: "SUCCEEDED", errorMessage: "" } }),
+		};
+		const r = buildStatusLine({ watches, paused: false, pollIntervalMs: 120_000 });
+		expect(r).toEqual({ text: "☁ Glue: 3/3", colorAlias: "accent" });
+	});
+
+	it("appends (paused) suffix and uses muted alias when paused, no errors", () => {
 		const watches: WatchMap = {
 			aa: makeJobWatch({ watchId: "aa" }),
 			bb: makeJobWatch({ watchId: "bb" }),
+			cc: makeJobWatch({ watchId: "cc" }),
 		};
 		const r = buildStatusLine({ watches, paused: true, pollIntervalMs: 120_000 });
-		expect(r).toEqual({ text: "☁ Glue: 2 jobs (paused)", colorAlias: "muted" });
+		expect(r).toEqual({ text: "☁ Glue: 0/3 (paused)", colorAlias: "muted" });
+	});
+
+	it("shows ⚠ prefix and warning alias when hasErrors is true", () => {
+		const watches: WatchMap = {
+			aa: makeJobWatch({ watchId: "aa" }),
+			bb: makeJobWatch({ watchId: "bb" }),
+			cc: makeJobWatch({ watchId: "cc" }),
+		};
+		const r = buildStatusLine({ watches, paused: false, pollIntervalMs: 120_000, hasErrors: true });
+		expect(r).toEqual({ text: "☁ Glue: ⚠ 0/3", colorAlias: "warning" });
+	});
+
+	it("shows ⚠ prefix and warning alias when a watch has FAILED state", () => {
+		const watches: WatchMap = {
+			aa: makeJobWatch({ watchId: "aa", baseline: { state: "SUCCEEDED", errorMessage: "" } }),
+			bb: makeJobWatch({ watchId: "bb", baseline: { state: "FAILED", errorMessage: "oops" } }),
+			cc: makeJobWatch({ watchId: "cc" }),
+		};
+		const r = buildStatusLine({ watches, paused: false, pollIntervalMs: 120_000 });
+		expect(r).toEqual({ text: "☁ Glue: ⚠ 1/3", colorAlias: "warning" });
+	});
+
+	it("shows ⚠ prefix and warning alias when hasErrors + paused (warning beats paused)", () => {
+		const watches: WatchMap = {
+			aa: makeJobWatch({ watchId: "aa" }),
+			bb: makeJobWatch({ watchId: "bb" }),
+		};
+		const r = buildStatusLine({ watches, paused: true, pollIntervalMs: 120_000, hasErrors: true });
+		expect(r).toEqual({ text: "☁ Glue: ⚠ 0/2 (paused)", colorAlias: "warning" });
+	});
+
+	it("a watch with undefined baseline does not count toward M", () => {
+		const watches: WatchMap = {
+			aa: makeJobWatch({ watchId: "aa", baseline: undefined }),
+			bb: makeJobWatch({ watchId: "bb", baseline: { state: "SUCCEEDED", errorMessage: "" } }),
+		};
+		const r = buildStatusLine({ watches, paused: false, pollIntervalMs: 120_000 });
+		expect(r).toEqual({ text: "☁ Glue: 1/2", colorAlias: "accent" });
 	});
 
 	it("never includes the ⟳ poll-interval suffix", () => {
@@ -112,24 +141,6 @@ describe("buildStatusLine", () => {
 		const watches: WatchMap = { aa: makeJobWatch({ watchId: "aa" }) };
 		const r = buildStatusLine({ watches, paused: true, pollIntervalMs: 120_000 });
 		expect(r.text).not.toContain("⏸");
-	});
-
-	it("shows plural 'workflows' for two active workflow watches", () => {
-		const watches: WatchMap = {
-			aa: makeJobWatch({ watchId: "aa", type: "workflow", runId: "wr_aaa" }),
-			bb: makeJobWatch({ watchId: "bb", type: "workflow", runId: "wr_bbb" }),
-		};
-		const r = buildStatusLine({ watches, paused: false, pollIntervalMs: 120_000 });
-		expect(r).toEqual({ text: "☁ Glue: 2 workflows", colorAlias: "accent" });
-	});
-
-	it("excludes terminal watches from counts but treats non-empty list with all terminal as idle", () => {
-		const watches: WatchMap = {
-			aa: makeJobWatch({ watchId: "aa", terminal: true }),
-			bb: makeJobWatch({ watchId: "bb", terminal: false }),
-		};
-		const r = buildStatusLine({ watches, paused: false, pollIntervalMs: 120_000 });
-		expect(r).toEqual({ text: "☁ Glue: 1 job", colorAlias: "accent" });
 	});
 });
 
@@ -348,34 +359,4 @@ describe("buildChangeChatMessage", () => {
 	});
 });
 
-describe("buildStatusLine — hasErrors flag", () => {
-	it("shows ⚠ errors part and warning alias when hasErrors is true (active)", () => {
-		const watches: WatchMap = { aa: makeJobWatch({ watchId: "aa" }) };
-		const r = buildStatusLine({ watches, paused: false, pollIntervalMs: 120_000, hasErrors: true });
-		expect(r).toEqual({ text: "☁ Glue: 1 job | ⚠ errors", colorAlias: "warning" });
-	});
 
-	it("shows ⚠ errors and (paused) suffix with warning alias when paused + errors", () => {
-		const watches: WatchMap = {
-			aa: makeJobWatch({ watchId: "aa" }),
-			bb: makeJobWatch({ watchId: "bb" }),
-		};
-		const r = buildStatusLine({ watches, paused: true, pollIntervalMs: 120_000, hasErrors: true });
-		expect(r).toEqual({
-			text: "☁ Glue: 2 jobs | ⚠ errors (paused)",
-			colorAlias: "warning",
-		});
-	});
-
-	it("does not show ⚠ errors part when hasErrors is false", () => {
-		const watches: WatchMap = { aa: makeJobWatch({ watchId: "aa" }) };
-		const r = buildStatusLine({ watches, paused: false, pollIntervalMs: 120_000, hasErrors: false });
-		expect(r.text).not.toContain("⚠");
-	});
-
-	it("does not show ⚠ errors part when hasErrors is omitted", () => {
-		const watches: WatchMap = { aa: makeJobWatch({ watchId: "aa" }) };
-		const r = buildStatusLine({ watches, paused: false, pollIntervalMs: 120_000 });
-		expect(r.text).not.toContain("⚠");
-	});
-});
