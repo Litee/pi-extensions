@@ -43,8 +43,6 @@ function makeCtxWithUi(overrides: Partial<Record<string, unknown>> = {}): unknow
 
 describe("parseSubcommand", () => {
 	it.each([
-		["enable", { kind: "enable" }],
-		["disable", { kind: "disable" }],
 		["browse", { kind: "browse" }],
 		["status", { kind: "status" }],
 		["", { kind: "browse" }],
@@ -54,7 +52,6 @@ describe("parseSubcommand", () => {
 	});
 
 	it("is case-insensitive", () => {
-		expect(parseSubcommand("ENABLE")).toEqual({ kind: "enable" });
 		expect(parseSubcommand("  StAtUs  ")).toEqual({ kind: "status" });
 		expect(parseSubcommand("BROWSE")).toEqual({ kind: "browse" });
 	});
@@ -65,6 +62,14 @@ describe("parseSubcommand", () => {
 
 	it("returns unknown for the old 'jobs' subcommand name (no backwards-compat alias)", () => {
 		expect(parseSubcommand("jobs")).toEqual({ kind: "unknown", raw: "jobs" });
+	});
+
+	it("returns unknown for removed 'enable' subcommand", () => {
+		expect(parseSubcommand("enable")).toEqual({ kind: "unknown", raw: "enable" });
+	});
+
+	it("returns unknown for removed 'disable' subcommand", () => {
+		expect(parseSubcommand("disable")).toEqual({ kind: "unknown", raw: "disable" });
 	});
 
 	it("returns browse when called with undefined (no args)", () => {
@@ -81,69 +86,7 @@ describe("runGlueWatcherCommand", () => {
 		return makeRuntime(pi, makeFakeClient());
 	}
 
-	it("enable: flips rt.enabled and notifies", async () => {
-		// Arrange
-		const rt = freshRuntime();
-		const ctx = makeCtxWithUi();
-		const pi = makeFakePi();
-
-		// Act
-		await runGlueWatcherCommand("enable", ctx, rt, pi, rt.client);
-
-		// Assert
-		expect(rt.enabled).toBe(true);
-		const notify = (ctx as { ui: { notify: ReturnType<typeof vi.fn> } }).ui.notify;
-		expect(notify).toHaveBeenCalledWith(expect.stringMatching(/enabled/), "info");
-	});
-
-	it("enable: is idempotent when already enabled", async () => {
-		// Arrange
-		const rt = freshRuntime();
-		rt.enabled = true;
-		const ctx = makeCtxWithUi();
-		const pi = makeFakePi();
-
-		// Act
-		await runGlueWatcherCommand("enable", ctx, rt, pi, rt.client);
-
-		// Assert
-		const notify = (ctx as { ui: { notify: ReturnType<typeof vi.fn> } }).ui.notify;
-		expect(notify).toHaveBeenCalledWith(expect.stringMatching(/already enabled/), "info");
-		expect(rt.enabled).toBe(true);
-	});
-
-	it("disable: flips rt.enabled to false when enabled", async () => {
-		// Arrange
-		const rt = freshRuntime();
-		rt.enabled = true;
-		const ctx = makeCtxWithUi();
-		const pi = makeFakePi();
-
-		// Act
-		await runGlueWatcherCommand("disable", ctx, rt, pi, rt.client);
-
-		// Assert
-		expect(rt.enabled).toBe(false);
-		const notify = (ctx as { ui: { notify: ReturnType<typeof vi.fn> } }).ui.notify;
-		expect(notify).toHaveBeenCalledWith(expect.stringMatching(/disabled/), "info");
-	});
-
-	it("disable: is idempotent when already disabled", async () => {
-		// Arrange
-		const rt = freshRuntime();
-		rt.enabled = false;
-		const ctx = makeCtxWithUi();
-		const pi = makeFakePi();
-
-		// Act
-		await runGlueWatcherCommand("disable", ctx, rt, pi, rt.client);
-
-		// Assert
-		const notify = (ctx as { ui: { notify: ReturnType<typeof vi.fn> } }).ui.notify;
-		expect(notify).toHaveBeenCalledWith(expect.stringMatching(/already disabled/), "info");
-	});
-
-	it("status: reports enabled/active and the watch count", async () => {
+	it("status: reports active and the watch count", async () => {
 		// Arrange
 		const rt = freshRuntime();
 		rt.enabled = true;
@@ -160,12 +103,12 @@ describe("runGlueWatcherCommand", () => {
 		// Assert
 		const notify = (ctx as { ui: { notify: ReturnType<typeof vi.fn> } }).ui.notify;
 		expect(notify).toHaveBeenCalledWith(
-			expect.stringMatching(/enabled, active.*2 watch\(es\) \(1 active\)/),
+			expect.stringMatching(/active.*2 watch\(es\) \(1 active\)/),
 			"info",
 		);
 	});
 
-	it("status: reflects the paused flag when enabled", async () => {
+	it("status: reflects the paused flag", async () => {
 		// Arrange
 		const rt = freshRuntime();
 		rt.enabled = true;
@@ -178,22 +121,7 @@ describe("runGlueWatcherCommand", () => {
 
 		// Assert
 		const notify = (ctx as { ui: { notify: ReturnType<typeof vi.fn> } }).ui.notify;
-		expect(notify).toHaveBeenCalledWith(expect.stringMatching(/enabled, paused/), "info");
-	});
-
-	it("status: reports 'disabled' when rt.enabled is false", async () => {
-		// Arrange
-		const rt = freshRuntime();
-		rt.enabled = false;
-		const ctx = makeCtxWithUi();
-		const pi = makeFakePi();
-
-		// Act
-		await runGlueWatcherCommand("status", ctx, rt, pi, rt.client);
-
-		// Assert
-		const notify = (ctx as { ui: { notify: ReturnType<typeof vi.fn> } }).ui.notify;
-		expect(notify).toHaveBeenCalledWith(expect.stringMatching(/^glue-watcher: disabled \|/), "info");
+		expect(notify).toHaveBeenCalledWith(expect.stringMatching(/paused/), "info");
 	});
 
 	it("unknown: warns with the raw subcommand", async () => {
@@ -229,7 +157,7 @@ describe("runGlueWatcherCommand", () => {
 		expect(optionsArg).toMatchObject({ overlay: true });
 	});
 
-	it("tolerates missing ui.notify on disable/enable (no-UI context)", async () => {
+	it("tolerates missing ui.notify on unknown subcommand (no-UI context)", async () => {
 		// Arrange — headless ctx with no `ui` surface.
 		const rt = freshRuntime();
 		const headlessCtx = { hasUI: false, ui: null };
@@ -237,8 +165,6 @@ describe("runGlueWatcherCommand", () => {
 
 		// Act / Assert — must not throw.
 		await expect(runGlueWatcherCommand("enable", headlessCtx, rt, pi, rt.client)).resolves.not.toThrow();
-		expect(rt.enabled).toBe(true);
 		await expect(runGlueWatcherCommand("disable", headlessCtx, rt, pi, rt.client)).resolves.not.toThrow();
-		expect(rt.enabled).toBe(false);
 	});
 });
