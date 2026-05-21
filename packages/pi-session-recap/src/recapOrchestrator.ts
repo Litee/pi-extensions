@@ -113,7 +113,13 @@ async function runModelCall(
 			...(auth.headers ? { headers: auth.headers } : {}),
 			signal,
 			// Recaps are tiny, throwaway UI hints — don't pay for prompt-cache
-			// entries and don't spend reasoning tokens on them.
+			// entries and don't spend reasoning tokens on them. For reasoning
+			// models we still have to set the field; "minimal" is the lowest
+			// value SimpleStreamOptions.reasoning accepts (there is no "off"
+			// at request time). Without this guard, a reasoning model burns
+			// the entire 256-token budget on hidden reasoning and returns no
+			// visible text, so the recap widget never renders.
+			...(model.reasoning ? { reasoning: "minimal" as const } : {}),
 			cacheRetention: "none" as const,
 			maxTokens: 256,
 		},

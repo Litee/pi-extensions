@@ -458,6 +458,36 @@ describe("recapOrchestrator", () => {
 		expect(opts["maxTokens"]).toBe(256);
 	});
 
+	it("sets reasoning: 'minimal' for reasoning models so the 256-token budget isn't consumed by hidden reasoning", async () => {
+		const deps = makeDeps();
+		(deps.ctx as unknown as { model: Record<string, unknown> }).model = {
+			provider: "openai",
+			id: "gpt-5",
+			reasoning: true,
+		};
+		const orch = createRecapOrchestrator(deps);
+		await orch.runGenerateAndShow({ reason: "manual" });
+
+		expect(deps.completeSimple).toHaveBeenCalledTimes(1);
+		const opts = deps.completeSimple.mock.calls[0]![2] as Record<string, unknown>;
+		expect(opts["reasoning"]).toBe("minimal");
+	});
+
+	it("omits the reasoning field for non-reasoning models", async () => {
+		const deps = makeDeps();
+		(deps.ctx as unknown as { model: Record<string, unknown> }).model = {
+			provider: "anthropic",
+			id: "claude-sonnet-4-6",
+			reasoning: false,
+		};
+		const orch = createRecapOrchestrator(deps);
+		await orch.runGenerateAndShow({ reason: "manual" });
+
+		expect(deps.completeSimple).toHaveBeenCalledTimes(1);
+		const opts = deps.completeSimple.mock.calls[0]![2] as Record<string, unknown>;
+		expect("reasoning" in opts).toBe(false);
+	});
+
 	it("onFocusOut swallows stale-ctx errors from ctx.sessionManager", () => {
 		const deps = makeDeps();
 		const STALE = new Error(
