@@ -412,7 +412,7 @@ describe("polling decoupled from rt.enabled (#0003)", () => {
 		createExtensionWithClient(pi, client);
 		await handlers.sessionStart!({}, makeCtx(makePersistedWithWatch(false)));
 		await vi.advanceTimersByTimeAsync(65_000);
-		const changeCalls = (sendMessage as ReturnType<typeof vi.fn>).mock.calls.filter(
+		const changeCalls = sendMessage.mock.calls.filter(
 			(c) => (c[0] as { customType: string }).customType === CUSTOM_MESSAGE_TYPE &&
 				(c[0] as { content: string }).content.includes("detected"),
 		);
@@ -425,14 +425,14 @@ describe("polling decoupled from rt.enabled (#0003)", () => {
 	it("change notification when enabled does NOT include re-activation hint", async () => {
 		vi.useFakeTimers();
 		const client = makeClient({ exists: true });
-		let active = ["s3_watcher", "read"];
+		const active = ["s3_watcher", "read"];
 		const { pi, handlers, sendMessage } = makePi({ activeTools: () => active });
 		createExtensionWithClient(pi, client);
 		await handlers.sessionStart!({}, makeCtx(makePersistedWithWatch(true)));
 		// Deactivation must NOT have happened
 		expect(active).toContain("s3_watcher");
 		await vi.advanceTimersByTimeAsync(65_000);
-		const changeCalls = (sendMessage as ReturnType<typeof vi.fn>).mock.calls.filter(
+		const changeCalls = sendMessage.mock.calls.filter(
 			(c) => (c[0] as { customType: string }).customType === CUSTOM_MESSAGE_TYPE &&
 				(c[0] as { content: string }).content.includes("detected"),
 		);
