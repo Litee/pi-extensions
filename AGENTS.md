@@ -46,3 +46,4 @@ Per-issue sequence; do not skip or reorder:
 
 - **Never push.** All pushes to `origin` for this repo are done manually by the user. Do not run `git push`, do not offer to push after a merge, and do not treat `main` being "ahead of `origin/main`" as something to resolve — the user decides when publishing happens. If a rebase step needs the remote tip, `git fetch origin main` is fine; push is not.
 - **Do not announce "main is N commits ahead of origin/main"** in status summaries, post-merge reports, or anywhere else. The user already knows. It is not actionable information for them.
+- **No transient `.md` files in worktrees or the main repo.** Sub-agent output files, result summaries, and any other scratch files must go in `/tmp`, not inside a worktree or the repo root. Files written to the repo are candidates for accidental commits and create noise in `git status`.
