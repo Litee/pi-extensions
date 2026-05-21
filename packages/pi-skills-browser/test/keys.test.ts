@@ -22,11 +22,21 @@ describe("dispatchKey", () => {
 		expect(dispatchKey("\x1b[B", match)).toEqual({ kind: "down" });
 	});
 
-	it("returns { kind: 'toggle-sort' } for the 's' key (before filter-char)", () => {
-		const match = stubMatcher([["s", "s"]]);
-		// Critically: even though "s" is also a printable ASCII char, it must
-		// dispatch to toggle-sort, NOT filter-char.
-		expect(dispatchKey("s", match)).toEqual({ kind: "toggle-sort" });
+	it("returns { kind: 'toggle-sort' } for Ctrl-S (ctrl+s)", () => {
+		const match = stubMatcher([["\x13", "ctrl+s"]]);
+		expect(dispatchKey("\x13", match)).toEqual({ kind: "toggle-sort" });
+	});
+
+	it("bare 's' is a filter-char, not toggle-sort (regression for #0001)", () => {
+		const match = stubMatcher([]); // nothing matches any keyId
+		expect(dispatchKey("s", match)).toEqual({ kind: "filter-char", char: "s" });
+	});
+
+	it("typing 'aws-glue' produces filter-char events for each character including 's'", () => {
+		const match = stubMatcher([]);
+		const chars = "aws-glue".split("");
+		const results = chars.map((c) => dispatchKey(c, match));
+		expect(results).toEqual(chars.map((c) => ({ kind: "filter-char", char: c })));
 	});
 
 	it("returns { kind: 'backspace' } for backspace", () => {

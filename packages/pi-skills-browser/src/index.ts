@@ -7,7 +7,7 @@
  *
  * Keybindings inside the browser:
  *   ↑ / ↓          Navigate the list
- *   s               Toggle sort: name (alphabetical) ↔ tokens desc
+ *   Ctrl-S          Toggle sort: name (alphabetical) ↔ tokens desc
  *   type anything   Filter by skill name (case-insensitive substring)
  *   ⌫ Backspace     Remove last character from the filter query
  *   Esc             Close
@@ -35,7 +35,7 @@ const MAX_VISIBLE_ROWS = 15;
 export default function skillsBrowserExtension(pi: ExtensionAPI) {
 	pi.registerCommand("skills", {
 		description:
-			"Browse registered skills by name and description token count; type to filter, s to toggle sort",
+			"Browse registered skills by name and description token count; type to filter, Ctrl-S to toggle sort",
 		handler: async (_args, ctx) => {
 			if (!ctx.hasUI) {
 				ctx.ui.notify("Skills browser requires an interactive terminal", "warning");
@@ -174,7 +174,7 @@ export default function skillsBrowserExtension(pi: ExtensionAPI) {
 						truncateToWidth(
 							theme.fg(
 								"dim",
-								`↑↓ navigate · s sort · type to filter · ⌫ clear · esc close   ${pos}`,
+								`↑↓ navigate · Ctrl-S sort · type to filter · ⌫ clear · esc close   ${pos}`,
 							),
 							width,
 						),

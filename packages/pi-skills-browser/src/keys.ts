@@ -35,8 +35,8 @@ export function dispatchKey(
 ): SkillsBrowserAction {
 	if (matchesKey(data, "up")) return { kind: "up" };
 	if (matchesKey(data, "down")) return { kind: "down" };
-	// "s" toggles sort mode — intentionally NOT added to the filter query.
-	if (matchesKey(data, "s")) return { kind: "toggle-sort" };
+	// "Ctrl-S" toggles sort mode — bare "s" falls through to filter-char.
+	if (matchesKey(data, "ctrl+s")) return { kind: "toggle-sort" };
 	// Backspace / Delete → remove last filter character.
 	if (matchesKey(data, "backspace") || matchesKey(data, "delete"))
 		return { kind: "backspace" };
