@@ -1,7 +1,55 @@
 import { describe, expect, it } from "vitest";
 
-import { buildCheckerTranscript } from "../src/helpers.js";
+import {
+	buildCheckerTranscript,
+	formatSuccessNotify,
+	formatTerminationNotify,
+	formatTerminationStatus,
+} from "../src/helpers.js";
 import { GOAL_CONTEXT_MARKER } from "../src/prompt.js";
+
+// -- issue #0003: termination messages must include turns AND tokens --
+describe("formatSuccessNotify (#0003)", () => {
+	it("includes turns and locale-formatted tokens", () => {
+		const out = formatSuccessNotify(5, 28104);
+		expect(out).toContain("5 turn(s)");
+		expect(out).toMatch(/28[,\u202f\u00a0]104 tokens used/);
+	});
+});
+
+describe("formatTerminationNotify (#0003)", () => {
+	it("appends turns and locale-formatted tokens to the reason", () => {
+		const out = formatTerminationNotify(
+			"Goal mode cancelled (user typed input).",
+			3,
+			14231,
+		);
+		expect(out).toContain("Goal mode cancelled (user typed input).");
+		expect(out).toContain("3 turn(s)");
+		expect(out).toMatch(/14[,\u202f\u00a0]231 tokens used/);
+	});
+
+	it("works with zero turns (cancel before first agent_end)", () => {
+		const out = formatTerminationNotify("Goal mode cancelled.", 0, 0);
+		expect(out).toContain("0 turn(s)");
+		expect(out).toContain("0 tokens used");
+	});
+});
+
+describe("formatTerminationStatus (#0003)", () => {
+	it("includes objective, turns, tokens, and reason", () => {
+		const out = formatTerminationStatus(
+			"write tests",
+			"Max turns reached (20/20).",
+			20,
+			87402,
+		);
+		expect(out).toContain(`"write tests"`);
+		expect(out).toContain("20 turn(s)");
+		expect(out).toMatch(/87[,\u202f\u00a0]402 tokens used/);
+		expect(out).toContain("Max turns reached (20/20).");
+	});
+});
 
 describe("buildCheckerTranscript", () => {
 	it("renders user/assistant turns into a labelled transcript", () => {

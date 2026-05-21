@@ -64,6 +64,57 @@ function roleLabel(role: unknown): string {
 	return "MESSAGE";
 }
 
+/**
+ * Format the iteration/token suffix shared by every termination message.
+ * Always emits both numbers so the user can see goal cost at a glance
+ * (issue #0003).
+ */
+function terminationStats(iterations: number, tokensUsed: number): string {
+	return `${iterations} turn(s), ${tokensUsed.toLocaleString()} tokens used`;
+}
+
+/**
+ * Build the notify-pill body shown when the goal completes successfully
+ * (the agent called `update_goal`). Includes turns and tokens (#0003).
+ */
+export function formatSuccessNotify(
+	iterations: number,
+	tokensUsed: number,
+): string {
+	return `✓ Goal achieved after ${terminationStats(iterations, tokensUsed)}.`;
+}
+
+/**
+ * Build the notify-pill body shown when the goal terminates for any reason
+ * other than success: cap, budget, /goal stop, Ctrl+Alt+G, or interactive
+ * input. The caller-supplied `reason` is shown verbatim, then turns and
+ * tokens are appended in parentheses (#0003).
+ */
+export function formatTerminationNotify(
+	reason: string,
+	iterations: number,
+	tokensUsed: number,
+): string {
+	return `${reason} (${terminationStats(iterations, tokensUsed)})`;
+}
+
+/**
+ * Build the multi-line follow-up `pi-goal:status` message body shown when
+ * the goal terminates (success or otherwise). Includes the objective for
+ * context, turns, tokens, and the reason (#0003).
+ */
+export function formatTerminationStatus(
+	objective: string,
+	reason: string,
+	iterations: number,
+	tokensUsed: number,
+): string {
+	return (
+		`Goal mode ended: "${objective}" ` +
+		`(${terminationStats(iterations, tokensUsed)}).\n${reason}`
+	);
+}
+
 function extractText(content: unknown): string {
 	if (typeof content === "string") return content;
 	if (!Array.isArray(content)) return "";

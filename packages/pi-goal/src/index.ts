@@ -29,7 +29,7 @@ import {
 	createCompletionChecker,
 	type CompletionChecker,
 } from "./checker.js";
-import { buildCheckerTranscript } from "./helpers.js";
+import { buildCheckerTranscript, formatSuccessNotify, formatTerminationNotify, formatTerminationStatus } from "./helpers.js";
 import {
 	buildBudgetLimitMessage,
 	buildContinuationMessage,
@@ -175,11 +175,13 @@ export default function piGoal(pi: ExtensionAPI): void {
 		const tokensUsed = tokensUsedSinceStart(ctx);
 		disableGoal(ctx);
 		persistState();
-		ctx.ui.notify(`✓ Goal achieved after ${iterations} turn(s).`, "info");
+		ctx.ui.notify(formatSuccessNotify(iterations, tokensUsed), "info");
 		pi.sendMessage(
 			{
 				customType: STATUS_MESSAGE_TYPE,
-				content: `Goal complete: "${objective}" — ${iterations} turn(s), ${tokensUsed.toLocaleString()} tokens used.\n${reason}`,
+				content:
+					`Goal complete: "${objective}" — ` +
+					`${iterations} turn(s), ${tokensUsed.toLocaleString()} tokens used.\n${reason}`,
 				display: true,
 			},
 			{ deliverAs: "followUp" },
@@ -192,11 +194,11 @@ export default function piGoal(pi: ExtensionAPI): void {
 		const tokensUsed = tokensUsedSinceStart(ctx);
 		disableGoal(ctx);
 		persistState();
-		ctx.ui.notify(reason, "warning");
+		ctx.ui.notify(formatTerminationNotify(reason, iterations, tokensUsed), "warning");
 		pi.sendMessage(
 			{
 				customType: STATUS_MESSAGE_TYPE,
-				content: `Goal mode ended: "${objective}" (${iterations} turn(s), ${tokensUsed.toLocaleString()} tokens used).\n${reason}`,
+				content: formatTerminationStatus(objective, reason, iterations, tokensUsed),
 				display: true,
 			},
 			{ deliverAs: "followUp" },
@@ -217,9 +219,7 @@ export default function piGoal(pi: ExtensionAPI): void {
 					ctx.ui.notify("Goal mode is not active.", "warning");
 					return;
 				}
-				disableGoal(ctx);
-				persistState();
-				ctx.ui.notify("Goal mode cancelled.", "info");
+				endGoalAborted("Goal mode cancelled (/goal stop).", ctx);
 				return;
 			}
 
@@ -266,9 +266,7 @@ export default function piGoal(pi: ExtensionAPI): void {
 		description: "Toggle goal mode",
 		handler: async (ctx) => {
 			if (goalEnabled) {
-				disableGoal(ctx);
-				persistState();
-				ctx.ui.notify("Goal mode cancelled.", "info");
+				endGoalAborted("Goal mode cancelled (Ctrl+Alt+G).", ctx);
 				return;
 			}
 			const objective = await ctx.ui.input("Enter goal objective:", "");
@@ -414,9 +412,7 @@ export default function piGoal(pi: ExtensionAPI): void {
 		// Only interactive input cancels — extension-injected messages
 		// (kickoff / continue) and RPC drivers must not cancel themselves.
 		if (event.source !== "interactive") return undefined;
-		disableGoal(ctx);
-		persistState();
-		ctx.ui.notify("Goal mode cancelled (user typed input).", "info");
+		endGoalAborted("Goal mode cancelled (user typed input).", ctx);
 		return undefined;
 	});
 
