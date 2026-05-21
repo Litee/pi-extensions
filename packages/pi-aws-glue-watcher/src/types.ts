@@ -46,6 +46,8 @@ export interface JobBaseline {
 	numberOfWorkers?: number;
 	/** Worker type, e.g. "G.1X", "G.2X", "G.025X", "Standard". */
 	workerType?: string;
+	/** Run-level timeout in minutes. Absent means inherit job default. */
+	timeoutMinutes?: number;
 }
 
 /** Per-node snapshot stored inside a WorkflowBaseline. JOB nodes only. */
@@ -59,6 +61,8 @@ export interface WorkflowNodeInfo {
 	completedOn?: string;
 	numberOfWorkers?: number;
 	workerType?: string;
+	/** Run-level timeout in minutes. Absent means inherit job default. */
+	timeoutMinutes?: number;
 }
 
 /**

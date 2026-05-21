@@ -15,10 +15,10 @@ import { formatElapsed } from "./glue-widget.js";
 // ---------------------------------------------------------------------------
 
 export const COL_STATE = 12;
-export const COL_STARTED = 7;
+export const COL_ELAPSED = 9;
 export const COL_WORKERS = 10;
 /** 1 leading + 3 separators = 4 */
-export const COL_FIXED_OVERHEAD = COL_STATE + COL_STARTED + COL_WORKERS + 4;
+export const COL_FIXED_OVERHEAD = COL_STATE + COL_ELAPSED + COL_WORKERS + 4;
 export const COL_NAME_MIN = 20;
 
 // ---------------------------------------------------------------------------
@@ -32,6 +32,7 @@ export interface WidgetEntry {
 	completedOn?: string;
 	numberOfWorkers?: number;
 	workerType?: string;
+	timeoutMinutes?: number;
 }
 
 export interface WidgetTheme {
@@ -93,6 +94,7 @@ export function buildWidgetEntries(watchMap: WatchMap): WidgetEntry[] {
 				...(b?.completedOn !== undefined ? { completedOn: b.completedOn } : {}),
 				...(b?.numberOfWorkers !== undefined ? { numberOfWorkers: b.numberOfWorkers } : {}),
 				...(b?.workerType !== undefined ? { workerType: b.workerType } : {}),
+				...(b?.timeoutMinutes !== undefined ? { timeoutMinutes: b.timeoutMinutes } : {}),
 			});
 		} else {
 			const b = watch.baseline as WorkflowBaseline | undefined;
@@ -109,6 +111,7 @@ export function buildWidgetEntries(watchMap: WatchMap): WidgetEntry[] {
 						...(node.completedOn !== undefined ? { completedOn: node.completedOn } : {}),
 						...(node.numberOfWorkers !== undefined ? { numberOfWorkers: node.numberOfWorkers } : {}),
 						...(node.workerType !== undefined ? { workerType: node.workerType } : {}),
+						...(node.timeoutMinutes !== undefined ? { timeoutMinutes: node.timeoutMinutes } : {}),
 					});
 				}
 			} else {
@@ -158,7 +161,28 @@ export function renderEntryLine(
 	const style = stateStyle(state);
 	const stateStr = style === "none" ? stateRaw : theme.fg(style, stateRaw);
 
-	const started = formatElapsed(entry.startedOn, entry.completedOn).padEnd(COL_STARTED);
+	// elapsed/timeout column: e.g. "7m/30m" or "7m/-"
+	const elapsedRaw = formatElapsed(entry.startedOn, entry.completedOn);
+	const timeoutStr = entry.timeoutMinutes != null ? `${entry.timeoutMinutes}m` : "-";
+	const elapsedTimeoutRaw = `${elapsedRaw}/${timeoutStr}`;
+
+	// Colour based on proximity to timeout (running jobs only)
+	let elapsedColoured: string;
+	if (entry.startedOn != null && entry.timeoutMinutes != null && entry.completedOn == null) {
+		const elapsedMs = Date.now() - new Date(entry.startedOn).getTime();
+		const timeoutMs = entry.timeoutMinutes * 60 * 1000;
+		const ratio = elapsedMs / timeoutMs;
+		if (ratio >= 1.0) {
+			elapsedColoured = theme.fg("error", elapsedTimeoutRaw);
+		} else if (ratio >= 0.8) {
+			elapsedColoured = theme.fg("warning", elapsedTimeoutRaw);
+		} else {
+			elapsedColoured = elapsedTimeoutRaw;
+		}
+	} else {
+		elapsedColoured = elapsedTimeoutRaw;
+	}
+	const elapsed = elapsedColoured.padEnd(COL_ELAPSED);
 
 	let workersStr = "-";
 	if (entry.numberOfWorkers != null) {
@@ -166,5 +190,5 @@ export function renderEntryLine(
 	}
 	const workers = workersStr.padEnd(COL_WORKERS);
 
-	return ` ${name} ${stateStr} ${started} ${workers}`;
+	return ` ${name} ${stateStr} ${elapsed} ${workers}`;
 }

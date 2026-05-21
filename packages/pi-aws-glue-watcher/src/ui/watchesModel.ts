@@ -32,6 +32,7 @@ export interface DisplayRow {
 	completedOn?: string;
 	numberOfWorkers?: number;
 	workerType?: string;
+	timeoutMinutes?: number;
 	runId: string;
 	profile: string;
 	region?: string;
@@ -90,6 +91,7 @@ export function buildRows(watchMap: WatchMap): DisplayRow[] {
 				...(b?.completedOn !== undefined ? { completedOn: b.completedOn } : {}),
 				...(b?.numberOfWorkers !== undefined ? { numberOfWorkers: b.numberOfWorkers } : {}),
 				...(b?.workerType !== undefined ? { workerType: b.workerType } : {}),
+				...(b?.timeoutMinutes !== undefined ? { timeoutMinutes: b.timeoutMinutes } : {}),
 				runId: watch.runId,
 				profile: watch.profile,
 				...(watch.region !== undefined ? { region: watch.region } : {}),
@@ -112,6 +114,7 @@ export function buildRows(watchMap: WatchMap): DisplayRow[] {
 						...(node.completedOn !== undefined ? { completedOn: node.completedOn } : {}),
 						...(node.numberOfWorkers !== undefined ? { numberOfWorkers: node.numberOfWorkers } : {}),
 						...(node.workerType !== undefined ? { workerType: node.workerType } : {}),
+						...(node.timeoutMinutes !== undefined ? { timeoutMinutes: node.timeoutMinutes } : {}),
 						runId: watch.runId,
 						profile: watch.profile,
 						...(watch.region !== undefined ? { region: watch.region } : {}),

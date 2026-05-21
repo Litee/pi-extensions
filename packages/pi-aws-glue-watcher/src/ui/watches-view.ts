@@ -174,8 +174,9 @@ export class WatchesView implements Component {
 			if (sel.numberOfWorkers != null) {
 				workersDetail = `${sel.numberOfWorkers}×${sel.workerType ?? "?"}`;
 			}
+			const timeoutDetail = sel.timeoutMinutes != null ? `${sel.timeoutMinutes}m` : "inherited";
 			lines.push(
-				t.fg("dim", ` Started: ${age} | State: ${sel.state || "?"} | Workers: ${workersDetail}`),
+				t.fg("dim", ` Started: ${age} | State: ${sel.state || "?"} | Workers: ${workersDetail} | Timeout: ${timeoutDetail}`),
 			);
 			if (sel.errorMessage && sel.errorMessage !== "-") {
 				lines.push(t.fg("dim", ` Error: ${sel.errorMessage}`));

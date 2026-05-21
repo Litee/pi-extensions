@@ -5,6 +5,7 @@ import {
 	buildWidgetEntries,
 	renderEntryLine,
 	stateStyle,
+	type WidgetEntry,
 	type WidgetTheme,
 } from "../src/ui/widgetRows.js";
 import { formatElapsed, formatHeaderCountsSuffix } from "../src/ui/glue-widget.js";
@@ -464,5 +465,97 @@ describe("formatHeaderCountsSuffix", () => {
 
 	it("renders zero when no watches are present", () => {
 		expect(formatHeaderCountsSuffix({}, 60_000)).toBe(" (0)  poll: 60s");
+	});
+});
+
+// ---------------------------------------------------------------------------
+// renderEntryLine — elapsed/timeout column (#0014)
+// ---------------------------------------------------------------------------
+
+describe("renderEntryLine — elapsed/timeout column", () => {
+	it("shows 'elapsed/-' when no timeout is set", () => {
+		const entry: WidgetEntry = {
+			displayName: "job",
+			state: "RUNNING",
+			startedOn: new Date(Date.now() - 7 * 60 * 1000).toISOString(),
+		};
+		const line = renderEntryLine(entry, 10, plainTheme);
+		expect(line).toMatch(/\d+m\/-/);
+	});
+
+	it("shows 'elapsed/Xm' when timeout is set", () => {
+		const entry: WidgetEntry = {
+			displayName: "job",
+			state: "RUNNING",
+			startedOn: new Date(Date.now() - 7 * 60 * 1000).toISOString(),
+			timeoutMinutes: 30,
+		};
+		const line = renderEntryLine(entry, 10, plainTheme);
+		expect(line).toMatch(/\d+m\/30m/);
+	});
+
+	it("applies warning colour when elapsed >= 80% of timeout", () => {
+		const colours: string[] = [];
+		const capturingTheme: WidgetTheme = { fg: (c, t) => { colours.push(c); return t; } };
+		const timeoutMinutes = 30;
+		const elapsedMs = timeoutMinutes * 60 * 1000 * 0.85; // 85%
+		const entry: WidgetEntry = {
+			displayName: "job",
+			state: "RUNNING",
+			startedOn: new Date(Date.now() - elapsedMs).toISOString(),
+			timeoutMinutes,
+		};
+		renderEntryLine(entry, 10, capturingTheme);
+		expect(colours).toContain("warning");
+		expect(colours).not.toContain("error");
+	});
+
+	it("applies error colour when elapsed >= 100% of timeout", () => {
+		const colours: string[] = [];
+		const capturingTheme: WidgetTheme = { fg: (c, t) => { colours.push(c); return t; } };
+		const timeoutMinutes = 30;
+		const elapsedMs = timeoutMinutes * 60 * 1000 * 1.05; // 105%
+		const entry: WidgetEntry = {
+			displayName: "job",
+			state: "RUNNING",
+			startedOn: new Date(Date.now() - elapsedMs).toISOString(),
+			timeoutMinutes,
+		};
+		renderEntryLine(entry, 10, capturingTheme);
+		expect(colours).toContain("error");
+	});
+
+	it("does not apply timeout colour when elapsed < 80%", () => {
+		// taggedTheme wraps coloured text as "[colour]text[/]" so we can
+		// check that the elapsed/timeout portion is NOT tagged warning or error.
+		const taggedTheme2: WidgetTheme = { fg: (c, t) => `[${c}]${t}[/]` };
+		const timeoutMinutes = 30;
+		const elapsedMs = timeoutMinutes * 60 * 1000 * 0.5; // 50%
+		const entry: WidgetEntry = {
+			displayName: "job",
+			state: "RUNNING",
+			startedOn: new Date(Date.now() - elapsedMs).toISOString(),
+			timeoutMinutes,
+		};
+		const line = renderEntryLine(entry, 10, taggedTheme2);
+		// Any slash in the line should not be inside a [warning] or [error] tag
+		expect(line).not.toMatch(/\[warning\][^\]]*\/[^\]]*\[\/\]/);
+		expect(line).not.toMatch(/\[error\][^\]]*\/[^\]]*\[\/\]/);
+	});
+
+	it("does not apply timeout colour for completed jobs (completedOn set)", () => {
+		const colours: string[] = [];
+		const capturingTheme: WidgetTheme = { fg: (c, t) => { colours.push(c); return t; } };
+		const timeoutMinutes = 30;
+		const entry: WidgetEntry = {
+			displayName: "job",
+			state: "SUCCEEDED",
+			startedOn: new Date(Date.now() - timeoutMinutes * 60 * 1000 * 2).toISOString(),
+			completedOn: new Date(Date.now() - 1000).toISOString(),
+			timeoutMinutes,
+		};
+		renderEntryLine(entry, 10, capturingTheme);
+		const elapsedColours = colours.filter(c => c === "warning" || c === "error");
+		expect(elapsedColours).toHaveLength(0);
 	});
 });

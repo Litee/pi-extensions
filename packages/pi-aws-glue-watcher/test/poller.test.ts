@@ -370,3 +370,74 @@ describe("detectWorkflowChanges", () => {
 		expect(node?.workerType).toBe("G.2X");
 	});
 });
+
+// ---------------------------------------------------------------------------
+// timeoutMinutes capture (#0014)
+// ---------------------------------------------------------------------------
+
+describe("snapshotJobRun — timeoutMinutes", () => {
+	it("populates timeoutMinutes when SDK returns Timeout > 0", async () => {
+		const client: GlueClient = {
+			getJobRun: vi.fn().mockResolvedValue({
+				JobRun: { JobRunState: "RUNNING", ErrorMessage: "", Timeout: 30 },
+			} satisfies JobRunResponse),
+			getWorkflowRun: vi.fn(), getLatestJobRunId: vi.fn(),
+			getLatestWorkflowRunId: vi.fn(), stopJobRun: vi.fn(), stopWorkflowRun: vi.fn(),
+		};
+		const baseline = await snapshotJobRun(client, makeJobWatch());
+		expect(baseline.timeoutMinutes).toBe(30);
+	});
+
+	it("omits timeoutMinutes when Timeout is 0 (inherit job default)", async () => {
+		const client: GlueClient = {
+			getJobRun: vi.fn().mockResolvedValue({
+				JobRun: { JobRunState: "RUNNING", ErrorMessage: "", Timeout: 0 },
+			} satisfies JobRunResponse),
+			getWorkflowRun: vi.fn(), getLatestJobRunId: vi.fn(),
+			getLatestWorkflowRunId: vi.fn(), stopJobRun: vi.fn(), stopWorkflowRun: vi.fn(),
+		};
+		const baseline = await snapshotJobRun(client, makeJobWatch());
+		expect(baseline.timeoutMinutes).toBeUndefined();
+	});
+
+	it("omits timeoutMinutes when Timeout is absent", async () => {
+		const baseline = await snapshotJobRun(makeJobClient("RUNNING"), makeJobWatch());
+		expect(baseline.timeoutMinutes).toBeUndefined();
+	});
+});
+
+describe("detectJobChanges — TIMEOUT event includes timeout suffix", () => {
+	it("appends (timeout: Xm) when state transitions to TIMEOUT and timeoutMinutes is known", async () => {
+		const client: GlueClient = {
+			getJobRun: vi.fn().mockResolvedValue({
+				JobRun: { JobRunState: "TIMEOUT", ErrorMessage: "", Timeout: 30 },
+			} satisfies JobRunResponse),
+			getWorkflowRun: vi.fn(), getLatestJobRunId: vi.fn(),
+			getLatestWorkflowRunId: vi.fn(), stopJobRun: vi.fn(), stopWorkflowRun: vi.fn(),
+		};
+		const watch = makeJobWatch({ state: "RUNNING", errorMessage: "" });
+		const { events } = await detectJobChanges(client, watch);
+		expect(events).toHaveLength(1);
+		expect(events[0]!.formatted).toContain("(timeout: 30m)");
+		expect(events[0]!.summary).toContain("(timeout: 30m)");
+	});
+
+	it("does NOT append timeout suffix for non-TIMEOUT terminal states", async () => {
+		const client: GlueClient = {
+			getJobRun: vi.fn().mockResolvedValue({
+				JobRun: { JobRunState: "FAILED", ErrorMessage: "oom", Timeout: 30 },
+			} satisfies JobRunResponse),
+			getWorkflowRun: vi.fn(), getLatestJobRunId: vi.fn(),
+			getLatestWorkflowRunId: vi.fn(), stopJobRun: vi.fn(), stopWorkflowRun: vi.fn(),
+		};
+		const watch = makeJobWatch({ state: "RUNNING", errorMessage: "" });
+		const { events } = await detectJobChanges(client, watch);
+		expect(events[0]!.formatted).not.toContain("timeout:");
+	});
+
+	it("does NOT append timeout suffix when Timeout is absent", async () => {
+		const watch = makeJobWatch({ state: "RUNNING", errorMessage: "" });
+		const { events } = await detectJobChanges(makeJobClient("TIMEOUT"), watch);
+		expect(events[0]!.formatted).not.toContain("timeout:");
+	});
+});

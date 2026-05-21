@@ -55,6 +55,8 @@ export interface JobRunResponse {
 		NumberOfWorkers?: number | undefined;
 		/** e.g. "G.1X" | "G.2X" | "G.025X" | "Standard" | "Z.2X" */
 		WorkerType?: string | undefined;
+		/** Run-level timeout in minutes. 0 / absent means inherit job default. */
+		Timeout?: number | undefined;
 	};
 }
 
@@ -68,6 +70,7 @@ export interface WorkflowRunNode {
 			CompletedOn?: string | undefined;
 			NumberOfWorkers?: number | undefined;
 			WorkerType?: string | undefined;
+			Timeout?: number | undefined;
 		}>;
 	} | undefined;
 	CrawlerDetails?: {
@@ -171,6 +174,7 @@ export function createGlueClient(): GlueClient {
 					CompletedOn: jr?.CompletedOn?.toISOString(),
 					NumberOfWorkers: jr?.NumberOfWorkers,
 					WorkerType: jr?.WorkerType,
+					Timeout: jr?.Timeout,
 				},
 			};
 		},
@@ -205,6 +209,7 @@ export function createGlueClient(): GlueClient {
 													CompletedOn: jr.CompletedOn?.toISOString(),
 													NumberOfWorkers: jr.NumberOfWorkers,
 													WorkerType: jr.WorkerType,
+													Timeout: jr.Timeout,
 												})),
 										  }
 										: undefined,

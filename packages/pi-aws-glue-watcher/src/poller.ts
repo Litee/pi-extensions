@@ -61,6 +61,9 @@ export async function snapshotJobRun(
 	watch: GlueWatch,
 ): Promise<JobBaseline> {
 	const resp = await client.getJobRun(watch.name, watch.runId, watch.profile, watch.region);
+	const timeoutMinutes = resp.JobRun.Timeout != null && resp.JobRun.Timeout > 0
+		? resp.JobRun.Timeout
+		: undefined;
 	return {
 		state: resp.JobRun.JobRunState ?? "",
 		errorMessage: resp.JobRun.ErrorMessage ?? "",
@@ -68,6 +71,7 @@ export async function snapshotJobRun(
 		...(resp.JobRun.CompletedOn !== undefined ? { completedOn: resp.JobRun.CompletedOn } : {}),
 		...(resp.JobRun.NumberOfWorkers !== undefined ? { numberOfWorkers: resp.JobRun.NumberOfWorkers } : {}),
 		...(resp.JobRun.WorkerType !== undefined ? { workerType: resp.JobRun.WorkerType } : {}),
+		...(timeoutMinutes !== undefined ? { timeoutMinutes } : {}),
 	};
 }
 
@@ -92,6 +96,7 @@ export async function snapshotWorkflowRun(
 		.filter((n) => n.Type === "JOB")
 		.map((n) => {
 			const run = n.JobDetails?.JobRuns?.[0];
+			const timeoutMinutes = run?.Timeout != null && run.Timeout > 0 ? run.Timeout : undefined;
 			const info: WorkflowNodeInfo = {
 				name: n.Name,
 				state: run?.JobRunState ?? "",
@@ -99,6 +104,7 @@ export async function snapshotWorkflowRun(
 				...(run?.CompletedOn !== undefined ? { completedOn: run.CompletedOn } : {}),
 				...(run?.NumberOfWorkers !== undefined ? { numberOfWorkers: run.NumberOfWorkers } : {}),
 				...(run?.WorkerType !== undefined ? { workerType: run.WorkerType } : {}),
+				...(timeoutMinutes !== undefined ? { timeoutMinutes } : {}),
 			};
 			return info;
 		});
@@ -139,6 +145,9 @@ export async function detectJobChanges(
 	watch: GlueWatch,
 ): Promise<DetectChangesResult> {
 	const resp = await client.getJobRun(watch.name, watch.runId, watch.profile, watch.region);
+	const timeoutMinutes = resp.JobRun.Timeout != null && resp.JobRun.Timeout > 0
+		? resp.JobRun.Timeout
+		: undefined;
 	const newBaseline: JobBaseline = {
 		state: resp.JobRun.JobRunState ?? "",
 		errorMessage: resp.JobRun.ErrorMessage ?? "",
@@ -146,6 +155,7 @@ export async function detectJobChanges(
 		...(resp.JobRun.CompletedOn !== undefined ? { completedOn: resp.JobRun.CompletedOn } : {}),
 		...(resp.JobRun.NumberOfWorkers !== undefined ? { numberOfWorkers: resp.JobRun.NumberOfWorkers } : {}),
 		...(resp.JobRun.WorkerType !== undefined ? { workerType: resp.JobRun.WorkerType } : {}),
+		...(timeoutMinutes !== undefined ? { timeoutMinutes } : {}),
 	};
 
 	const previous = watch.baseline as JobBaseline | undefined;
@@ -156,6 +166,9 @@ export async function detectJobChanges(
 	if (prevState !== nextState) {
 		const isTerminal = JOB_TERMINAL_STATES.has(nextState);
 		const suffix = terminalSuffix(nextState, isTerminal);
+		const timeoutSuffix = nextState === "TIMEOUT" && newBaseline.timeoutMinutes != null
+			? ` (timeout: ${newBaseline.timeoutMinutes}m)`
+			: "";
 		events.push({
 			watchId: watch.watchId,
 			type: "job",
@@ -164,8 +177,8 @@ export async function detectJobChanges(
 			eventType: "state_changed",
 			previousState: prevState,
 			newState: nextState,
-			summary: `${watch.name} (${watch.runId}): ${prevState || "?"} → ${nextState}${suffix}`,
-			formatted: `• ${watch.name} (${watch.runId}): ${prevState || "?"} → ${nextState}${suffix}`,
+			summary: `${watch.name} (${watch.runId}): ${prevState || "?"} \u2192 ${nextState}${suffix}${timeoutSuffix}`,
+			formatted: `\u2022 ${watch.name} (${watch.runId}): ${prevState || "?"} \u2192 ${nextState}${suffix}${timeoutSuffix}`,
 			isTerminal,
 		});
 	}
@@ -252,6 +265,7 @@ export async function detectWorkflowChanges(
 			.filter((n) => n.Type === "JOB")
 			.map((n) => {
 				const run = n.JobDetails?.JobRuns?.[0];
+				const timeoutMinutes = run?.Timeout != null && run.Timeout > 0 ? run.Timeout : undefined;
 				const info: WorkflowNodeInfo = {
 					name: n.Name,
 					state: run?.JobRunState ?? "",
@@ -259,6 +273,7 @@ export async function detectWorkflowChanges(
 					...(run?.CompletedOn !== undefined ? { completedOn: run.CompletedOn } : {}),
 					...(run?.NumberOfWorkers !== undefined ? { numberOfWorkers: run.NumberOfWorkers } : {}),
 					...(run?.WorkerType !== undefined ? { workerType: run.WorkerType } : {}),
+					...(timeoutMinutes !== undefined ? { timeoutMinutes } : {}),
 				};
 				return info;
 			}),

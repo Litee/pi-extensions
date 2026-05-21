@@ -282,3 +282,21 @@ describe("formatRowLine", () => {
 		expect(line).toContain("very-lo...");
 	});
 });
+
+// ---------------------------------------------------------------------------
+// timeoutMinutes in DisplayRow (#0014)
+// ---------------------------------------------------------------------------
+
+describe("buildRows — timeoutMinutes (#0014)", () => {
+	it("carries timeoutMinutes from job baseline into DisplayRow", () => {
+		const w = job({ watchId: "a", name: "j", baseline: { state: "RUNNING", errorMessage: "", timeoutMinutes: 30 } });
+		const rows = buildRows({ a: w });
+		expect(rows[0]?.timeoutMinutes).toBe(30);
+	});
+
+	it("omits timeoutMinutes from DisplayRow when baseline has none", () => {
+		const w = job({ watchId: "a", name: "j", baseline: { state: "RUNNING", errorMessage: "" } });
+		const rows = buildRows({ a: w });
+		expect(rows[0]?.timeoutMinutes).toBeUndefined();
+	});
+});
