@@ -51,6 +51,13 @@ export function buildKickoffMessage(objective: string): string {
  * Sent by `agent_end` when the checker decided the goal is not yet complete.
  * Keeps the agent oriented without rehashing audit instructions: the checker
  * already filtered for partial progress.
+ *
+ * Includes the "Blocked audit" rules ported from openai/codex commit
+ * `0d344ac` (2026-05-18, "goal: pause continuation loops on usage limits and
+ * blockers"). The rules teach the model when calling
+ * `update_goal({status:"blocked"})` is permitted — specifically NOT for
+ * "this is hard" or "I'm slow", only for genuine impasses confirmed across
+ * three consecutive turns.
  */
 export function buildContinuationMessage(
 	objective: string,
@@ -66,9 +73,41 @@ export function buildContinuationMessage(
 		`${tokensUsed.toLocaleString()}/${tokenBudget.toLocaleString()} tokens used.\n\n` +
 		"The completion-checker decided the goal is not yet satisfied. " +
 		"Take the next concrete step. Do not stall, ask for confirmation, or " +
-		"describe what you would do — just do it."
+		"describe what you would do — just do it.\n\n" +
+		BLOCKED_AUDIT_RULES
 	);
 }
+
+/**
+ * "Blocked audit" rules block injected into every continuation message.
+ * Exported so unit tests can assert on the rendered prompt without
+ * reaching into the (otherwise opaque) `buildContinuationMessage` body.
+ *
+ * Ported from openai/codex `codex-rs/core/templates/goals/continuation.md`
+ * at commit `0d344ac` (2026-05-18). Wording adapted to pi's tool surface
+ * (we register `update_goal` as a real pi tool) but the four rules are
+ * preserved verbatim in spirit:
+ *
+ *   1. `blocked` is only permitted after the SAME blocking condition has
+ *      been observed for 3+ consecutive turns. This is the upstream
+ *      "blocked counter" mechanic and prevents one-shot give-ups.
+ *   2. `blocked` is not for hard / uncertain / slow work — only genuine
+ *      impasses where the agent CANNOT make progress without external
+ *      input or resources.
+ *   3. On resume (user replies and the loop restarts), the blocked-counter
+ *      resets to zero. The agent should not assume historical blocking
+ *      conditions still hold.
+ *   4. `blocked` pauses the loop and surfaces the blocker to the user, so
+ *      `summary` must clearly state what the user needs to do or provide.
+ */
+export const BLOCKED_AUDIT_RULES =
+	"-- Blocked audit --\n" +
+	"You may call `update_goal({status:\"blocked\", summary})` to pause goal mode and surface a blocker, " +
+	"but ONLY under all of the following conditions:\n" +
+	"1. The same blocking condition has been observed for 3+ consecutive turns. Do not call it on the first or second turn the issue appears — attempt different approaches first. On goal resume, this counter resets.\n" +
+	"2. The blocker is a genuine impasse: missing credentials, an external service is down, contradictory user requirements, or a hard dependency you cannot install or fetch. Do NOT use it for work that is merely hard, slow, uncertain, or tedious — keep going.\n" +
+	"3. Calling it PAUSES the loop and surfaces the blocker to the user. Treat `summary` as a hand-off note: name the blocker concretely and state what the user needs to do or provide so progress can resume.\n" +
+	"4. Do NOT call `update_goal` to declare success. The verifier checks for completion automatically after each turn.";
 
 /**
  * Sent on the turn AFTER the token budget has been exceeded, to give the

@@ -2,6 +2,8 @@ import { describe, expect, it } from "vitest";
 
 import {
 	buildCheckerTranscript,
+	formatBlockedNotify,
+	formatBlockedStatus,
 	formatSuccessNotify,
 	formatTerminationNotify,
 	formatTerminationStatus,
@@ -48,6 +50,41 @@ describe("formatTerminationStatus (#0003)", () => {
 		expect(out).toContain("20 turn(s)");
 		expect(out).toMatch(/87[,\u202f\u00a0]402 tokens used/);
 		expect(out).toContain("Max turns reached (20/20).");
+	});
+});
+
+// -- issue #0004: blocked-path formatters mirror the success/termination shape --
+//
+// `update_goal({status:"blocked", summary})` exits the loop on a third path
+// (alongside complete + abort). The notify and follow-up messages must look
+// and feel like the existing two so the user sees a consistent goal-mode
+// epilogue regardless of which exit was taken.
+describe("formatBlockedNotify (#0004)", () => {
+	it("clearly labels the message as blocked (not just terminated)", () => {
+		const out = formatBlockedNotify(2, 1234, "waiting on credentials");
+		expect(out).toMatch(/blocked/i);
+	});
+
+	it("includes turns and locale-formatted tokens (mirrors #0003)", () => {
+		const out = formatBlockedNotify(7, 28104, "network down");
+		expect(out).toContain("7 turn(s)");
+		expect(out).toMatch(/28[,\u202f\u00a0]104 tokens used/);
+	});
+
+	it("surfaces the blocker summary so the user sees what stopped progress", () => {
+		const out = formatBlockedNotify(1, 0, "waiting on credentials");
+		expect(out).toContain("waiting on credentials");
+	});
+});
+
+describe("formatBlockedStatus (#0004)", () => {
+	it("includes the objective, turns, tokens, and the blocker summary", () => {
+		const out = formatBlockedStatus("deploy the service", "missing IAM role", 4, 12345);
+		expect(out).toContain(`"deploy the service"`);
+		expect(out).toContain("4 turn(s)");
+		expect(out).toMatch(/12[,\u202f\u00a0]345 tokens used/);
+		expect(out).toContain("missing IAM role");
+		expect(out).toMatch(/blocked/i);
 	});
 });
 

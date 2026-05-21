@@ -20,9 +20,19 @@ before the rendered prompt is injected into the agent context.
 
 | Local file | Upstream commit | Upstream commit date |
 |---|---|---|
-| `src/templates/goals/continuation.md` | [`99157f3`](https://github.com/openai/codex/commit/99157f37977b251670b267734a1ac640e20acc95) | 2026-05-13 |
+| `src/templates/goals/continuation.md` | [`0d344ac`](https://github.com/openai/codex/commit/0d344ac) | 2026-05-18 |
 | `src/templates/goals/budget_limit.md` | [`99157f3`](https://github.com/openai/codex/commit/99157f37977b251670b267734a1ac640e20acc95) | 2026-05-13 |
 | `src/templates/goals/objective_updated.md` | [`99157f3`](https://github.com/openai/codex/commit/99157f37977b251670b267734a1ac640e20acc95) | 2026-05-13 |
+
+The `continuation.md` row was bumped to `0d344ac` (subject:
+*"goal: pause continuation loops on usage limits and blockers (#23094)"*)
+when issue #0004 ported the upstream "Blocked audit" rules — the
+`update_goal({status:"blocked"})` lifecycle path — into
+`src/prompt.ts::buildContinuationMessage` and the new `src/updateGoalTool.ts`.
+(Note: the local layout inlines the continuation prompt in `src/prompt.ts`
+rather than carrying a literal `templates/goals/continuation.md` file; the
+table row tracks upstream provenance for the rendered prompt regardless of
+where it physically lives in the local tree.)
 
 The `99157f3` SHA is the `main` HEAD at the time of the initial copy. We
 record HEAD here (rather than the file-level last-touch SHA) because the
@@ -47,7 +57,7 @@ pi's extension API:
 
 | Codex behaviour | pi-goal port |
 |---|---|
-| `update_goal(status="complete")` function tool | `update_goal({status:"complete", summary})` extension tool (same name and shape so Codex's templates work as-is) |
+| `update_goal(status="complete"|"blocked")` function tool | `update_goal({status:"complete"|"blocked", summary})` extension tool. `complete` exits the loop on the success path; `blocked` exits on the issue-#0004 blocked path (warning notify + follow-up that mirrors the success/abort shape from #0003). Tool is inactive by default and only added to the active set while a goal is running. |
 | Token usage from Codex's internal accounting | `ctx.getContextUsage()` |
 | `objective_updated.md` rendered when the user edits the goal mid-stream | Rendered when `/goal <new_objective>` is invoked while a goal is already active |
 | Budget-limited status is system-controlled (LLM cannot pause/resume) | Same — `update_goal` is the only LLM-facing transition |
@@ -66,7 +76,7 @@ not redistributing modified copies of the original work.
 ```bash
 UP=$(mktemp -d)/codex
 git clone --quiet --filter=blob:limit=200k https://github.com/openai/codex.git "$UP"
-git -C "$UP" log --follow 99157f3..origin/HEAD -- \
+git -C "$UP" log --follow 0d344ac..origin/HEAD -- \
     codex-rs/core/templates/goals/continuation.md \
     codex-rs/core/templates/goals/budget_limit.md \
     codex-rs/core/templates/goals/objective_updated.md

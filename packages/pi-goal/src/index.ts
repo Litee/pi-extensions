@@ -29,7 +29,14 @@ import {
 	createCompletionChecker,
 	type CompletionChecker,
 } from "./checker.js";
-import { buildCheckerTranscript, formatSuccessNotify, formatTerminationNotify, formatTerminationStatus } from "./helpers.js";
+import {
+	buildCheckerTranscript,
+	formatBlockedNotify,
+	formatBlockedStatus,
+	formatSuccessNotify,
+	formatTerminationNotify,
+	formatTerminationStatus,
+} from "./helpers.js";
 import {
 	buildBudgetLimitMessage,
 	buildContinuationMessage,
@@ -47,9 +54,11 @@ import {
 	type GoalStateCandidateEntry,
 	type PersistedGoalState,
 } from "./state.js";
+import { registerUpdateGoalTool } from "./updateGoalTool.js";
 
 const STATUS_KEY = "pi-goal";
 const STATUS_MESSAGE_TYPE = "pi-goal:status";
+const UPDATE_GOAL_TOOL_NAME = "update_goal";
 
 export default function piGoal(pi: ExtensionAPI): void {
 	// ---- Persisted goal state (mirrored as plain locals for fast access) ----
@@ -68,6 +77,21 @@ export default function piGoal(pi: ExtensionAPI): void {
 	let activeCheckerController: AbortController | undefined;
 	/** Lazily-instantiated checker; depends on ctx so we build it inside event handlers. */
 	let checker: CompletionChecker | undefined;
+
+	/** Add `update_goal` to the active tools list (idempotent). */
+	function activateUpdateGoalTool(): void {
+		const current = pi.getActiveTools();
+		if (!current.includes(UPDATE_GOAL_TOOL_NAME)) {
+			pi.setActiveTools([...current, UPDATE_GOAL_TOOL_NAME]);
+		}
+	}
+
+	/** Remove `update_goal` from the active tools list (idempotent). */
+	function deactivateUpdateGoalTool(): void {
+		pi.setActiveTools(
+			pi.getActiveTools().filter((t) => t !== UPDATE_GOAL_TOOL_NAME),
+		);
+	}
 
 	// ---- helpers -----------------------------------------------------------
 
@@ -135,6 +159,9 @@ export default function piGoal(pi: ExtensionAPI): void {
 		goalIterations = 0;
 		budgetExhausted = false;
 		ctx.ui.setStatus(STATUS_KEY, undefined);
+		// Hide the LLM-facing tool again so it can't be invoked outside a
+		// goal run. Idempotent — safe even if the tool was never activated.
+		deactivateUpdateGoalTool();
 	}
 
 	function enableGoal(objective: string, ctx: ExtensionContext): void {
@@ -149,6 +176,18 @@ export default function piGoal(pi: ExtensionAPI): void {
 		budgetExhausted = false;
 		updateStatus(ctx);
 		persistState();
+
+		// Issue #0004: the `update_goal` pi tool is registered lazily on the
+		// first goal start (registerUpdateGoalTool is idempotent) and then
+		// added to the active set here. Without the active-set step the LLM
+		// cannot see or call it. Removed again in `disableGoal`.
+		registerUpdateGoalTool(pi, (toolCtx) => ({
+			onBlocked: (summary) => {
+				if (!goalEnabled) return;
+				endGoalBlocked(summary, toolCtx);
+			},
+		}));
+		activateUpdateGoalTool();
 
 		ctx.ui.notify(
 			`Goal mode enabled: "${objective}" ` +
@@ -182,6 +221,33 @@ export default function piGoal(pi: ExtensionAPI): void {
 				content:
 					`Goal complete: "${objective}" — ` +
 					`${iterations} turn(s), ${tokensUsed.toLocaleString()} tokens used.\n${reason}`,
+				display: true,
+			},
+			{ deliverAs: "followUp" },
+		);
+	}
+
+	/**
+	 * Issue #0004: terminal exit when the agent calls
+	 * `update_goal({status:"blocked", summary})`. Mirrors the
+	 * success/abort shape so the user sees turns + tokens in every
+	 * goal-mode epilogue, but uses warning severity and a clearly
+	 * "Goal blocked" labelled body so it is visually distinguishable.
+	 */
+	function endGoalBlocked(summary: string, ctx: ExtensionContext): void {
+		const objective = goalObjective;
+		const iterations = goalIterations;
+		const tokensUsed = tokensUsedSinceStart(ctx);
+		disableGoal(ctx);
+		persistState();
+		ctx.ui.notify(
+			formatBlockedNotify(iterations, tokensUsed, summary),
+			"warning",
+		);
+		pi.sendMessage(
+			{
+				customType: STATUS_MESSAGE_TYPE,
+				content: formatBlockedStatus(objective, summary, iterations, tokensUsed),
 				display: true,
 			},
 			{ deliverAs: "followUp" },
@@ -439,6 +505,17 @@ export default function piGoal(pi: ExtensionAPI): void {
 			tokenBudget = state.tokenBudget;
 			tokenBaseline = state.tokenBaseline;
 			goalStartTime = Date.now(); // wall-clock baseline does not survive restart
+
+			// Re-register and re-activate `update_goal` so the LLM can call it
+			// in the resumed session. `registerUpdateGoalTool` is idempotent —
+			// safe to call whether or not a prior session already registered it.
+			registerUpdateGoalTool(pi, (toolCtx) => ({
+				onBlocked: (summary) => {
+					if (!goalEnabled) return;
+					endGoalBlocked(summary, toolCtx);
+				},
+			}));
+			activateUpdateGoalTool();
 		}
 		updateStatus(ctx);
 	});

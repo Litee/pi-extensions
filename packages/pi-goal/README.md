@@ -20,9 +20,13 @@ The completion-audit prompt and lifecycle templates are ported verbatim from
   knows to abandon any work that only served the old objective.
 - **`Ctrl+Alt+G`** — If goal is active: cancel it. If not: open an input
   prompt.
-- **`update_goal(summary)`** — A tool the agent can call to mark the goal
-  complete. The agent is instructed to call it only after a strict
-  evidence-based completion audit; calling it ends the loop deterministically.
+- **`update_goal({status: "blocked", summary})`** — Signal a genuine, persistent
+  blocker. The agent calls this when it has hit an impasse it cannot resolve
+  without external input (missing credentials, service outage, contradictory
+  requirements). Pauses the loop and surfaces the blocker to the user.
+  
+  Completion is **not** signalled through this tool — the verifier checks
+  each turn automatically and exits the loop when the objective is satisfied.
 - **Iteration safety net** — Stops after a configurable number of turns
   (default: 20) regardless of token usage, in case completion is never
   signalled.
@@ -60,8 +64,9 @@ The architecture mirrors Codex's `/goal`:
      input and tells the agent to abandon work that only served the old goal.
 3. **After each turn**, `agent_end` deterministically decides what happens
    next:
-   - If the agent called `update_goal` this turn → disable goal mode, show
-     a success notification with the agent's summary.
+   - If the agent called `update_goal({status:"blocked", summary})` this turn → disable goal
+     mode, show a warning notification and a follow-up status message with
+     the blocker description.
    - Else if iterations ≥ max → disable goal mode with a "max iterations
      reached" warning.
    - Else if tokens exceeded budget AND we already delivered the budget-limit
@@ -103,7 +108,8 @@ where `N/M` is iterations and `X/Y` is tokens used vs. budget.
 
 Goal mode ends in any of these cases:
 
-- Agent calls `update_goal` (the happy path).
+- Agent calls `update_goal({status:"blocked", summary})` (genuine impasse — the loop pauses
+  and surfaces the blocker to the user).
 - User types interactively while goal is running.
 - `/goal stop` or `Ctrl+Alt+G` while active.
 - Iteration cap is hit.

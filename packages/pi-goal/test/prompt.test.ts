@@ -44,6 +44,43 @@ describe("buildContinuationMessage", () => {
 			/checker .* not yet satisfied/i,
 		);
 	});
+
+	// -- issue #0004: "Blocked audit" rules ported from upstream codex commit
+	// 0d344ac (2026-05-18). The continuation prompt is the LLM-facing surface
+	// where these rules live, so the model knows when calling
+	// `update_goal({status:"blocked"})` is permitted.
+	describe("Blocked audit rules (#0004)", () => {
+		const sample = buildContinuationMessage("x", 1, 10, 0, 100);
+
+		it("introduces a labelled Blocked audit section", () => {
+			expect(sample).toMatch(/blocked audit/i);
+		});
+
+		it("references the update_goal tool", () => {
+			expect(sample).toMatch(/update_goal/);
+		});
+
+		it("requires the same blocking condition for 3+ consecutive turns before blocking", () => {
+			expect(sample).toMatch(/3\+? consecutive turns|three consecutive turns|3 consecutive turns/i);
+		});
+
+		it("warns the agent NOT to use blocked for hard, uncertain, or slow work", () => {
+			expect(sample).toMatch(/hard/i);
+			expect(sample).toMatch(/uncertain/i);
+			expect(sample).toMatch(/slow/i);
+			expect(sample).toMatch(/genuine impasse/i);
+		});
+
+		it("explains the blocked-counter resets on resume", () => {
+			expect(sample).toMatch(/resume/i);
+			expect(sample).toMatch(/reset/i);
+		});
+
+		it("explains that blocked pauses the loop and surfaces the blocker to the user", () => {
+			expect(sample).toMatch(/pause/i);
+			expect(sample).toMatch(/(surface|surfac)/i);
+		});
+	});
 });
 
 describe("buildBudgetLimitMessage", () => {
@@ -55,10 +92,12 @@ describe("buildBudgetLimitMessage", () => {
 		expect(out).toMatch(/do not start new work/i);
 	});
 
-	it("does NOT mention update_goal — that tool no longer exists", () => {
-		// Regression guard: an earlier Codex-aligned implementation referenced
-		// `update_goal` here, which produced loops where the agent searched
-		// for a tool that wasn't registered.
+	it("does NOT mention update_goal — the budget-limit turn is the wrap-up turn, not a completion-signal turn", () => {
+		// Regression guard: even though `update_goal` is registered (#0004),
+		// the budget_limit message is meant as a clean hand-off after the
+		// budget is exhausted; we do NOT want the agent to call
+		// `update_goal({summary})` purely because the budget ran
+		// out, nor `blocked` simply because resources are tight.
 		expect(buildBudgetLimitMessage("x", 1, 1)).not.toMatch(/update_goal/i);
 	});
 });

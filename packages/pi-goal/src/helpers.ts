@@ -115,6 +115,43 @@ export function formatTerminationStatus(
 	);
 }
 
+/**
+ * Build the notify-pill body shown when the goal is paused on a genuine
+ * blocker (issue #0004). Mirrors the success/abort shape from #0003 — turns
+ * and tokens are always included so users see goal cost regardless of how
+ * the loop ended — and additionally surfaces the agent's blocker summary so
+ * the user knows what to do next.
+ */
+export function formatBlockedNotify(
+	iterations: number,
+	tokensUsed: number,
+	summary: string,
+): string {
+	const trimmed = summary.trim();
+	const tail = trimmed.length > 0 ? `: ${trimmed}` : "";
+	return `⏸ Goal blocked after ${terminationStats(iterations, tokensUsed)}${tail}`;
+}
+
+/**
+ * Build the multi-line follow-up `pi-goal:status` message body shown when
+ * `update_goal({status:"blocked"})` exits the loop (issue #0004). Same shape
+ * as `formatTerminationStatus` but with a "Goal blocked" label and the
+ * agent's summary appended verbatim.
+ */
+export function formatBlockedStatus(
+	objective: string,
+	summary: string,
+	iterations: number,
+	tokensUsed: number,
+): string {
+	const trimmed = summary.trim();
+	const body = trimmed.length > 0 ? trimmed : "(no blocker summary provided)";
+	return (
+		`Goal blocked: "${objective}" ` +
+		`(${terminationStats(iterations, tokensUsed)}).\n${body}`
+	);
+}
+
 function extractText(content: unknown): string {
 	if (typeof content === "string") return content;
 	if (!Array.isArray(content)) return "";
