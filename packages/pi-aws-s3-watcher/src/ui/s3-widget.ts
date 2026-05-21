@@ -85,6 +85,9 @@ export class S3Widget {
 	hide(ctx: unknown): void {
 		const anyCtx = ctx as { ui?: { setWidget?: (...args: unknown[]) => void } };
 		anyCtx.ui?.setWidget?.(WIDGET_ID, undefined);
+		// Clear the cached ctx so a later s3:change event (from the poll loop)
+		// does not re-show the panel after the user switched display modes.
+		this.ctx = undefined;
 		if (this.refreshInterval) {
 			clearInterval(this.refreshInterval);
 			this.refreshInterval = undefined;
