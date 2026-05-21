@@ -45,7 +45,7 @@ import { Container, Markdown, matchesKey, type SelectItem, SelectList, Text } fr
 
 import { pickSavedTools, TOOLS_CONFIG_CUSTOM_TYPE, type ToolsState } from "./branchState.js";
 import { getToolArgumentCompletions } from "./completions.js";
-import { buildSelectorTitle, estimateToolTokens } from "./helpers.js";
+import { buildSelectorTitle, estimateToolTokens, truncate } from "./helpers.js";
 import { renderToolMarkdown } from "./renderToolMarkdown.js";
 import { buildToolRows, type RowLayout } from "./rows.js";
 
@@ -269,12 +269,13 @@ export default function toolInfoExtension(pi: ExtensionAPI) {
 
 					return {
 						render: (w) => {
-							const title = buildSelectorTitle(tools.length, active.size, activeTokens(), totalTokens);
+							const rawTitle = buildSelectorTitle(tools.length, active.size, activeTokens(), totalTokens);
+							const hint = " t to toggle · Enter to view details · Esc to close";
 							return [
-								theme.bold(title),
+								theme.bold(truncate(rawTitle, w)),
 								"",
 								...selectList.render(w),
-								theme.fg("dim", " t to toggle · Enter to view details · Esc to close"),
+								theme.fg("dim", truncate(hint, w)),
 							];
 						},
 						invalidate: () => selectList.invalidate(),

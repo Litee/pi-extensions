@@ -153,6 +153,38 @@ describe("sourceLabel", () => {
 	});
 });
 
+describe("render title truncation – narrow-terminal crash regression", () => {
+	// Before the fix, index.ts called theme.bold(title) without truncating to `w`,
+	// causing pi to crash with "Rendered line N exceeds terminal width" when the
+	// terminal was ~56 cols.  This suite documents the required behaviour:
+	// buildSelectorTitle() may produce a string wider than `w`, and callers are
+	// expected to pass it through truncate(title, w) before styling.
+
+	it("buildSelectorTitle with realistic counts produces a title wider than 56 chars", () => {
+		// Reproduces the exact crash: 19 tools, 13 active, ~3.7k/6.2k tokens → 62 chars.
+		const title = buildSelectorTitle(19, 13, 3700, 6200);
+		expect(title.length).toBeGreaterThan(56);
+	});
+
+	it("truncate(buildSelectorTitle(…), 56) fits within 56 chars", () => {
+		const title = buildSelectorTitle(19, 13, 3700, 6200);
+		const truncated = truncate(title, 56);
+		expect(truncated.length).toBeLessThanOrEqual(56);
+	});
+
+	it("truncate(buildSelectorTitle(…), w) fits within w for various narrow widths", () => {
+		for (const w of [20, 30, 40, 50, 56, 60]) {
+			const title = buildSelectorTitle(19, 13, 3700, 6200);
+			expect(truncate(title, w).length).toBeLessThanOrEqual(w);
+		}
+	});
+
+	it("hint line truncated to narrow width fits", () => {
+		const hint = " t to toggle · Enter to view details · Esc to close";
+		expect(truncate(hint, 56).length).toBeLessThanOrEqual(56);
+	});
+});
+
 describe("buildSelectorTitle", () => {
 	it("includes both active and total token counts when not all tools are active", () => {
 		const title = buildSelectorTitle(12, 5, 1200, 3400);
