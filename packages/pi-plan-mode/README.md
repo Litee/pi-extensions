@@ -122,6 +122,7 @@ Not exhaustive — just the highlights that matter if you are considering
 copying this package. Here is what you will be picking up on top of upstream
 `plan-mode`:
 
+- **`.js` import extensions kept** where upstream switched to `.ts` (commit `2e02c74d`); this repo uses `.js` for all local imports as a repo-wide convention.
 - **Todo-tracking removed.** Upstream bundles a todo list with plan mode;
   this port drops it (breaking change vs. upstream).
 - **State snapshots persist across restarts.** The model, thinking level,
