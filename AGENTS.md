@@ -21,6 +21,7 @@ Use **npm** (workspaces): `npm install`, `npm test`, `npm run check`.
 ## Key Conventions
 
 - TDD: write a failing vitest test before the code that makes it pass. Applies to new extensions and behaviour changes to existing ones. Bug fixes need a regression test that fails on `main` first.
+- **End-to-end testing of TUI or session-lifecycle behaviour must use the `test-pi-extensions` skill.** Load it before starting any E2E test that requires a live pi session (widget rendering, `triggerTurn`, extension interactions, session resume). Do not improvise the cmux pane setup — the skill documents the exact gotchas (session bleed, worktree package loading, `pi --no-session`, workspace vs split).
 - Keep the extensions table in `README.md` alphabetically sorted.
 - Any package that is a copy or port of code from another project MUST have an `UPSTREAM.md` at the package root recording: upstream repository URL, upstream file path, upstream commit hash + date + subject at the time of copy, which local files are covered, any intentional local divergence, and a `git log --follow <base>..origin/HEAD` recipe for spotting future upstream changes. Packages originally authored in this repo do NOT get an `UPSTREAM.md`. See `packages/pi-session-recap/UPSTREAM.md` for the canonical shape.
 
