@@ -151,6 +151,89 @@ describe("buildWidgetEntries", () => {
 		});
 		expect(entries).toHaveLength(1);
 	});
+
+	// -------------------------------------------------------------------------
+	// Sorting: priority order + startedOn tiebreak
+	// -------------------------------------------------------------------------
+
+	it("sorts workflow nodes so RUNNING appears before SUCCEEDED", () => {
+		const entries = buildWidgetEntries({
+			w: workflow({
+				watchId: "w",
+				name: "wf",
+				baseline: {
+					state: "RUNNING",
+					totalActions: 2,
+					succeededActions: 1,
+					failedActions: 0,
+					runningActions: 1,
+					reportedFailedNodes: [],
+					nodes: [
+						{ name: "step-1", state: "SUCCEEDED" },
+						{ name: "step-2", state: "RUNNING" },
+					],
+				},
+			}),
+		});
+		expect(entries.map((e) => e.displayName)).toEqual(["wf/step-2", "wf/step-1"]);
+	});
+
+	it("orders entries: FAILED > RUNNING = PENDING > SUCCEEDED", () => {
+		const entries = buildWidgetEntries({
+			w: workflow({
+				watchId: "w",
+				name: "wf",
+				baseline: {
+					state: "RUNNING",
+					totalActions: 4,
+					succeededActions: 1,
+					failedActions: 1,
+					runningActions: 1,
+					reportedFailedNodes: [],
+					nodes: [
+						{ name: "s", state: "SUCCEEDED" },
+						{ name: "f", state: "FAILED" },
+						{ name: "r", state: "RUNNING" },
+						{ name: "p", state: "PENDING" },
+					],
+				},
+			}),
+		});
+		expect(entries.map((e) => e.displayName)).toEqual([
+			"wf/f", // FAILED  → error   rank 0
+			"wf/r", // RUNNING → active  rank 1
+			"wf/p", // PENDING → active  rank 1
+			"wf/s", // SUCCEEDED → success rank 2
+		]);
+	});
+
+	it("within the same priority, sorts by startedOn ascending (longest-running first)", () => {
+		const entries = buildWidgetEntries({
+			a: job({
+				watchId: "a",
+				name: "newer",
+				baseline: { state: "RUNNING", errorMessage: "", startedOn: "2024-01-01T02:00:00Z" },
+			}),
+			b: job({
+				watchId: "b",
+				name: "older",
+				baseline: { state: "RUNNING", errorMessage: "", startedOn: "2024-01-01T01:00:00Z" },
+			}),
+		});
+		expect(entries.map((e) => e.displayName)).toEqual(["older", "newer"]);
+	});
+
+	it("within the same priority, entries without startedOn trail those with startedOn", () => {
+		const entries = buildWidgetEntries({
+			a: job({ watchId: "a", name: "no-start", baseline: { state: "RUNNING", errorMessage: "" } }),
+			b: job({
+				watchId: "b",
+				name: "has-start",
+				baseline: { state: "RUNNING", errorMessage: "", startedOn: "2024-01-01T01:00:00Z" },
+			}),
+		});
+		expect(entries.map((e) => e.displayName)).toEqual(["has-start", "no-start"]);
+	});
 });
 
 // ---------------------------------------------------------------------------

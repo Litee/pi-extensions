@@ -55,10 +55,28 @@ export function stateStyle(state: string): StateStyle {
 }
 
 /**
+ * Sort rank for a run state: lower = shown first.
+ *
+ * - 0  error    FAILED / ERROR / TIMEOUT / STOPPED — needs immediate attention
+ * - 1  warning + none  RUNNING / STARTING / PENDING / unknown — active or queued
+ * - 2  success  SUCCEEDED / COMPLETED — done successfully, lowest priority
+ *
+ * Within each rank, entries are further sorted by `startedOn` ascending
+ * (oldest / longest-running first); entries with no `startedOn` trail.
+ */
+export function entryPriority(state: string): number {
+	const s = stateStyle(state);
+	if (s === "error") return 0;
+	if (s === "success") return 2;
+	return 1; // warning (RUNNING/STARTING) and none (PENDING/unknown)
+}
+
+/**
  * Build the flat list of widget entries from the watch map. Only
  * non-terminal watches are shown; workflow watches expand into one entry
  * per JOB node (or a single fallback entry when the graph is empty).
- * The final pass deduplicates on `displayName`.
+ * The final pass deduplicates on `displayName`, then entries are sorted
+ * so non-terminal states (RUNNING, STARTING) rise to the top.
  */
 export function buildWidgetEntries(watchMap: WatchMap): WidgetEntry[] {
 	const watches = Object.values(watchMap).filter((w) => !w.terminal);
@@ -97,10 +115,22 @@ export function buildWidgetEntries(watchMap: WatchMap): WidgetEntry[] {
 	}
 
 	const seen = new Set<string>();
-	return entries.filter((e) => {
+	const deduped = entries.filter((e) => {
 		if (seen.has(e.displayName)) return false;
 		seen.add(e.displayName);
 		return true;
+	});
+
+	return deduped.sort((a, b) => {
+		const pa = entryPriority(a.state);
+		const pb = entryPriority(b.state);
+		if (pa !== pb) return pa - pb;
+		// Same priority: oldest startedOn first (longest-running at top).
+		// Entries without a start time trail within their rank.
+		if (a.startedOn && b.startedOn) return a.startedOn < b.startedOn ? -1 : a.startedOn > b.startedOn ? 1 : 0;
+		if (a.startedOn) return -1;
+		if (b.startedOn) return 1;
+		return 0;
 	});
 }
 
