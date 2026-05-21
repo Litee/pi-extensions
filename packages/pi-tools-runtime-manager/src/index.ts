@@ -24,24 +24,34 @@
  *    when `manage_tools` is alone in its batch and is silently ignored when
  *    batched with other tools.
  *
- * 2. Listens on `agent_end`. When the run that just finished saw at least one
- *    tool flip on, fires `pi.sendMessage({display:false}, {triggerTurn:true})`,
- *    which (because the agent is provably idle by the time `agent_end`
- *    listeners run — `_handleAgentEvent` returns synchronously, then
- *    `finishRun()` clears `isStreaming` before extension dispatch — see
- *    `agent-session.js` _handleAgentEvent / runWithLifecycle) starts a fresh
- *    `agent.prompt()` whose snapshot does include the new tool.
+ * 2. Listens on `agent_end`. When the run that just finished contained ANY
+ *    `manage_tools` call (including list, deactivate, and no-op activate),
+ *    schedules `pi.sendMessage({display:false}, {triggerTurn:true})` via
+ *    `setTimeout(0)`. The deferral is required because `finishRun()` — which
+ *    sets `agent.state.isStreaming = false` and thus makes `ctx.isIdle()`
+ *    return `true` — runs in the `finally` block of `runWithLifecycle` AFTER
+ *    all `agent_end` listeners complete. Without the deferral, `isStreaming`
+ *    is still `true` when the listener fires: `sendMessage` would fall into
+ *    the steer queue instead of starting a fresh `agent.prompt()`. The
+ *    macrotask (setTimeout) fires only after all pending microtasks (including
+ *    the `finishRun()` continuation) have settled, guaranteeing the session is
+ *    truly idle when the message is delivered.
  *
  * Several guards keep the auto-continue from going wrong:
  *
  * - Activate-then-deactivate in the same run: filter `pendingRefresh` against
- *   the live active set at `agent_end` and skip if empty.
+ *   the live active set at `agent_end` to determine whether to advertise
+ *   newly-available tools; does NOT suppress the refresh entirely (the LLM
+ *   still needs a turn after the deactivation too).
  * - Loop guard: if the LLM already used any of the newly activated tools
- *   after the last manage_tools toolCall in the run, don't nudge.
+ *   after the last manage_tools toolCall in the run, don't nudge. For
+ *   list/deactivate/no-op paths trulyAvailable is empty so this guard is
+ *   inert — MAX_AUTO_REFRESHES is the only loop protection in those cases.
  * - Stop reason: only auto-continue on "stop" or "toolUse" (clean turn ends).
  *   Skip "error", "aborted", "length".
- * - Race / extension collision: bail out of `pi.sendMessage` if `ctx.isIdle()`
- *   reports false. Defends against e.g. plan-mode also triggering a turn.
+ * - Race / extension collision: inside the deferred setTimeout callback,
+ *   check `ctx.isIdle()` before sending. Defends against another extension
+ *   having started a turn in the window between `agent_end` and the macrotask.
  * - Counter cap: at most `MAX_AUTO_REFRESHES` consecutive auto-refreshes
  *   between user-initiated turns; surface via `ctx.ui.notify` if exceeded.
  *
@@ -215,8 +225,11 @@ export default function manageToolsExtension(pi: ExtensionAPI): void {
 	let startupActive: Set<string> = new Set();
 
 	// --- Auto-continue closure state -----------------------------------------
-	// Names that flipped inactive→active during the current run. Cleared on
-	// every agent_end (whether we fire a refresh or skip).
+	// Non-null whenever manage_tools was called during the current run.
+	// Contains the names that flipped inactive→active so the refresh message
+	// can advertise them. Empty set = call happened but no tools were added
+	// (e.g. list, deactivate, or no-op activate). Cleared on every agent_end
+	// whether we fire a refresh or skip.
 	let pendingRefresh: Set<string> | null = null;
 	// Consecutive auto-refreshes, reset on user-initiated agent_start.
 	let consecutiveAutoRefreshes = 0;
@@ -266,28 +279,40 @@ export default function manageToolsExtension(pi: ExtensionAPI): void {
 		// don't want to act on it later.
 		const refresh = pendingRefresh;
 		pendingRefresh = null;
-		if (!refresh || refresh.size === 0) return;
+		// Bail only when manage_tools was never called this run (refresh is null).
+		// An empty set is a valid sentinel meaning "call happened but no tools
+		// were activated" — we still need to fire a refresh in that case.
+		if (refresh === null) return;
 
-		// Race / extension-collision guard. By the time agent_end listeners
-		// run, the agent is normally idle (see file-level docblock for the
-		// trace). If something else has already kicked off the next run, bail.
-		if (typeof ctx.isIdle === "function" && !ctx.isIdle()) return;
+		// NOTE: do NOT check ctx.isIdle() here. isStreaming is still true when
+		// agent_end listeners fire — finishRun() only runs in the finally block
+		// of runWithLifecycle AFTER all listeners complete. Checking isIdle()
+		// here always returns false and would always bail. The race guard is
+		// instead applied inside the deferred setTimeout below.
 
 		// Only auto-continue on clean turn ends.
 		const stopReason = lastAssistantStopReason(event.messages);
 		if (stopReason !== undefined && !SAFE_STOP_REASONS.has(stopReason)) return;
 
 		// Filter against the live active set: a tool flipped on then off in
-		// the same run shouldn't be advertised in the refresh message.
+		// the same run shouldn't be advertised as "newly available", but a
+		// refresh is still required (the LLM needs a turn after any
+		// manage_tools call, not only after activation).
 		const live = new Set(pi.getActiveTools());
 		const trulyAvailable = new Set<string>();
 		for (const name of refresh) {
 			if (live.has(name)) trulyAvailable.add(name);
 		}
-		if (trulyAvailable.size === 0) return;
+		// NOTE: we intentionally do NOT return early when trulyAvailable is
+		// empty. pendingRefresh being non-null already guarantees manage_tools
+		// was called this run — the LLM needs a new turn regardless of whether
+		// the tool set actually changed.
 
 		// Loop guard: if the LLM already used any of these AFTER the last
 		// manage_tools toolCall, there's nothing to nudge.
+		// Note: when trulyAvailable is empty (list/deactivate/no-op), this guard
+		// is vacuously false and cannot suppress. MAX_AUTO_REFRESHES is the only
+		// protection against infinite loops in those paths.
 		if (calledAnyAfterLastActivation(event.messages, trulyAvailable)) return;
 
 		// Cap consecutive auto-refreshes between user-initiated turns.
@@ -300,21 +325,37 @@ export default function manageToolsExtension(pi: ExtensionAPI): void {
 		}
 
 		const sorted = [...trulyAvailable].sort();
-		const content = `Continue. Newly available tools: ${sorted.join(", ")}. Use them as appropriate for the current task.`;
+		const content =
+			trulyAvailable.size > 0
+				? `Continue. Newly available tools: ${sorted.join(", ")}. Use them as appropriate for the current task.`
+				: `Continue. Use your tools as appropriate for the current task.`;
 
-		// Mark BEFORE sending: the new agent_start fires synchronously inside
-		// pi.sendMessage's triggerTurn path, so flag must be set first.
-		consecutiveAutoRefreshes += 1;
-		lastWasAutoRefresh = true;
+		// Defer via setTimeout(0) so this macrotask runs only after all pending
+		// microtasks settle — including the finishRun() continuation in
+		// runWithLifecycle's finally block that sets isStreaming = false.
+		// Without the deferral, sendMessage falls into the steer queue
+		// (isStreaming still true) and never triggers a new agent turn.
+		setTimeout(() => {
+			// Race / extension-collision guard: check here (post-finishRun) rather
+			// than in the synchronous agent_end body (where isIdle() is always
+			// false). If another extension already started a new run in the window
+			// between agent_end and this macrotask, bail.
+			if (typeof ctx.isIdle === "function" && !ctx.isIdle()) return;
 
-		pi.sendMessage(
-			{
-				customType: REFRESH_CUSTOM_TYPE,
-				content,
-				display: false,
-			},
-			{ triggerTurn: true },
-		);
+			// Mark BEFORE sending: agent_start fires synchronously inside
+			// sendMessage's triggerTurn path, so the flag must be set first.
+			consecutiveAutoRefreshes += 1;
+			lastWasAutoRefresh = true;
+
+			pi.sendMessage(
+				{
+					customType: REFRESH_CUSTOM_TYPE,
+					content,
+					display: false,
+				},
+				{ triggerTurn: true },
+			);
+		}, 0);
 	});
 
 	pi.registerTool({
@@ -389,15 +430,14 @@ export default function manageToolsExtension(pi: ExtensionAPI): void {
 				pi.setActiveTools([...result.nextActive]);
 			}
 
-			// Auto-continue accumulator. ANY flip from inactive→active counts —
-			// including via reset. Accumulate across multiple manage_tools calls
-			// in the same run rather than overwriting.
-			if (added.size > 0) {
-				if (pendingRefresh) {
-					for (const n of added) pendingRefresh.add(n);
-				} else {
-					pendingRefresh = new Set(added);
-				}
+			// Auto-continue accumulator. Always mark that manage_tools was called
+			// (pendingRefresh becomes non-null). Accumulate activated names across
+			// multiple calls in the same run; for list/deactivate/no-op activate
+			// the set stays empty but is still non-null (sentinel).
+			if (pendingRefresh === null) {
+				pendingRefresh = new Set(added);
+			} else {
+				for (const n of added) pendingRefresh.add(n);
 			}
 
 			// Compose the response for the LLM.
@@ -449,15 +489,16 @@ export default function manageToolsExtension(pi: ExtensionAPI): void {
 				},
 			};
 
-			// Hint the loop to terminate when manage_tools actually flipped
-			// something on. This ends the run early when manage_tools is alone
-			// in its tool batch (so the auto-continue can build a fresh
-			// snapshot and let the LLM use the new tool ASAP). When batched
-			// with other tools, the loop only honors `terminate` if EVERY
-			// member of the batch sets it, so this is silently ignored — and
-			// the agent_end listener fires at the natural end of the run
-			// instead.
-			if (added.size > 0) toolResult.terminate = true;
+			// Always hint the loop to terminate so that when manage_tools is
+			// alone in its tool batch the run ends early and the auto-continue
+			// can build a fresh snapshot. When batched with other tools the loop
+			// only honors `terminate` if EVERY member of the batch sets it, so
+			// this is silently ignored — and the agent_end listener fires at the
+			// natural end of the run instead.
+			// Previously only set when tools were activated; now set for every
+			// manage_tools call (list, activate, deactivate, reset) so the LLM
+			// always gets a fresh turn to act on the result.
+			toolResult.terminate = true;
 
 			return Promise.resolve(toolResult);
 		},

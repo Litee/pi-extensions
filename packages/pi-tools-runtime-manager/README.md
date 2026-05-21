@@ -2,7 +2,7 @@
 
 Pi extension that gives the **LLM** a `manage_tools` tool so it can list, activate, deactivate, and reset its own tool set at runtime. Built on top of pi's native runtime tool-management API (`pi.getAllTools` / `pi.getActiveTools` / `pi.setActiveTools`).
 
-When the LLM activates a tool (or `reset` flips one back on), the extension automatically continues the agent run so the newly available tool becomes callable on the very next assistant message — no human nudge required.
+When the LLM calls any `manage_tools` action, the extension automatically fires a fresh agent turn so the LLM can immediately act on the result — no human nudge required.
 
 ## How this differs from `pi-tools`
 
@@ -70,13 +70,15 @@ pi's agent loop snapshots the tool list once per `agent.prompt()` call. Inside o
 
 This extension papers over that in two complementary ways:
 
-1. When `manage_tools` flipped at least one tool from inactive → active, the tool result carries `terminate: true`. The agent loop honors `terminate` only when **every** member of the same tool batch sets it (`pi-agent-core/dist/agent-loop.js:315`), so this ends the run early when `manage_tools` is alone in its batch and is silently ignored when batched with other tools.
-2. An `agent_end` listener detects the run ended with a pending tool addition and fires `pi.sendMessage({display:false, customType:"pi-tools-runtime-manager:refresh"}, {triggerTurn:true})`. By the time `agent_end` listeners run the agent is provably idle, so `triggerTurn` starts a brand-new `agent.prompt()` whose snapshot does include the new tool. The injected message is invisible in the TUI but persisted in the transcript and visible to the LLM.
+1. Every `manage_tools` call — including `list`, `deactivate`, and no-op `activate` — sets `terminate: true` on the tool result. The agent loop honors `terminate` only when **every** member of the same tool batch sets it (`pi-agent-core/dist/agent-loop.js:315`), so this ends the run early when `manage_tools` is alone in its batch and is silently ignored when batched with other tools.
+2. An `agent_end` listener fires `pi.sendMessage({display:false, customType:"pi-tools-runtime-manager:refresh"}, {triggerTurn:true})` whenever `manage_tools` was called during the run. By the time `agent_end` listeners run the agent is provably idle, so `triggerTurn` starts a brand-new `agent.prompt()` whose snapshot reflects the current tool state. The injected message is invisible in the TUI but persisted in the transcript and visible to the LLM.
+   - When tools were actually activated, the message reads _"Continue. Newly available tools: X, Y."_
+   - For `list`, `deactivate`, or no-op calls, the message reads _"Continue. Use your tools as appropriate."_
 
 Guards on the auto-continue:
 
-- **Activate then deactivate same run** — pendingRefresh is filtered against the live active set at `agent_end`. A tool flipped on then off doesn't get advertised.
-- **Loop guard** — if the LLM already called any of the newly activated tools after the last `manage_tools` toolCall in the run, no nudge.
+- **Activate then deactivate same run** — `pendingRefresh` is filtered against the live active set at `agent_end`. A tool flipped on then off is not advertised as newly available, but a refresh still fires (the LLM still needs a new turn).
+- **Loop guard** — if the LLM already called any of the newly activated tools after the last `manage_tools` toolCall in the run, no nudge is sent. Note: for `list`/`deactivate`/no-op paths there are no activated tools to check, so this guard is inert — the counter cap is the only protection in those cases.
 - **Stop reason** — only auto-continue on `"stop"` or `"toolUse"`. Skip `"error"`, `"aborted"`, `"length"`.
 - **Race / collision** — `ctx.isIdle()` checked before `pi.sendMessage`. If another extension (e.g. plan-mode) has already kicked off the next run, bail.
 - **Counter cap** — at most 3 consecutive auto-refreshes between user-initiated turns. The 4th in a row is suppressed and surfaced via `ctx.ui.notify`. Counter resets when the user types a fresh prompt.

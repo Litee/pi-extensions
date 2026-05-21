@@ -1,4 +1,4 @@
-import { describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import type { AgentMessage } from "@earendil-works/pi-agent-core";
 import type {
@@ -173,6 +173,18 @@ function textOf(result: { content: { type: string; text?: string }[] }): string 
 	return first.text ?? "";
 }
 
+// ===========================================================================
+// Fake-timer setup: the agent_end handler defers sendMessage via setTimeout(0)
+// so that it runs after finishRun() has cleared isStreaming. All tests that
+// check sendMessage must call vi.runAllTimers() to flush that macrotask.
+// ===========================================================================
+beforeEach(() => {
+	vi.useFakeTimers();
+});
+afterEach(() => {
+	vi.useRealTimers();
+});
+
 describe("tool.execute — list", () => {
 	it("returns all tools with their active state and descriptions", async () => {
 		const pi = makeFakePi({ all: [...BASE_TOOLS], active: ["read", "bash"] });
@@ -187,14 +199,20 @@ describe("tool.execute — list", () => {
 		expect(txt.toLowerCase()).toMatch(/active/);
 	});
 
-	it("does not set terminate or queue a refresh on list", async () => {
+	it("sets terminate:true and queues a refresh even on pure list", async () => {
 		const pi = makeFakePi({ all: [...BASE_TOOLS], active: ["read", "bash"] });
 		createExtension(pi.api);
 		await pi.fireSessionStart();
 		const res = (await exec(pi.tool, { action: "list" })) as { terminate?: boolean };
-		expect(res.terminate).toBeUndefined();
+		expect(res.terminate).toBe(true);
 		await pi.fireAgentEnd([asstWithToolCall("manage_tools")]);
-		expect(pi.sendMessage).not.toHaveBeenCalled();
+		vi.runAllTimers();
+		expect(pi.sendMessage).toHaveBeenCalledTimes(1);
+		const { msg, opts } = firstSendMessageCall(pi);
+		expect(msg.customType).toBe("pi-tools-runtime-manager:refresh");
+		expect(msg.display).toBe(false);
+		expect(msg.content).toMatch(/Continue\./);
+		expect(opts).toEqual({ triggerTurn: true });
 	});
 });
 
@@ -229,7 +247,7 @@ describe("tool.execute — activate", () => {
 		expect(res.terminate).toBe(true);
 	});
 
-	it("does NOT set terminate when activate is a no-op (already active)", async () => {
+	it("sets terminate:true even when activate is a no-op (already active)", async () => {
 		const pi = makeFakePi({ all: [...BASE_TOOLS], active: ["read", "edit"] });
 		createExtension(pi.api);
 		await pi.fireSessionStart();
@@ -237,7 +255,7 @@ describe("tool.execute — activate", () => {
 			action: "activate",
 			tools: ["edit"],
 		})) as { terminate?: boolean };
-		expect(res.terminate).toBeUndefined();
+		expect(res.terminate).toBe(true);
 	});
 });
 
@@ -262,16 +280,19 @@ describe("tool.execute — deactivate", () => {
 		expect(textOf(res).toLowerCase()).toMatch(/protect/);
 	});
 
-	it("does not set terminate or queue a refresh on deactivate", async () => {
+	it("sets terminate:true and queues a refresh on deactivate", async () => {
 		const pi = makeFakePi({ all: [...BASE_TOOLS], active: ["read", "bash", "edit"] });
 		createExtension(pi.api);
 		await pi.fireSessionStart();
 		const res = (await exec(pi.tool, { action: "deactivate", tools: ["edit"] })) as {
 			terminate?: boolean;
 		};
-		expect(res.terminate).toBeUndefined();
+		expect(res.terminate).toBe(true);
 		await pi.fireAgentEnd([asstWithToolCall("manage_tools")]);
-		expect(pi.sendMessage).not.toHaveBeenCalled();
+		vi.runAllTimers();
+		expect(pi.sendMessage).toHaveBeenCalledTimes(1);
+		const { msg } = firstSendMessageCall(pi);
+		expect(msg.content).toMatch(/Continue\./);
 	});
 });
 
@@ -342,12 +363,12 @@ describe("tool.execute — reset", () => {
 		expect(res.terminate).toBe(true);
 	});
 
-	it("does NOT set terminate when reset is a no-op (state already matches startup)", async () => {
+	it("sets terminate:true even when reset is a no-op (state already matches startup)", async () => {
 		const pi = makeFakePi({ all: [...BASE_TOOLS], active: ["read", "bash"] });
 		createExtension(pi.api);
 		await pi.fireSessionStart();
 		const res = (await exec(pi.tool, { action: "reset" })) as { terminate?: boolean };
-		expect(res.terminate).toBeUndefined();
+		expect(res.terminate).toBe(true);
 	});
 });
 
@@ -374,12 +395,45 @@ function firstSendMessageCall(pi: { sendMessage: { mock: { calls: unknown[][] } 
 // ===========================================================================
 
 describe("auto-continue — happy path", () => {
-	it("fires pi.sendMessage with triggerTurn:true after a successful activate", async () => {
+	it("fires pi.sendMessage with generic Continue message after list", async () => {
+		const pi = makeFakePi({ all: [...BASE_TOOLS], active: ["read"] });
+		createExtension(pi.api);
+		await pi.fireSessionStart();
+		await exec(pi.tool, { action: "list" });
+		await pi.fireAgentEnd([asstWithToolCall("manage_tools", { action: "list" })]);
+		vi.runAllTimers();
+
+		expect(pi.sendMessage).toHaveBeenCalledTimes(1);
+		const { msg, opts } = firstSendMessageCall(pi);
+		expect(msg.customType).toBe("pi-tools-runtime-manager:refresh");
+		expect(msg.display).toBe(false);
+		expect(msg.content).toMatch(/Continue\./);
+		// No specific tool names in the generic message
+		expect(msg.content).not.toMatch(/Newly available tools/);
+		expect(opts).toEqual({ triggerTurn: true });
+	});
+
+	it("fires pi.sendMessage with generic Continue message after no-op activate", async () => {
+		const pi = makeFakePi({ all: [...BASE_TOOLS], active: ["read", "edit"] });
+		createExtension(pi.api);
+		await pi.fireSessionStart();
+		await exec(pi.tool, { action: "activate", tools: ["edit"] }); // no-op: already active
+		await pi.fireAgentEnd([asstWithToolCall("manage_tools", { action: "activate" })]);
+		vi.runAllTimers();
+
+		expect(pi.sendMessage).toHaveBeenCalledTimes(1);
+		const { msg } = firstSendMessageCall(pi);
+		expect(msg.content).toMatch(/Continue\./);
+		expect(msg.content).not.toMatch(/Newly available tools/);
+	});
+
+	it("fires pi.sendMessage with tool-specific message after successful activate", async () => {
 		const pi = makeFakePi({ all: [...BASE_TOOLS], active: ["read"] });
 		createExtension(pi.api);
 		await pi.fireSessionStart();
 		await exec(pi.tool, { action: "activate", tools: ["edit"] });
 		await pi.fireAgentEnd([asstWithToolCall("manage_tools", { action: "activate" })]);
+		vi.runAllTimers();
 
 		expect(pi.sendMessage).toHaveBeenCalledTimes(1);
 		const { msg, opts } = firstSendMessageCall(pi);
@@ -396,6 +450,7 @@ describe("auto-continue — happy path", () => {
 		await pi.fireSessionStart();
 		await exec(pi.tool, { action: "activate", tools: ["write", "edit"] });
 		await pi.fireAgentEnd([asstWithToolCall("manage_tools")]);
+		vi.runAllTimers();
 		const { msg } = firstSendMessageCall(pi);
 		expect(msg.content).toMatch(/edit, write/);
 	});
@@ -406,16 +461,19 @@ describe("auto-continue — happy path", () => {
 		await pi.fireSessionStart();
 		await exec(pi.tool, { action: "activate", tools: ["edit"] });
 		await pi.fireAgentEnd([asstWithToolCall("manage_tools")]);
+		vi.runAllTimers();
 		expect(pi.sendMessage).toHaveBeenCalledTimes(1);
 		await pi.fireAgentEnd([asstText("done")]);
+		vi.runAllTimers();
 		expect(pi.sendMessage).toHaveBeenCalledTimes(1);
 	});
 
-	it("does NOT fire when no run-level activation happened", async () => {
+	it("does NOT fire when manage_tools was never called in the run", async () => {
 		const pi = makeFakePi({ all: [...BASE_TOOLS], active: ["read"] });
 		createExtension(pi.api);
 		await pi.fireSessionStart();
 		await pi.fireAgentEnd([asstText("done")]);
+		vi.runAllTimers();
 		expect(pi.sendMessage).not.toHaveBeenCalled();
 	});
 });
@@ -431,6 +489,7 @@ describe("auto-continue — accumulation across multiple manage_tools calls", ()
 			asstWithToolCall("manage_tools"),
 			asstWithToolCall("manage_tools"),
 		]);
+		vi.runAllTimers();
 		expect(pi.sendMessage).toHaveBeenCalledTimes(1);
 		const { msg } = firstSendMessageCall(pi);
 		expect(msg.content).toMatch(/edit, write/);
@@ -438,7 +497,7 @@ describe("auto-continue — accumulation across multiple manage_tools calls", ()
 });
 
 describe("auto-continue — filter against live active set", () => {
-	it("activate-then-deactivate-same-tool same run does NOT trigger a refresh", async () => {
+	it("activate-then-deactivate-same-tool same run fires a refresh (no new tools, but call happened)", async () => {
 		const pi = makeFakePi({ all: [...BASE_TOOLS], active: ["read"] });
 		createExtension(pi.api);
 		await pi.fireSessionStart();
@@ -448,7 +507,13 @@ describe("auto-continue — filter against live active set", () => {
 			asstWithToolCall("manage_tools"),
 			asstWithToolCall("manage_tools"),
 		]);
-		expect(pi.sendMessage).not.toHaveBeenCalled();
+		// refresh fires because manage_tools was called (pendingRefresh non-null),
+		// but edit is no longer active so trulyAvailable is empty → generic message
+		vi.runAllTimers();
+		expect(pi.sendMessage).toHaveBeenCalledTimes(1);
+		const { msg } = firstSendMessageCall(pi);
+		expect(msg.content).not.toMatch(/\bedit\b/);
+		expect(msg.content).toMatch(/Continue\./);
 	});
 
 	it("partial filter: activate [edit, write], deactivate [edit] → refresh mentions only write", async () => {
@@ -461,6 +526,7 @@ describe("auto-continue — filter against live active set", () => {
 			asstWithToolCall("manage_tools"),
 			asstWithToolCall("manage_tools"),
 		]);
+		vi.runAllTimers();
 		expect(pi.sendMessage).toHaveBeenCalledTimes(1);
 		const { msg } = firstSendMessageCall(pi);
 		expect(msg.content).toMatch(/write/);
@@ -476,6 +542,7 @@ describe("auto-continue — stop-reason filter", () => {
 			await pi.fireSessionStart();
 			await exec(pi.tool, { action: "activate", tools: ["edit"] });
 			await pi.fireAgentEnd([asstWithToolCall("manage_tools", {}, sr)]);
+			vi.runAllTimers();
 			expect(pi.sendMessage).not.toHaveBeenCalled();
 		});
 	}
@@ -487,6 +554,7 @@ describe("auto-continue — stop-reason filter", () => {
 			await pi.fireSessionStart();
 			await exec(pi.tool, { action: "activate", tools: ["edit"] });
 			await pi.fireAgentEnd([asstWithToolCall("manage_tools", {}, sr)]);
+			vi.runAllTimers();
 			expect(pi.sendMessage).toHaveBeenCalledTimes(1);
 		});
 	}
@@ -499,6 +567,7 @@ describe("auto-continue — race / extension-collision guard", () => {
 		await pi.fireSessionStart();
 		await exec(pi.tool, { action: "activate", tools: ["edit"] });
 		await pi.fireAgentEnd([asstWithToolCall("manage_tools")], makeCtx({ isIdle: false }));
+		vi.runAllTimers();
 		expect(pi.sendMessage).not.toHaveBeenCalled();
 	});
 
@@ -508,7 +577,9 @@ describe("auto-continue — race / extension-collision guard", () => {
 		await pi.fireSessionStart();
 		await exec(pi.tool, { action: "activate", tools: ["edit"] });
 		await pi.fireAgentEnd([asstWithToolCall("manage_tools")], makeCtx({ isIdle: false }));
+		vi.runAllTimers();
 		await pi.fireAgentEnd([asstText("done")]);
+		vi.runAllTimers();
 		expect(pi.sendMessage).not.toHaveBeenCalled();
 	});
 });
@@ -526,7 +597,28 @@ describe("auto-continue — loop guard (LLM already used new tool)", () => {
 			asstWithToolCall("manage_tools"),
 			asstWithToolCall("edit"),
 		]);
+		vi.runAllTimers();
 		expect(pi.sendMessage).not.toHaveBeenCalled();
+	});
+
+	it("does NOT suppress when empty trulyAvailable (list path) — loop guard is inert", async () => {
+		// When manage_tools is called for list/deactivate/no-op, trulyAvailable is
+		// empty and calledAnyAfterLastActivation cannot suppress. Even if the LLM
+		// called another tool after manage_tools, the refresh still fires.
+		const pi = makeFakePi({ all: [...BASE_TOOLS], active: ["read", "edit"] });
+		createExtension(pi.api);
+		await pi.fireSessionStart();
+		await exec(pi.tool, { action: "list" });
+		// Simulate: after list, LLM used edit (already active — not a newly-activated tool).
+		await pi.fireAgentEnd([
+			asstWithToolCall("manage_tools"),
+			asstWithToolCall("edit"),
+		]);
+		// Refresh fires because trulyAvailable is empty, loop guard is inert.
+		vi.runAllTimers();
+		expect(pi.sendMessage).toHaveBeenCalledTimes(1);
+		const { msg } = firstSendMessageCall(pi);
+		expect(msg.content).toMatch(/Continue\./);
 	});
 
 	it("does NOT suppress when the matching toolCall happened BEFORE the last manage_tools call", async () => {
@@ -542,7 +634,46 @@ describe("auto-continue — loop guard (LLM already used new tool)", () => {
 			asstWithToolCall("manage_tools"), // deactivate
 			asstWithToolCall("manage_tools"), // re-activate (the "last")
 		]);
+		vi.runAllTimers();
 		expect(pi.sendMessage).toHaveBeenCalledTimes(1);
+	});
+});
+
+describe("auto-continue — batched manage_tools (with other tools)", () => {
+	it("fires refresh at agent_end even when manage_tools was batched with another tool (list path)", async () => {
+		// When manage_tools runs alongside another tool, `terminate:true` is
+		// ignored by the loop (it requires ALL batch members to set it). The run
+		// continues naturally and agent_end fires the refresh.
+		const pi = makeFakePi({ all: [...BASE_TOOLS], active: ["read", "edit"] });
+		createExtension(pi.api);
+		await pi.fireSessionStart();
+		await exec(pi.tool, { action: "list" });
+		// Simulate a run where manage_tools and read were batched together.
+		await pi.fireAgentEnd([
+			asstWithToolCall("manage_tools"),
+			asstWithToolCall("read"),
+		]);
+		vi.runAllTimers();
+		expect(pi.sendMessage).toHaveBeenCalledTimes(1);
+		const { msg, opts } = firstSendMessageCall(pi);
+		expect(msg.customType).toBe("pi-tools-runtime-manager:refresh");
+		expect(opts).toEqual({ triggerTurn: true });
+	});
+
+	it("fires refresh with newly-available tools when batched with another tool (activate path)", async () => {
+		const pi = makeFakePi({ all: [...BASE_TOOLS], active: ["read"] });
+		createExtension(pi.api);
+		await pi.fireSessionStart();
+		await exec(pi.tool, { action: "activate", tools: ["edit"] });
+		await pi.fireAgentEnd([
+			asstWithToolCall("manage_tools"),
+			asstWithToolCall("read"),
+		]);
+		vi.runAllTimers();
+		expect(pi.sendMessage).toHaveBeenCalledTimes(1);
+		const { msg } = firstSendMessageCall(pi);
+		expect(msg.content).toMatch(/edit/);
+		expect(msg.content).toMatch(/Newly available tools/);
 	});
 });
 
@@ -557,13 +688,15 @@ describe("auto-continue — counter cap", () => {
 			// Each "run" must start with an agent_start that does NOT reset
 			// the counter — i.e. lastWasAutoRefresh is true going in.
 			if (i > 0) await pi.fireAgentStart();
-			await exec(pi.tool, { action: "activate", tools: [`edit${i === 0 ? "" : ""}`].slice(0, 0) });
-			// activate a different tool each cycle so added.size > 0
+			// activate a different tool each cycle
 			const tool = ["edit", "write", "bash"][i]!;
 			// reset to make the activate non-no-op each cycle
 			await exec(pi.tool, { action: "deactivate", tools: [tool] });
 			await exec(pi.tool, { action: "activate", tools: [tool] });
 			await pi.fireAgentEnd([asstWithToolCall("manage_tools")]);
+			// Run timers inside the loop so lastWasAutoRefresh is set before
+			// the next fireAgentStart call.
+			vi.runAllTimers();
 		}
 		expect(pi.sendMessage).toHaveBeenCalledTimes(3);
 
@@ -573,6 +706,7 @@ describe("auto-continue — counter cap", () => {
 		await exec(pi.tool, { action: "activate", tools: ["bash"] });
 		const ctx = makeCtx();
 		await pi.fireAgentEnd([asstWithToolCall("manage_tools")], ctx);
+		vi.runAllTimers(); // timer not queued (cap check bails before setTimeout)
 		expect(pi.sendMessage).toHaveBeenCalledTimes(3);
 		// Notify must surface to the user.
 		const notify = (ctx as unknown as { ui: { notify: ReturnType<typeof vi.fn> } }).ui.notify;
@@ -592,20 +726,11 @@ describe("auto-continue — counter cap", () => {
 			await exec(pi.tool, { action: "deactivate", tools: [tool] });
 			await exec(pi.tool, { action: "activate", tools: [tool] });
 			await pi.fireAgentEnd([asstWithToolCall("manage_tools")]);
+			vi.runAllTimers(); // flush so lastWasAutoRefresh is set before next fireAgentStart
 		}
 		expect(pi.sendMessage).toHaveBeenCalledTimes(3);
 
-		// Simulate a fresh user prompt: agent_start fires WITHOUT a preceding
-		// auto-refresh having set lastWasAutoRefresh — so counter resets.
-		// (In practice that means the test must NOT call fireAgentStart
-		// immediately after the previous fireAgentEnd's auto-refresh.
-		// We need to simulate the user's typing path: clear lastWasAutoRefresh
-		// by firing an agent_start that follows a pending refresh, THEN one
-		// that does not.)
-		// In the real loop: every fireAgentEnd that fires sendMessage sets
-		// lastWasAutoRefresh=true; the ensuing agent_start clears it; the
-		// agent_start AFTER that (the user's manual one) is the one that
-		// actually resets the counter.
+		// Simulate a fresh user prompt
 		await pi.fireAgentStart(); // consumes lastWasAutoRefresh from cycle 3
 		await pi.fireAgentStart(); // user-initiated — resets counter
 
@@ -613,6 +738,7 @@ describe("auto-continue — counter cap", () => {
 		await exec(pi.tool, { action: "deactivate", tools: ["edit"] });
 		await exec(pi.tool, { action: "activate", tools: ["edit"] });
 		await pi.fireAgentEnd([asstWithToolCall("manage_tools")]);
+		vi.runAllTimers();
 		expect(pi.sendMessage).toHaveBeenCalledTimes(4);
 	});
 });
@@ -626,6 +752,7 @@ describe("auto-continue — session_start resets state", () => {
 		// New session_start arrives before the agent_end (e.g. session switch).
 		await pi.fireSessionStart();
 		await pi.fireAgentEnd([asstWithToolCall("manage_tools")]);
+		vi.runAllTimers();
 		expect(pi.sendMessage).not.toHaveBeenCalled();
 	});
 
@@ -641,6 +768,7 @@ describe("auto-continue — session_start resets state", () => {
 			await exec(pi.tool, { action: "deactivate", tools: [tool] });
 			await exec(pi.tool, { action: "activate", tools: [tool] });
 			await pi.fireAgentEnd([asstWithToolCall("manage_tools")]);
+			vi.runAllTimers();
 		}
 		expect(pi.sendMessage).toHaveBeenCalledTimes(3);
 
@@ -651,6 +779,7 @@ describe("auto-continue — session_start resets state", () => {
 		await exec(pi.tool, { action: "deactivate", tools: ["edit"] });
 		await exec(pi.tool, { action: "activate", tools: ["edit"] });
 		await pi.fireAgentEnd([asstWithToolCall("manage_tools")]);
+		vi.runAllTimers();
 		expect(pi.sendMessage).toHaveBeenCalledTimes(4);
 	});
 });
