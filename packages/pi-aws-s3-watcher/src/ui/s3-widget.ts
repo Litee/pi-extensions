@@ -126,7 +126,7 @@ export class S3Widget {
 		container.addChild(new DynamicBorder(borderColor));
 		container.addChild(
 			new Text(
-				t.fg("accent", t.bold("S3 Watcher")) +
+				t.fg("accent", t.bold("AWS S3 Watcher")) +
 					t.fg("dim", formatHeaderSuffix(this.getWatches(), this.getPollIntervalMs())),
 				1,
 				0,

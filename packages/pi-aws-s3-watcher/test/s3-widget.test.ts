@@ -99,3 +99,28 @@ describe("S3Widget lifecycle — hide() must prevent later re-show on s3:change"
 		widget.destroy();
 	});
 });
+
+describe("S3Widget header — AWS prefix in title", () => {
+	it("renders 'AWS S3 Watcher' in the widget header", () => {
+		const events = makeEventBus();
+		const watches: WatchMap = { w1: makeActiveWatch() };
+		const widget = new S3Widget({ events } as never, () => watches, () => 60_000);
+
+		const { ctx, setWidget } = makeCtx();
+		widget.show(ctx);
+
+		const registration = setWidget.mock.calls.find(
+			(c) => c[0] === "s3-watcher" && typeof c[1] === "function",
+		);
+		expect(registration).toBeDefined();
+		const factory = registration![1] as (
+			tui: unknown,
+			theme: unknown,
+		) => { render: (w: number) => string[] };
+		const theme = { fg: (_c: string, t: string) => t, bold: (t: string) => t };
+		const rendered = factory(undefined, theme).render(120).join("\n");
+		expect(rendered).toContain("AWS S3 Watcher");
+
+		widget.destroy();
+	});
+});

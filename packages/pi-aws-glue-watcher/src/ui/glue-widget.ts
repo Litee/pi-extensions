@@ -184,7 +184,7 @@ export class GlueWidget {
 		container.addChild(new DynamicBorder(borderColor));
 		container.addChild(
 			new Text(
-				t.fg("accent", t.bold("Glue Watcher")) +
+				t.fg("accent", t.bold("AWS Glue Watcher")) +
 					t.fg("dim", formatHeaderCountsSuffix(watches, this.getPollIntervalMs(), { hasErrors: widgetHasErrors })),
 				1,
 				0,
