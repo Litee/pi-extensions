@@ -235,14 +235,15 @@ describe("/s3-watcher command", () => {
 	});
 });
 
-describe("status-line visibility: always shown (decoupled from rt.enabled)", () => {
+describe("status-line visibility: shown in statusline mode, cleared in widget mode", () => {
 	function makePersistedState(enabled: boolean) {
 		return [
-			{ type: "custom", customType: STATE_CUSTOM_TYPE, data: { savedAt: 1, paused: false, watches: [], baselines: { enabled } } },
+			{ type: "custom", customType: STATE_CUSTOM_TYPE, data: { savedAt: 1, paused: false, watches: [], baselines: { enabled, displayMode: "statusline" } } },
 		];
 	}
 
-	it("shows idle status on session_start even when enabled=false (no persisted state)", async () => {
+	it("clears status line on session_start in default widget mode (no persisted state)", async () => {
+		// Default displayMode is "widget" — status line is cleared, widget is shown instead.
 		const setStatus = vi.fn();
 		const { pi, handlers } = makePi({ activeTools: () => ["read", "bash"] });
 		createExtensionWithClient(pi, makeClient());
@@ -253,9 +254,9 @@ describe("status-line visibility: always shown (decoupled from rt.enabled)", () 
 		});
 		const ours = setStatus.mock.calls.filter((c) => c[0] === STATUS_KEY);
 		expect(ours.length).toBeGreaterThan(0);
-		// Status row is always shown (idle when no watches)
-		const pinned = ours.filter((c) => typeof c[1] === "string");
-		expect(pinned.length).toBeGreaterThan(0);
+		// In widget mode the status row is cleared (undefined), not pinned.
+		const cleared = ours.filter((c) => c[1] === undefined);
+		expect(cleared.length).toBeGreaterThan(0);
 	});
 
 	it("pins the status row on session_start when enabled=true is persisted", async () => {
@@ -273,9 +274,9 @@ describe("status-line visibility: always shown (decoupled from rt.enabled)", () 
 		expect(pinned.at(-1)![1]).toMatch(/^aws-s3: idle$/);
 	});
 
-	it("still shows status even if s3_watcher is NOT in getActiveTools() (decoupled)", async () => {
-		// rt.enabled=false no longer hides the status row — polling and status
-		// are decoupled from tool active state.
+	it("in widget mode status is cleared regardless of s3_watcher active-tool membership", async () => {
+		// displayMode defaults to "widget" — status row is cleared, not pinned.
+		// rt.enabled / active-tool state does not affect this.
 		const setStatus = vi.fn();
 		const { pi, handlers } = makePi({ activeTools: () => ["read", "bash"] });
 		createExtensionWithClient(pi, makeClient());
@@ -285,8 +286,10 @@ describe("status-line visibility: always shown (decoupled from rt.enabled)", () 
 			sessionManager: { getEntries: () => [] },
 		});
 		const ours = setStatus.mock.calls.filter((c) => c[0] === STATUS_KEY);
-		const pinned = ours.filter((c) => typeof c[1] === "string");
-		expect(pinned.length).toBeGreaterThan(0);
+		expect(ours.length).toBeGreaterThan(0);
+		// Widget mode → all calls clear the row (undefined value).
+		const cleared = ours.filter((c) => c[1] === undefined);
+		expect(cleared.length).toBeGreaterThan(0);
 	});
 
 	it("turn_end: activating s3_watcher persists enabled=true and pins the row", async () => {
@@ -311,14 +314,14 @@ describe("status-line visibility: always shown (decoupled from rt.enabled)", () 
 		expect(stateCalls.length).toBeGreaterThan(0);
 		const lastData = stateCalls.at(-1)![1] as { baselines?: { enabled?: boolean } };
 		expect(lastData.baselines?.enabled).toBe(true);
-		// Status row must be pinned
-		const pinned = setStatus.mock.calls
+		// Widget mode (default) — status row is cleared, not pinned.
+		const cleared = setStatus.mock.calls
 			.filter((c) => c[0] === STATUS_KEY)
-			.filter((c) => typeof c[1] === "string");
-		expect(pinned.length).toBeGreaterThan(0);
+			.filter((c) => c[1] === undefined);
+		expect(cleared.length).toBeGreaterThan(0);
 	});
 
-	it("turn_end: deactivating s3_watcher persists enabled=false but keeps status row (polling continues)", async () => {
+	it("turn_end: deactivating s3_watcher persists enabled=false, widget mode clears status row", async () => {
 		const setStatus = vi.fn();
 		const appendEntry = vi.fn();
 		let active: string[] = ["s3_watcher", "read"];

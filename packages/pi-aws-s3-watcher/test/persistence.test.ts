@@ -41,7 +41,7 @@ describe("persistence round-trip", () => {
 			a: makeWatch({ watchId: "a", target: "updated", baseline: { exists: true, etag: '"x"', contentLength: 5 } }),
 			b: makeWatch({ watchId: "b", target: "removed", timeoutAt: 9_999 }),
 		};
-		writeState(pi, { paused: false, enabled: false, watches });
+		writeState(pi, { paused: false, enabled: false, watches, displayMode: "widget" });
 
 		const state = rehydrateStateFromSession(makeSession(entries));
 		expect(state).not.toBeNull();
@@ -60,7 +60,7 @@ describe("persistence round-trip", () => {
 				throw new Error("disk full");
 			},
 		};
-		expect(() => writeState(pi, { paused: false, enabled: false, watches: {} })).not.toThrow();
+		expect(() => writeState(pi, { paused: false, enabled: false, watches: {}, displayMode: "widget" })).not.toThrow();
 	});
 });
 

@@ -14,6 +14,7 @@ import { buildChangeChatMessage, buildStatusLine } from "./format.js";
 import { writeState } from "./persistence.js";
 import { buildTimeoutEvent, detectChanges } from "./poller.js";
 import type { S3Client } from "./s3-client.js";
+import type { S3Widget } from "./ui/s3-widget.js";
 import type { S3Event, WatchMap } from "./types.js";
 
 const AUTH_ERROR_NAMES = new Set([
@@ -68,8 +69,10 @@ export interface Runtime {
 	 * immediately undo that unless persisted enabled=true.
 	 */
 	enabled: boolean;
+	displayMode: "widget" | "statusline";
 	scheduler: PollScheduler;
 	ui: UiSurface | null;
+	widget: S3Widget | null;
 	now: () => number;
 }
 
@@ -80,12 +83,14 @@ export function makeRuntime(pi: Runtime["pi"], client: S3Client): Runtime {
 		watches: {},
 		paused: false,
 		enabled: false,
+		displayMode: "widget",
 		scheduler: new PollScheduler({
 			baseMs: POLL_INTERVAL_MS,
 			maxMs: POLL_INTERVAL_MAX_MS,
 			idleMaxMs: POLL_INTERVAL_MAX_MS,
 		}),
 		ui: null,
+		widget: null,
 		now: Date.now,
 	};
 }
@@ -95,8 +100,10 @@ export function makeRuntime(pi: Runtime["pi"], client: S3Client): Runtime {
 // ---------------------------------------------------------------------------
 
 export function refreshStatus(rt: Runtime): void {
-	// Show status whenever watches are present — regardless of rt.enabled.
-	// rt.enabled only controls tool active-set membership, not polling.
+	if (rt.displayMode !== "statusline") {
+		rt.ui?.setStatus?.(STATUS_KEY, undefined);
+		return;
+	}
 	const hasErrors = Object.values(rt.watches).some(
 		(w) => !w.terminal && w.consecutiveErrors >= POLL_ERROR_THRESHOLD,
 	);
@@ -107,6 +114,22 @@ export function refreshStatus(rt: Runtime): void {
 		hasErrors,
 	});
 	rt.ui?.setStatus?.(STATUS_KEY, colorize(rt.ui?.theme, result.colorAlias, result.text));
+}
+
+/**
+ * Toggle between the permanent widget and the compact status line.
+ * Persists the new mode and immediately updates the UI.
+ */
+export function toggleDisplayMode(rt: Runtime, ctx: unknown): void {
+	rt.displayMode = rt.displayMode === "widget" ? "statusline" : "widget";
+	writeState(rt.pi, rt);
+	if (rt.displayMode === "widget") {
+		rt.ui?.setStatus?.(STATUS_KEY, undefined);
+		rt.widget?.show(ctx);
+	} else {
+		rt.widget?.hide(ctx);
+		refreshStatus(rt);
+	}
 }
 
 // ---------------------------------------------------------------------------

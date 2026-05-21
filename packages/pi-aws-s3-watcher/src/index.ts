@@ -21,13 +21,14 @@ import {
 	makeRuntime,
 	refreshStatus,
 	startPolling,
-	STATUS_KEY,
 	stopPolling,
+	toggleDisplayMode,
 	TOOL_NAME,
 	type Runtime,
 } from "./runtime.js";
 import { createS3Client, type S3Client } from "./s3-client.js";
 import { registerToolIfNeeded } from "./toolAction.js";
+import { S3Widget } from "./ui/s3-widget.js";
 
 /**
  * Wire up the extension with a concrete or injected {@link S3Client}.
@@ -35,6 +36,7 @@ import { registerToolIfNeeded } from "./toolAction.js";
  */
 export function createExtensionWithClient(pi: ExtensionAPI, client: S3Client): void {
 	const rt: Runtime = makeRuntime(pi, client);
+	rt.widget = new S3Widget(pi, () => rt.watches, () => rt.scheduler.intervalMs);
 
 	pi.on("session_start", async (_event, ctx) => {
 		rt.ui = extractUiSurface(ctx);
@@ -48,6 +50,7 @@ export function createExtensionWithClient(pi: ExtensionAPI, client: S3Client): v
 		rt.watches = state?.watches ?? {};
 		rt.paused = state?.paused ?? false;
 		rt.enabled = state?.enabled ?? false;
+		rt.displayMode = state?.displayMode ?? "widget";
 
 		// Pi auto-activates all extension tools on session_start regardless of
 		// user intent. Undo that if we have no persisted enabled=true so the
@@ -74,6 +77,8 @@ export function createExtensionWithClient(pi: ExtensionAPI, client: S3Client): v
 		const activeWatches = Object.values(rt.watches).filter((w) => !w.terminal);
 		if (!rt.paused && activeWatches.length > 0) startPolling(rt);
 		refreshStatus(rt);
+		if (rt.displayMode === "widget") rt.widget?.show(ctx);
+		else rt.widget?.hide(ctx);
 
 		if (Object.keys(rt.watches).length > 0) {
 			// Defer: fire after the interactive UI has painted so the chat
@@ -92,7 +97,7 @@ export function createExtensionWithClient(pi: ExtensionAPI, client: S3Client): v
 		}
 	});
 
-	pi.on("turn_end", () => {
+	pi.on("turn_end", (_event, ctx) => {
 		// Reconcile rt.enabled with the active-tools list. The user may have
 		// run manage_tools({action:"activate"}) or deactivate during the turn.
 		const intent = reconcileToolActivation(TOOL_NAME, rt.enabled, pi.getActiveTools());
@@ -103,6 +108,8 @@ export function createExtensionWithClient(pi: ExtensionAPI, client: S3Client): v
 			const anyActive = Object.values(rt.watches).some((w) => !w.terminal);
 			if (!rt.paused && anyActive && !rt.scheduler.isRunning) startPolling(rt);
 			refreshStatus(rt);
+			if (rt.displayMode === "widget") rt.widget?.show(ctx);
+			else rt.widget?.hide(ctx);
 		} else {
 			// Deactivate: remove tool from active set and persist, but keep
 			// polling running — notifications still fire with a re-activation hint.
@@ -112,10 +119,11 @@ export function createExtensionWithClient(pi: ExtensionAPI, client: S3Client): v
 		}
 	});
 
-	pi.on("session_shutdown", () => {
+	pi.on("session_shutdown", (_event, ctx) => {
 		stopPolling(rt);
 		try {
-			rt.ui?.setStatus?.(STATUS_KEY, undefined);
+			rt.widget?.hide(ctx);
+			rt.widget?.destroy();
 		} catch {
 			/* noop — UI may already be torn down */
 		}
@@ -161,9 +169,14 @@ export function createExtensionWithClient(pi: ExtensionAPI, client: S3Client): v
 					);
 					return Promise.resolve();
 				}
+				case "display": {
+					toggleDisplayMode(rt, ctx);
+					ui?.notify?.(`s3-watcher: switched to ${rt.displayMode} mode.`, "info");
+					return Promise.resolve();
+				}
 				default:
 					ui?.notify?.(
-						`s3-watcher: unknown subcommand '${sub}'. Use: pause | resume | status`,
+						`s3-watcher: unknown subcommand '${sub}'. Use: pause | resume | status | display`,
 						"warning",
 					);
 					return Promise.resolve();
