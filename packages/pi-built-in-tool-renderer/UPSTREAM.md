@@ -9,18 +9,12 @@ diff against upstream and pick up future changes.
 - **Upstream path:** `packages/coding-agent/examples/extensions/built-in-tool-renderer.ts`
 - **License:** MIT, © Mario Zechner
 
-## Copied version
+## Copied versions
 
-| Local file | Upstream commit | Upstream commit date | Upstream commit subject |
-|---|---|---|---|
-| `src/index.ts` | [`3e5ad67`](https://github.com/badlogic/pi-mono/commit/3e5ad67e0f325d4888f82f9b82966218eb4407f5) | 2026-05-07 | `chore: migrate pi packages to earendil works scope` |
+- **Initially ported:** `f7cd613` (local commit `6eb59e7`)
+- **Last synced:** `3e5ad67` (`chore: migrate pi packages to earendil works scope`, 2026-05-07)
 
-Originally ported in local commit `6eb59e7` (`feat(packages): add pi-plan-mode and pi-built-in-tool-renderer`, 2026-05-06) from upstream `f7cd613`. Re-synced to `3e5ad67` alongside the repo-wide `@mariozechner` → `@earendil-works` namespace migration.
-
-For the list of intentional local divergences from upstream, see the
-**Differences from upstream** section in [`README.md`](./README.md). That is
-the canonical location; this file stays focused on which upstream commit was
-copied and how to diff against future upstream work.
+For intentional local divergences see **Differences from upstream** in [`README.md`](./README.md).
 
 ## How to check for upstream changes
 

@@ -11,32 +11,18 @@ information below to diff against upstream and pick up future changes.
 - **License file:** [`LICENSE-APACHE-2.0`](./LICENSE-APACHE-2.0)
 - **Attribution:** [`NOTICE`](./NOTICE)
 
-## Copied files
+## Copied versions
 
 The three Mustache-style prompt templates that drive Codex's `/goal`
 continuation lifecycle are copied verbatim. Variables in the templates
 (`{{ objective }}`, `{{ tokens_used }}`, etc.) are filled in by `src/prompt.ts`
 before the rendered prompt is injected into the agent context.
 
-| Local file | Upstream commit | Upstream commit date |
-|---|---|---|
-| `src/templates/goals/continuation.md` | [`0d344ac`](https://github.com/openai/codex/commit/0d344ac) | 2026-05-18 |
-| `src/templates/goals/budget_limit.md` | [`99157f3`](https://github.com/openai/codex/commit/99157f37977b251670b267734a1ac640e20acc95) | 2026-05-13 |
-| `src/templates/goals/objective_updated.md` | [`99157f3`](https://github.com/openai/codex/commit/99157f37977b251670b267734a1ac640e20acc95) | 2026-05-13 |
+- **Initially ported:** `99157f3` (initial copy of all three templates, 2026-05-13)
+- **Last synced:** `0d344ac` (`continuation.md` only — `goal: pause continuation loops on usage limits and blockers (#23094)`, 2026-05-18)
 
-The `continuation.md` row was bumped to `0d344ac` (subject:
-*"goal: pause continuation loops on usage limits and blockers (#23094)"*)
-when issue #0004 ported the upstream "Blocked audit" rules — the
-`update_goal({status:"blocked"})` lifecycle path — into
-`src/prompt.ts::buildContinuationMessage` and the new `src/updateGoalTool.ts`.
-(Note: the local layout inlines the continuation prompt in `src/prompt.ts`
-rather than carrying a literal `templates/goals/continuation.md` file; the
-table row tracks upstream provenance for the rendered prompt regardless of
-where it physically lives in the local tree.)
-
-The `99157f3` SHA is the `main` HEAD at the time of the initial copy. We
-record HEAD here (rather than the file-level last-touch SHA) because the
-shallow clone used during the port did not retain per-file history.
+The `99157f3` SHA is the `main` HEAD at the time of the initial copy (the
+shallow clone used during the port did not retain per-file history).
 
 ## What is original to this package
 

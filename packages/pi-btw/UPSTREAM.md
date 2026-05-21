@@ -10,22 +10,12 @@ below to diff against upstream and pick up future changes.
   `skills/btw/SKILL.md`, `LICENSE`
 - **License:** MIT, © Dan Bachelder
 
-## Copied version
+## Copied versions
 
-| Local file | Upstream commit | Upstream commit date | Upstream commit subject |
-|---|---|---|---|
-| `src/index.ts` | [`88980a4`](https://github.com/dbachelder/pi-btw/commit/88980a42076eb0f5e197345ad0e5d78697d00231) | 2026-05-12 | `feat: add mouse and arrow transcript scrolling (#16)` |
-| `test/btw.runtime.test.ts` | [`88980a4`](https://github.com/dbachelder/pi-btw/commit/88980a42076eb0f5e197345ad0e5d78697d00231) | 2026-05-12 | `feat: add mouse and arrow transcript scrolling (#16)` |
-| `skills/btw/SKILL.md` | [`88980a4`](https://github.com/dbachelder/pi-btw/commit/88980a42076eb0f5e197345ad0e5d78697d00231) | 2026-05-12 | `feat: add mouse and arrow transcript scrolling (#16)` |
-| `LICENSE` | [`88980a4`](https://github.com/dbachelder/pi-btw/commit/88980a42076eb0f5e197345ad0e5d78697d00231) | 2026-05-12 | `feat: add mouse and arrow transcript scrolling (#16)` |
+- **Initially ported:** `88980a4` (initial port)
+- **Last synced:** `88980a4` (`feat: add mouse and arrow transcript scrolling (#16)`, 2026-05-12)
 
-Upstream layout is `extensions/btw.ts`; locally it lives at `src/index.ts`
-to match this workspace's per-package convention.
-
-For the list of intentional local divergences from upstream, see the
-**Differences from upstream** section in [`README.md`](./README.md). That is
-the canonical location; this file stays focused on which upstream commit was
-copied and how to diff against future upstream work.
+For intentional local divergences see **Differences from upstream** in [`README.md`](./README.md).
 
 ## How to check for upstream changes
 

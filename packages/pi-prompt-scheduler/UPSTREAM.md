@@ -9,24 +9,12 @@ below to diff against upstream and pick up future changes.
 - **Upstream path:** (repository root)
 - **License:** MIT, © tintinweb
 
-## Copied version
+## Copied versions
 
-| Local file | Upstream commit | Upstream commit date | Upstream commit subject |
-|---|---|---|---|
-| `src/**` (v0.3.0) | [`8d36dfb`](https://github.com/tintinweb/pi-schedule-prompt/commit/8d36dfbb3657bbfa1127f4ca3e5adb29c7bf12d1) | 2026-05-03 | `Update package.json` |
+- **Initially ported:** `a51cf5a` (v0.3.0 release)
+- **Last synced:** `8d36dfb` (`Update package.json`, 2026-05-03)
 
-Original port from upstream `a51cf5a` (v0.3.0 release). Re-synced to `8d36dfb`; the two intervening upstream commits (`1d5f1d4` .gitignore/.npmignore, `8d36dfb` description tweak) don't apply locally (this package has no local ignore files and our description is a different LLM-only fork description).
-
-Ported locally as `pi-prompt-scheduler` — a trimmed, LLM-only fork of upstream
-`pi-schedule-prompt`. The manual `add` flow and its supporting TUI widgets
-(`src/ui/add-flow.ts`, `src/ui/schedule-input.ts`) are intentionally omitted;
-jobs are created exclusively through the LLM-facing `schedule_prompt` tool,
-and the `/schedule-prompt` command only browses / toggles / removes them.
-
-For the list of intentional local divergences from upstream, see the
-**Differences from upstream** section in [`README.md`](./README.md). That is
-the canonical location; this file stays focused on which upstream commit was
-copied and how to diff against future upstream work.
+For intentional local divergences see **Differences from upstream** in [`README.md`](./README.md).
 
 ## How to check for upstream changes
 
