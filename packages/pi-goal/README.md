@@ -24,7 +24,7 @@ The completion-audit prompt and lifecycle templates are ported verbatim from
   complete. The agent is instructed to call it only after a strict
   evidence-based completion audit; calling it ends the loop deterministically.
 - **Iteration safety net** — Stops after a configurable number of turns
-  (default: 100) regardless of token usage, in case completion is never
+  (default: 20) regardless of token usage, in case completion is never
   signalled.
 - **Token budget** — Tracked via `ctx.getContextUsage()`. When tokens consumed
   since goal start exceed the budget, the agent is given Codex's
@@ -84,14 +84,14 @@ optional.
 
 ```json
 {
-  "maxIterations": 100,
+  "maxIterations": 20,
   "tokenBudget": 200000
 }
 ```
 
 | Field | Type | Default | Description |
 |---|---|---|---|
-| `maxIterations` | number | `100` | Hard safety cap on turn count. |
+| `maxIterations` | number | `20` | Hard safety cap on turn count. |
 | `tokenBudget` | number | `200000` | Tokens consumed since goal start before `budget_limit.md` is injected. |
 
 ## Status indicator

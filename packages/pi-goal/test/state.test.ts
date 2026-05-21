@@ -22,8 +22,11 @@ beforeEach(() => {
 });
 
 describe("DEFAULT_MAX_ITERATIONS", () => {
-	it("is a generous safety cap", () => {
-		expect(DEFAULT_MAX_ITERATIONS).toBeGreaterThanOrEqual(50);
+	// Issue #0002: cap loop at 20 iterations so a misconfigured/stuck goal
+	// can't burn tokens indefinitely. 20 is a reasonable upper bound for
+	// most goals; users who need more can override via ~/.pi/agent/pi-goal.json.
+	it("is 20 (issue #0002)", () => {
+		expect(DEFAULT_MAX_ITERATIONS).toBe(20);
 	});
 });
 

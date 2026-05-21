@@ -27,8 +27,8 @@ export interface PersistedGoalState {
 /** Namespaced custom-entry key to avoid collisions with other extensions. */
 export const STATE_CUSTOM_TYPE = "pi-goal:state";
 
-/** Default safety cap for autonomous iterations. */
-export const DEFAULT_MAX_ITERATIONS = 100;
+/** Default safety cap for autonomous iterations (issue #0002). */
+export const DEFAULT_MAX_ITERATIONS = 20;
 
 /** Default token budget. Codex defaults are model-dependent; 200k is a generous default. */
 export const DEFAULT_TOKEN_BUDGET = 200_000;
