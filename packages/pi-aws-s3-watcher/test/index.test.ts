@@ -14,11 +14,12 @@ import { CUSTOM_MESSAGE_TYPE, STATUS_KEY } from "../src/runtime.js";
 import type { HeadObjectResult, S3Client } from "../src/s3-client.js";
 import { resetToolRegisteredForTests } from "../src/toolAction.js";
 import {
-	ITEM_CLOSE,
-	ITEM_DISPLAY_PREFIX,
-	ITEM_PAUSED_PREFIX,
-	ITEM_USER_DEFAULT_PREFIX,
-	MENU_TITLE,
+		ITEM_BROWSE_PREFIX,
+		ITEM_CLOSE,
+		ITEM_DISPLAY_PREFIX,
+		ITEM_PAUSED_PREFIX,
+		ITEM_USER_DEFAULT_PREFIX,
+		MENU_TITLE,
 } from "../src/command.js";
 
 // ---------------------------------------------------------------------------
@@ -496,6 +497,7 @@ describe("/s3-watcher TUI menu", () => {
 		const [title, items] = select.mock.calls[0]! as [string, string[]];
 		expect(title).toBe(MENU_TITLE);
 		expect(items).toEqual([
+			`${ITEM_BROWSE_PREFIX} (0)`,
 			`${ITEM_PAUSED_PREFIX} off`,
 			`${ITEM_DISPLAY_PREFIX} widget`,
 			`${ITEM_USER_DEFAULT_PREFIX} unset`,
@@ -523,7 +525,7 @@ describe("/s3-watcher TUI menu", () => {
 		const notify = vi.fn();
 		await commands["s3-watcher"]!.handler("", makeMenuCtx(select, notify));
 		expect(select).toHaveBeenCalledTimes(2);
-		expect((select.mock.calls[1]![1] as string[])[0]).toBe(`${ITEM_PAUSED_PREFIX} on`);
+		expect((select.mock.calls[1]![1] as string[])[1]).toBe(`${ITEM_PAUSED_PREFIX} on`);
 		expect(notify).toHaveBeenCalledWith(
 			expect.stringMatching(/s3-watcher: paused/),
 			"info",
@@ -540,7 +542,7 @@ describe("/s3-watcher TUI menu", () => {
 			.mockResolvedValueOnce(ITEM_CLOSE);
 		const notify = vi.fn();
 		await commands["s3-watcher"]!.handler("", makeMenuCtx(select, notify));
-		expect((select.mock.calls[1]![1] as string[])[1]).toBe(
+		expect((select.mock.calls[1]![1] as string[])[2]).toBe(
 			`${ITEM_DISPLAY_PREFIX} statusline`,
 		);
 		expect(notify).toHaveBeenCalledWith(

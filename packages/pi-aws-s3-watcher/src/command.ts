@@ -6,13 +6,11 @@
  * been removed — every action is reachable from the menu instead.
  *
  * Menu items (flat — no nested settings sub-menu):
+ *   - Browse watches (N)        → opens the WatchesView overlay
  *   - Paused                    → switch (off|on)
  *   - Display mode              → switch (widget|statusline) — session-scoped
  *   - User default display mode → cycle (unset|widget|statusline) — persisted
  *   - Close
- *
- * S3 has no equivalent of the Glue WatchesView yet, so there is no "Browse"
- * row; the widget / status-line surfaces remain the live view of watches.
  */
 
 import { extractUiSurface } from "pi-watcher-core/ui-surface";
@@ -26,12 +24,14 @@ import {
 	toggleDisplayMode,
 	type Runtime,
 } from "./runtime.js";
+import { WatchesView } from "./ui/watches-view.js";
 
 // ---------------------------------------------------------------------------
 // Menu labels (exported for tests)
 // ---------------------------------------------------------------------------
 
 export const MENU_TITLE = "S3 Watcher";
+export const ITEM_BROWSE_PREFIX = "Browse watches";
 export const ITEM_PAUSED_PREFIX = "Paused:";
 export const ITEM_DISPLAY_PREFIX = "Display mode:";
 export const ITEM_USER_DEFAULT_PREFIX = "User default display mode:";
@@ -80,16 +80,23 @@ export async function runS3WatcherCommand(
 	}
 
 	while (true) {
+		const watchCount = Object.keys(rt.watches).length;
 		const sessionMode = rt.displayMode;
 		const userDefault: DisplayMode | undefined = loadConfig().defaultDisplayMode;
 
+		const browseItem = `${ITEM_BROWSE_PREFIX} (${watchCount})`;
 		const pausedItem = `${ITEM_PAUSED_PREFIX} ${rt.paused ? "on" : "off"}`;
 		const displayItem = `${ITEM_DISPLAY_PREFIX} ${sessionMode}`;
 		const userDefaultItem = `${ITEM_USER_DEFAULT_PREFIX} ${userDefaultLabel(userDefault)}`;
 
-		const items = [pausedItem, displayItem, userDefaultItem, ITEM_CLOSE];
+		const items = [browseItem, pausedItem, displayItem, userDefaultItem, ITEM_CLOSE];
 		const choice = await select(MENU_TITLE, items);
 		if (!choice || choice === ITEM_CLOSE) return;
+
+		if (choice.startsWith(ITEM_BROWSE_PREFIX)) {
+			await openBrowseView(ctx, rt);
+			continue;
+		}
 
 		if (choice.startsWith(ITEM_PAUSED_PREFIX)) {
 			togglePaused(rt);
@@ -126,6 +133,55 @@ export async function runS3WatcherCommand(
 			continue;
 		}
 	}
+}
+
+async function openBrowseView(ctx: unknown, rt: Runtime): Promise<void> {
+	const surface = extractUiSurface(ctx);
+	const ctxWithCustom = ctx as {
+		ui?: {
+			custom?: <T>(
+				factory: (
+					tui: unknown,
+					theme: unknown,
+					kb: unknown,
+					done: (v: T) => void,
+				) => unknown,
+				options?: unknown,
+			) => Promise<T>;
+		};
+	};
+	if (!ctxWithCustom?.ui?.custom) {
+		surface?.notify?.(
+			"s3-watcher: browse requires an interactive UI.",
+			"warning",
+		);
+		return;
+	}
+	await ctxWithCustom.ui.custom<void>(
+		(tui, theme, _kb, done) => {
+			const requestRender = (tui as { requestRender: () => void }).requestRender.bind(tui);
+			return new WatchesView(
+				() => rt.watches,
+				theme as never,
+				requestRender,
+				() => done(undefined),
+				(watchId) => {
+					delete rt.watches[watchId];
+					const stillActive = Object.values(rt.watches).some((w) => !w.terminal);
+					if (!stillActive) stopPolling(rt);
+					writeState(rt.pi, rt);
+					rt.pi.events.emit("s3:change", {});
+				},
+				() => rt.scheduler.intervalMs,
+				() => toggleDisplayMode(rt, ctx),
+				() => rt.displayMode,
+			);
+		},
+		{
+			overlay: true,
+			overlayOptions: { width: "100%", maxHeight: "100%", anchor: "bottom-center" },
+		},
+	);
 }
 
 function togglePaused(rt: Runtime): void {
