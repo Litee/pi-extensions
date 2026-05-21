@@ -78,8 +78,48 @@ A watch fires and self-marks terminal when the run reaches one of:
 | `enable`       | Activate `glue_watcher` and start the full polling/widget lifecycle (persisted). |
 | `disable`      | Deactivate `glue_watcher` and stop polling (persisted).                 |
 | `status`       | Notify enabled/paused state, watch counts, poll interval.               |
+| `settings`     | Open an interactive TUI menu for session-level and user-level display mode. The user-level choice is persisted to `~/.pi/agent/pi-aws-glue-watcher.json` and seeds future sessions. |
 | (no args)      | Open the interactive watches view (TUI overlay).                        |
 | `jobs`         | Alias for no-args — opens the watches view.                             |
+
+### Display modes
+
+The extension renders progress in one of two modes:
+
+- **`widget`** (default) — a permanent below-editor panel listing every active
+  watch, its run state, and the current poll interval.
+- **`statusline`** — a single compact status-line row pinned to the footer.
+
+Flip between them either via `/glue-watcher settings` (interactive menu) or by
+pressing `t` inside the watches overlay. The current session's mode persists
+in the session log; the **user default** — the mode used to seed *fresh*
+sessions — lives in `~/.pi/agent/pi-aws-glue-watcher.json`.
+
+## User config
+
+Optional user-level config at `~/.pi/agent/pi-aws-glue-watcher.json` seeds
+defaults for fresh sessions:
+
+```json
+{
+  "defaultDisplayMode": "statusline"
+}
+```
+
+| Key                  | Type                          | Effect                                                                 |
+|----------------------|-------------------------------|------------------------------------------------------------------------|
+| `defaultDisplayMode` | `"widget"` \| `"statusline"`  | Initial display mode used when no `displayMode` is persisted yet.      |
+
+Precedence on session load: **persisted state > user config > hardcoded
+default (`widget`)**. Once you toggle the display via `/glue-watcher settings`
+(session row) or the `t` key in the watches overlay, the persisted choice
+wins on subsequent reloads. Toggling the user-default row in `/glue-watcher
+settings` rewrites this JSON file so future sessions seed from it.
+
+Fail-soft: a missing file, unreadable file, invalid JSON, or unknown value
+(e.g. `defaultDisplayMode: "inline"`) is silently ignored and the runtime
+falls back to the hardcoded default. There is no project-level config
+support.
 
 ## Authentication
 
@@ -110,7 +150,8 @@ src/
   poller.ts        — snapshotJobRun, snapshotWorkflowRun, detectChanges (pure)
   runtime.ts       — Runtime, PollScheduler, pollOnce
   toolAction.ts    — glue_watcher tool registration + handler
-  command.ts       — /glue-watcher subcommand parser + executor
+  command.ts       — /glue-watcher subcommand parser + executor + settings TUI
+  config.ts        — user-level config loader (~/.pi/agent/pi-aws-glue-watcher.json)
   persistence.ts   — createPersistence delegate
   format.ts        — chat message + status-line formatters
   index.ts         — session lifecycle + /glue-watcher command registration
@@ -122,6 +163,7 @@ src/
     widgetRows.ts    — widget row rendering helpers
 test/
   command.test.ts
+  config.test.ts
   format.test.ts
   index.test.ts
   persistence.test.ts

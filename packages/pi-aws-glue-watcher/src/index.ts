@@ -22,6 +22,7 @@ import { reconcileToolActivation, syncToolActiveState } from "pi-watcher-core/to
 import { extractUiSurface } from "pi-watcher-core/ui-surface";
 
 import { createGlueClient, type GlueClient } from "./glue-client.js";
+import { loadConfig } from "./config.js";
 import { buildStartupChatMessage } from "./format.js";
 import type { WatchMap } from "./types.js";
 import { rehydrateStateFromSession, writeState } from "./persistence.js";
@@ -53,7 +54,11 @@ export function createExtensionWithClient(pi: ExtensionAPI, client: GlueClient):
 		const state = rehydrateStateFromSession(ctx);
 		rt.watches = state?.watches ?? {};
 		rt.paused = state?.paused ?? false;
-		rt.displayMode = state?.displayMode ?? "widget";
+		// Display-mode precedence: persisted state > user config > hardcoded
+		// default. loadConfig() runs at session_start (rather than at module-eval
+		// time) so it stays cheap and lets tests override per call.
+		const { defaultDisplayMode } = loadConfig();
+		rt.displayMode = state?.displayMode ?? defaultDisplayMode ?? "widget";
 
 		// If watches survived the session log, the user must have enabled and
 		// used the tool previously. Treat watches-present as an implicit
@@ -193,6 +198,8 @@ export {
 	stopWatchPolling,
 } from "./runtime.js";
 export { handleToolAction, registerToolIfNeeded } from "./toolAction.js";
+export { configFilePath, loadConfig, saveConfig } from "./config.js";
+export type { DisplayMode, GlueWatcherConfig } from "./config.js";
 export { STATE_CUSTOM_TYPE } from "./persistence.js";
 export { buildStatusLine, buildChangeChatMessage, buildStartupChatMessage, buildWatchEntry } from "./format.js";
 export { snapshotJobRun, snapshotWorkflowRun, detectJobChanges, detectWorkflowChanges } from "./poller.js";

@@ -10,6 +10,7 @@
 import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
 import { extractUiSurface } from "pi-watcher-core/ui-surface";
 
+import { loadConfig, saveConfig, type DisplayMode } from "./config.js";
 import type { GlueClient } from "./glue-client.js";
 import { writeState } from "./persistence.js";
 import {
@@ -28,6 +29,7 @@ import { WatchesView } from "./ui/watches-view.js";
 export type GlueWatcherSubcommand =
 	| { kind: "browse" }
 	| { kind: "status" }
+	| { kind: "settings" }
 	| { kind: "unknown"; raw: string };
 
 /**
@@ -45,6 +47,8 @@ export function parseSubcommand(args: string | undefined): GlueWatcherSubcommand
 			return { kind: "browse" };
 		case "status":
 			return { kind: "status" };
+		case "settings":
+			return { kind: "settings" };
 		default:
 			return { kind: "unknown", raw: args ?? "" };
 	}
@@ -125,9 +129,87 @@ export async function runGlueWatcherCommand(
 
 		case "unknown":
 			ui?.notify?.(
-				`glue-watcher: unknown subcommand '${parsed.raw}'. Use: status | browse (or no args)`,
+				`glue-watcher: unknown subcommand '${parsed.raw}'. Use: status | browse | settings (or no args)`,
 				"warning",
 			);
 			return;
+
+		case "settings": {
+			await runSettingsMenu(rt, ctx);
+			return;
+		}
+	}
+}
+
+// ---------------------------------------------------------------------------
+// /glue-watcher settings TUI
+// ---------------------------------------------------------------------------
+
+type SettingsCtx = {
+	hasUI?: boolean;
+	ui?: {
+		select?: (title: string, items: string[]) => Promise<string | null | undefined>;
+		notify?: (msg: string, level?: "info" | "warning" | "error") => void;
+	};
+};
+
+/**
+ * Interactive settings menu. Loops so the menu redraws with the
+ * current state after each toggle. Exits on "Back" / Esc.
+ *
+ * Two scopes:
+ * - **Session**: flips `rt.displayMode` for THIS session only (persists
+ *   via the watcher state log).
+ * - **User default**: writes `defaultDisplayMode` into
+ *   `~/.pi/agent/pi-aws-glue-watcher.json` so future sessions seed
+ *   from it.
+ */
+export async function runSettingsMenu(rt: Runtime, ctx: unknown): Promise<void> {
+	const settingsCtx = ctx as SettingsCtx;
+	const surface = extractUiSurface(ctx);
+	const select = settingsCtx?.ui?.select;
+	if (!select) {
+		surface?.notify?.(
+			"glue-watcher: settings menu requires an interactive UI.",
+			"warning",
+		);
+		return;
+	}
+	while (true) {
+		const sessionMode = rt.displayMode;
+		const userDefault: DisplayMode | undefined = loadConfig().defaultDisplayMode;
+		const userDefaultLabel = userDefault ?? "(unset — falls back to widget)";
+		const items = [
+			`Session display mode: ${sessionMode}`,
+			`User default display mode: ${userDefaultLabel}`,
+			"Back",
+		];
+		const choice = await select("glue-watcher settings", items);
+		if (!choice || choice === "Back") return;
+		if (choice.startsWith("Session display mode:")) {
+			toggleDisplayMode(rt, ctx);
+			surface?.notify?.(
+				`glue-watcher: session display → ${rt.displayMode}.`,
+				"info",
+			);
+			continue;
+		}
+		if (choice.startsWith("User default display mode:")) {
+			const next: DisplayMode =
+				(userDefault ?? "widget") === "widget" ? "statusline" : "widget";
+			const ok = saveConfig({ defaultDisplayMode: next });
+			if (ok) {
+				surface?.notify?.(
+					`glue-watcher: user default → ${next} (saved to ~/.pi/agent/pi-aws-glue-watcher.json).`,
+					"info",
+				);
+			} else {
+				surface?.notify?.(
+					"glue-watcher: failed to write user config; change was not saved.",
+					"warning",
+				);
+			}
+			continue;
+		}
 	}
 }
