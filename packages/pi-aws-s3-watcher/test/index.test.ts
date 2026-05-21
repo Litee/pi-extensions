@@ -2,6 +2,11 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
 
+vi.mock("../src/config.js", () => ({
+	loadConfig: vi.fn(() => ({})),
+}));
+import { loadConfig } from "../src/config.js";
+
 import { createExtensionWithClient } from "../src/index.js";
 import { STATE_CUSTOM_TYPE } from "../src/persistence.js";
 import { CUSTOM_MESSAGE_TYPE, POLL_INTERVAL_MS, STATUS_KEY } from "../src/runtime.js";
@@ -75,6 +80,7 @@ function makeClient(resp: HeadObjectResult = { exists: false }): S3Client {
 
 beforeEach(() => {
 	resetToolRegisteredForTests();
+	vi.mocked(loadConfig).mockReturnValue({});
 });
 
 afterEach(() => {
@@ -442,5 +448,62 @@ describe("polling decoupled from rt.enabled (#0003)", () => {
 		expect(changeCalls.length).toBeGreaterThan(0);
 		const content = (changeCalls[0]![0] as { content: string }).content;
 		expect(content).not.toContain("manage_tools");
+	});
+});
+
+describe("user config: defaultDisplayMode (#0005)", () => {
+	function makeUiCtx(setStatus: ReturnType<typeof vi.fn>, entries: unknown[] = []) {
+		return {
+			hasUI: true,
+			ui: { hasUI: true, setStatus, theme: { fg: (_c: string, t: string) => t } },
+			sessionManager: { getEntries: () => entries },
+		};
+	}
+
+	it("uses defaultDisplayMode='statusline' from user config when no persisted state", async () => {
+		vi.mocked(loadConfig).mockReturnValue({ defaultDisplayMode: "statusline" });
+		const setStatus = vi.fn();
+		const { pi, handlers } = makePi({ activeTools: () => ["read"] });
+		createExtensionWithClient(pi, makeClient());
+		await handlers.sessionStart!({}, makeUiCtx(setStatus));
+		const ours = setStatus.mock.calls.filter((c) => c[0] === STATUS_KEY);
+		const pinned = ours.filter((c) => typeof c[1] === "string");
+		expect(pinned.length).toBeGreaterThan(0);
+		expect(pinned.at(-1)![1]).toMatch(/^aws-s3: idle$/);
+	});
+
+	it("falls back to widget when user config has no defaultDisplayMode", async () => {
+		vi.mocked(loadConfig).mockReturnValue({});
+		const setStatus = vi.fn();
+		const { pi, handlers } = makePi({ activeTools: () => ["read"] });
+		createExtensionWithClient(pi, makeClient());
+		await handlers.sessionStart!({}, makeUiCtx(setStatus));
+		const ours = setStatus.mock.calls.filter((c) => c[0] === STATUS_KEY);
+		// Widget mode → all calls clear the row (undefined).
+		const cleared = ours.filter((c) => c[1] === undefined);
+		expect(cleared.length).toBeGreaterThan(0);
+		expect(ours.every((c) => c[1] === undefined)).toBe(true);
+	});
+
+	it("persisted displayMode wins over user config", async () => {
+		vi.mocked(loadConfig).mockReturnValue({ defaultDisplayMode: "statusline" });
+		const setStatus = vi.fn();
+		const { pi, handlers } = makePi({ activeTools: () => ["read"] });
+		createExtensionWithClient(pi, makeClient());
+		await handlers.sessionStart!({}, makeUiCtx(setStatus, [
+			{
+				type: "custom",
+				customType: STATE_CUSTOM_TYPE,
+				data: {
+					savedAt: 1,
+					paused: false,
+					watches: [],
+					baselines: { enabled: false, displayMode: "widget" },
+				},
+			},
+		]));
+		const ours = setStatus.mock.calls.filter((c) => c[0] === STATUS_KEY);
+		// Persisted widget mode → status row cleared even though config asked for statusline.
+		expect(ours.every((c) => c[1] === undefined)).toBe(true);
 	});
 });

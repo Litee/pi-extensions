@@ -13,6 +13,7 @@ import { seedMissingBaselines } from "pi-watcher-core/seed-baselines";
 import { reconcileToolActivation, removeToolFromActive } from "pi-watcher-core/tool-activation";
 import { extractUiSurface } from "pi-watcher-core/ui-surface";
 
+import { loadConfig } from "./config.js";
 import { buildStartupChatMessage } from "./format.js";
 import { rehydrateStateFromSession, writeState } from "./persistence.js";
 import { snapshotObject } from "./poller.js";
@@ -50,7 +51,11 @@ export function createExtensionWithClient(pi: ExtensionAPI, client: S3Client): v
 		rt.watches = state?.watches ?? {};
 		rt.paused = state?.paused ?? false;
 		rt.enabled = state?.enabled ?? false;
-		rt.displayMode = state?.displayMode ?? "widget";
+		// Display-mode precedence: persisted state > user config > hardcoded
+		// default. Loading the config here (rather than at module-eval time)
+		// keeps it cheap and lets tests override per session_start call.
+		const { defaultDisplayMode } = loadConfig();
+		rt.displayMode = state?.displayMode ?? defaultDisplayMode ?? "widget";
 
 		// Pi auto-activates all extension tools on session_start regardless of
 		// user intent. Undo that if we have no persisted enabled=true so the

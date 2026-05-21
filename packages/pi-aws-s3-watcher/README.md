@@ -83,6 +83,31 @@ Credentials resolve through `fromIni({ profile })`, so the same
 picked up. A SigV4 session token refresh from `aws sso login`
 is read on the next poll without restarting pi.
 
+## User config
+
+Optional user-level config at `~/.pi/agent/pi-aws-s3-watcher.json`
+seeds defaults for fresh sessions:
+
+```json
+{
+  "defaultDisplayMode": "statusline"
+}
+```
+
+| Key                  | Type                          | Effect                                                                 |
+|----------------------|-------------------------------|------------------------------------------------------------------------|
+| `defaultDisplayMode` | `"widget"` \| `"statusline"`  | Initial display mode used when no `displayMode` is persisted yet.      |
+
+Precedence on session load: **persisted state > user config > hardcoded
+default (`widget`)**. Once you toggle the display via `/s3-watcher
+display`, the persisted choice wins on subsequent reloads — the config
+file only seeds the first session.
+
+Fail-soft: a missing file, unreadable file, invalid JSON, or unknown
+value (e.g. `defaultDisplayMode: "inline"`) is silently ignored and
+the runtime falls back to the hardcoded default. There is no
+project-level config support.
+
 ## Security notes
 
 - No subprocess spawns. All AWS access goes through
@@ -107,12 +132,14 @@ src/
   toolAction.ts    — s3_watcher tool registration + handler
   persistence.ts   — createPersistence delegate
   format.ts        — chat message + status-line formatters
+  config.ts        — user-level config loader (~/.pi/agent/pi-aws-s3-watcher.json)
   index.ts         — session lifecycle + /s3-watcher command
 skills/
   aws-s3-watcher/
     SKILL.md       — LLM-facing usage guide (activation, actions, error handling)
 test/
   uri.test.ts
+  config.test.ts
   sdk-client.test.ts
   poller.test.ts
   runtime.test.ts
