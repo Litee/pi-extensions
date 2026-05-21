@@ -301,13 +301,166 @@ interface DetailsShape {
 	active: string[];
 	total: number;
 	rows: { name: string; active: boolean; description: string }[];
+	changed: { activated: string[]; deactivated: string[] };
 	ignoredUnknown: string[];
 	ignoredProtected: string[];
+}
+// Minimal fake theme — every styler is identity so the rendered Text contains
+// the raw substrings we want to assert on.
+function fakeTheme() {
+	return {
+		fg: (_role: string, s: string) => s,
+		bold: (s: string) => s,
+	} as unknown as Parameters<NonNullable<ToolDefinition["renderResult"]>>[2];
+}
+
+function renderText(
+	tool: ToolDefinition,
+	result: unknown,
+	opts: { expanded: boolean; isPartial?: boolean } = { expanded: true },
+): string {
+	const rr = tool.renderResult;
+	if (!rr) throw new Error("renderResult not defined");
+	const comp = rr(
+		result as Parameters<typeof rr>[0],
+		{ expanded: opts.expanded, isPartial: opts.isPartial ?? false },
+		fakeTheme(),
+		{} as Parameters<typeof rr>[3],
+	);
+	const lines = (comp as { render(w: number): string[] }).render(1000);
+	return lines.join("\n");
 }
 
 function detailsOf(result: { details?: unknown }): DetailsShape {
 	return result.details as DetailsShape;
 }
+
+// -- issue #0003: expanded mode shows only changed tools, not all tools --
+describe("tool.execute — details.changed (#0003)", () => {
+	it("list: changed is empty (no flips)", async () => {
+		const pi = makeFakePi({ all: [...BASE_TOOLS], active: ["read", "bash"] });
+		createExtension(pi.api);
+		await pi.fireSessionStart();
+		const res = await exec(pi.tool, { action: "list" });
+		const d = detailsOf(res);
+		expect(d.changed).toEqual({ activated: [], deactivated: [] });
+	});
+
+	it("activate: changed.activated lists only newly-flipped tools", async () => {
+		const pi = makeFakePi({ all: [...BASE_TOOLS], active: ["read", "edit"] });
+		createExtension(pi.api);
+		await pi.fireSessionStart();
+		// edit is already active, write is new, nosuch is ignored.
+		const res = await exec(pi.tool, { action: "activate", tools: ["edit", "write", "nosuch"] });
+		const d = detailsOf(res);
+		expect(d.changed.activated).toEqual(["write"]);
+		expect(d.changed.deactivated).toEqual([]);
+	});
+
+	it("deactivate: changed.deactivated lists only newly-flipped tools", async () => {
+		const pi = makeFakePi({ all: [...BASE_TOOLS], active: ["read", "bash", "edit"] });
+		createExtension(pi.api);
+		await pi.fireSessionStart();
+		// edit gets flipped off; write was never on; manage_tools is protected.
+		const res = await exec(pi.tool, {
+			action: "deactivate",
+			tools: ["edit", "write", "manage_tools"],
+		});
+		const d = detailsOf(res);
+		expect(d.changed.deactivated).toEqual(["edit"]);
+		expect(d.changed.activated).toEqual([]);
+	});
+
+	it("reset: changed reflects both directions of the diff", async () => {
+		const pi = makeFakePi({ all: [...BASE_TOOLS], active: ["read", "bash"] });
+		createExtension(pi.api);
+		await pi.fireSessionStart();
+		await exec(pi.tool, { action: "deactivate", tools: ["bash"] });
+		await exec(pi.tool, { action: "activate", tools: ["edit"] });
+		const res = await exec(pi.tool, { action: "reset" });
+		const d = detailsOf(res);
+		expect(d.changed.activated.sort()).toEqual(["bash"]);
+		expect(d.changed.deactivated.sort()).toEqual(["edit"]);
+	});
+});
+
+describe("renderResult — expanded mode shows only changed tools (#0003)", () => {
+	it("list: shows full tool roster", async () => {
+		const pi = makeFakePi({ all: [...BASE_TOOLS], active: ["read", "bash"] });
+		createExtension(pi.api);
+		await pi.fireSessionStart();
+		const res = await exec(pi.tool, { action: "list" });
+		const out = renderText(pi.tool, res, { expanded: true });
+		expect(out).toContain("read");
+		expect(out).toContain("bash");
+		expect(out).toContain("edit");
+		expect(out).toContain("write");
+		expect(out).toContain("manage_tools");
+	});
+
+	it("activate: shows only the activated tools (not the full roster)", async () => {
+		const pi = makeFakePi({ all: [...BASE_TOOLS], active: ["read"] });
+		createExtension(pi.api);
+		await pi.fireSessionStart();
+		const res = await exec(pi.tool, { action: "activate", tools: ["edit"] });
+		const out = renderText(pi.tool, res, { expanded: true });
+		expect(out).toMatch(/Activated/i);
+		expect(out).toContain("edit");
+		// 'bash' and 'write' were never touched — must NOT appear in expanded output.
+		expect(out).not.toContain("bash");
+		expect(out).not.toContain("write");
+	});
+
+	it("deactivate: shows only the deactivated tools (not the full roster)", async () => {
+		const pi = makeFakePi({ all: [...BASE_TOOLS], active: ["read", "bash", "edit"] });
+		createExtension(pi.api);
+		await pi.fireSessionStart();
+		const res = await exec(pi.tool, { action: "deactivate", tools: ["edit"] });
+		const out = renderText(pi.tool, res, { expanded: true });
+		expect(out).toMatch(/Deactivated/i);
+		expect(out).toContain("edit");
+		expect(out).not.toContain("bash");
+		expect(out).not.toContain("read");
+	});
+
+	it("reset: shows both activated and deactivated diffs, not the full roster", async () => {
+		const pi = makeFakePi({ all: [...BASE_TOOLS], active: ["read", "bash"] });
+		createExtension(pi.api);
+		await pi.fireSessionStart();
+		await exec(pi.tool, { action: "deactivate", tools: ["bash"] });
+		await exec(pi.tool, { action: "activate", tools: ["edit"] });
+		const res = await exec(pi.tool, { action: "reset" });
+		const out = renderText(pi.tool, res, { expanded: true });
+		expect(out).toContain("bash"); // re-activated
+		expect(out).toContain("edit"); // re-deactivated
+		// 'write' was never flipped — must not appear.
+		expect(out).not.toContain("write");
+	});
+
+	it("activate no-op: shows an explicit 'no changes' line, not the full roster", async () => {
+		const pi = makeFakePi({ all: [...BASE_TOOLS], active: ["read", "edit"] });
+		createExtension(pi.api);
+		await pi.fireSessionStart();
+		const res = await exec(pi.tool, { action: "activate", tools: ["edit"] });
+		const out = renderText(pi.tool, res, { expanded: true });
+		expect(out.toLowerCase()).toMatch(/no changes/);
+		expect(out).not.toContain("bash");
+		expect(out).not.toContain("write");
+	});
+
+	it("activate with ignored unknown: still surfaces the warning line in expanded mode", async () => {
+		const pi = makeFakePi({ all: [...BASE_TOOLS], active: ["read"] });
+		createExtension(pi.api);
+		await pi.fireSessionStart();
+		const res = await exec(pi.tool, {
+			action: "activate",
+			tools: ["edit", "nosuch"],
+		});
+		const out = renderText(pi.tool, res, { expanded: true });
+		expect(out).toContain("edit");
+		expect(out).toMatch(/Ignored unknown:.*nosuch/);
+	});
+});
 
 describe("tool.execute — details (TUI renderer data)", () => {
 	it("details.total equals the number of registered tools", async () => {

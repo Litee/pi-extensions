@@ -79,7 +79,7 @@ import { StringEnum } from "@earendil-works/pi-ai";
 import { Text } from "@earendil-works/pi-tui";
 import { Type } from "typebox";
 
-import { computeNext } from "./manager.js";
+import { computeNext, type Action } from "./manager.js";
 
 const TOOL_NAME = "manage_tools";
 const PROTECTED: ReadonlySet<string> = new Set([TOOL_NAME]);
@@ -171,6 +171,20 @@ function pickAddedFromDiff(
 		if (!before.has(name)) added.add(name);
 	}
 	return added;
+}
+
+/**
+ * Names that are in `before` but not `after`. Pure helper.
+ */
+function pickRemovedFromDiff(
+	before: ReadonlySet<string>,
+	after: ReadonlySet<string>,
+): Set<string> {
+	const removed = new Set<string>();
+	for (const name of before) {
+		if (!after.has(name)) removed.add(name);
+	}
+	return removed;
 }
 
 /**
@@ -371,9 +385,11 @@ export default function manageToolsExtension(pi: ExtensionAPI): void {
 			if (isPartial) return new Text(theme.fg("muted", "..."), 0, 0);
 
 			interface DetailsShape {
+				action: Action;
 				active: string[];
 				total: number;
 				rows: ListingRow[];
+				changed?: { activated: string[]; deactivated: string[] };
 				ignoredUnknown: string[];
 				ignoredProtected: string[];
 			}
@@ -387,7 +403,11 @@ export default function manageToolsExtension(pi: ExtensionAPI): void {
 
 			if (!expanded) {
 				text += theme.fg("dim", " — … ctrl+o to expand");
-			} else {
+			} else if (d?.action === undefined || d?.action === "list") {
+				// Full roster on `list`, and as a back-compat fallback for results
+				// persisted by an earlier version of this extension that did not set
+				// `details.action` — those replays would otherwise hit the diff
+				// branch with no `changed` data and render "No changes." (#0003).
 				const rows = d?.rows ?? [];
 				for (const row of rows) {
 					const mark = row.active
@@ -397,6 +417,20 @@ export default function manageToolsExtension(pi: ExtensionAPI): void {
 						? theme.fg("dim", ` — ${row.description.split("\n")[0]}`)
 						: "";
 					text += `\n  ${mark} ${theme.bold(row.name)}${desc}`;
+				}
+			} else {
+				// activate / deactivate / reset — show only the diff. (#0003)
+				const activated = d?.changed?.activated ?? [];
+				const deactivated = d?.changed?.deactivated ?? [];
+				if (activated.length === 0 && deactivated.length === 0) {
+					text += `\n  ${theme.fg("dim", "No changes.")}`;
+				} else {
+					if (activated.length > 0) {
+						text += `\n  ${theme.fg("success", `✓ Activated:`)} ${theme.bold(activated.join(", "))}`;
+					}
+					if (deactivated.length > 0) {
+						text += `\n  ${theme.fg("warning", `✗ Deactivated:`)} ${theme.bold(deactivated.join(", "))}`;
+					}
 				}
 			}
 
@@ -425,8 +459,10 @@ export default function manageToolsExtension(pi: ExtensionAPI): void {
 			});
 
 			let added: Set<string> = new Set();
+			let removed: Set<string> = new Set();
 			if (result.nextActive) {
 				added = pickAddedFromDiff(currentActive, result.nextActive);
+				removed = pickRemovedFromDiff(currentActive, result.nextActive);
 				pi.setActiveTools([...result.nextActive]);
 			}
 
@@ -484,6 +520,13 @@ export default function manageToolsExtension(pi: ExtensionAPI): void {
 					active: listing.filter((r) => r.active).map((r) => r.name),
 					total: listing.length,
 					rows: listing,
+					// #0003: per-call diff so the TUI can show only what changed in
+					// expanded mode for activate/deactivate/reset, instead of the full
+					// roster. `list` always reports both arrays empty.
+					changed: {
+						activated: [...added].sort(),
+						deactivated: [...removed].sort(),
+					},
 					ignoredUnknown: result.ignoredUnknown,
 					ignoredProtected: result.ignoredProtected,
 				},
