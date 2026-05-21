@@ -116,4 +116,35 @@ describe("buildStartupChatMessage", () => {
 	it("handles the empty case gracefully", () => {
 		expect(buildStartupChatMessage({}, new Date())).toContain("no watches configured");
 	});
+
+	it("all-active → keeps `active — watching N objects` wording", () => {
+		const watches: WatchMap = {
+			a: makeWatch({ watchId: "a" }),
+			b: makeWatch({ watchId: "b" }),
+		};
+		const msg = buildStartupChatMessage(watches, new Date(2024, 0, 1, 8, 0));
+		expect(msg).toContain("active — watching 2 objects");
+		expect(msg).not.toContain("done");
+	});
+
+	it("mixed → `watching N objects · K active, M done`, no `active —` prefix", () => {
+		const watches: WatchMap = {
+			a: makeWatch({ watchId: "a", terminal: true }),
+			b: makeWatch({ watchId: "b" }),
+			c: makeWatch({ watchId: "c" }),
+		};
+		const msg = buildStartupChatMessage(watches, new Date(2024, 0, 1, 8, 0));
+		expect(msg).toContain("watching 3 objects · 2 active, 1 done");
+		expect(msg).not.toContain("active — watching");
+	});
+
+	it("all-terminal → `watching N objects (N done)`, no `active —` prefix", () => {
+		const watches: WatchMap = {
+			a: makeWatch({ watchId: "a", terminal: true }),
+			b: makeWatch({ watchId: "b", terminal: true }),
+		};
+		const msg = buildStartupChatMessage(watches, new Date(2024, 0, 1, 8, 0));
+		expect(msg).toContain("watching 2 objects (2 done)");
+		expect(msg).not.toContain("active — watching");
+	});
 });

@@ -71,6 +71,30 @@ export function buildChangeChatMessage(events: S3Event[], date: Date): string {
 }
 
 /**
+ * Build the header phrase summarising a watch list, honouring terminal state.
+ *
+ * Wording rules (single source of truth — used by every header that summarises
+ * the watch list):
+ *
+ * - all watches active   → `active — watching N objects`
+ * - mixed active+terminal → `watching N objects · K active, M done`
+ * - all watches terminal → `watching N objects (N done)`
+ *
+ * Returns `undefined` when there are no watches.
+ */
+export function buildWatchSummaryHeader(watches: WatchMap): string | undefined {
+	const all = Object.values(watches);
+	if (all.length === 0) return undefined;
+	const total = all.length;
+	const done = all.filter((w) => w.terminal).length;
+	const active = total - done;
+	const noun = total === 1 ? "object" : "objects";
+	if (done === 0) return `active — watching ${total} ${noun}`;
+	if (active === 0) return `watching ${total} ${noun} (${done} done)`;
+	return `watching ${total} ${noun} · ${active} active, ${done} done`;
+}
+
+/**
  * Build the chat-message content for the startup summary emitted when the
  * session resumes with an existing watch list.
  */
@@ -79,7 +103,6 @@ export function buildStartupChatMessage(watches: WatchMap, date: Date): string {
 	if (all.length === 0) {
 		return "active — no watches configured. Use the s3_watcher tool to add a watch.";
 	}
-	const noun = all.length === 1 ? "object" : "objects";
 	const lines = all.map((w) => {
 		const state = w.baseline === undefined
 			? "?"
@@ -89,5 +112,6 @@ export function buildStartupChatMessage(watches: WatchMap, date: Date): string {
 		const tag = w.terminal ? " [terminal]" : "";
 		return `• s3://${w.bucket}/${w.key} (target: ${w.target}) — state=${state}${tag}`;
 	});
-	return `[${formatShortTime(date)}] active — watching ${all.length} ${noun}:\n\n${lines.join("\n")}`;
+	const header = buildWatchSummaryHeader(watches) ?? "";
+	return `[${formatShortTime(date)}] ${header}:\n\n${lines.join("\n")}`;
 }
