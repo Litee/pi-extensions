@@ -94,42 +94,35 @@ On every `session_start`:
 9. Start a `setInterval` poll loop at 60 s that repeats steps 3–8 — but
    only if the rehydrated run state is running.
 
-## Slash commands
+## Slash command
 
-| Command                           | Effect                                           |
-|-----------------------------------|--------------------------------------------------|
-| `/local-issue-watcher`            | Print current state (running / paused, dbRoot, issue counts by status). |
-| `/local-issue-watcher status`     | Alias for the above.                             |
-| `/local-issue-watcher pause`      | Stop polling, persist `paused=true` to session state so the extension stays quiet across reload / session resume. |
-| `/local-issue-watcher resume`     | Rebuild the baseline from disk, persist `paused=false`, and resume polling. |
-| `/local-issue-watcher browse`     | Open a searchable TUI browser over the tracker backlog (see below). |
+Any invocation of `/local-issue-watcher` (with or without arguments — arguments
+are ignored) opens an interactive TUI menu:
 
-### `/local-issue-watcher browse`
+| Menu item | Effect |
+|---|---|
+| `Browse issues (N open)` | Opens the searchable TUI backlog browser (see below). N reflects the current open-issue count. When dbRoot is missing, shows a warning and stays in the menu. |
+| `Refresh` | Force-scans dbRoot immediately (works even when paused), diffs against the current snapshot, emits a diff chat message if there are changes (same payload as the automatic poll, with `triggerTurn: true`), and refreshes the pinned status row. Notifies `local-issue-watcher: refreshed (N open)` on completion. When dbRoot is missing, shows a warning and stays in the menu. |
+| `Paused: off / on` | Toggles pause state. **off → paused:** stops polling, persists `paused=true`, clears the pinned status row (no row while paused per #0019). **on → resumed:** persists `paused=false`, scans dbRoot, restarts polling, re-pins the status row. |
+| `Close` | Exit the menu. |
 
-Opens a single-pane searchable list over the tracker backlog,
-defaulting to the `status === "open"` subset. The panel uses its
-full height for the list itself (~20 visible rows), and the
-per-issue detail view is gated behind `Enter`.
+### Browse issues TUI
+
+The Browse issues menu item opens a single-pane searchable list over the
+tracker backlog, defaulting to the `status === "open"` subset.
 
 - **List** of `<skill> #<id>  <title>` rows, sorted primary by
-  skill, secondary by issue id. Now uses the full panel height
-  (~20 visible rows) instead of sharing it with a preview pane.
+  skill, secondary by issue id. Uses the full panel height
+  (~20 visible rows).
 - **Search-as-you-type** filter on skill + id + title
-  (case-insensitive substring). The filter is preserved when you
-  drill into a detail view and come back.
+  (case-insensitive substring). Preserved when drilling into the detail view.
 - **`Enter`** on the highlighted row opens a detail view showing
   the full description and every comment. Read-only.
 - **`Esc`** (or `Left-Arrow`) in the detail view returns to the
-  list with the prior row still highlighted and the search query
-  intact.
+  list with the prior row still highlighted and the search query intact.
 - **`Esc`** (or `Ctrl-C`) in the list view closes the browser.
 - **Status hint** at the bottom of the list:
   `Enter: view details · Esc: close · type to filter`.
-
-Filter toggles for `in_progress` / `done` / `wont_fix`, a
-copy-to-clipboard shortcut, and a `K matching "…"` segment in the
-header were called out in the issue as *optional but nice* and are
-deferred — they can land as follow-up issues if wanted.
 
 ## Package layout
 
@@ -138,12 +131,14 @@ src/
   types.ts         — IssueInfo, Snapshot
   scanner.ts       — scanIssueFiles(dbRoot) : Snapshot
   diff.ts          — diffSnapshots, changedPaths, formatChange
-  format.ts        — buildChatMessageContent, formatStatusSummary
+  format.ts        — buildChatMessageContent, formatStatusSummary,
+                     buildParseFailureToast
   persistence.ts   — rehydrateFromSession, rehydrateRunStateFromSession,
                      STATE_ENTRY_TYPE, RUNSTATE_ENTRY_TYPE, STATE_MAX_AGE_MS
   infoHandler.ts   — buildOpenIssueRows, formatRowLabel, formatPreview,
-                     handleInfo (pure; drives /local-issue-watcher browse)
+                     handleInfo (pure; drives Browse issues menu item)
   infoTui.ts       — makeInfoTuiPicker (pi-tui integration; coverage-excluded)
+  command.ts       — runLocalIssueWatcherCommand, STATUS_KEY, menu constants
   index.ts         — default export + handleSessionStart (testable)
 test/
   scanner.test.ts

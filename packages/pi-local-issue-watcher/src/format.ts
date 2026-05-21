@@ -144,6 +144,19 @@ export function buildStatusDetailMessage(
 	].join("\n");
 }
 
+/**
+ * Build the one-shot parse-failure toast body.
+ *
+ * Count-only by design (#0029): we must NOT interpolate file paths or skill
+ * directory names — a pathological tracker with thousands of bad files would
+ * otherwise produce a summary string long enough to blow out the TUI notify
+ * widget.
+ */
+export function buildParseFailureToast(failureCount: number): string {
+	const noun = failureCount === 1 ? "issue file" : "issue files";
+	return `local-issue-watcher: ${failureCount} ${noun} failed to parse; skipping.`;
+}
+
 /** Render issue counts as "N open, M in_progress, ..." — matches the Python watcher. */
 export function formatStatusSummary(snapshot: Snapshot): string {
 	const counts: Record<string, number> = {};

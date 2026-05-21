@@ -43,19 +43,22 @@ import {
 	buildChatMessageContent,
 	buildMissingDbRootChatMessage,
 	buildMissingDbRootStatus,
+	buildParseFailureToast,
 	buildStartupAnnouncement,
 	buildStatusDetailMessage,
 	type WatcherState,
 } from "./format.js";
-import { handleInfo, type InfoPicker } from "./infoHandler.js";
-import { makeInfoTuiPicker } from "./infoTui.js";
+import type { InfoPicker } from "./infoHandler.js";
 import {
 	rehydrateFromSession,
 	rehydrateRunStateFromSession,
 	persistSnapshot,
-	persistRunState,
 	type SessionLike,
 } from "./persistence.js";
+import {
+	STATUS_KEY,
+	runLocalIssueWatcherCommand,
+} from "./command.js";
 import { scanIssueFiles } from "./scanner.js";
 import type { Snapshot } from "./types.js";
 
@@ -107,16 +110,6 @@ export const POLL_INTERVAL_MS = 60_000;
  */
 const CUSTOM_MESSAGE_TYPE = "pi-local-issue-watcher";
 
-/**
- * Key used with `ctx.ui.setStatus(...)` to install / update / clear the
- * persistent status-row line for this watcher. Prefixed with the full
- * package name so keys in the shared pi status-row namespace are
- * unambiguously attributable to their owning package (see tracker
- * issue #0020). The rendered human-facing label in `format.ts` keeps
- * the shorter `local-issue-watcher:` prefix to save footer width —
- * this key is a machine namespace, not display text.
- */
-const STATUS_KEY = "pi-local-issue-watcher";
 
 /** Apply the pi theme's accent color via `ctx.ui.theme.fg`. */
 function colorize(
@@ -366,24 +359,11 @@ export function handleSessionStart(
 	return Promise.resolve({ started: true, paused: false, snapshot: currentSnapshot });
 }
 
-/**
- * Build the one-shot parse-failure toast body. Count-only by design
- * (#0029): we must NOT interpolate file paths or skill directory names — a
- * pathological tracker with thousands of bad files would otherwise produce a
- * summary string long enough to blow out the TUI notify widget. The user has
- * the path to the tracker already (pinned status line); the actionable bit
- * is just "something is broken, go look."
- */
-function buildParseFailureToast(failureCount: number): string {
-	const noun = failureCount === 1 ? "issue file" : "issue files";
-	return `local-issue-watcher: ${failureCount} ${noun} failed to parse; skipping.`;
-}
-
 // ---------------------------------------------------------------------------
 // Runtime (polling loop + paused flag)
 // ---------------------------------------------------------------------------
 
-interface Runtime {
+export interface Runtime {
 	dbRoot: string;
 	paused: boolean;
 	/** Most recent snapshot used as the diff baseline across polls. */
@@ -436,7 +416,7 @@ function makeRuntime(dbRoot: string, pi: Runtime["pi"]): Runtime {
  * Re-pin the extension status line with the current state + counts.
  * Safe to call with no UI — the optional-chain calls simply do nothing.
  */
-function refreshStatusLine(
+export function refreshStatusLine(
 	ui: Runtime["ui"],
 	rt: Pick<Runtime, "dbRoot">,
 	state: WatcherState,
@@ -451,24 +431,26 @@ function refreshStatusLine(
 	);
 }
 
-function startPolling(rt: Runtime): void {
+export function startPolling(rt: Runtime): void {
 	rt.scheduler.start(() => {
 		pollOnce(rt);
 		return Promise.resolve();
 	});
 }
 
-function stopPolling(rt: Runtime): void {
+export function stopPolling(rt: Runtime): void {
 	rt.scheduler.stop();
 }
 
-function pollOnce(rt: Runtime): void {
-	if (rt.paused) return;
+/**
+ * Force a single poll cycle — same as the inner body of pollOnce but ignores
+ * the paused flag. Used by the Refresh menu item so the user can get an
+ * immediate diff even when the watcher is paused. Callers MUST check that
+ * rt.dbRoot exists before calling (a missing dbRoot is a no-op inside, but
+ * the caller needs to show the right warning message).
+ */
+export function forceRefresh(rt: Runtime): void {
 	if (!existsSync(rt.dbRoot)) return;
-	// Carry forward the previous snapshot so transient read/parse failures
-	// (writer mid-flush) don't produce spurious `removed -> new` diffs (#0003).
-	// Count per-file failures via `onError` and fire at most one toast per
-	// session across all scan sites (#0029).
 	let failureCount = 0;
 	const next = scanIssueFiles(rt.dbRoot, rt.snapshot, () => {
 		failureCount += 1;
@@ -499,10 +481,12 @@ function pollOnce(rt: Runtime): void {
 		persistSnapshot(rt.pi, next);
 	}
 	rt.snapshot = next;
-	// Re-pin the status line on every poll (even when no diff fired) so the
-	// counts segment reflects any fresh rescan. The `last update` phrase the
-	// older status line carried was removed in #0016.
 	refreshStatusLine(rt.ui, rt, "active", next);
+}
+
+function pollOnce(rt: Runtime): void {
+	if (rt.paused) return;
+	forceRefresh(rt);
 }
 
 // ---------------------------------------------------------------------------
@@ -578,132 +562,15 @@ export default function issueWatcher(pi: ExtensionAPI): void {
 	});
 
 	pi.registerCommand("local-issue-watcher", {
-		description: "Control the local-skill-issues-tracker watcher (pause/resume/status/browse)",
+		description: "Open the local-issue-watcher menu (browse, refresh, pause/resume)",
 		handler: async (args, ctx) => {
-			const anyCtx = ctx as unknown as {
-				hasUI?: boolean;
-				ui?: {
-					notify?: (m: string, l?: string) => void;
-					setStatus?: (key: string, text: string | undefined) => void;
-					theme?: { fg: (color: string, text: string) => string };
-					hasUI?: boolean;
-				};
-			};
-			const hasUI = anyCtx.hasUI ?? anyCtx.ui?.hasUI ?? anyCtx.ui !== undefined;
-			const ui = hasUI ? anyCtx.ui : undefined;
-			const sub = args.trim().toLowerCase();
-			switch (sub) {
-				case "browse": {
-					if (!existsSync(rt.dbRoot)) {
-						ui?.notify?.(
-							`local-issue-watcher browse: dbRoot not found (${rt.dbRoot})`,
-							"warning",
-						);
-						return;
-					}
-					const picker =
-						infoPickerOverride ??
-						makeInfoTuiPicker(ctx);
-					await handleInfo({
-						dbRoot: rt.dbRoot,
-						scan: (root) => scanIssueFiles(root),
-						picker,
-					});
-					return;
-				}
-				case "pause": {
-					rt.paused = true;
-					stopPolling(rt);
-					persistRunState(pi, true);
-					// #0019: paused = silent + zero-IO. Clear the pinned status
-					// row instead of replacing it with a 'paused' string — the
-					// user asked the watcher to disappear, so it should leave no
-					// footer row behind. The one-shot `notify` toast below is the
-					// user-invoked acknowledgement of the action itself; that is
-					// not a pinned row and stays.
-					ui?.setStatus?.(STATUS_KEY, undefined);
-					ui?.notify?.(`local-issue-watcher: paused (dbRoot=${rt.dbRoot})`, "info");
-					return;
-				}
-				case "resume": {
-					rt.paused = false;
-					persistRunState(pi, false);
-					let resumeFailureCount = 0;
-					const resumedSnap = existsSync(rt.dbRoot)
-						? scanIssueFiles(rt.dbRoot, rt.snapshot, () => {
-								resumeFailureCount += 1;
-						  })
-						: {};
-					if (existsSync(rt.dbRoot)) {
-						rt.snapshot = resumedSnap;
-						startPolling(rt);
-					}
-					// #0029: resume counts as a fresh scan site. If we haven't
-					// toasted yet this session AND the resumed scan saw failures,
-					// toast now. Flipping `hasToasted` here means a later poll
-					// with bad files stays silent, per the one-shot contract.
-					if (
-						resumeFailureCount > 0 &&
-						ui !== undefined &&
-						ui.hasUI !== false &&
-						ui.notify !== undefined &&
-						!rt.parseFailureToastState.hasToasted
-					) {
-						ui.notify(buildParseFailureToast(resumeFailureCount), "warning");
-						rt.parseFailureToastState.hasToasted = true;
-					}
-					refreshStatusLine(ui ?? null, rt, "active", resumedSnap);
-					ui?.notify?.(`local-issue-watcher: resumed (dbRoot=${rt.dbRoot})`, "info");
-					return;
-				}
-				case "":
-				case "status": {
-					// Missing-dbRoot stays as a toast — the chat-message format
-					// assumes a valid dbRoot with a scannable snapshot (#0027).
-					if (!existsSync(rt.dbRoot)) {
-						ui?.notify?.(buildMissingDbRootStatus(rt.dbRoot), "warning");
-						return;
-					}
-					let statusFailureCount = 0;
-					const snap = scanIssueFiles(rt.dbRoot, undefined, () => {
-						statusFailureCount += 1;
-					});
-					// #0029: status is a user-invoked scan site, so it shares
-					// the one-shot toast budget with session_start + pollOnce.
-					if (
-						statusFailureCount > 0 &&
-						ui !== undefined &&
-						ui.hasUI !== false &&
-						ui.notify !== undefined &&
-						!rt.parseFailureToastState.hasToasted
-					) {
-						ui.notify(buildParseFailureToast(statusFailureCount), "warning");
-						rt.parseFailureToastState.hasToasted = true;
-					}
-					pi.sendMessage({
-						customType: CUSTOM_MESSAGE_TYPE,
-						content: buildStatusDetailMessage(rt.dbRoot, snap),
-						display: true,
-					});
-					// #0030: omit `deliverAs` and `triggerTurn` so the message
-					// falls through the default branch in
-					// `AgentSession.sendCustomMessage` — pushed straight into
-					// `agent.state.messages`, appended to the session log, and
-					// emitted via `message_start` / `message_end` synchronously
-					// so the TUI renders it NOW instead of buffering it on
-					// `_pendingNextTurnMessages` until the next user prompt.
-					// Still zero LLM calls (#0027): both this path and the
-					// old `nextTurn` path inject the same message into the
-					// next turn's context — the only difference is when the
-					// render fires.
-					return;
-				}
-				default:
-					ui?.notify?.(
-						`local-issue-watcher: unknown subcommand '${sub}'. Use: pause | resume | status | browse`,
-						"warning",
-					);
-			}
+			return runLocalIssueWatcherCommand(args, ctx, rt, pi, {
+				startPolling,
+				stopPolling,
+				forceRefresh,
+				refreshStatusLine,
+				getInfoPickerOverride: () => infoPickerOverride,
+			});
 		},
 	});
 }

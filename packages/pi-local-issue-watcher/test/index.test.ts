@@ -7,12 +7,16 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import createExtension, {
 	POLL_INTERVAL_MS,
 	__setInfoPickerForTests,
-	buildMissingDbRootStatus,
-	buildStatusDetailMessage,
 	handleSessionStart,
 	resolveDbRoot,
-	scanIssueFiles,
 } from "../src/index.js";
+import {
+	ITEM_BROWSE_PREFIX,
+	ITEM_CLOSE,
+	ITEM_PAUSED_PREFIX,
+	ITEM_REFRESH,
+	MENU_TITLE,
+} from "../src/command.js";
 import type { InfoPicker, InfoRow } from "../src/infoHandler.js";
 import { RUNSTATE_ENTRY_TYPE, STATE_ENTRY_TYPE } from "../src/persistence.js";
 import { abbreviatePath } from "../src/path.js";
@@ -94,6 +98,7 @@ interface StubCtx {
 	ui: {
 		notify: ReturnType<typeof vi.fn>;
 		setStatus: ReturnType<typeof vi.fn>;
+		select: ReturnType<typeof vi.fn>;
 		theme: {
 			fg: ReturnType<typeof vi.fn>;
 			bold: ReturnType<typeof vi.fn>;
@@ -112,6 +117,9 @@ function makeFakeCtx(entries: Array<{ type?: string; customType?: string; data?:
 		ui: {
 			notify: vi.fn(),
 			setStatus: vi.fn(),
+			// Default select always closes the menu — tests that need specific menu
+			// interactions override this with .mockResolvedValueOnce(...).
+			select: vi.fn().mockResolvedValue(ITEM_CLOSE),
 			// Minimal Theme stub — real pi ships a full Theme object on ctx.ui.theme.
 			theme: {
 				fg: vi.fn((_color: string, text: string) => `<fg:${_color}>${text}</fg>`),
@@ -162,6 +170,74 @@ function makeStateEntry(
 			baselines: {},
 		},
 	};
+}
+
+// ---------------------------------------------------------------------------
+// Menu-driving helpers (for the new /local-issue-watcher menu interface)
+// ---------------------------------------------------------------------------
+
+/**
+ * Build a minimal ctx suitable for tests that exercise the TUI menu.
+ * The `select` mock defaults to returning `ITEM_CLOSE` unless overridden.
+ */
+function makeMenuCtx(
+	select: (title: string, items: string[]) => Promise<string | null>,
+	notify: ReturnType<typeof vi.fn> = vi.fn(),
+	setStatus: ReturnType<typeof vi.fn> = vi.fn(),
+) {
+	return {
+		hasUI: true,
+		ui: {
+			hasUI: true,
+			select,
+			notify,
+			setStatus,
+			theme: {
+				fg: vi.fn((_c: string, t: string) => `<fg:${_c}>${t}</fg>`),
+				bold: vi.fn((t: string) => `<b>${t}</b>`),
+			},
+		},
+		sessionManager: { getEntries: () => [] },
+		cwd: "/tmp",
+	};
+}
+
+/** Drive the command handler to pause via the menu. Pre-condition: watcher is running. */
+async function pauseViaMenu(pi: StubPi, ctx: StubCtx): Promise<void> {
+	ctx.ui.select
+		.mockResolvedValueOnce(`${ITEM_PAUSED_PREFIX} off`) // select Pause
+		.mockResolvedValueOnce(ITEM_CLOSE);
+	await pi.commands.get("local-issue-watcher")!.handler("", ctx);
+}
+
+/** Drive the command handler to resume via the menu. Pre-condition: watcher is paused. */
+async function resumeViaMenu(pi: StubPi, ctx: StubCtx): Promise<void> {
+	ctx.ui.select
+		.mockResolvedValueOnce(`${ITEM_PAUSED_PREFIX} on`) // select Resume
+		.mockResolvedValueOnce(ITEM_CLOSE);
+	await pi.commands.get("local-issue-watcher")!.handler("", ctx);
+}
+
+/** Drive the command handler to Refresh once via the menu, then close. */
+async function refreshViaMenu(pi: StubPi, ctx: StubCtx): Promise<void> {
+	ctx.ui.select
+		.mockResolvedValueOnce(ITEM_REFRESH)
+		.mockResolvedValueOnce(ITEM_CLOSE);
+	await pi.commands.get("local-issue-watcher")!.handler("", ctx);
+}
+
+/** Drive the command handler to Browse once via the menu, then close. */
+async function browseViaMenu(pi: StubPi, ctx: StubCtx): Promise<void> {
+	// The browse item label includes the open count; match on prefix.
+	ctx.ui.select
+		.mockImplementationOnce(
+			(_title: string, items: string[]) => {
+				const browseItem = items.find((i) => i.startsWith(ITEM_BROWSE_PREFIX))!;
+				return Promise.resolve(browseItem);
+			},
+		)
+		.mockResolvedValueOnce(ITEM_CLOSE);
+	await pi.commands.get("local-issue-watcher")!.handler("", ctx);
 }
 
 // ---------------------------------------------------------------------------
@@ -563,6 +639,10 @@ describe("handleSessionStart", () => {
 // /local-issue-watcher command
 // ---------------------------------------------------------------------------
 
+// ---------------------------------------------------------------------------
+// /local-issue-watcher command (menu-driven)
+// ---------------------------------------------------------------------------
+
 describe("/local-issue-watcher command", () => {
 	let dbRoot: string;
 	beforeEach(() => {
@@ -573,7 +653,6 @@ describe("/local-issue-watcher command", () => {
 	});
 
 	function extensionWithDbRoot(pi: StubPi, root: string): void {
-		// Force the dbRoot resolution to `root` regardless of env.
 		const prev = process.env["LOCAL_ISSUE_TRACKER_DB_ROOT"];
 		process.env["LOCAL_ISSUE_TRACKER_DB_ROOT"] = root;
 		try {
@@ -584,91 +663,272 @@ describe("/local-issue-watcher command", () => {
 		}
 	}
 
-	it("'pause' notifies the user and marks paused=true", async () => {
+	it("opens menu via ctx.ui.select, items match expected shape, exits on Close", async () => {
 		const pi = makeFakePi();
 		extensionWithDbRoot(pi, dbRoot);
+		const select = vi.fn().mockResolvedValueOnce(ITEM_CLOSE);
+		const notify = vi.fn();
+		await pi.commands.get("local-issue-watcher")!.handler("", makeMenuCtx(select, notify));
+		expect(select).toHaveBeenCalledTimes(1);
+		const [title, items] = select.mock.calls[0] as [string, string[]];
+		expect(title).toBe(MENU_TITLE);
+		expect(items[0]).toMatch(new RegExp(`^${ITEM_BROWSE_PREFIX} \\(`));
+		expect(items[1]).toBe(ITEM_REFRESH);
+		expect(items[2]).toMatch(new RegExp(`^${ITEM_PAUSED_PREFIX} `));
+		expect(items[3]).toBe(ITEM_CLOSE);
+		expect(items).toHaveLength(4);
+	});
 
-		const cmd = pi.commands.get("local-issue-watcher");
-		expect(cmd).toBeDefined();
-		const ctx = makeFakeCtx();
-		await cmd!.handler("pause", ctx);
+	it("ignores any args — menu always opens", async () => {
+		const pi = makeFakePi();
+		extensionWithDbRoot(pi, dbRoot);
+		const select = vi.fn().mockResolvedValueOnce(ITEM_CLOSE);
+		await pi.commands.get("local-issue-watcher")!.handler("status", makeMenuCtx(select));
+		expect(select).toHaveBeenCalledTimes(1);
+		await pi.commands.get("local-issue-watcher")!.handler("pause", makeMenuCtx(vi.fn().mockResolvedValueOnce(ITEM_CLOSE)));
+		await pi.commands.get("local-issue-watcher")!.handler("frobnicate", makeMenuCtx(vi.fn().mockResolvedValueOnce(ITEM_CLOSE)));
+	});
 
-		expect(ctx.ui.notify).toHaveBeenCalledWith(
-			expect.stringMatching(/paused/i),
-			expect.any(String),
+	it("exits on null choice (Esc cancels the menu)", async () => {
+		const pi = makeFakePi();
+		extensionWithDbRoot(pi, dbRoot);
+		const select = vi.fn().mockResolvedValueOnce(null);
+		await pi.commands.get("local-issue-watcher")!.handler("", makeMenuCtx(select));
+		expect(select).toHaveBeenCalledTimes(1);
+	});
+
+	it("shows N open count in Browse item based on current rt.snapshot", async () => {
+		mkdirSync(join(dbRoot, "skill-a"), { recursive: true });
+		writeFileSync(join(dbRoot, "skill-a", "0001-a.json"), JSON.stringify({ id: "0001", status: "open", title: "t", skill: "skill-a" }));
+		writeFileSync(join(dbRoot, "skill-a", "0002-b.json"), JSON.stringify({ id: "0002", status: "done", title: "t2", skill: "skill-a" }));
+		const pi = makeFakePi();
+		extensionWithDbRoot(pi, dbRoot);
+		// session_start populates rt.snapshot
+		const ctx = makeFakeCtx([runningRunstate()]);
+		await pi.sessionStartHandler!({}, ctx);
+		// Now invoke the menu and capture the items
+		const select = vi.fn().mockResolvedValueOnce(ITEM_CLOSE);
+		await pi.commands.get("local-issue-watcher")!.handler("", makeMenuCtx(select));
+		const [, items] = select.mock.calls[0] as [string, string[]];
+		expect(items[0]).toBe(`${ITEM_BROWSE_PREFIX} (1 open)`);
+	});
+
+	it("warns and exits when ctx.ui.select is unavailable", async () => {
+		const pi = makeFakePi();
+		extensionWithDbRoot(pi, dbRoot);
+		const notify = vi.fn();
+		await pi.commands.get("local-issue-watcher")!.handler("", {
+			hasUI: true,
+			ui: { hasUI: true, notify },
+		});
+		expect(notify).toHaveBeenCalledWith(
+			expect.stringMatching(/requires an interactive UI/),
+			"warning",
 		);
 	});
 
-	it("'resume' notifies the user and marks paused=false", async () => {
+	it("'Paused: off' → toggles to paused: rt.paused=true, appendEntry paused:true, status row cleared", async () => {
 		const pi = makeFakePi();
 		extensionWithDbRoot(pi, dbRoot);
-
-		const cmd = pi.commands.get("local-issue-watcher");
 		const ctx = makeFakeCtx();
-		// pause first, then resume
-		await cmd!.handler("pause", ctx);
-		await cmd!.handler("resume", ctx);
+		await pauseViaMenu(pi, ctx);
 
-		const notifies = ctx.ui.notify.mock.calls.map((c) => String(c[0]));
-		expect(notifies.some((m) => /resumed/i.test(m))).toBe(true);
+		// appendEntry called with paused:true
+		const runStateCalls = pi.appendEntry.mock.calls.filter(
+			(c) => c[0] === RUNSTATE_ENTRY_TYPE,
+		);
+		expect(runStateCalls.length).toBeGreaterThanOrEqual(1);
+		const lastPayload = runStateCalls[runStateCalls.length - 1]![1] as { paused: boolean };
+		expect(lastPayload.paused).toBe(true);
 
-		// Resume also updates the pinned status line to mirror session_start.
-		const statusCalls = ctx.ui.setStatus.mock.calls as Array<[string, string | undefined]>;
-		const activeStatus = statusCalls
-			.filter(([k]) => k === "pi-local-issue-watcher")
-			.map(([, v]) => v ?? "")
-			.find((v) => /active/i.test(v));
-		expect(activeStatus).toBeDefined();
-		// #0022: pinned status is just `<state> | <counts>` — no path,
-		// no poll-period segment.
-		expect(activeStatus!).not.toContain(abbreviatePath(dbRoot));
-		expect(activeStatus!).not.toContain("poll=");
-	});
-
-	it("'pause' clears the pinned status row (#0019: paused = silent, no pinned row)", async () => {
-		const pi = makeFakePi();
-		extensionWithDbRoot(pi, dbRoot);
-
-		const cmd = pi.commands.get("local-issue-watcher");
-		const ctx = makeFakeCtx();
-		await cmd!.handler("pause", ctx);
-
+		// #0019: every setStatus on our key must be undefined (no pinned row)
 		const statusCalls = ctx.ui.setStatus.mock.calls as Array<[string, string | undefined]>;
 		const ourCalls = statusCalls.filter(([k]) => k === "pi-local-issue-watcher");
-		// #0019: paused = no pinned row. Every setStatus call for our key
-		// must be a clear (undefined) — no 'paused' string should be pinned.
 		expect(ourCalls.length).toBeGreaterThanOrEqual(1);
-		for (const [, v] of ourCalls) {
-			expect(v).toBeUndefined();
-		}
-		// In particular the last setStatus for our key must be a clear.
-		expect(ourCalls[ourCalls.length - 1]![1]).toBeUndefined();
+		for (const [, v] of ourCalls) expect(v).toBeUndefined();
+
+		// notify fired with paused
+		expect(ctx.ui.notify).toHaveBeenCalledWith(
+			expect.stringMatching(/paused/i),
+			"info",
+		);
 	});
 
-	// -- issue #0010 subsumed by #0019: paused line has no counts because
-	// the row itself is cleared. Test kept so the #0010 guarantee is
-	// explicitly preserved under the new behaviour.
-	it("'pause' pinned line contains no per-status counts (issue #0010, reinforced by #0019)", async () => {
-		// Seed some issue files so a scan would actually produce a non-empty
-		// count; the test proves no count string is pinned.
+	it("'Paused: on' (after pre-pausing) → resumes: appendEntry paused:false, status row re-pinned 'active'", async () => {
+		const pi = makeFakePi();
+		extensionWithDbRoot(pi, dbRoot);
+		const ctx = makeFakeCtx();
+		await pauseViaMenu(pi, ctx);
+		await resumeViaMenu(pi, ctx);
+
+		const runStateCalls = pi.appendEntry.mock.calls.filter(
+			(c) => c[0] === RUNSTATE_ENTRY_TYPE,
+		);
+		expect(runStateCalls.length).toBeGreaterThanOrEqual(2);
+		const lastPayload = runStateCalls[runStateCalls.length - 1]![1] as { paused: boolean };
+		expect(lastPayload.paused).toBe(false);
+
+		// Status row re-pinned with 'active' after resume
+		const activePin = (ctx.ui.setStatus.mock.calls as Array<[string, string | undefined]>)
+			.filter(([k]) => k === "pi-local-issue-watcher")
+			.map(([, v]) => v)
+			.find((v) => typeof v === "string" && /active/i.test(v));
+		expect(activePin).toBeDefined();
+	});
+
+	it("'Browse issues …' → calls the test-injected picker", async () => {
 		mkdirSync(join(dbRoot, "skill-a"), { recursive: true });
 		writeFileSync(
 			join(dbRoot, "skill-a", "0001-a.json"),
-			JSON.stringify({ id: "0001", status: "open", skill: "skill-a" }),
+			JSON.stringify({ id: "0001", status: "open", title: "t", skill: "skill-a" }),
 		);
-		writeFileSync(
-			join(dbRoot, "skill-a", "0002-b.json"),
-			JSON.stringify({ id: "0002", status: "done", skill: "skill-a" }),
-		);
+		const pickerCalled: number[] = [];
+		__setInfoPickerForTests(() => {
+			pickerCalled.push(1);
+			return Promise.resolve();
+		});
+		try {
+			const pi = makeFakePi();
+			extensionWithDbRoot(pi, dbRoot);
+			const ctx = makeFakeCtx();
+			await browseViaMenu(pi, ctx);
+			expect(pickerCalled).toHaveLength(1);
+		} finally {
+			__setInfoPickerForTests(null);
+		}
+	});
 
+	it("'Browse issues …' with missing dbRoot → notify warning, picker NOT called, menu loop continues", async () => {
+		const missing = join(dbRoot, "does-not-exist");
+		const pickerCalled: number[] = [];
+		__setInfoPickerForTests(() => {
+			pickerCalled.push(1);
+			return Promise.resolve();
+		});
+		try {
+			const pi = makeFakePi();
+			extensionWithDbRoot(pi, missing);
+			const notify = vi.fn();
+			// First select returns a browse item, menu continues; second returns Close.
+			const select = vi
+				.fn()
+				.mockImplementationOnce((_title: string, items: string[]) =>
+					Promise.resolve(items.find((i) => i.startsWith(ITEM_BROWSE_PREFIX))!),
+				)
+				.mockResolvedValueOnce(ITEM_CLOSE);
+			await pi.commands.get("local-issue-watcher")!.handler("", makeMenuCtx(select, notify));
+			expect(pickerCalled).toHaveLength(0);
+			expect(select).toHaveBeenCalledTimes(2); // loop continued after warning
+			const warns = notify.mock.calls.filter((c) => c[1] === "warning");
+			expect(warns).toHaveLength(1);
+			expect(String(warns[0]![0])).toMatch(/local-issue-watcher browse/);
+		} finally {
+			__setInfoPickerForTests(null);
+		}
+	});
+
+	it("'Refresh' with no changes → no diff sendMessage, notify 'refreshed'", async () => {
+		mkdirSync(join(dbRoot, "skill-a"), { recursive: true });
+		writeFileSync(
+			join(dbRoot, "skill-a", "0001-a.json"),
+			JSON.stringify({ id: "0001", status: "open", title: "t", skill: "skill-a" }),
+		);
 		const pi = makeFakePi();
 		extensionWithDbRoot(pi, dbRoot);
-		const cmd = pi.commands.get("local-issue-watcher");
-		const ctx = makeFakeCtx();
-		await cmd!.handler("pause", ctx);
+		// Run session_start so rt.snapshot is populated (no diff on subsequent Refresh)
+		const ctx = makeFakeCtx([runningRunstate()]);
+		await pi.sessionStartHandler!({}, ctx);
+		pi.sendMessage.mockClear();
 
+		await refreshViaMenu(pi, ctx);
+
+		// No diff message (snapshot unchanged)
+		const diffCalls = pi.sendMessage.mock.calls.filter(
+			(c) => (c[0] as { content: string }).content.includes("update:"),
+		);
+		expect(diffCalls).toHaveLength(0);
+
+		// But notify 'refreshed' fires
+		const notifies = ctx.ui.notify.mock.calls.map((c) => String(c[0]));
+		expect(notifies.some((m) => m.includes("refreshed"))).toBe(true);
+	});
+
+	it("'Refresh' with a disk change vs rt.snapshot → exactly one sendMessage with triggerTurn:true", async () => {
+		// rt.snapshot starts as {} (no session_start). Writing a file means Refresh
+		// will diff {} vs the on-disk state and emit a 'new issue' message.
+		mkdirSync(join(dbRoot, "skill-a"), { recursive: true });
+		writeFileSync(
+			join(dbRoot, "skill-a", "0001-a.json"),
+			JSON.stringify({ id: "0001", status: "open", title: "t", skill: "skill-a" }),
+		);
+		const pi = makeFakePi();
+		extensionWithDbRoot(pi, dbRoot);
+		// Do NOT call sessionStartHandler so rt.snapshot remains {}
+		const ctx = makeFakeCtx();
+		await refreshViaMenu(pi, ctx);
+
+		const diffCalls = pi.sendMessage.mock.calls.filter(
+			(c) => (c[0] as { customType?: string }).customType === "pi-local-issue-watcher",
+		);
+		expect(diffCalls).toHaveLength(1);
+		const [payload, opts] = diffCalls[0] as [
+			{ customType: string; content: string },
+			{ triggerTurn?: boolean },
+		];
+		expect(payload.content).toMatch(/update:|new issue/i);
+		expect(opts.triggerTurn).toBe(true);
+	});
+
+	it("'Refresh' with missing dbRoot → notify warning, no sendMessage", async () => {
+		const missing = join(dbRoot, "does-not-exist");
+		const pi = makeFakePi();
+		extensionWithDbRoot(pi, missing);
+		const notify = vi.fn();
+		const select = vi
+			.fn()
+			.mockResolvedValueOnce(ITEM_REFRESH)
+			.mockResolvedValueOnce(ITEM_CLOSE);
+		await pi.commands.get("local-issue-watcher")!.handler("", makeMenuCtx(select, notify));
+		expect(pi.sendMessage).not.toHaveBeenCalled();
+		const warns = notify.mock.calls.filter((c) => c[1] === "warning");
+		expect(warns).toHaveLength(1);
+		expect(String(warns[0]![0])).toContain("dbRoot not found");
+	});
+
+	it("pause action: resilience when pi.appendEntry throws — does not throw, notify still fires", async () => {
+		const pi = makeFakePi();
+		pi.appendEntry.mockImplementation(() => {
+			throw new Error("simulated storage failure");
+		});
+		extensionWithDbRoot(pi, dbRoot);
+		const ctx = makeFakeCtx();
+		await expect(pauseViaMenu(pi, ctx)).resolves.toBeUndefined();
+		const notifies = ctx.ui.notify.mock.calls.map((c) => String(c[0]));
+		expect(notifies.some((m) => /paused/i.test(m))).toBe(true);
+	});
+
+	// Kept: #0019 pause clears pinned status row
+	it("'pause' clears the pinned status row (#0019: paused = silent, no pinned row)", async () => {
+		const pi = makeFakePi();
+		extensionWithDbRoot(pi, dbRoot);
+		const ctx = makeFakeCtx();
+		await pauseViaMenu(pi, ctx);
 		const statusCalls = ctx.ui.setStatus.mock.calls as Array<[string, string | undefined]>;
-		// #0019: paused = cleared row. No pinned string means no counts.
+		const ourCalls = statusCalls.filter(([k]) => k === "pi-local-issue-watcher");
+		expect(ourCalls.length).toBeGreaterThanOrEqual(1);
+		for (const [, v] of ourCalls) expect(v).toBeUndefined();
+	});
+
+	// Kept: #0010 pause pinned line has no counts (row is cleared entirely)
+	it("'pause' pinned line contains no per-status counts (issue #0010, reinforced by #0019)", async () => {
+		mkdirSync(join(dbRoot, "skill-a"), { recursive: true });
+		writeFileSync(join(dbRoot, "skill-a", "0001-a.json"), JSON.stringify({ id: "0001", status: "open", skill: "skill-a" }));
+		writeFileSync(join(dbRoot, "skill-a", "0002-b.json"), JSON.stringify({ id: "0002", status: "done", skill: "skill-a" }));
+		const pi = makeFakePi();
+		extensionWithDbRoot(pi, dbRoot);
+		const ctx = makeFakeCtx();
+		await pauseViaMenu(pi, ctx);
+		const statusCalls = ctx.ui.setStatus.mock.calls as Array<[string, string | undefined]>;
 		const pinnedStrings = statusCalls
 			.filter(([k]) => k === "pi-local-issue-watcher")
 			.map(([, v]) => v)
@@ -676,158 +936,20 @@ describe("/local-issue-watcher command", () => {
 		expect(pinnedStrings).toHaveLength(0);
 	});
 
-	it("'/local-issue-watcher' (empty args) sends the chat-message payload, not a toast (#0027)", async () => {
-		// Seed one open issue so the snapshot payload is non-trivial.
-		mkdirSync(join(dbRoot, "skill-a"), { recursive: true });
-		writeFileSync(
-			join(dbRoot, "skill-a", "0001-a.json"),
-			JSON.stringify({ id: "0001", status: "open", title: "t", skill: "skill-a" }),
-		);
-
+	it("'resume' notifies the user and re-pins the status row", async () => {
 		const pi = makeFakePi();
 		extensionWithDbRoot(pi, dbRoot);
-		const cmd = pi.commands.get("local-issue-watcher");
 		const ctx = makeFakeCtx();
-		await cmd!.handler("", ctx);
-
-		// Regression guard for the `case "":` fallthrough into `case "status":`:
-		// empty args must route through the same chat-message payload.
-		expect(pi.sendMessage).toHaveBeenCalledTimes(1);
-		const [payload] = pi.sendMessage.mock.calls[0] as [
-			{ customType: string; content: string; display?: boolean },
-		];
-		expect(payload.customType).toBe("pi-local-issue-watcher");
-		expect(payload.content).toBe(buildStatusDetailMessage(dbRoot, scanIssueFiles(dbRoot)));
-		expect(payload.display).toBe(true);
-		expect(ctx.ui.notify).not.toHaveBeenCalled();
-	});
-
-	it("warns on an unknown subcommand (mentions `browse` in the hint)", async () => {
-		const pi = makeFakePi();
-		extensionWithDbRoot(pi, dbRoot);
-		const cmd = pi.commands.get("local-issue-watcher");
-		const ctx = makeFakeCtx();
-		await cmd!.handler("frobnicate", ctx);
-
-		const [msg, level] = ctx.ui.notify.mock.calls[0] as [string, string];
-		expect(msg).toMatch(/unknown subcommand/i);
-		expect(msg).toMatch(/\bbrowse\b/);
-		expect(level).toBe("warning");
-	});
-
-	it("'status' subcommand sends a chat message, not a toast (#0027)", async () => {
-		// Seed one open issue so the chat-message payload is non-trivial and
-		// we can byte-compare it against buildStartupChatMessage(dbRoot, snap).
-		mkdirSync(join(dbRoot, "skill-a"), { recursive: true });
-		writeFileSync(
-			join(dbRoot, "skill-a", "0001-a.json"),
-			JSON.stringify({ id: "0001", status: "open", title: "t", skill: "skill-a" }),
-		);
-
-		const pi = makeFakePi();
-		extensionWithDbRoot(pi, dbRoot);
-		const cmd = pi.commands.get("local-issue-watcher");
-		const ctx = makeFakeCtx();
-		await cmd!.handler("status", ctx);
-
-		expect(pi.sendMessage).toHaveBeenCalledTimes(1);
-		const [payload] = pi.sendMessage.mock.calls[0] as [
-			{ customType: string; content: string; display?: boolean },
-		];
-		expect(payload.customType).toBe("pi-local-issue-watcher");
-		expect(payload.content).toBe(buildStatusDetailMessage(dbRoot, scanIssueFiles(dbRoot)));
-		expect(payload.display).toBe(true);
-		expect(ctx.ui.notify).not.toHaveBeenCalled();
-	});
-
-	it("'status' renders immediately without triggering an agent turn (#0027, #0030)", async () => {
-		// #0030: `deliverAs: "nextTurn"` buffers the chat message in
-		// `_pendingNextTurnMessages` and does NOT emit `message_start` /
-		// `message_end` until the user sends their next prompt — so the user
-		// sees nothing after `/local-issue-watcher status` until they type
-		// something unrelated. Agent-session's default branch
-		// (`deliverAs` omitted, `triggerTurn` not truthy, agent idle) pushes
-		// the message straight into `agent.state.messages` and emits the
-		// render events synchronously, which renders immediately while still
-		// costing zero LLM calls — same as `nextTurn` for the LLM context,
-		// but visible now. See #0027 for the zero-LLM-call requirement.
-		mkdirSync(join(dbRoot, "skill-a"), { recursive: true });
-		writeFileSync(
-			join(dbRoot, "skill-a", "0001-a.json"),
-			JSON.stringify({ id: "0001", status: "open", title: "t", skill: "skill-a" }),
-		);
-
-		const pi = makeFakePi();
-		extensionWithDbRoot(pi, dbRoot);
-		const cmd = pi.commands.get("local-issue-watcher");
-		const ctx = makeFakeCtx();
-		await cmd!.handler("status", ctx);
-
-		expect(pi.sendMessage).toHaveBeenCalledTimes(1);
-		const [, opts] = pi.sendMessage.mock.calls[0] as [
-			unknown,
-			{ deliverAs?: string; triggerTurn?: boolean } | undefined,
-		];
-		expect(opts?.deliverAs).not.toBe("nextTurn");
-		expect(opts?.triggerTurn).not.toBe(true);
-	});
-
-	it("'status' with missing dbRoot falls back to ui.notify warning and does NOT send a chat message (#0027)", async () => {
-		const missing = join(
-			tmpdir(),
-			`pi-local-issue-watcher-missing-${Date.now()}-${Math.floor(Math.random() * 1e9)}`,
-		);
-		const pi = makeFakePi();
-		extensionWithDbRoot(pi, missing);
-		const cmd = pi.commands.get("local-issue-watcher");
-		const ctx = makeFakeCtx();
-		await cmd!.handler("status", ctx);
-
-		expect(pi.sendMessage).not.toHaveBeenCalled();
-		expect(ctx.ui.notify).toHaveBeenCalledTimes(1);
-		const [body, level] = ctx.ui.notify.mock.calls[0] as [string, string];
-		expect(level).toBe("warning");
-		expect(body).toBe(buildMissingDbRootStatus(missing));
-	});
-
-	it("'status' on a paused watcher still scans and emits the chat message (#0027)", async () => {
-		// #0019 constrains paused watchers to zero-IO on the AUTOMATIC
-		// session_start scan path. An explicit user-invoked `/status` is a
-		// different contract: the user is asking for a fresh snapshot, so
-		// scanning + emitting the chat message is the expected behaviour here.
-		mkdirSync(join(dbRoot, "skill-a"), { recursive: true });
-		writeFileSync(
-			join(dbRoot, "skill-a", "0001-a.json"),
-			JSON.stringify({ id: "0001", status: "open", title: "t", skill: "skill-a" }),
-		);
-
-		const pi = makeFakePi();
-		extensionWithDbRoot(pi, dbRoot);
-		const cmd = pi.commands.get("local-issue-watcher");
-		const ctx = makeFakeCtx();
-		// Toggle the runtime into paused state via the public command.
-		await cmd!.handler("pause", ctx);
-		const notifyBefore = ctx.ui.notify.mock.calls.length;
-		const runstateAppendsBefore = pi.appendEntry.mock.calls.filter(
-			(c) => c[0] === RUNSTATE_ENTRY_TYPE,
-		).length;
-
-		await cmd!.handler("status", ctx);
-
-		expect(pi.sendMessage).toHaveBeenCalledTimes(1);
-		const [payload] = pi.sendMessage.mock.calls[0] as [
-			{ customType: string; content: string },
-		];
-		expect(payload.customType).toBe("pi-local-issue-watcher");
-		expect(payload.content).toBe(buildStatusDetailMessage(dbRoot, scanIssueFiles(dbRoot)));
-
-		// `/status` must not toggle pause state or produce any additional
-		// notify toasts beyond what pause/resume already emitted.
-		expect(ctx.ui.notify.mock.calls.length).toBe(notifyBefore);
-		const runstateAppendsAfter = pi.appendEntry.mock.calls.filter(
-			(c) => c[0] === RUNSTATE_ENTRY_TYPE,
-		).length;
-		expect(runstateAppendsAfter).toBe(runstateAppendsBefore);
+		await pauseViaMenu(pi, ctx);
+		await resumeViaMenu(pi, ctx);
+		const notifies = ctx.ui.notify.mock.calls.map((c) => String(c[0]));
+		expect(notifies.some((m) => /resumed/i.test(m))).toBe(true);
+		const statusCalls = ctx.ui.setStatus.mock.calls as Array<[string, string | undefined]>;
+		const activeStatus = statusCalls
+			.filter(([k]) => k === "pi-local-issue-watcher")
+			.map(([, v]) => v ?? "")
+			.find((v) => /active/i.test(v));
+		expect(activeStatus).toBeDefined();
 	});
 });
 
@@ -1229,7 +1351,8 @@ describe("run-state persistence", () => {
 	it("'/local-issue-watcher pause' appends a RUNSTATE_ENTRY_TYPE entry with paused=true", async () => {
 		const pi = makeFakePi();
 		extensionWithDbRoot(pi, dbRoot);
-		await pi.commands.get("local-issue-watcher")!.handler("pause", makeFakeCtx());
+		const ctx = makeFakeCtx();
+		await pauseViaMenu(pi, ctx);
 		const runStateCalls = pi.appendEntry.mock.calls.filter(
 			(c) => c[0] === RUNSTATE_ENTRY_TYPE,
 		);
@@ -1245,8 +1368,9 @@ describe("run-state persistence", () => {
 	it("'/local-issue-watcher resume' appends a RUNSTATE_ENTRY_TYPE entry with paused=false", async () => {
 		const pi = makeFakePi();
 		extensionWithDbRoot(pi, dbRoot);
-		await pi.commands.get("local-issue-watcher")!.handler("pause", makeFakeCtx());
-		await pi.commands.get("local-issue-watcher")!.handler("resume", makeFakeCtx());
+		const ctx = makeFakeCtx();
+		await pauseViaMenu(pi, ctx);
+		await resumeViaMenu(pi, ctx);
 		const runStateCalls = pi.appendEntry.mock.calls.filter(
 			(c) => c[0] === RUNSTATE_ENTRY_TYPE,
 		);
@@ -1261,10 +1385,11 @@ describe("run-state persistence", () => {
 	it("pause -> simulated reload -> session_start rehydrates as paused and stays quiet", async () => {
 		writeIssue("skill-a", "0001-a.json", { id: "0001", status: "open", skill: "skill-a" });
 
-		// First extension instance — user runs /local-issue-watcher pause.
+		// First extension instance — user runs /local-issue-watcher pause via menu.
 		const pi1 = makeFakePi();
 		extensionWithDbRoot(pi1, dbRoot);
-		await pi1.commands.get("local-issue-watcher")!.handler("pause", makeFakeCtx());
+		const ctx1 = makeFakeCtx();
+		await pauseViaMenu(pi1, ctx1);
 		const persistedEntries = pi1.appendEntry.mock.calls
 			.filter((c) => c[0] === RUNSTATE_ENTRY_TYPE)
 			.map((c: unknown[]) => {
@@ -1332,7 +1457,7 @@ describe("persistRunState resilience", () => {
 		}
 		const ctx = makeFakeCtx();
 		await expect(
-			pi.commands.get("local-issue-watcher")!.handler("pause", ctx),
+			pauseViaMenu(pi, ctx),
 		).resolves.toBeUndefined();
 		// User-visible notify still fires even though persistence failed.
 		const notifies = ctx.ui.notify.mock.calls.map((c) => String(c[0]));
@@ -1728,8 +1853,8 @@ describe("paused watcher = silent + zero-IO (#0019)", () => {
 
 		const notifyCallsBefore = ctx.ui.notify.mock.calls.length;
 
-		// Now invoke pause.
-		await pi.commands.get("local-issue-watcher")!.handler("pause", ctx);
+		// Now invoke pause via menu.
+		await pauseViaMenu(pi, ctx);
 
 		// Last setStatus for our key must be a clear (undefined).
 		const statusCalls = ctx.ui.setStatus.mock.calls as Array<[string, string | undefined]>;
@@ -1768,8 +1893,8 @@ describe("paused watcher = silent + zero-IO (#0019)", () => {
 			.filter(([k, v]) => k === "pi-local-issue-watcher" && typeof v === "string");
 		expect(pausedPinStrings).toHaveLength(0);
 
-		// Resume — the first setStatus write afterwards must repopulate the row.
-		await pi.commands.get("local-issue-watcher")!.handler("resume", ctx);
+		// Resume via menu — the first setStatus write afterwards must repopulate the row.
+		await resumeViaMenu(pi, ctx);
 
 		const afterResume = (ctx.ui.setStatus.mock.calls as Array<[string, string | undefined]>)
 			.filter(([k]) => k === "pi-local-issue-watcher");
@@ -1839,7 +1964,7 @@ describe("/local-issue-watcher browse subcommand (#0025)", () => {
 		const pi = makeFakePi();
 		extensionWithDbRoot(pi, dbRoot);
 		const ctx = makeFakeCtx();
-		await pi.commands.get("local-issue-watcher")!.handler("browse", ctx);
+		await browseViaMenu(pi, ctx);
 
 		expect(received).toHaveLength(1);
 		expect(received[0]!.rows).toHaveLength(1);
@@ -1860,7 +1985,7 @@ describe("/local-issue-watcher browse subcommand (#0025)", () => {
 		const pi = makeFakePi();
 		extensionWithDbRoot(pi, missing);
 		const ctx = makeFakeCtx();
-		await pi.commands.get("local-issue-watcher")!.handler("browse", ctx);
+		await browseViaMenu(pi, ctx);
 
 		expect(pickerCalls).toHaveLength(0);
 		const calls = ctx.ui.notify.mock.calls as Array<[string, string]>;
@@ -1996,8 +2121,9 @@ describe("/local-issue-watcher message renderer (#0028)", () => {
 		expect(indexC).toBeGreaterThan(indexB);
 	});
 
-	it("/local-issue-watcher status round-trip: renderer shows the header label and content without the bracket label", async () => {
-		// Seed a non-trivial snapshot so buildStartupChatMessage has content to render.
+	it("renderer output: round-trip via Refresh menu item shows header label and content without bracket label", async () => {
+		// Seed a non-trivial snapshot so the Refresh diff produces a message.
+		// rt.snapshot starts as {} so any file on disk will diff as 'new issue'.
 		mkdirSync(join(dbRoot, "skill-a"), { recursive: true });
 		writeFileSync(
 			join(dbRoot, "skill-a", "0001-a.json"),
@@ -2007,8 +2133,7 @@ describe("/local-issue-watcher message renderer (#0028)", () => {
 		const pi = makeFakePi();
 		extensionWithDbRoot(pi, dbRoot);
 		const ctx = makeFakeCtx();
-
-		await pi.commands.get("local-issue-watcher")!.handler("status", ctx);
+		await refreshViaMenu(pi, ctx);
 
 		expect(pi.sendMessage).toHaveBeenCalledTimes(1);
 		const [payload] = pi.sendMessage.mock.calls[0] as [
@@ -2031,8 +2156,6 @@ describe("/local-issue-watcher message renderer (#0028)", () => {
 		expect(joined).toContain(customType);
 		expect(joined).not.toContain(`[${customType}]`);
 		// Every non-blank content line appears in the rendered output
-		// (Box paddingX=1 adds a leading space per line so the raw multi-line
-		// string cannot be matched as a block).
 		for (const line of payload.content.split("\n").filter((l) => l.trim())) {
 			expect(joined).toContain(line);
 		}
@@ -2266,43 +2389,40 @@ describe("one-shot parse-failure toast (#0029)", () => {
 		expect(warningNotifies(ctx)).toHaveLength(1);
 	});
 
-	// -- /local-issue-watcher status --
+	// -- Refresh (replaces the former /status scan site) --
 
-	it("/status toasts on the FIRST invocation when bad files exist and no prior toast fired (#0029)", async () => {
+	it("Refresh toasts on the FIRST invocation when bad files exist and no prior toast fired (#0029)", async () => {
 		writeBadIssue("skill-a", "0001-bad.json");
 		writeBadIssue("skill-a", "0002-bad.json");
 		const pi = makeFakePi();
 		extensionWithDbRoot(pi, dbRoot);
-		const cmd = pi.commands.get("local-issue-watcher")!;
 		const ctx = makeFakeCtx();
-		await cmd.handler("status", ctx);
+		await refreshViaMenu(pi, ctx);
 
 		const warnings = warningNotifies(ctx);
 		expect(warnings).toHaveLength(1);
 		expect(warnings[0]).toMatch(/2/);
 	});
 
-	it("/status called twice in a row toasts only the first time (#0029)", async () => {
+	it("Refresh called twice in a row toasts only the first time (#0029)", async () => {
 		writeBadIssue("skill-a", "0001-bad.json");
 		const pi = makeFakePi();
 		extensionWithDbRoot(pi, dbRoot);
-		const cmd = pi.commands.get("local-issue-watcher")!;
 		const ctx = makeFakeCtx();
 
-		await cmd.handler("status", ctx);
-		await cmd.handler("status", ctx);
-		await cmd.handler("status", ctx);
+		await refreshViaMenu(pi, ctx);
+		await refreshViaMenu(pi, ctx);
+		await refreshViaMenu(pi, ctx);
 
 		expect(warningNotifies(ctx)).toHaveLength(1);
 	});
 
-	it("/status scan uses singular phrasing for a single failing file (#0029)", async () => {
+	it("Refresh scan uses singular phrasing for a single failing file (#0029)", async () => {
 		writeBadIssue("skill-a", "0001-only.json");
 		const pi = makeFakePi();
 		extensionWithDbRoot(pi, dbRoot);
-		const cmd = pi.commands.get("local-issue-watcher")!;
 		const ctx = makeFakeCtx();
-		await cmd.handler("status", ctx);
+		await refreshViaMenu(pi, ctx);
 
 		const warnings = warningNotifies(ctx);
 		expect(warnings).toHaveLength(1);
@@ -2316,15 +2436,14 @@ describe("one-shot parse-failure toast (#0029)", () => {
 		writeBadIssue("skill-a", "0001-bad.json");
 		const pi = makeFakePi();
 		extensionWithDbRoot(pi, dbRoot);
-		const cmd = pi.commands.get("local-issue-watcher")!;
 		const ctx = makeFakeCtx();
 
-		// First scan via /status fires the single allowed toast.
-		await cmd.handler("status", ctx);
+		// First scan via Refresh fires the single allowed toast.
+		await refreshViaMenu(pi, ctx);
 		expect(warningNotifies(ctx)).toHaveLength(1);
 
-		await cmd.handler("pause", ctx);
-		await cmd.handler("resume", ctx); // resume scans again with bad files still present
+		await pauseViaMenu(pi, ctx);
+		await resumeViaMenu(pi, ctx); // resume scans again with bad files still present
 
 		// Still exactly one warning — resume must NOT re-toast because the
 		// session has already spent its one-shot budget.
@@ -2337,9 +2456,8 @@ describe("one-shot parse-failure toast (#0029)", () => {
 		writeBadIssue("skill-a", "0001-bad.json");
 		const pi = makeFakePi();
 		extensionWithDbRoot(pi, dbRoot);
-		const cmd = pi.commands.get("local-issue-watcher")!;
 		const ctx = makeFakeCtx();
-		await cmd.handler("status", ctx);
+		await refreshViaMenu(pi, ctx);
 
 		const parseFailureCalls = ctx.ui.notify.mock.calls.filter((c) =>
 			String(c[0]).includes("failed to parse"),
