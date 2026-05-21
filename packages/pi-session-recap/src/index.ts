@@ -22,16 +22,15 @@
 
 import { completeSimple, getModel } from "@earendil-works/pi-ai";
 import { getAgentDir, type ExtensionAPI, type ExtensionContext } from "@earendil-works/pi-coding-agent";
-import { Text } from "@earendil-works/pi-tui";
-
 import { feedFocusBytes } from "./focusParser.js";
-import { buildStatusLine, type DisabledFlag, splitModel, type StatusLineOptions } from "./helpers.js";
+import { type DisabledFlag, splitModel, type StatusLineOptions } from "./helpers.js";
 import {
 	createRecapOrchestrator,
 	type RecapOrchestrator,
 	type RecapOrchestratorConfig,
 } from "./recapOrchestrator.js";
 import { migrateLegacyConfig, readUserRecapModel } from "./settings.js";
+import { MIN_IDLE_SECONDS, runRecapSettingsCommand } from "./settingsMenu.js";
 import { dispatchRecap } from "./subcommands.js";
 
 type Model = Parameters<typeof completeSimple>[0];
@@ -80,9 +79,15 @@ export default function (pi: ExtensionAPI) {
 
 	// --- flag accessors ------------------------------------------------------
 
+	// Session-scoped override set via `/recap-settings`. Wins over the flag
+	// while non-undefined, and is cleared on session_shutdown / session
+	// replacement so it never leaks across pi sessions.
+	let sessionIdleOverride: number | undefined;
+
 	const idleSeconds = (): number => {
+		if (sessionIdleOverride !== undefined) return sessionIdleOverride;
 		const n = Number(pi.getFlag("recap-idle-seconds") ?? DEFAULT_IDLE_SECONDS);
-		return Math.max(5, Number.isFinite(n) ? n : DEFAULT_IDLE_SECONDS);
+		return Math.max(MIN_IDLE_SECONDS, Number.isFinite(n) ? n : DEFAULT_IDLE_SECONDS);
 	};
 	const focusMinSeconds = (): number => {
 		const n = Number(pi.getFlag("recap-focus-min-seconds") ?? DEFAULT_FOCUS_MIN_SECONDS);
@@ -276,6 +281,7 @@ export default function (pi: ExtensionAPI) {
 	pi.on("session_shutdown", () => {
 		orchestrator?.reset();
 		detachFocusReporting();
+		sessionIdleOverride = undefined;
 	});
 
 	pi.on("session_start", (event, ctx) => {
@@ -285,8 +291,13 @@ export default function (pi: ExtensionAPI) {
 			/* defensive */
 		}
 		rehydrateStats(ctx);
-		// Cancel any in-flight recap or pending timer from the prior session.
-		if (orchestratorCtx !== ctx) orchestrator?.reset();
+		// Cancel any in-flight recap or pending timer from the prior session,
+		// and drop any session-scoped settings overrides set via /recap-settings
+		// — overrides are explicitly per-pi-session.
+		if (orchestratorCtx !== ctx) {
+			orchestrator?.reset();
+			sessionIdleOverride = undefined;
+		}
 		attachFocusReporting(ctx);
 		if (isDisabled() || !ctx.hasUI) return;
 		if (event.reason === "resume" || event.reason === "fork") {
@@ -336,61 +347,33 @@ export default function (pi: ExtensionAPI) {
 		};
 	};
 
-	const VALID_SUBCOMMANDS = ["status", "help"] as const;
-	const SUBCOMMAND_HELP =
-		"/recap subcommands:\n" +
-		"  (no args)       Generate a recap of recent session activity.\n" +
-		"  status          Show the current recap configuration (model, triggers, flags).\n" +
-		"  help            Show this help text.";
-	const SUBCOMMAND_MESSAGE_TYPE = "pi-session-recap:subcommand";
-
-	pi.registerMessageRenderer(SUBCOMMAND_MESSAGE_TYPE, (message) => {
-		const text =
-			typeof message.content === "string"
-				? message.content
-				: message.content
-						.filter((c): c is { type: "text"; text: string } => c.type === "text")
-						.map((c) => c.text)
-						.join("\n");
-		return new Text(text, 0, 0);
-	});
-
 	pi.registerCommand("recap", {
-		description: "Generate a one-line recap, or show status (/recap status)",
+		description: "Generate a one-line recap of recent activity",
 		handler: async (args, ctx) => {
 			const sub = dispatchRecap(args);
 			if (sub.kind === "generate") {
 				await getOrchestrator(ctx).runGenerateAndShow({ reason: "manual" });
 				return;
 			}
-			if (sub.kind === "status") {
-				pi.sendMessage(
-					{
-						customType: SUBCOMMAND_MESSAGE_TYPE,
-						content: buildStatusLine(resolveStatusOptions(ctx)),
-						display: true,
-					},
-					{ deliverAs: "followUp", triggerTurn: false },
-				);
-				return;
-			}
-			if (sub.kind === "help") {
-				pi.sendMessage(
-					{
-						customType: SUBCOMMAND_MESSAGE_TYPE,
-						content: SUBCOMMAND_HELP,
-						display: true,
-					},
-					{ deliverAs: "followUp", triggerTurn: false },
-				);
-				return;
-			}
-			// Unknown subcommand: transient toast, not chat scroll.
+			// Unknown args: transient toast, not chat scroll. `/recap` takes no
+			// subcommands today — settings live behind `/recap-settings`.
 			if (ctx.hasUI)
 				ctx.ui.notify(
-					`Unknown /recap subcommand: "${sub.payload}". Valid subcommands: ${VALID_SUBCOMMANDS.join(", ")}.`,
+					`/recap takes no arguments (got "${sub.payload}"). For settings, run /recap-settings.`,
 					"warning",
 				);
 		},
+	});
+
+	pi.registerCommand("recap-settings", {
+		description: "Open the recap settings menu (read-only status + idle override)",
+		handler: (_args, ctx) =>
+			runRecapSettingsCommand(ctx, {
+				idleSeconds,
+				setIdleOverride: (value) => {
+					sessionIdleOverride = value;
+				},
+				resolveStatusOptions: () => resolveStatusOptions(ctx),
+			}),
 	});
 }

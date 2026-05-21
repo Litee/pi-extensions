@@ -1,5 +1,8 @@
 /**
  * Unit tests for `dispatchRecap` — the pure classifier for `/recap` args.
+ *
+ * Note: `/recap` no longer accepts any subcommands. Configuration lives
+ * behind the dedicated `/recap-settings` TUI command.
  */
 
 import { describe, expect, it } from "vitest";
@@ -15,20 +18,12 @@ describe("dispatchRecap", () => {
 		expect(dispatchRecap("   ")).toEqual({ kind: "generate" });
 	});
 
-	it("classifies `status` as status", () => {
-		expect(dispatchRecap("status")).toEqual({ kind: "status" });
+	it("treats the legacy `status` token as unknown (now lives behind /recap-settings)", () => {
+		expect(dispatchRecap("status")).toEqual({ kind: "unknown", payload: "status" });
 	});
 
-	it("normalises case and whitespace around `status`", () => {
-		expect(dispatchRecap("  STATUS  ")).toEqual({ kind: "status" });
-	});
-
-	it("classifies `help` as help", () => {
-		expect(dispatchRecap("help")).toEqual({ kind: "help" });
-	});
-
-	it("normalises case around `help`", () => {
-		expect(dispatchRecap("Help")).toEqual({ kind: "help" });
+	it("treats the legacy `help` token as unknown (subcommand removed)", () => {
+		expect(dispatchRecap("help")).toEqual({ kind: "unknown", payload: "help" });
 	});
 
 	it("classifies anything else as unknown, returning the raw subcommand token as payload", () => {

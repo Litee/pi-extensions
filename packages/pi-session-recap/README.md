@@ -27,11 +27,15 @@ shutdown.
 
 ## Commands
 
-| Command         | Description |
-|-----------------|-------------|
-| `/recap`        | Force-generate a recap right now, bypassing the activity gate. |
-| `/recap status` | Print the current effective recap configuration (model + source, auto-recap state, idle / focus triggers, active disabled flags). No LLM call, no turn triggered. |
-| `/recap help`   | List the available `/recap` subcommands. |
+| Command            | Description |
+|--------------------|-------------|
+| `/recap`           | Force-generate a recap right now, bypassing the activity gate. Takes no arguments. |
+| `/recap-settings`  | Open the interactive settings menu: read-only status (model + source, auto-recap state, idle / focus triggers, active disabled flags, trigger count, token usage), plus a session-scoped editor for the idle-fallback timeout. No LLM call, no turn triggered. |
+
+Values edited from `/recap-settings` are **session-scoped** — they live in
+memory until `session_shutdown` and never persist to disk. To make a
+default stick across sessions, set the corresponding flag
+(`--recap-idle-seconds`) instead.
 
 ## Configuration
 
@@ -133,9 +137,13 @@ upstream `session-recap` v0.1.1:
   by the extension, with a one-time migration from legacy locations. Lets
   you set a persistent `recap-model` preference (among other things)
   without passing CLI flags every session.
-- **`/recap` subcommands.** `/recap help` and `/recap status` added
-  locally. `/recap` subcommand output renders chromeless (no default
-  message shell).
+- **No `/recap` subcommands.** Upstream's `/recap status` and `/recap
+  help` are gone; configuration is reachable only via the
+  `/recap-settings` TUI below.
+- **`/recap-settings` TUI** (local-only). Read-only status surface plus
+  a session-scoped editor for the idle-fallback timeout. Other rows are
+  read-only — the menu is the chat-free way to inspect the effective
+  recap configuration.
 - **Default idle timeout raised** from upstream's 45s to 180s (via an
   intermediate bump to 120s). Upstream-friendly override still works via
   `--recap-idle-seconds`.
