@@ -42,6 +42,7 @@ Per-issue sequence; do not skip or reorder:
 5. Rebase onto `main` from inside the worktree: `git fetch origin main && git rebase origin/main`.
 6. Ask for explicit confirmation before merging the worktree branch into `main`.
 7. Merge fast-forward only from the main repo: `git merge --ff-only <branch-name>`. Never create merge commits.
+8. Remove the worktree after a successful merge: `git worktree remove .worktrees/<branch-name>`.
 
 ### Standing rules (apply at all times)
 
