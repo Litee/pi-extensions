@@ -116,12 +116,18 @@ async function runModelCall(
 			// entries and don't spend reasoning tokens on them. For reasoning
 			// models we still have to set the field; "minimal" is the lowest
 			// value SimpleStreamOptions.reasoning accepts (there is no "off"
-			// at request time). Without this guard, a reasoning model burns
-			// the entire 256-token budget on hidden reasoning and returns no
-			// visible text, so the recap widget never renders.
+			// at request time).
+			//
+			// We deliberately do NOT cap maxTokens here. On AWS Bedrock,
+			// adaptive-thinking Claude (Sonnet 4.6, Opus 4.6/4.7) does not run
+			// `adjustMaxTokensForThinking`, so a tight cap is shared between
+			// thinking and visible text — thinking consumes the budget and the
+			// response contains only thinking blocks (which the orchestrator
+			// filters out), so the recap widget never renders. The recap
+			// prompt asks for a single line, so the model stops itself well
+			// before any reasonable provider default.
 			...(model.reasoning ? { reasoning: "minimal" as const } : {}),
 			cacheRetention: "none" as const,
-			maxTokens: 256,
 		},
 	);
 

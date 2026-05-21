@@ -447,7 +447,7 @@ describe("recapOrchestrator", () => {
 		).toEqual([]);
 	});
 
-	it("passes cacheRetention: 'none' and maxTokens: 256 to completeSimple", async () => {
+	it("passes cacheRetention: 'none' to completeSimple and does not cap maxTokens (Bedrock thinking models truncate text otherwise)", async () => {
 		const deps = makeDeps();
 		const orch = createRecapOrchestrator(deps);
 		await orch.runGenerateAndShow({ reason: "manual" });
@@ -455,10 +455,10 @@ describe("recapOrchestrator", () => {
 		expect(deps.completeSimple).toHaveBeenCalledTimes(1);
 		const opts = deps.completeSimple.mock.calls[0]![2] as Record<string, unknown>;
 		expect(opts["cacheRetention"]).toBe("none");
-		expect(opts["maxTokens"]).toBe(256);
+		expect("maxTokens" in opts).toBe(false);
 	});
 
-	it("sets reasoning: 'minimal' for reasoning models so the 256-token budget isn't consumed by hidden reasoning", async () => {
+	it("sets reasoning: 'minimal' for reasoning models to keep hidden-reasoning spend at the floor", async () => {
 		const deps = makeDeps();
 		(deps.ctx as unknown as { model: Record<string, unknown> }).model = {
 			provider: "openai",
