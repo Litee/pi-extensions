@@ -13,7 +13,9 @@ import { extractUiSurface } from "pi-watcher-core/ui-surface";
 import type { GlueClient } from "./glue-client.js";
 import { writeState } from "./persistence.js";
 import {
+	minIntervalMs,
 	stopPolling,
+	stopWatchPolling,
 	toggleDisplayMode,
 	type Runtime,
 } from "./runtime.js";
@@ -90,13 +92,14 @@ export async function runGlueWatcherCommand(
 								await client.stopWorkflowRun(watch.name, watch.runId, watch.profile, watch.region);
 							}
 						},
-						(watchId) => {
+					(watchId) => {
+							stopWatchPolling(rt, watchId);
 							delete rt.watches[watchId];
 							if (Object.keys(rt.watches).length === 0) stopPolling(rt);
 							writeState(rt.pi, rt);
 							rt.pi.events.emit("glue:change", {});
 						},
-						() => rt.scheduler.intervalMs,
+						() => minIntervalMs(rt),
 						() => toggleDisplayMode(rt, ctx),
 						() => rt.displayMode,
 					);
@@ -114,7 +117,7 @@ export async function runGlueWatcherCommand(
 			const active = ids.filter((id) => !rt.watches[id]?.terminal).length;
 			const stateDesc = rt.paused ? "paused" : "active";
 			ui?.notify?.(
-				`glue-watcher: ${stateDesc} | ${ids.length} watch(es) (${active} active) | poll: ${Math.round(rt.scheduler.intervalMs / 1000)}s`,
+				`glue-watcher: ${stateDesc} | ${ids.length} watch(es) (${active} active) | poll: ${Math.round(minIntervalMs(rt) / 1000)}s`,
 				"info",
 			);
 			return;

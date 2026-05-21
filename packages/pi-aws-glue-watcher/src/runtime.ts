@@ -70,13 +70,11 @@ export interface Runtime {
 	enabled: boolean;
 	displayMode: "widget" | "statusline";
 	/**
-	 * Back-off-aware poll scheduler (pi-watcher-core). Owns the timer,
-	 * effective interval, and idle-doubling state machine. Replaces the
-	 * former `pollIntervalMs` / `idleIntervalMs` / `timer` triple and the
-	 * `bumpIdleInterval` / `resetIntervalAfterUpdate` / `setPollInterval`
-	 * helpers.
+	 * Per-watch poll schedulers keyed by watchId. Each watch runs its own
+	 * back-off-aware scheduler so idle back-off and throttle back-off are
+	 * independent between watches.
 	 */
-	scheduler: PollScheduler;
+	schedulers: Map<string, PollScheduler>;
 	ui: UiSurface | null;
 	widget: GlueWidget | null;
 }
@@ -89,11 +87,7 @@ export function makeRuntime(pi: Runtime["pi"], client: GlueClient): Runtime {
 		paused: false,
 		enabled: false,
 		displayMode: "widget",
-		scheduler: new PollScheduler({
-			baseMs: POLL_INTERVAL_MS,
-			maxMs: POLL_INTERVAL_MAX_MS,
-			idleMaxMs: POLL_INTERVAL_MAX_MS,
-		}),
+		schedulers: new Map(),
 		ui: null,
 		widget: null,
 	};
@@ -111,10 +105,11 @@ export function refreshStatus(rt: Runtime): void {
 	const hasErrors = Object.values(rt.watches).some(
 		(w) => !w.terminal && w.consecutiveErrors >= POLL_ERROR_THRESHOLD,
 	);
+	const intervalMs = minIntervalMs(rt);
 	const result = buildStatusLine({
 		watches: rt.watches,
 		paused: rt.paused,
-		pollIntervalMs: rt.scheduler.intervalMs,
+		pollIntervalMs: intervalMs,
 		hasErrors,
 	});
 	rt.ui?.setStatus?.(STATUS_KEY, colorize(rt.ui?.theme, result.colorAlias, result.text));
@@ -140,106 +135,177 @@ export function toggleDisplayMode(rt: Runtime, ctx: unknown): void {
 // Poll loop
 // ---------------------------------------------------------------------------
 
+// ---------------------------------------------------------------------------
+// Per-watch scheduler helpers
+// ---------------------------------------------------------------------------
+
+/** Return the minimum effective interval across all running schedulers, or POLL_INTERVAL_MS. */
+export function minIntervalMs(rt: Runtime): number {
+	if (rt.schedulers.size === 0) return POLL_INTERVAL_MS;
+	let min = Infinity;
+	for (const s of rt.schedulers.values()) min = Math.min(min, s.intervalMs);
+	return min === Infinity ? POLL_INTERVAL_MS : min;
+}
+
 /**
- * Start the poll loop. No-op if already running. The internal PollScheduler
- * guarantees the next tick is only scheduled after the previous tick
- * resolves, so a slow AWS CLI call can never be re-entered by the timer.
+ * Ensure a per-watch PollScheduler exists and is running for the given watch.
+ * No-op if the scheduler for this watchId is already running.
  *
- * Callers are responsible for the `enabled` / `paused` gate — this
- * function unconditionally starts the scheduler once invoked.
+ * @param delayMs Optional initial delay before the first tick (ms). Used by
+ *   `startPolling` to stagger simultaneous schedulers and avoid a burst of
+ *   back-to-back chat messages when multiple watches are started together.
+ */
+export function startWatchPolling(rt: Runtime, watchId: string, delayMs = 0): void {
+	if (rt.paused) return;
+	const watch = rt.watches[watchId];
+	if (!watch || watch.terminal) return;
+	if (rt.schedulers.has(watchId) && rt.schedulers.get(watchId)!.isRunning) return;
+	const baseMs = watch.pollIntervalMs ?? POLL_INTERVAL_MS;
+	const scheduler = new PollScheduler({
+		baseMs,
+		maxMs: POLL_INTERVAL_MAX_MS,
+		idleMaxMs: POLL_INTERVAL_MAX_MS,
+	});
+	rt.schedulers.set(watchId, scheduler);
+	if (delayMs > 0) {
+		setTimeout(() => {
+			// Use identity check: the map entry must still be THIS scheduler
+			// instance. If stopWatchPolling + startWatchPolling ran during the
+			// delay window a new scheduler is in the map; don't start the old one.
+			if (rt.schedulers.get(watchId) === scheduler && !scheduler.isRunning) {
+				scheduler.start(() => pollWatch(rt, watchId));
+			}
+		}, delayMs);
+	} else {
+		scheduler.start(() => pollWatch(rt, watchId));
+	}
+}
+
+/**
+ * Stop and remove the per-watch scheduler for the given watchId.
+ * No-op if no scheduler exists for it.
+ */
+export function stopWatchPolling(rt: Runtime, watchId: string): void {
+	const s = rt.schedulers.get(watchId);
+	if (s) {
+		s.stop();
+		rt.schedulers.delete(watchId);
+	}
+}
+
+/**
+ * Start per-watch schedulers for all non-terminal watches. No-op for any
+ * watch that already has a running scheduler. Staggers startup by 2s per
+ * watch to de-correlate simultaneous schedulers and avoid message bursts.
  */
 export function startPolling(rt: Runtime): void {
-	rt.scheduler.start(() => pollOnce(rt));
+	const active = Object.values(rt.watches).filter((w) => !w.terminal);
+	for (let i = 0; i < active.length; i++) {
+		startWatchPolling(rt, active[i]!.watchId, i * 2000);
+	}
 }
 
-/** Stop the poll loop. No-op if already stopped. */
+/** Stop and remove all per-watch schedulers. */
 export function stopPolling(rt: Runtime): void {
-	rt.scheduler.stop();
+	for (const [id, s] of rt.schedulers) {
+		s.stop();
+		rt.schedulers.delete(id);
+	}
 }
+
+// ---------------------------------------------------------------------------
+// Poll loop
+// ---------------------------------------------------------------------------
 
 /**
- * Single poll cycle. Processes all non-terminal watches in insertion
- * order. Per-watch errors are isolated — one failing watch never blocks
- * the others. The combined event batch lands as a single chat message.
+ * Poll a single watch. Called by its per-watch PollScheduler. Applies
+ * back-off to that watch's scheduler only, emits events for that watch,
+ * and stops the scheduler when the run reaches a terminal state.
  */
-export async function pollOnce(rt: Runtime): Promise<void> {
+export async function pollWatch(rt: Runtime, watchId: string): Promise<void> {
 	if (rt.paused) return;
-
-	const active = Object.values(rt.watches).filter((w) => !w.terminal);
-	if (active.length === 0) {
-		refreshStatus(rt);
+	const watch = rt.watches[watchId];
+	if (!watch || watch.terminal) {
+		stopWatchPolling(rt, watchId);
 		return;
 	}
 
-	const allEvents: GlueEvent[] = [];
+	// Ensure a scheduler exists for the pollOnce/direct-call path.
+	// In production each scheduler invokes pollWatch directly, so the entry
+	// is always present. pollOnce calls pollWatch without a pre-existing
+	// scheduler, so we create one here.
+	if (!rt.schedulers.has(watchId)) {
+		startWatchPolling(rt, watchId);
+	}
+	const scheduler = rt.schedulers.get(watchId)!;
+	const events: GlueEvent[] = [];
 	let anyUpdate = false;
 
-	for (const watch of active) {
-		try {
-			const result =
-				watch.type === "job"
-					? await detectJobChanges(rt.client, watch)
-					: await detectWorkflowChanges(rt.client, watch);
+	try {
+		const result =
+			watch.type === "job"
+				? await detectJobChanges(rt.client, watch)
+				: await detectWorkflowChanges(rt.client, watch);
 
-			noteWatchSuccess(watch, {
-				onRecover: (prevErrors) => {
-					rt.pi.sendMessage(
-						{
-							customType: CUSTOM_MESSAGE_TYPE,
-							content:
-								`✓ ${watch.type} '${watch.name}' (${watch.watchId}) ` +
-								`recovered after ${prevErrors} consecutive error(s).`,
-							display: true,
-						},
-						{ deliverAs: "followUp", triggerTurn: false },
-					);
-				},
-			});
-			watch.baseline = result.newBaseline;
-			watch.lastPolledAt = Date.now();
+		noteWatchSuccess(watch, {
+			onRecover: (prevErrors) => {
+				rt.pi.sendMessage(
+					{
+						customType: CUSTOM_MESSAGE_TYPE,
+						content:
+							`✓ ${watch.type} '${watch.name}' (${watch.watchId}) ` +
+							`recovered after ${prevErrors} consecutive error(s).`,
+						display: true,
+					},
+					{ deliverAs: "followUp", triggerTurn: false },
+				);
+			},
+		});
+		watch.baseline = result.newBaseline;
+		watch.lastPolledAt = Date.now();
 
-			if (result.events.length > 0) {
-				anyUpdate = true;
-				allEvents.push(...result.events);
-				if (result.events.some((e) => e.isTerminal)) {
-					watch.terminal = true;
-				}
+		if (result.events.length > 0) {
+			anyUpdate = true;
+			events.push(...result.events);
+			if (result.events.some((e) => e.isTerminal)) {
+				watch.terminal = true;
+				stopWatchPolling(rt, watchId);
 			}
-		} catch (err) {
-			noteWatchFailure(watch, {
-				err,
-				classifyOpts: {
-					authPredicate: (e) => AUTH_ERROR_NAMES.has((e as Error)?.name ?? ""),
-					throttlePredicate: (e) => THROTTLE_ERROR_NAMES.has((e as Error)?.name ?? ""),
-					authMessage: "authentication expired — run `aws sso login` to re-authenticate",
-				},
-				scheduler: rt.scheduler,
-				onAppendError: (_classified, raw) => {
-					rt.pi.appendEntry("glue-watcher:poll-error", {
-						type: watch.type,
-						name: watch.name,
-						message: (raw as Error)?.message ?? String(raw),
-					});
-				},
-				onThresholdMessage: (classified) => {
-					rt.pi.sendMessage(
-						{
-							customType: CUSTOM_MESSAGE_TYPE,
-							content:
-								`⚠ ${watch.type} '${watch.name}' (${watch.watchId}) ` +
-								`has failed ${POLL_ERROR_THRESHOLD} consecutive polls. ` +
-								`Last error: ${classified.userMessage}`,
-							display: true,
-						},
-						{ deliverAs: "followUp", triggerTurn: true },
-					);
-				},
-			});
 		}
+	} catch (err) {
+		noteWatchFailure(watch, {
+			err,
+			classifyOpts: {
+				authPredicate: (e) => AUTH_ERROR_NAMES.has((e as Error)?.name ?? ""),
+				throttlePredicate: (e) => THROTTLE_ERROR_NAMES.has((e as Error)?.name ?? ""),
+				authMessage: "authentication expired — run `aws sso login` to re-authenticate",
+			},
+			scheduler,
+			onAppendError: (_classified, raw) => {
+				rt.pi.appendEntry("glue-watcher:poll-error", {
+					type: watch.type,
+					name: watch.name,
+					message: (raw as Error)?.message ?? String(raw),
+				});
+			},
+			onThresholdMessage: (classified) => {
+				rt.pi.sendMessage(
+					{
+						customType: CUSTOM_MESSAGE_TYPE,
+						content:
+							`⚠ ${watch.type} '${watch.name}' (${watch.watchId}) ` +
+							`has failed ${POLL_ERROR_THRESHOLD} consecutive polls. ` +
+							`Last error: ${classified.userMessage}`,
+						display: true,
+					},
+					{ deliverAs: "followUp", triggerTurn: true },
+				);
+			},
+		});
 	}
 
-	if (allEvents.length > 0) {
-		const baseContent = buildChangeChatMessage(allEvents, new Date());
+	if (events.length > 0) {
+		const baseContent = buildChangeChatMessage(events, new Date());
 		const content = rt.enabled
 			? baseContent
 			: baseContent +
@@ -249,14 +315,30 @@ export async function pollOnce(rt: Runtime): Promise<void> {
 				customType: CUSTOM_MESSAGE_TYPE,
 				content,
 				display: true,
-				details: { events: allEvents },
+				details: { events },
 			},
 			{ deliverAs: "followUp", triggerTurn: true },
 		);
 		writeState(rt.pi, rt);
 	}
 
-	rt.scheduler.noteSuccess(anyUpdate);
+	if (scheduler) scheduler.noteSuccess(anyUpdate);
 	rt.pi.events.emit("glue:change", {});
 	refreshStatus(rt);
+}
+
+/**
+ * Poll all non-terminal watches sequentially. Used in tests and as a
+ * convenience path; in production each watch has its own scheduler.
+ */
+export async function pollOnce(rt: Runtime): Promise<void> {
+	if (rt.paused) return;
+	const active = Object.values(rt.watches).filter((w) => !w.terminal);
+	if (active.length === 0) {
+		refreshStatus(rt);
+		return;
+	}
+	for (const watch of active) {
+		await pollWatch(rt, watch.watchId);
+	}
 }

@@ -284,19 +284,19 @@ describe("formatRowLine", () => {
 });
 
 // ---------------------------------------------------------------------------
-// timeoutMinutes in DisplayRow (#0014)
+// pollIntervalMs in DisplayRow (#0013)
 // ---------------------------------------------------------------------------
 
-describe("buildRows — timeoutMinutes (#0014)", () => {
-	it("carries timeoutMinutes from job baseline into DisplayRow", () => {
-		const w = job({ watchId: "a", name: "j", baseline: { state: "RUNNING", errorMessage: "", timeoutMinutes: 30 } });
+describe("buildRows — pollIntervalMs (#0013)", () => {
+	it("carries pollIntervalMs from GlueWatch into DisplayRow when set", () => {
+		const w = job({ watchId: "a", name: "j", pollIntervalMs: 30_000 });
 		const rows = buildRows({ a: w });
-		expect(rows[0]?.timeoutMinutes).toBe(30);
+		expect(rows[0]?.pollIntervalMs).toBe(30_000);
 	});
 
-	it("omits timeoutMinutes from DisplayRow when baseline has none", () => {
-		const w = job({ watchId: "a", name: "j", baseline: { state: "RUNNING", errorMessage: "" } });
+	it("omits pollIntervalMs from DisplayRow when not set on the watch", () => {
+		const w = job({ watchId: "a", name: "j" });
 		const rows = buildRows({ a: w });
-		expect(rows[0]?.timeoutMinutes).toBeUndefined();
+		expect(rows[0]?.pollIntervalMs).toBeUndefined();
 	});
 });

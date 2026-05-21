@@ -30,6 +30,7 @@ import { runGlueWatcherCommand } from "./command.js";
 import {
 	CUSTOM_MESSAGE_TYPE,
 	makeRuntime,
+	minIntervalMs,
 	refreshStatus,
 	startPolling,
 	stopPolling,
@@ -44,7 +45,7 @@ import { GlueWidget } from "./ui/glue-widget.js";
  */
 export function createExtensionWithClient(pi: ExtensionAPI, client: GlueClient): void {
 	const rt: Runtime = makeRuntime(pi, client);
-	rt.widget = new GlueWidget(pi, () => rt.watches, () => rt.scheduler.intervalMs);
+	rt.widget = new GlueWidget(pi, () => rt.watches, () => minIntervalMs(rt));
 
 	pi.on("session_start", async (_event, ctx) => {
 		rt.ui = extractUiSurface(ctx);
@@ -92,7 +93,7 @@ export function createExtensionWithClient(pi: ExtensionAPI, client: GlueClient):
 
 		if (Object.keys(rt.watches).length > 0) {
 			setImmediate(() => {
-				const pollMs = rt.scheduler.intervalMs;
+				const pollMs = minIntervalMs(rt);
 				pi.sendMessage(
 					{
 						customType: CUSTOM_MESSAGE_TYPE,
@@ -118,7 +119,7 @@ export function createExtensionWithClient(pi: ExtensionAPI, client: GlueClient):
 			rt.enabled = true;
 			writeState(rt.pi, rt);
 			const activeWatches = Object.values(rt.watches).filter((w) => !w.terminal);
-			if (!rt.paused && activeWatches.length > 0 && !rt.scheduler.isRunning)
+			if (!rt.paused && activeWatches.length > 0 && !rt.schedulers.size)
 				startPolling(rt);
 			refreshStatus(rt);
 			if (rt.displayMode === "widget") rt.widget?.show(ctx);
@@ -186,6 +187,10 @@ export {
 	CUSTOM_MESSAGE_TYPE,
 	STATUS_KEY,
 	pollOnce,
+	pollWatch,
+	minIntervalMs,
+	startWatchPolling,
+	stopWatchPolling,
 } from "./runtime.js";
 export { handleToolAction, registerToolIfNeeded } from "./toolAction.js";
 export { STATE_CUSTOM_TYPE } from "./persistence.js";

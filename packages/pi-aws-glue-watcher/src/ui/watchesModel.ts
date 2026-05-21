@@ -39,6 +39,8 @@ export interface DisplayRow {
 	errorMessage?: string;
 	isTerminal: boolean;
 	watchId: string;
+	/** Per-watch poll interval in ms. Undefined means default (120s). */
+	pollIntervalMs?: number;
 }
 
 export interface RowTheme {
@@ -96,6 +98,7 @@ export function buildRows(watchMap: WatchMap): DisplayRow[] {
 				profile: watch.profile,
 				...(watch.region !== undefined ? { region: watch.region } : {}),
 				...(b?.errorMessage !== undefined ? { errorMessage: b.errorMessage } : {}),
+				...(watch.pollIntervalMs !== undefined ? { pollIntervalMs: watch.pollIntervalMs } : {}),
 				isTerminal: watch.terminal,
 				watchId: watch.watchId,
 			});
@@ -118,6 +121,7 @@ export function buildRows(watchMap: WatchMap): DisplayRow[] {
 						runId: watch.runId,
 						profile: watch.profile,
 						...(watch.region !== undefined ? { region: watch.region } : {}),
+						...(watch.pollIntervalMs !== undefined ? { pollIntervalMs: watch.pollIntervalMs } : {}),
 						isTerminal: watch.terminal,
 						watchId: watch.watchId,
 					});
@@ -129,6 +133,7 @@ export function buildRows(watchMap: WatchMap): DisplayRow[] {
 					runId: watch.runId,
 					profile: watch.profile,
 					...(watch.region !== undefined ? { region: watch.region } : {}),
+					...(watch.pollIntervalMs !== undefined ? { pollIntervalMs: watch.pollIntervalMs } : {}),
 					isTerminal: watch.terminal,
 					watchId: watch.watchId,
 				});

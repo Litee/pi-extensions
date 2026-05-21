@@ -24,8 +24,11 @@ import {
 	POLL_INTERVAL_MAX_MS,
 	POLL_INTERVAL_MS,
 	pollOnce,
+	pollWatch,
 	startPolling,
+	startWatchPolling,
 	stopPolling,
+	stopWatchPolling,
 } from "../src/runtime.js";
 import type { GlueWatch, JobBaseline } from "../src/types.js";
 
@@ -74,11 +77,9 @@ function makeJobWatch(baseline?: JobBaseline): GlueWatch {
 // ---------------------------------------------------------------------------
 
 describe("makeRuntime", () => {
-	it("initialises scheduler at base interval, stopped", () => {
+	it("initialises with empty schedulers map", () => {
 		const rt = makeRuntime(makePi(), makeClient(makeJobRunResponse("RUNNING")));
-		expect(rt.scheduler.isRunning).toBe(false);
-		expect(rt.scheduler.intervalMs).toBe(POLL_INTERVAL_MS);
-		expect(rt.scheduler.idleIntervalMs).toBe(POLL_INTERVAL_MS);
+		expect(rt.schedulers.size).toBe(0);
 	});
 });
 
@@ -87,22 +88,27 @@ describe("makeRuntime", () => {
 // ---------------------------------------------------------------------------
 
 describe("startPolling / stopPolling", () => {
-	it("startPolling flips isRunning to true; stopPolling flips it back", () => {
+	it("startPolling creates per-watch schedulers; stopPolling removes them", () => {
 		const rt = makeRuntime(makePi(), makeClient(makeJobRunResponse("RUNNING")));
 		rt.enabled = true;
+		const watch = makeJobWatch({ state: "RUNNING", errorMessage: "" });
+		rt.watches[watch.watchId] = watch;
 		startPolling(rt);
-		expect(rt.scheduler.isRunning).toBe(true);
+		expect(rt.schedulers.size).toBe(1);
+		expect(rt.schedulers.get(watch.watchId)?.isRunning).toBe(true);
 		stopPolling(rt);
-		expect(rt.scheduler.isRunning).toBe(false);
+		expect(rt.schedulers.size).toBe(0);
 	});
 
-	it("startPolling is idempotent", () => {
+	it("startPolling is idempotent — does not create a second scheduler for the same watch", () => {
 		const rt = makeRuntime(makePi(), makeClient(makeJobRunResponse("RUNNING")));
 		rt.enabled = true;
+		const watch = makeJobWatch({ state: "RUNNING", errorMessage: "" });
+		rt.watches[watch.watchId] = watch;
 		startPolling(rt);
-		const firstTimer = rt.scheduler.timer;
+		const firstScheduler = rt.schedulers.get(watch.watchId);
 		startPolling(rt);
-		expect(rt.scheduler.timer).toBe(firstTimer);
+		expect(rt.schedulers.get(watch.watchId)).toBe(firstScheduler);
 		stopPolling(rt);
 	});
 });
@@ -115,33 +121,134 @@ describe("pollOnce — idle back-off via PollScheduler", () => {
 	it("doubles the idle base when the poll produces no events", async () => {
 		const rt = makeRuntime(makePi(), makeClient(makeJobRunResponse("RUNNING")));
 		rt.enabled = true;
-		// Seed a watch whose baseline matches current state → no event.
 		const watch = makeJobWatch({ state: "RUNNING", errorMessage: "" });
 		rt.watches[watch.watchId] = watch;
-		const initialIdle = rt.scheduler.idleIntervalMs;
-		await pollOnce(rt);
-		expect(rt.scheduler.idleIntervalMs).toBe(initialIdle * 2);
+		// start scheduler so it exists
+		startPolling(rt);
+		const scheduler = rt.schedulers.get(watch.watchId)!;
+		const initialIdle = scheduler.idleIntervalMs;
+		await pollWatch(rt, watch.watchId);
+		expect(scheduler.idleIntervalMs).toBe(initialIdle * 2);
+		stopPolling(rt);
 	});
 
 	it("resets interval to base when the poll produces an event", async () => {
 		const rt = makeRuntime(makePi(), makeClient(makeJobRunResponse("SUCCEEDED")));
 		rt.enabled = true;
-		// Baseline = RUNNING, current = SUCCEEDED → state_changed event.
 		const watch = makeJobWatch({ state: "RUNNING", errorMessage: "" });
 		rt.watches[watch.watchId] = watch;
+		startPolling(rt);
+		const scheduler = rt.schedulers.get(watch.watchId)!;
 		// Drive the idle base up first.
-		rt.scheduler.noteSuccess(false);
-		rt.scheduler.noteSuccess(false);
-		expect(rt.scheduler.idleIntervalMs).toBeGreaterThan(POLL_INTERVAL_MS);
-		await pollOnce(rt);
-		expect(rt.scheduler.idleIntervalMs).toBe(POLL_INTERVAL_MS);
-		expect(rt.scheduler.intervalMs).toBe(POLL_INTERVAL_MS);
+		scheduler.noteSuccess(false);
+		scheduler.noteSuccess(false);
+		expect(scheduler.idleIntervalMs).toBeGreaterThan(POLL_INTERVAL_MS);
+		await pollWatch(rt, watch.watchId);
+		expect(scheduler.idleIntervalMs).toBe(POLL_INTERVAL_MS);
+		expect(scheduler.intervalMs).toBe(POLL_INTERVAL_MS);
+		stopPolling(rt);
 	});
 
 	it("idle base is capped at POLL_INTERVAL_MAX_MS", () => {
 		const rt = makeRuntime(makePi(), makeClient(makeJobRunResponse("RUNNING")));
-		for (let i = 0; i < 30; i++) rt.scheduler.noteSuccess(false);
-		expect(rt.scheduler.idleIntervalMs).toBe(POLL_INTERVAL_MAX_MS);
+		const watch = makeJobWatch({ state: "RUNNING", errorMessage: "" });
+		rt.watches[watch.watchId] = watch;
+		startPolling(rt);
+		const scheduler = rt.schedulers.get(watch.watchId)!;
+		for (let i = 0; i < 30; i++) scheduler.noteSuccess(false);
+		expect(scheduler.idleIntervalMs).toBe(POLL_INTERVAL_MAX_MS);
+		stopPolling(rt);
+	});
+
+	it("per-watch back-off is independent: one watch's back-off does not affect another", async () => {
+		// watchA: no events (will back off)
+		// watchB: event fires (resets to base)
+		const piMock = makePi();
+		const watchA = makeJobWatch({ state: "RUNNING", errorMessage: "" });
+		const watchB = makeJobWatch({ state: "RUNNING", errorMessage: "" });
+		const clientA = makeClient(makeJobRunResponse("RUNNING")); // no change
+		const clientB = makeClient(makeJobRunResponse("SUCCEEDED")); // event
+		// Use separate runtimes to isolate schedulers, then share watches.
+		const rtA = makeRuntime(piMock, clientA);
+		rtA.enabled = true;
+		rtA.watches[watchA.watchId] = watchA;
+		startPolling(rtA);
+		const schedulerA = rtA.schedulers.get(watchA.watchId)!;
+		const initialA = schedulerA.idleIntervalMs;
+		await pollWatch(rtA, watchA.watchId);
+		expect(schedulerA.idleIntervalMs).toBe(initialA * 2); // backed off
+
+		const rtB = makeRuntime(piMock, clientB);
+		rtB.enabled = true;
+		rtB.watches[watchB.watchId] = watchB;
+		startPolling(rtB);
+		const schedulerB = rtB.schedulers.get(watchB.watchId)!;
+		// Pre-back-off B then fire an event — it should reset.
+		schedulerB.noteSuccess(false);
+		schedulerB.noteSuccess(false);
+		const backedOffB = schedulerB.idleIntervalMs;
+		expect(backedOffB).toBeGreaterThan(POLL_INTERVAL_MS);
+		await pollWatch(rtB, watchB.watchId);
+		expect(schedulerB.idleIntervalMs).toBe(POLL_INTERVAL_MS); // reset
+
+		// A's scheduler is unchanged by B's reset.
+		expect(schedulerA.idleIntervalMs).toBe(initialA * 2);
+
+		stopPolling(rtA);
+		stopPolling(rtB);
+	});
+
+	it("global pause halts all per-watch schedulers; resume restarts them", () => {
+		const rt = makeRuntime(makePi(), makeClient(makeJobRunResponse("RUNNING")));
+		rt.enabled = true;
+		const wA = { ...makeJobWatch({ state: "RUNNING", errorMessage: "" }), watchId: "watch-a" };
+		const wB = { ...makeJobWatch({ state: "RUNNING", errorMessage: "" }), watchId: "watch-b" };
+		rt.watches[wA.watchId] = wA;
+		rt.watches[wB.watchId] = wB;
+		startPolling(rt);
+		expect(rt.schedulers.size).toBe(2);
+		stopPolling(rt); // simulates pause clearing all schedulers
+		expect(rt.schedulers.size).toBe(0);
+		// resume re-creates them
+		startPolling(rt);
+		expect(rt.schedulers.size).toBe(2);
+		stopPolling(rt);
+	});
+
+	it("staggered-start race: delayed scheduler replaced by set-interval does not ghost-start the old one", () => {
+		// Reproduces the bug where the delayMs timeout checks .has(watchId) instead
+		// of identity equality, allowing a replaced scheduler to start as a ghost.
+		return new Promise<void>((resolve, reject) => {
+			const rt = makeRuntime(makePi(), makeClient(makeJobRunResponse("RUNNING")));
+			rt.enabled = true;
+			const watch = makeJobWatch({ state: "RUNNING", errorMessage: "" });
+			rt.watches[watch.watchId] = watch;
+
+			// Stagger delay of 50ms so the timeout fires in this test.
+			startWatchPolling(rt, watch.watchId, 50);
+			const originalScheduler = rt.schedulers.get(watch.watchId)!;
+			expect(originalScheduler.isRunning).toBe(false); // not yet started
+
+			// Simulate set-interval replacing the scheduler before the timeout fires.
+			stopWatchPolling(rt, watch.watchId);
+			startWatchPolling(rt, watch.watchId); // delayMs=0, starts immediately
+			const replacementScheduler = rt.schedulers.get(watch.watchId)!;
+			expect(replacementScheduler).not.toBe(originalScheduler);
+			expect(replacementScheduler.isRunning).toBe(true);
+
+			// After the timeout, the original scheduler must NOT have started.
+			setTimeout(() => {
+				try {
+					expect(originalScheduler.isRunning).toBe(false); // ghost prevented
+					expect(rt.schedulers.get(watch.watchId)).toBe(replacementScheduler);
+					stopPolling(rt);
+					resolve();
+				} catch (e) {
+					stopPolling(rt);
+					reject(e instanceof Error ? e : new Error(String(e)));
+				}
+			}, 100);
+		});
 	});
 });
 
@@ -200,9 +307,12 @@ describe("pollOnce — error classification", () => {
 		rt.enabled = true;
 		const watch = makeJobWatch({ state: "RUNNING", errorMessage: "" });
 		rt.watches[watch.watchId] = watch;
-		const initialInterval = rt.scheduler.intervalMs;
-		await pollOnce(rt);
-		expect(rt.scheduler.intervalMs).toBeGreaterThan(initialInterval);
+		startPolling(rt);
+		const scheduler = rt.schedulers.get(watch.watchId)!;
+		const initialInterval = scheduler.intervalMs;
+		await pollWatch(rt, watch.watchId);
+		expect(scheduler.intervalMs).toBeGreaterThan(initialInterval);
+		stopPolling(rt);
 	});
 });
 

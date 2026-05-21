@@ -23,17 +23,16 @@ import {
 
 /**
  * Format the right-hand side of the widget header:
- * `" (N)  poll: Xs"` where N is the count of non-terminal watches the
+ * `" (N)"` where N is the count of non-terminal watches the
  * user added (not the number of expanded rows — one workflow can expand
  * into many rows, but it only counts as one watch).
  */
 export function formatHeaderCountsSuffix(
 	watches: WatchMap,
-	pollIntervalMs: number,
+	_pollIntervalMs?: number,
 ): string {
 	const activeWatchCount = Object.values(watches).filter((w) => !w.terminal).length;
-	const pollSeconds = Math.round(pollIntervalMs / 1000);
-	return ` (${activeWatchCount})  poll: ${pollSeconds}s`;
+	return ` (${activeWatchCount})`;
 }
 
 // ---------------------------------------------------------------------------

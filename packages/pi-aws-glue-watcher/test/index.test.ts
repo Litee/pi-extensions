@@ -3,7 +3,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
 import { initTheme } from "@earendil-works/pi-coding-agent";
 import type { GlueClient, JobRunResponse, WorkflowRunResponse } from "../src/glue-client.js";
-import { makeRuntime, POLL_ERROR_THRESHOLD, POLL_INTERVAL_MS, pollOnce } from "../src/runtime.js";
+import { makeRuntime, POLL_ERROR_THRESHOLD, pollOnce } from "../src/runtime.js";
 import {
 	handleToolAction,
 	reconcileToolActivation,
@@ -758,14 +758,14 @@ describe("handleToolAction — status", () => {
 		expect(result.details.message).toContain("paused");
 	});
 
-	it("shows the current poll interval in seconds", async () => {
+	it("shows watch count and state in status", async () => {
 		const pi = makePi();
 		const rt = makeRuntime(pi, makeClient());
 
 		const result = await handleToolAction(rt, { action: "status" });
 
-		const expectedSeconds = Math.round(POLL_INTERVAL_MS / 1000);
-		expect(result.details.message).toContain(`${expectedSeconds}s`);
+		expect(result.details.message).toContain("glue-watcher:");
+		expect(result.details.message).toContain("watches:");
 	});
 });
 

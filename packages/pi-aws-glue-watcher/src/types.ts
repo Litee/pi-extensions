@@ -106,6 +106,11 @@ export interface GlueWatch {
 	profile: string;
 	/** AWS region; `undefined` falls back to the profile default. */
 	region: string | undefined;
+	/**
+	 * Per-watch poll interval in milliseconds. When unset, falls back to
+	 * the global default (POLL_INTERVAL_MS = 120_000).
+	 */
+	pollIntervalMs?: number;
 	addedAt: number;
 	lastPolledAt: number | undefined;
 	/**
