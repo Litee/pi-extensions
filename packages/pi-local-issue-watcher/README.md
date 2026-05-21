@@ -63,22 +63,20 @@ On every `session_start`:
    (`buildStartupChatMessage`) so the LLM has the raw data. The
    `local-issue-watcher: dbRoot missing | …` variant kept its
    abbreviated path because the remediation hint is the whole point
-   of that line. The inline `/local-issue-watcher status` notify
-   and the pause/resume notifications keep the full absolute path so
-   the user can copy-paste it.
+   of that line. The pause/resume notifications keep the full absolute
+   path so the user can copy-paste it.
    This line is persistent (lives below the main status line, like
    `slack-watcher`) and never triggers an agent turn.
-   `/local-issue-watcher pause` / `/local-issue-watcher resume` update
-   the same entry with `state=paused` / `state=resumed`.
-   `session_shutdown` clears it.
+   The `Paused: on/off` menu item updates the same entry with
+   `state=paused` / `state=resumed`. `session_shutdown` clears it.
 5. Rehydrate any baseline snapshot from the session log (< 24 h old).
 6. Rehydrate the user's last explicit **run state** (paused / running)
    from the session log. Absent entry → default **paused** (#0012). A
-   fresh pi session stays quiet until the user opts in with
-   `/local-issue-watcher resume`; the pinned status line reads `paused`, no
-   startup chat message is emitted, and no poll loop starts. Only an
-   explicit `paused=false` run-state entry (from a prior
-   `/local-issue-watcher resume` in the same session log) flips this to
+   fresh pi session stays quiet until the user opts in by toggling
+   `Paused: on` → `off` from the `/local-issue-watcher` menu; the pinned
+   status line reads `paused`, no startup chat message is emitted, and
+   no poll loop starts. Only an explicit `paused=false` run-state entry
+   (from a prior resume in the same session log) flips this to
    **running**. This is what makes pause/resume survive plugin reload
    and `session_start` with `reason: "resume"`.
 7. If a baseline exists **and** the watcher is not paused **and** the

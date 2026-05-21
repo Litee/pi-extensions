@@ -21,9 +21,8 @@
  *   session_shutdown:
  *     - clear the poll interval
  *
- *   /local-issue-watcher  (pause|resume|browse|<no args>):
- *     - toggle pause state, open the searchable backlog browser, or
- *       print a status summary via `ctx.ui.notify`
+ *   /local-issue-watcher  (any args ignored):
+ *     - opens the interactive menu (browse / refresh / pause / close)
  *
  * Scope: one dbRoot per process. No tool is registered — this extension is
  * meant to be enabled per-project (via the workspace `pi.extensions`
@@ -562,7 +561,7 @@ export default function issueWatcher(pi: ExtensionAPI): void {
 	});
 
 	pi.registerCommand("local-issue-watcher", {
-		description: "Open the local-issue-watcher menu (browse, refresh, pause/resume)",
+		description: "Open the local-issue-watcher menu",
 		handler: async (args, ctx) => {
 			return runLocalIssueWatcherCommand(args, ctx, rt, pi, {
 				startPolling,
