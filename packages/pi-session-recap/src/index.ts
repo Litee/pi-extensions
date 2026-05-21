@@ -62,6 +62,11 @@ export default function (pi: ExtensionAPI) {
 		type: "boolean",
 		default: false,
 	});
+	pi.registerFlag("recap-during-active", {
+		description: "Allow focus-triggered recaps while an agent turn is still running",
+		type: "boolean",
+		default: false,
+	});
 	pi.registerFlag("recap-disable", {
 		description: "Disable the automatic session recap",
 		type: "boolean",
@@ -85,6 +90,7 @@ export default function (pi: ExtensionAPI) {
 	};
 	const isDisabled = (): boolean => Boolean(pi.getFlag("recap-disable"));
 	const isFocusDisabled = (): boolean => Boolean(pi.getFlag("recap-disable-focus"));
+	const allowDuringActive = (): boolean => Boolean(pi.getFlag("recap-during-active"));
 	const configuredOverride = (): { source: "--recap-model" | "pi-session-recap.json"; spec: string } | null => {
 		const cli = String(pi.getFlag("recap-model") ?? "").trim();
 		if (cli.length > 0) return { source: "--recap-model", spec: cli };
@@ -102,6 +108,7 @@ export default function (pi: ExtensionAPI) {
 		idleMs: () => idleSeconds() * 1000,
 		focusMinMs: () => focusMinSeconds() * 1000,
 		modelOverride,
+		allowDuringActive,
 	};
 
 	// Orchestrator is keyed per-ctx: pi delivers each lifecycle callback with

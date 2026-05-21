@@ -42,6 +42,7 @@ shutdown.
 | `--recap-idle-seconds <n>` | `120` | Seconds after `turn_end` before the idle-fallback recap fires. |
 | `--recap-focus-min-seconds <n>` | `3` | Minimum focus-out duration before a recap is revealed on refocus. |
 | `--recap-disable-focus` | `false` | Disable DECSET `?1004` focus reporting. Idle fallback still runs. |
+| `--recap-during-active` | `false` | Allow focus-triggered recaps to fire while an agent turn is still running. By default they are deferred until `agent_end`. |
 | `--recap-disable` | `false` | Disable the automatic recap entirely. `/recap` still works. |
 | `--recap-model "<p/id>"` | (active model) | Override the default, e.g. `anthropic/claude-sonnet-4-6`. |
 

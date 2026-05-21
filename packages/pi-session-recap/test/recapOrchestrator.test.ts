@@ -319,6 +319,24 @@ describe("recapOrchestrator", () => {
 		expect(deps.completeSimple).not.toHaveBeenCalled();
 	});
 
+	it("allows focus recap during active agent when allowDuringActive() returns true; agent_end does not double-fire", async () => {
+		const deps = makeDeps({ config: { allowDuringActive: () => true } });
+		const orch = createRecapOrchestrator(deps);
+
+		orch.onAgentStart();
+		orch.onFocusOut();
+
+		// With the opt-in flag set, the focus draft must run immediately rather
+		// than parking. ~10ms of real timers is enough for the async chain.
+		await new Promise((r) => setTimeout(r, 10));
+		expect(deps.completeSimple).toHaveBeenCalledTimes(1);
+
+		// agent_end must NOT flush a deferred draft — nothing was parked.
+		orch.onAgentEnd();
+		await new Promise((r) => setTimeout(r, 10));
+		expect(deps.completeSimple).toHaveBeenCalledTimes(1);
+	});
+
 	it("defers focus recap while agent is active and fires it on agent_end", async () => {
 		const deps = makeDeps();
 		const orch = createRecapOrchestrator(deps);

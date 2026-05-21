@@ -33,6 +33,13 @@ export interface RecapOrchestratorConfig {
 	focusMinMs: () => number;
 	/** Spec string for --recap-model override, or undefined to use ctx.model. */
 	modelOverride: () => string | undefined;
+	/**
+	 * Opt-in: allow focus-triggered recaps to fire while an agent turn is
+	 * still running. Default (undefined or false) preserves the legacy
+	 * "always defer until agent_end" behaviour. Mirrors upstream
+	 * tmustier/pi-extensions session-recap v0.1.3's `--recap-during-active`.
+	 */
+	allowDuringActive?: () => boolean;
 }
 
 export interface RecapOrchestratorDeps {
@@ -329,8 +336,10 @@ export function createRecapOrchestrator(deps: RecapOrchestratorDeps): RecapOrche
 	const onFocusOut = () => {
 		focusedOutAt = Date.now();
 		// If the agent is mid-turn, don't draft against the half-written branch.
-		// Park the request and flush it once agent_end (or turn_end) fires.
-		if (agentActive) {
+		// Park the request and flush it once agent_end (or turn_end) fires —
+		// unless the user opted into `--recap-during-active`, in which case we
+		// fall through and let the focus draft race against the live turn.
+		if (agentActive && !(deps.config.allowDuringActive?.() ?? false)) {
 			focusDraftAfterAgent = true;
 			return;
 		}
