@@ -474,7 +474,7 @@ describe("startup chat message: triggerTurn + label", () => {
 		void rendered; // silence unused
 	});
 
-	it("registers /glue-watcher with a description that lists the actual subcommands", async () => {
+	it("registers /glue-watcher with a menu-style description (no subcommand list)", async () => {
 		const { createExtensionWithClient } = await import("../src/index.js");
 		const pi = makePi();
 		createExtensionWithClient(pi as unknown as ExtensionAPI, makeClient());
@@ -483,11 +483,12 @@ describe("startup chat message: triggerTurn + label", () => {
 		const entry = calls.find((c) => c[0] === "glue-watcher");
 		expect(entry).toBeDefined();
 		const description = entry![1].description;
-		// Must mention every supported subcommand parsed by parseSubcommand.
-		expect(description).toMatch(/status/);
-		expect(description).toMatch(/browse/);
-		expect(description).toMatch(/settings/);
-		// Must NOT mention removed subcommands — parseSubcommand maps these to `unknown`.
+		// Subcommands are gone — description must point at the TUI menu
+		// rather than enumerate the legacy status|browse|settings tokens.
+		expect(description).toMatch(/menu/i);
+		expect(description).not.toMatch(/\bstatus\b/);
+		expect(description).not.toMatch(/\bbrowse\b/);
+		expect(description).not.toMatch(/\bsettings\b/);
 		expect(description).not.toMatch(/\benable\b/);
 		expect(description).not.toMatch(/\bdisable\b/);
 	});

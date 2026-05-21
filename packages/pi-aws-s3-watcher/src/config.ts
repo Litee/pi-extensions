@@ -30,7 +30,8 @@ export interface S3WatcherConfig {
 	/**
 	 * Initial display mode used when no display-mode preference is
 	 * persisted in the session log. Once the user toggles the display
-	 * via `/s3-watcher display`, the persisted value wins on subsequent
+	 * via the `/s3-watcher` menu's display-mode switch, the persisted value
+	 * wins on subsequent
 	 * session loads — this config only seeds the first session.
 	 */
 	defaultDisplayMode?: DisplayMode;

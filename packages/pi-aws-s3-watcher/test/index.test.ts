@@ -10,9 +10,16 @@ import { loadConfig, saveConfig } from "../src/config.js";
 
 import { createExtensionWithClient } from "../src/index.js";
 import { STATE_CUSTOM_TYPE } from "../src/persistence.js";
-import { CUSTOM_MESSAGE_TYPE, POLL_INTERVAL_MS, STATUS_KEY } from "../src/runtime.js";
+import { CUSTOM_MESSAGE_TYPE, STATUS_KEY } from "../src/runtime.js";
 import type { HeadObjectResult, S3Client } from "../src/s3-client.js";
 import { resetToolRegisteredForTests } from "../src/toolAction.js";
+import {
+	ITEM_CLOSE,
+	ITEM_DISPLAY_PREFIX,
+	ITEM_PAUSED_PREFIX,
+	ITEM_USER_DEFAULT_PREFIX,
+	MENU_TITLE,
+} from "../src/command.js";
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -199,51 +206,6 @@ describe("createExtensionWithClient — session lifecycle", () => {
 		expect(sendMessage).not.toHaveBeenCalled();
 	});
 });
-
-describe("/s3-watcher command", () => {
-	it("status notifies the summary line", async () => {
-		const { pi, handlers, commands } = makePi();
-		createExtensionWithClient(pi, makeClient());
-		await handlers.sessionStart!({}, makeCtx());
-		const notify = vi.fn();
-		await commands["s3-watcher"]!.handler("status", {
-			hasUI: true,
-			ui: { notify, hasUI: true },
-		});
-		expect(notify).toHaveBeenCalledOnce();
-		const msg = notify.mock.calls[0]![0] as string;
-		expect(msg).toMatch(/s3-watcher: active/);
-		expect(msg).toMatch(new RegExp(`poll: ${Math.round(POLL_INTERVAL_MS / 1000)}s`));
-	});
-
-	it("pause / resume toggles state and notifies", async () => {
-		const { pi, handlers, commands } = makePi();
-		createExtensionWithClient(pi, makeClient());
-		await handlers.sessionStart!({}, makeCtx());
-		const notify = vi.fn();
-		const ctx = { hasUI: true, ui: { notify, hasUI: true } };
-		await commands["s3-watcher"]!.handler("pause", ctx);
-		expect(notify).toHaveBeenCalledWith("s3-watcher: paused.", "info");
-		await commands["s3-watcher"]!.handler("resume", ctx);
-		expect(notify).toHaveBeenCalledWith("s3-watcher: resumed.", "info");
-	});
-
-	it("warns on unknown subcommand", async () => {
-		const { pi, handlers, commands } = makePi();
-		createExtensionWithClient(pi, makeClient());
-		await handlers.sessionStart!({}, makeCtx());
-		const notify = vi.fn();
-		await commands["s3-watcher"]!.handler("blarf", {
-			hasUI: true,
-			ui: { notify, hasUI: true },
-		});
-		expect(notify).toHaveBeenCalledWith(
-			expect.stringMatching(/unknown subcommand 'blarf'/),
-			"warning",
-		);
-	});
-});
-
 describe("status-line visibility: shown in statusline mode, cleared in widget mode", () => {
 	function makePersistedState(enabled: boolean) {
 		return [
@@ -511,8 +473,8 @@ describe("user config: defaultDisplayMode (#0005)", () => {
 	});
 });
 
-describe("/s3-watcher settings subcommand", () => {
-	function makeSettingsCtx(
+describe("/s3-watcher TUI menu", () => {
+	function makeMenuCtx(
 		select: (title: string, items: string[]) => Promise<string | null>,
 		notify: ReturnType<typeof vi.fn>,
 	) {
@@ -523,53 +485,82 @@ describe("/s3-watcher settings subcommand", () => {
 		};
 	}
 
-	it("opens an interactive menu via ctx.ui.select and exits on 'Back'", async () => {
+	it("opens the menu via ctx.ui.select and exits on Close", async () => {
 		const { pi, handlers, commands } = makePi();
 		createExtensionWithClient(pi, makeClient());
 		await handlers.sessionStart!({}, makeCtx());
-		const select = vi.fn().mockResolvedValueOnce("Back");
+		const select = vi.fn().mockResolvedValueOnce(ITEM_CLOSE);
 		const notify = vi.fn();
-		await commands["s3-watcher"]!.handler("settings", makeSettingsCtx(select, notify));
+		await commands["s3-watcher"]!.handler("", makeMenuCtx(select, notify));
 		expect(select).toHaveBeenCalledTimes(1);
 		const [title, items] = select.mock.calls[0]! as [string, string[]];
-		expect(title).toBe("s3-watcher settings");
+		expect(title).toBe(MENU_TITLE);
 		expect(items).toEqual([
-			"Session display mode: widget",
-			"User default display mode: (unset — falls back to widget)",
-			"Back",
+			`${ITEM_PAUSED_PREFIX} off`,
+			`${ITEM_DISPLAY_PREFIX} widget`,
+			`${ITEM_USER_DEFAULT_PREFIX} unset`,
+			ITEM_CLOSE,
 		]);
 	});
 
-	it("toggles session display mode and re-renders the menu", async () => {
+	it("ignores any args — menu always opens", async () => {
+		const { pi, handlers, commands } = makePi();
+		createExtensionWithClient(pi, makeClient());
+		await handlers.sessionStart!({}, makeCtx());
+		const select = vi.fn().mockResolvedValueOnce(ITEM_CLOSE);
+		await commands["s3-watcher"]!.handler("status", makeMenuCtx(select, vi.fn()));
+		expect(select).toHaveBeenCalledTimes(1);
+	});
+
+	it("Paused switch toggles rt.paused and re-renders", async () => {
 		const { pi, handlers, commands } = makePi();
 		createExtensionWithClient(pi, makeClient());
 		await handlers.sessionStart!({}, makeCtx());
 		const select = vi
 			.fn()
-			.mockResolvedValueOnce("Session display mode: widget")
-			.mockResolvedValueOnce("Back");
+			.mockResolvedValueOnce(`${ITEM_PAUSED_PREFIX} off`)
+			.mockResolvedValueOnce(ITEM_CLOSE);
 		const notify = vi.fn();
-		await commands["s3-watcher"]!.handler("settings", makeSettingsCtx(select, notify));
+		await commands["s3-watcher"]!.handler("", makeMenuCtx(select, notify));
 		expect(select).toHaveBeenCalledTimes(2);
-		// Second invocation should reflect the toggle to statusline.
-		expect((select.mock.calls[1]![1] as string[])[0]).toBe("Session display mode: statusline");
+		expect((select.mock.calls[1]![1] as string[])[0]).toBe(`${ITEM_PAUSED_PREFIX} on`);
+		expect(notify).toHaveBeenCalledWith(
+			expect.stringMatching(/s3-watcher: paused/),
+			"info",
+		);
+	});
+
+	it("Display mode switch toggles session display mode", async () => {
+		const { pi, handlers, commands } = makePi();
+		createExtensionWithClient(pi, makeClient());
+		await handlers.sessionStart!({}, makeCtx());
+		const select = vi
+			.fn()
+			.mockResolvedValueOnce(`${ITEM_DISPLAY_PREFIX} widget`)
+			.mockResolvedValueOnce(ITEM_CLOSE);
+		const notify = vi.fn();
+		await commands["s3-watcher"]!.handler("", makeMenuCtx(select, notify));
+		expect((select.mock.calls[1]![1] as string[])[1]).toBe(
+			`${ITEM_DISPLAY_PREFIX} statusline`,
+		);
 		expect(notify).toHaveBeenCalledWith(
 			expect.stringMatching(/session display → statusline/),
 			"info",
 		);
 	});
 
-	it("persists user default to ~/.pi/agent/pi-aws-s3-watcher.json via saveConfig", async () => {
+	it("User default switch persists via saveConfig (unset to statusline)", async () => {
+		vi.mocked(loadConfig).mockReturnValue({});
+		vi.mocked(saveConfig).mockReturnValue(true);
 		const { pi, handlers, commands } = makePi();
 		createExtensionWithClient(pi, makeClient());
 		await handlers.sessionStart!({}, makeCtx());
-		// loadConfig starts as {} → toggle sets next='statusline'.
 		const select = vi
 			.fn()
-			.mockResolvedValueOnce("User default display mode: (unset — falls back to widget)")
-			.mockResolvedValueOnce("Back");
+			.mockResolvedValueOnce(`${ITEM_USER_DEFAULT_PREFIX} unset`)
+			.mockResolvedValueOnce(ITEM_CLOSE);
 		const notify = vi.fn();
-		await commands["s3-watcher"]!.handler("settings", makeSettingsCtx(select, notify));
+		await commands["s3-watcher"]!.handler("", makeMenuCtx(select, notify));
 		expect(saveConfig).toHaveBeenCalledWith({ defaultDisplayMode: "statusline" });
 		expect(notify).toHaveBeenCalledWith(
 			expect.stringMatching(/user default → statusline/),
@@ -577,33 +568,31 @@ describe("/s3-watcher settings subcommand", () => {
 		);
 	});
 
-	it("toggles user default away from a persisted statusline back to widget", async () => {
+	it("User default switch flips persisted statusline back to widget", async () => {
 		vi.mocked(loadConfig).mockReturnValue({ defaultDisplayMode: "statusline" });
+		vi.mocked(saveConfig).mockReturnValue(true);
 		const { pi, handlers, commands } = makePi();
 		createExtensionWithClient(pi, makeClient());
 		await handlers.sessionStart!({}, makeCtx());
 		const select = vi
 			.fn()
-			.mockResolvedValueOnce("User default display mode: statusline")
-			.mockResolvedValueOnce("Back");
-		await commands["s3-watcher"]!.handler(
-			"settings",
-			makeSettingsCtx(select, vi.fn()),
-		);
+			.mockResolvedValueOnce(`${ITEM_USER_DEFAULT_PREFIX} statusline`)
+			.mockResolvedValueOnce(ITEM_CLOSE);
+		await commands["s3-watcher"]!.handler("", makeMenuCtx(select, vi.fn()));
 		expect(saveConfig).toHaveBeenCalledWith({ defaultDisplayMode: "widget" });
 	});
 
-	it("warns via notify when saveConfig fails (IO error)", async () => {
+	it("warns via notify when saveConfig fails", async () => {
 		vi.mocked(saveConfig).mockReturnValue(false);
 		const { pi, handlers, commands } = makePi();
 		createExtensionWithClient(pi, makeClient());
 		await handlers.sessionStart!({}, makeCtx());
 		const select = vi
 			.fn()
-			.mockResolvedValueOnce("User default display mode: (unset — falls back to widget)")
-			.mockResolvedValueOnce("Back");
+			.mockResolvedValueOnce(`${ITEM_USER_DEFAULT_PREFIX} unset`)
+			.mockResolvedValueOnce(ITEM_CLOSE);
 		const notify = vi.fn();
-		await commands["s3-watcher"]!.handler("settings", makeSettingsCtx(select, notify));
+		await commands["s3-watcher"]!.handler("", makeMenuCtx(select, notify));
 		expect(notify).toHaveBeenCalledWith(
 			expect.stringMatching(/failed to write user config/),
 			"warning",
@@ -615,8 +604,7 @@ describe("/s3-watcher settings subcommand", () => {
 		createExtensionWithClient(pi, makeClient());
 		await handlers.sessionStart!({}, makeCtx());
 		const notify = vi.fn();
-		// hasUI=true but no select fn → must abort with a warning.
-		await commands["s3-watcher"]!.handler("settings", {
+		await commands["s3-watcher"]!.handler("", {
 			hasUI: true,
 			ui: { hasUI: true, notify },
 		});
@@ -625,35 +613,5 @@ describe("/s3-watcher settings subcommand", () => {
 			"warning",
 		);
 		expect(saveConfig).not.toHaveBeenCalled();
-	});
-
-	it("'display' subcommand still works but emits a deprecation warning", async () => {
-		const { pi, handlers, commands } = makePi();
-		createExtensionWithClient(pi, makeClient());
-		await handlers.sessionStart!({}, makeCtx());
-		const notify = vi.fn();
-		await commands["s3-watcher"]!.handler("display", {
-			hasUI: true,
-			ui: { hasUI: true, notify },
-		});
-		expect(notify).toHaveBeenCalledOnce();
-		const [msg, level] = notify.mock.calls[0]! as [string, string];
-		expect(msg).toMatch(/deprecated/);
-		expect(msg).toMatch(/\/s3-watcher settings/);
-		expect(level).toBe("warning");
-	});
-
-	it("usage hint on unknown subcommand mentions 'settings' (not legacy 'display')", async () => {
-		const { pi, handlers, commands } = makePi();
-		createExtensionWithClient(pi, makeClient());
-		await handlers.sessionStart!({}, makeCtx());
-		const notify = vi.fn();
-		await commands["s3-watcher"]!.handler("garbage", {
-			hasUI: true,
-			ui: { hasUI: true, notify },
-		});
-		const msg = notify.mock.calls[0]![0] as string;
-		expect(msg).toMatch(/settings/);
-		expect(msg).not.toMatch(/\bdisplay\b/);
 	});
 });

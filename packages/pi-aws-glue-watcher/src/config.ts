@@ -32,7 +32,8 @@ export interface GlueWatcherConfig {
 	/**
 	 * Initial display mode used when no display-mode preference is
 	 * persisted in the session log. Once the user toggles the display
-	 * via `/glue-watcher settings` (or the `t` key in the watches
+	 * via the `/glue-watcher` menu's display-mode switch (or the `t` key in
+	 * the watches
 	 * overlay), the persisted value wins on subsequent session loads —
 	 * this config only seeds the first session.
 	 */

@@ -69,14 +69,17 @@ There is no indefinitely-polling mode.
 
 ## `/s3-watcher` command
 
-| Subcommand | Effect                                                                 |
-|------------|------------------------------------------------------------------------|
-| (no args)  | Notify the runtime status (active/paused, watch counts, poll interval).|
-| `status`   | Alias for no-args.                                                     |
-| `pause`    | Stop polling. Persisted — survives session reload.                     |
-| `resume`   | Resume polling.                                                        |
-| `settings` | Open an interactive TUI menu for session-level and user-level display mode. The user-level choice is persisted to `~/.pi/agent/pi-aws-s3-watcher.json` and seeds future sessions. |
-| `display`  | **Deprecated.** Flips the session display mode in place; emits a deprecation warning. Use `settings` instead. |
+`/s3-watcher` (with or without arguments) opens an interactive TUI menu
+via `ctx.ui.select`. There are no subcommands — the legacy
+`pause | resume | status | settings | display` interface has been
+replaced by the menu.
+
+| Menu row                       | Effect                                                                                |
+|--------------------------------|---------------------------------------------------------------------------------------|
+| `Paused: off|on`               | Switch — toggle global pause. Persists across session reload.                         |
+| `Display mode: widget|statusline` | Switch — flips this session's display mode between the below-editor widget and the compact status row. |
+| `User default display mode: …` | Switch — writes `defaultDisplayMode` to `~/.pi/agent/pi-aws-s3-watcher.json`. Seeds future sessions. |
+| `Close`                        | Dismiss the menu (Esc also works).                                                    |
 
 ## Authentication
 
@@ -101,10 +104,10 @@ seeds defaults for fresh sessions:
 | `defaultDisplayMode` | `"widget"` \| `"statusline"`  | Initial display mode used when no `displayMode` is persisted yet.      |
 
 Precedence on session load: **persisted state > user config > hardcoded
-default (`widget`)**. Once you toggle the display via `/s3-watcher
-settings` (session row), the persisted choice wins on subsequent
-reloads. Toggling the user-default row in `/s3-watcher settings`
-rewrites this JSON file so future sessions seed from it.
+default (`widget`)**. Once you toggle the display via the
+`/s3-watcher` menu's display-mode switch (session row), the persisted
+choice wins on subsequent reloads. Toggling the user-default row in
+the menu rewrites this JSON file so future sessions seed from it.
 
 Fail-soft: a missing file, unreadable file, invalid JSON, or unknown
 value (e.g. `defaultDisplayMode: "inline"`) is silently ignored and
@@ -136,6 +139,7 @@ src/
   persistence.ts   — createPersistence delegate
   format.ts        — chat message + status-line formatters
   config.ts        — user-level config loader (~/.pi/agent/pi-aws-s3-watcher.json)
+  command.ts       — /s3-watcher TUI menu (paused + display switches)
   index.ts         — session lifecycle + /s3-watcher command
 skills/
   aws-s3-watcher/

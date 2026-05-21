@@ -29,13 +29,10 @@ by the `pi-tools-runtime-manager` extension; if the call fails with
 "unknown tool", that extension is not installed — ask the user to
 install it before continuing.
 
-**Escape hatch — user runs `/glue-watcher enable`**: a manual path that
-also activates the tool and additionally turns on the full lifecycle
-(below-editor widget, polling rehydration on session restart). Use this
-if the user asks to "enable the Glue watcher" explicitly.
-
-`/glue-watcher disable` is the inverse — deactivates the tool and stops
-polling.
+**`/glue-watcher` slash command** opens an interactive TUI menu where the
+user can browse watches, pause/resume polling, and toggle display mode.
+It does **not** activate or deactivate the `glue_watcher` tool itself —
+use `manage_tools` for that. Tool activation is independent of the menu.
 
 ## What the tool does
 

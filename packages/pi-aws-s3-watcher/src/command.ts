@@ -1,47 +1,43 @@
 /**
- * `/glue-watcher` TUI menu.
+ * `/s3-watcher` TUI menu.
  *
- * Single entry-point: any invocation of `/glue-watcher` (with or without
+ * Single entry-point: any invocation of `/s3-watcher` (with or without
  * args) opens an interactive menu via `ctx.ui.select`. Subcommands have
  * been removed — every action is reachable from the menu instead.
  *
  * Menu items (flat — no nested settings sub-menu):
- *   - Browse watches (N)        → opens the WatchesView overlay
  *   - Paused                    → switch (off|on)
  *   - Display mode              → switch (widget|statusline) — session-scoped
  *   - User default display mode → cycle (unset|widget|statusline) — persisted
  *   - Close
+ *
+ * S3 has no equivalent of the Glue WatchesView yet, so there is no "Browse"
+ * row; the widget / status-line surfaces remain the live view of watches.
  */
 
-import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
 import { extractUiSurface } from "pi-watcher-core/ui-surface";
 
 import { loadConfig, saveConfig, type DisplayMode } from "./config.js";
-import type { GlueClient } from "./glue-client.js";
 import { writeState } from "./persistence.js";
 import {
-	minIntervalMs,
 	refreshStatus,
 	startPolling,
 	stopPolling,
-	stopWatchPolling,
 	toggleDisplayMode,
 	type Runtime,
 } from "./runtime.js";
-import { WatchesView } from "./ui/watches-view.js";
 
 // ---------------------------------------------------------------------------
 // Menu labels (exported for tests)
 // ---------------------------------------------------------------------------
 
-export const MENU_TITLE = "Glue Watcher";
-export const ITEM_BROWSE_PREFIX = "Browse watches";
+export const MENU_TITLE = "S3 Watcher";
 export const ITEM_PAUSED_PREFIX = "Paused:";
 export const ITEM_DISPLAY_PREFIX = "Display mode:";
 export const ITEM_USER_DEFAULT_PREFIX = "User default display mode:";
 export const ITEM_CLOSE = "Close";
 
-type SettingsCtx = {
+type MenuCtx = {
 	hasUI?: boolean;
 	ui?: {
 		select?: (title: string, items: string[]) => Promise<string | null | undefined>;
@@ -63,53 +59,42 @@ function nextUserDefault(curr: DisplayMode | undefined): DisplayMode {
 }
 
 /**
- * Public entry point wired via `pi.registerCommand("glue-watcher", ...)`.
+ * Public entry point wired via `pi.registerCommand("s3-watcher", ...)`.
  *
- * Args are accepted but ignored — the menu always opens. This is a deliberate
- * break from the previous `status | browse | settings` interface; all of
- * those actions live inside the menu now.
+ * Args are accepted but ignored — the menu always opens.
  */
-export async function runGlueWatcherCommand(
+export async function runS3WatcherCommand(
 	_args: string | undefined,
 	ctx: unknown,
 	rt: Runtime,
-	_pi: ExtensionAPI,
-	client: GlueClient,
 ): Promise<void> {
-	const settingsCtx = ctx as SettingsCtx;
+	const menuCtx = ctx as MenuCtx;
 	const surface = extractUiSurface(ctx);
-	const select = settingsCtx?.ui?.select;
+	const select = menuCtx?.ui?.select;
 	if (!select) {
 		surface?.notify?.(
-			"glue-watcher: requires an interactive UI.",
+			"s3-watcher: requires an interactive UI.",
 			"warning",
 		);
 		return;
 	}
 
 	while (true) {
-		const watchCount = Object.keys(rt.watches).length;
 		const sessionMode = rt.displayMode;
 		const userDefault: DisplayMode | undefined = loadConfig().defaultDisplayMode;
 
-		const browseItem = `${ITEM_BROWSE_PREFIX} (${watchCount})`;
 		const pausedItem = `${ITEM_PAUSED_PREFIX} ${rt.paused ? "on" : "off"}`;
 		const displayItem = `${ITEM_DISPLAY_PREFIX} ${sessionMode}`;
 		const userDefaultItem = `${ITEM_USER_DEFAULT_PREFIX} ${userDefaultLabel(userDefault)}`;
 
-		const items = [browseItem, pausedItem, displayItem, userDefaultItem, ITEM_CLOSE];
+		const items = [pausedItem, displayItem, userDefaultItem, ITEM_CLOSE];
 		const choice = await select(MENU_TITLE, items);
 		if (!choice || choice === ITEM_CLOSE) return;
-
-		if (choice.startsWith(ITEM_BROWSE_PREFIX)) {
-			await openBrowseView(ctx, rt, client);
-			continue;
-		}
 
 		if (choice.startsWith(ITEM_PAUSED_PREFIX)) {
 			togglePaused(rt);
 			surface?.notify?.(
-				`glue-watcher: ${rt.paused ? "paused" : "resumed"}.`,
+				`s3-watcher: ${rt.paused ? "paused" : "resumed"}.`,
 				"info",
 			);
 			continue;
@@ -118,7 +103,7 @@ export async function runGlueWatcherCommand(
 		if (choice.startsWith(ITEM_DISPLAY_PREFIX)) {
 			toggleDisplayMode(rt, ctx);
 			surface?.notify?.(
-				`glue-watcher: session display → ${rt.displayMode}.`,
+				`s3-watcher: session display → ${rt.displayMode}.`,
 				"info",
 			);
 			continue;
@@ -129,12 +114,12 @@ export async function runGlueWatcherCommand(
 			const ok = saveConfig({ defaultDisplayMode: next });
 			if (ok) {
 				surface?.notify?.(
-					`glue-watcher: user default → ${userDefaultLabel(next)} (saved to ~/.pi/agent/pi-aws-glue-watcher.json).`,
+					`s3-watcher: user default → ${userDefaultLabel(next)} (saved to ~/.pi/agent/pi-aws-s3-watcher.json).`,
 					"info",
 				);
 			} else {
 				surface?.notify?.(
-					"glue-watcher: failed to write user config; change was not saved.",
+					"s3-watcher: failed to write user config; change was not saved.",
 					"warning",
 				);
 			}
@@ -149,70 +134,8 @@ function togglePaused(rt: Runtime): void {
 		stopPolling(rt);
 	} else {
 		const hasActive = Object.values(rt.watches).some((w) => !w.terminal);
-		if (hasActive && rt.schedulers.size === 0) startPolling(rt);
+		if (hasActive && !rt.scheduler.isRunning) startPolling(rt);
 	}
 	writeState(rt.pi, rt);
 	refreshStatus(rt);
-}
-
-async function openBrowseView(
-	ctx: unknown,
-	rt: Runtime,
-	client: GlueClient,
-): Promise<void> {
-	const surface = extractUiSurface(ctx);
-	const ctxWithCustom = ctx as {
-		ui?: {
-			custom?: <T>(
-				factory: (
-					tui: unknown,
-					theme: unknown,
-					kb: unknown,
-					done: (v: T) => void,
-				) => unknown,
-				options?: unknown,
-			) => Promise<T>;
-		};
-	};
-	if (!ctxWithCustom?.ui?.custom) {
-		surface?.notify?.(
-			"glue-watcher: browse requires an interactive UI.",
-			"warning",
-		);
-		return;
-	}
-	await ctxWithCustom.ui.custom<void>(
-		(tui, theme, _kb, done) => {
-			const requestRender = (tui as { requestRender: () => void }).requestRender.bind(tui);
-			return new WatchesView(
-				() => rt.watches,
-				theme as never,
-				requestRender,
-				() => done(undefined),
-				async (row) => {
-					const watch = rt.watches[row.watchId];
-					if (!watch) return;
-					if (watch.type === "job") {
-						await client.stopJobRun(watch.name, watch.runId, watch.profile, watch.region);
-					} else {
-						await client.stopWorkflowRun(watch.name, watch.runId, watch.profile, watch.region);
-					}
-				},
-				(watchId) => {
-					stopWatchPolling(rt, watchId);
-					delete rt.watches[watchId];
-					if (Object.keys(rt.watches).length === 0) stopPolling(rt);
-					writeState(rt.pi, rt);
-					rt.pi.events.emit("glue:change", {});
-				},
-				() => minIntervalMs(rt),
-				() => toggleDisplayMode(rt, ctx),
-				() => rt.displayMode,
-			);
-		},
-		{
-			overlay: true,
-			overlayOptions: { width: "100%", maxHeight: "100%", anchor: "bottom-center" },
-		},
-	);
 }

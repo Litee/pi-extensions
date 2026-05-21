@@ -7,8 +7,8 @@
  * Most logic lives in sibling modules:
  *  - runtime.ts        — Runtime type + poll-loop control
  *  - toolAction.ts     — glue_watcher tool + registration guard
- *  - command.ts        — /glue-watcher subcommand dispatch
- *  - ui/watches-view.ts — `/glue-watcher browse` overlay (shell)
+ *  - command.ts        — /glue-watcher TUI menu (Browse + Paused + display switches)
+ *  - ui/watches-view.ts — watches view (TUI overlay) opened from the menu (shell)
  *  - ui/glue-widget.ts  — below-editor widget (shell)
  *
  * This file is strictly session/lifecycle wiring.
@@ -70,9 +70,9 @@ export function createExtensionWithClient(pi: ExtensionAPI, client: GlueClient):
 
 		// Always register the tool into the registry so manage_tools({action:"list"})
 		// shows it. Then sync its active-set membership with persisted `enabled`
-		// state — so a restart where the user had previously run
-		// /glue-watcher enable keeps the tool callable without forcing a
-		// re-enable. If enabled=false, the tool is yanked out of the active set.
+		// state — so a restart where the LLM previously activated `glue_watcher`
+		// keeps the tool callable without forcing a re-activation. If
+		// enabled=false, the tool is yanked out of the active set.
 		registerToolIfNeeded(pi, rt);
 		syncToolActiveState(pi, "glue_watcher", rt.enabled);
 
@@ -170,7 +170,7 @@ export function createExtensionWithClient(pi: ExtensionAPI, client: GlueClient):
 	);
 
 	pi.registerCommand("glue-watcher", {
-		description: "Control the Glue watcher (status | browse | settings)",
+		description: "Open the Glue watcher menu",
 		handler: (args, ctx) => runGlueWatcherCommand(args, ctx, rt, pi, client),
 	});
 }
