@@ -13,7 +13,7 @@ import { seedMissingBaselines } from "pi-watcher-core/seed-baselines";
 import { reconcileToolActivation, removeToolFromActive } from "pi-watcher-core/tool-activation";
 import { extractUiSurface } from "pi-watcher-core/ui-surface";
 
-import { loadConfig } from "./config.js";
+import { loadConfig, saveConfig, type DisplayMode } from "./config.js";
 import { buildStartupChatMessage } from "./format.js";
 import { rehydrateStateFromSession, writeState } from "./persistence.js";
 import { snapshotObject } from "./poller.js";
@@ -141,8 +141,8 @@ export function createExtensionWithClient(pi: ExtensionAPI, client: S3Client): v
 	);
 
 	pi.registerCommand("s3-watcher", {
-		description: "Control the S3 object watcher (pause | resume | status)",
-		handler: (args, ctx) => {
+		description: "Control the S3 object watcher (pause | resume | status | settings)",
+		handler: async (args, ctx) => {
 			const ui = extractUiSurface(ctx);
 			const sub = (args ?? "").trim().toLowerCase();
 			switch (sub) {
@@ -152,7 +152,7 @@ export function createExtensionWithClient(pi: ExtensionAPI, client: S3Client): v
 					writeState(pi, rt);
 					refreshStatus(rt);
 					ui?.notify?.("s3-watcher: paused.", "info");
-					return Promise.resolve();
+					return;
 				}
 				case "resume": {
 					rt.paused = false;
@@ -161,7 +161,7 @@ export function createExtensionWithClient(pi: ExtensionAPI, client: S3Client): v
 					if (anyActive && !rt.scheduler.isRunning) startPolling(rt);
 					refreshStatus(rt);
 					ui?.notify?.("s3-watcher: resumed.", "info");
-					return Promise.resolve();
+					return;
 				}
 				case "":
 				case "status": {
@@ -172,22 +172,102 @@ export function createExtensionWithClient(pi: ExtensionAPI, client: S3Client): v
 						`s3-watcher: ${stateDesc} | ${ids.length} watch(es) (${active} active) | poll: ${Math.round(rt.scheduler.intervalMs / 1000)}s`,
 						"info",
 					);
-					return Promise.resolve();
+					return;
 				}
 				case "display": {
+					// Deprecated: kept as a back-compat alias that flips the
+					// session-level mode. Prefer `/s3-watcher settings`.
 					toggleDisplayMode(rt, ctx);
-					ui?.notify?.(`s3-watcher: switched to ${rt.displayMode} mode.`, "info");
-					return Promise.resolve();
+					ui?.notify?.(
+						`s3-watcher: switched to ${rt.displayMode} mode. (\`display\` is deprecated — use \`/s3-watcher settings\`.)`,
+						"warning",
+					);
+					return;
+				}
+				case "settings": {
+					await runSettingsMenu(rt, ctx);
+					return;
 				}
 				default:
 					ui?.notify?.(
-						`s3-watcher: unknown subcommand '${sub}'. Use: pause | resume | status | display`,
+						`s3-watcher: unknown subcommand '${sub}'. Use: pause | resume | status | settings`,
 						"warning",
 					);
-					return Promise.resolve();
+					return;
 			}
 		},
 	});
+}
+
+// ---------------------------------------------------------------------------
+// /s3-watcher settings TUI
+// ---------------------------------------------------------------------------
+
+type SettingsCtx = {
+	hasUI?: boolean;
+	ui?: {
+		select?: (title: string, items: string[]) => Promise<string | null | undefined>;
+		notify?: (msg: string, level?: "info" | "warning" | "error") => void;
+	};
+};
+
+/**
+ * Interactive settings menu. Loops so the menu redraws with the
+ * current state after each toggle. Exits on "Back" / Esc.
+ *
+ * Two scopes:
+ * - **Session**: flips `rt.displayMode` for THIS session only (persists
+ * via the watcher state log).
+ * - **User default**: writes `defaultDisplayMode` into
+ * `~/.pi/agent/pi-aws-s3-watcher.json` so future sessions seed from it.
+ */
+export async function runSettingsMenu(rt: Runtime, ctx: unknown): Promise<void> {
+	const settingsCtx = ctx as SettingsCtx;
+	const surface = extractUiSurface(ctx);
+	const select = settingsCtx?.ui?.select;
+	if (!select) {
+		surface?.notify?.(
+			"s3-watcher: settings menu requires an interactive UI.",
+			"warning",
+		);
+		return;
+	}
+	while (true) {
+		const sessionMode = rt.displayMode;
+		const userDefault: DisplayMode | undefined = loadConfig().defaultDisplayMode;
+		const userDefaultLabel = userDefault ?? "(unset — falls back to widget)";
+		const items = [
+			`Session display mode: ${sessionMode}`,
+			`User default display mode: ${userDefaultLabel}`,
+			"Back",
+		];
+		const choice = await select("s3-watcher settings", items);
+		if (!choice || choice === "Back") return;
+		if (choice.startsWith("Session display mode:")) {
+			toggleDisplayMode(rt, ctx);
+			surface?.notify?.(
+				`s3-watcher: session display → ${rt.displayMode}.`,
+				"info",
+			);
+			continue;
+		}
+		if (choice.startsWith("User default display mode:")) {
+			const next: DisplayMode = (userDefault ?? "widget") === "widget" ? "statusline" : "widget";
+			const ok = saveConfig({ defaultDisplayMode: next });
+			if (ok) {
+				surface?.notify?.(
+					`s3-watcher: user default → ${next} (saved to ~/.pi/agent/pi-aws-s3-watcher.json).`,
+					"info",
+				);
+			} else {
+				surface?.notify?.(
+					"s3-watcher: failed to write user config; change was not saved.",
+					"warning",
+				);
+			}
+			continue;
+		}
+	}
 }
 
 /** Default export — wired to the real AWS SDK client. */

@@ -4,8 +4,9 @@ import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
 
 vi.mock("../src/config.js", () => ({
 	loadConfig: vi.fn(() => ({})),
+	saveConfig: vi.fn(() => true),
 }));
-import { loadConfig } from "../src/config.js";
+import { loadConfig, saveConfig } from "../src/config.js";
 
 import { createExtensionWithClient } from "../src/index.js";
 import { STATE_CUSTOM_TYPE } from "../src/persistence.js";
@@ -81,6 +82,8 @@ function makeClient(resp: HeadObjectResult = { exists: false }): S3Client {
 beforeEach(() => {
 	resetToolRegisteredForTests();
 	vi.mocked(loadConfig).mockReturnValue({});
+	vi.mocked(saveConfig).mockReset();
+	vi.mocked(saveConfig).mockReturnValue(true);
 });
 
 afterEach(() => {
@@ -505,5 +508,152 @@ describe("user config: defaultDisplayMode (#0005)", () => {
 		const ours = setStatus.mock.calls.filter((c) => c[0] === STATUS_KEY);
 		// Persisted widget mode → status row cleared even though config asked for statusline.
 		expect(ours.every((c) => c[1] === undefined)).toBe(true);
+	});
+});
+
+describe("/s3-watcher settings subcommand", () => {
+	function makeSettingsCtx(
+		select: (title: string, items: string[]) => Promise<string | null>,
+		notify: ReturnType<typeof vi.fn>,
+	) {
+		return {
+			hasUI: true,
+			ui: { hasUI: true, select, notify, theme: { fg: (_c: string, t: string) => t } },
+			sessionManager: { getEntries: () => [] },
+		};
+	}
+
+	it("opens an interactive menu via ctx.ui.select and exits on 'Back'", async () => {
+		const { pi, handlers, commands } = makePi();
+		createExtensionWithClient(pi, makeClient());
+		await handlers.sessionStart!({}, makeCtx());
+		const select = vi.fn().mockResolvedValueOnce("Back");
+		const notify = vi.fn();
+		await commands["s3-watcher"]!.handler("settings", makeSettingsCtx(select, notify));
+		expect(select).toHaveBeenCalledTimes(1);
+		const [title, items] = select.mock.calls[0]! as [string, string[]];
+		expect(title).toBe("s3-watcher settings");
+		expect(items).toEqual([
+			"Session display mode: widget",
+			"User default display mode: (unset — falls back to widget)",
+			"Back",
+		]);
+	});
+
+	it("toggles session display mode and re-renders the menu", async () => {
+		const { pi, handlers, commands } = makePi();
+		createExtensionWithClient(pi, makeClient());
+		await handlers.sessionStart!({}, makeCtx());
+		const select = vi
+			.fn()
+			.mockResolvedValueOnce("Session display mode: widget")
+			.mockResolvedValueOnce("Back");
+		const notify = vi.fn();
+		await commands["s3-watcher"]!.handler("settings", makeSettingsCtx(select, notify));
+		expect(select).toHaveBeenCalledTimes(2);
+		// Second invocation should reflect the toggle to statusline.
+		expect((select.mock.calls[1]![1] as string[])[0]).toBe("Session display mode: statusline");
+		expect(notify).toHaveBeenCalledWith(
+			expect.stringMatching(/session display → statusline/),
+			"info",
+		);
+	});
+
+	it("persists user default to ~/.pi/agent/pi-aws-s3-watcher.json via saveConfig", async () => {
+		const { pi, handlers, commands } = makePi();
+		createExtensionWithClient(pi, makeClient());
+		await handlers.sessionStart!({}, makeCtx());
+		// loadConfig starts as {} → toggle sets next='statusline'.
+		const select = vi
+			.fn()
+			.mockResolvedValueOnce("User default display mode: (unset — falls back to widget)")
+			.mockResolvedValueOnce("Back");
+		const notify = vi.fn();
+		await commands["s3-watcher"]!.handler("settings", makeSettingsCtx(select, notify));
+		expect(saveConfig).toHaveBeenCalledWith({ defaultDisplayMode: "statusline" });
+		expect(notify).toHaveBeenCalledWith(
+			expect.stringMatching(/user default → statusline/),
+			"info",
+		);
+	});
+
+	it("toggles user default away from a persisted statusline back to widget", async () => {
+		vi.mocked(loadConfig).mockReturnValue({ defaultDisplayMode: "statusline" });
+		const { pi, handlers, commands } = makePi();
+		createExtensionWithClient(pi, makeClient());
+		await handlers.sessionStart!({}, makeCtx());
+		const select = vi
+			.fn()
+			.mockResolvedValueOnce("User default display mode: statusline")
+			.mockResolvedValueOnce("Back");
+		await commands["s3-watcher"]!.handler(
+			"settings",
+			makeSettingsCtx(select, vi.fn()),
+		);
+		expect(saveConfig).toHaveBeenCalledWith({ defaultDisplayMode: "widget" });
+	});
+
+	it("warns via notify when saveConfig fails (IO error)", async () => {
+		vi.mocked(saveConfig).mockReturnValue(false);
+		const { pi, handlers, commands } = makePi();
+		createExtensionWithClient(pi, makeClient());
+		await handlers.sessionStart!({}, makeCtx());
+		const select = vi
+			.fn()
+			.mockResolvedValueOnce("User default display mode: (unset — falls back to widget)")
+			.mockResolvedValueOnce("Back");
+		const notify = vi.fn();
+		await commands["s3-watcher"]!.handler("settings", makeSettingsCtx(select, notify));
+		expect(notify).toHaveBeenCalledWith(
+			expect.stringMatching(/failed to write user config/),
+			"warning",
+		);
+	});
+
+	it("warns and exits when ctx.ui.select is unavailable (no interactive UI)", async () => {
+		const { pi, handlers, commands } = makePi();
+		createExtensionWithClient(pi, makeClient());
+		await handlers.sessionStart!({}, makeCtx());
+		const notify = vi.fn();
+		// hasUI=true but no select fn → must abort with a warning.
+		await commands["s3-watcher"]!.handler("settings", {
+			hasUI: true,
+			ui: { hasUI: true, notify },
+		});
+		expect(notify).toHaveBeenCalledWith(
+			expect.stringMatching(/requires an interactive UI/),
+			"warning",
+		);
+		expect(saveConfig).not.toHaveBeenCalled();
+	});
+
+	it("'display' subcommand still works but emits a deprecation warning", async () => {
+		const { pi, handlers, commands } = makePi();
+		createExtensionWithClient(pi, makeClient());
+		await handlers.sessionStart!({}, makeCtx());
+		const notify = vi.fn();
+		await commands["s3-watcher"]!.handler("display", {
+			hasUI: true,
+			ui: { hasUI: true, notify },
+		});
+		expect(notify).toHaveBeenCalledOnce();
+		const [msg, level] = notify.mock.calls[0]! as [string, string];
+		expect(msg).toMatch(/deprecated/);
+		expect(msg).toMatch(/\/s3-watcher settings/);
+		expect(level).toBe("warning");
+	});
+
+	it("usage hint on unknown subcommand mentions 'settings' (not legacy 'display')", async () => {
+		const { pi, handlers, commands } = makePi();
+		createExtensionWithClient(pi, makeClient());
+		await handlers.sessionStart!({}, makeCtx());
+		const notify = vi.fn();
+		await commands["s3-watcher"]!.handler("garbage", {
+			hasUI: true,
+			ui: { hasUI: true, notify },
+		});
+		const msg = notify.mock.calls[0]![0] as string;
+		expect(msg).toMatch(/settings/);
+		expect(msg).not.toMatch(/\bdisplay\b/);
 	});
 });

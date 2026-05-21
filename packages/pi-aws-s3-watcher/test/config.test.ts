@@ -1,9 +1,13 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 vi.mock("node:fs");
-import { readFileSync } from "node:fs";
+import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
 
-import { loadConfig } from "../src/config.js";
+vi.mock("@earendil-works/pi-coding-agent", () => ({
+	getAgentDir: () => "/fake/agent",
+}));
+
+import { configFilePath, loadConfig, saveConfig } from "../src/config.js";
 
 beforeEach(() => {
 	vi.mocked(readFileSync).mockImplementation(() => {
@@ -77,5 +81,64 @@ describe("loadConfig", () => {
 			JSON.stringify({ defaultDisplayMode: "statusline", future: "key" }),
 		);
 		expect(loadConfig()).toEqual({ defaultDisplayMode: "statusline" });
+	});
+});
+
+describe("configFilePath", () => {
+	it("resolves under getAgentDir()", () => {
+		expect(configFilePath()).toBe("/fake/agent/pi-aws-s3-watcher.json");
+	});
+});
+
+describe("saveConfig", () => {
+	beforeEach(() => {
+		vi.mocked(mkdirSync).mockReset();
+		vi.mocked(writeFileSync).mockReset();
+	});
+
+	it("returns true on a clean write and persists merged JSON to the agent dir", () => {
+		// loadConfig() returns {} via the ENOENT mock from the outer beforeEach.
+		vi.mocked(mkdirSync).mockReturnValue(undefined);
+		vi.mocked(writeFileSync).mockReturnValue(undefined);
+		const ok = saveConfig({ defaultDisplayMode: "statusline" });
+		expect(ok).toBe(true);
+		expect(mkdirSync).toHaveBeenCalledWith("/fake/agent", { recursive: true });
+		expect(writeFileSync).toHaveBeenCalledTimes(1);
+		const [path, body] = vi.mocked(writeFileSync).mock.calls[0]!;
+		expect(path).toBe("/fake/agent/pi-aws-s3-watcher.json");
+		expect(JSON.parse(body as string)).toEqual({ defaultDisplayMode: "statusline" });
+		// Trailing newline for POSIX-friendly text files.
+		expect((body as string).endsWith("\n")).toBe(true);
+	});
+
+	it("merges over an existing file and preserves unknown keys for forward-compat", () => {
+		vi.mocked(readFileSync).mockReturnValue(
+			JSON.stringify({ defaultDisplayMode: "widget", futureField: "keep-me" }),
+		);
+		vi.mocked(mkdirSync).mockReturnValue(undefined);
+		vi.mocked(writeFileSync).mockReturnValue(undefined);
+		const ok = saveConfig({ defaultDisplayMode: "statusline" });
+		expect(ok).toBe(true);
+		const body = vi.mocked(writeFileSync).mock.calls[0]![1] as string;
+		const parsed = JSON.parse(body) as Record<string, unknown>;
+		expect(parsed["defaultDisplayMode"]).toBe("statusline");
+		// Forward-compat contract: saveConfig must NOT clobber unknown keys
+		// (loadConfig drops them, but saveConfig reads raw JSON before merging).
+		expect(parsed["futureField"]).toBe("keep-me");
+	});
+
+	it("returns false on writeFileSync failure", () => {
+		vi.mocked(mkdirSync).mockReturnValue(undefined);
+		vi.mocked(writeFileSync).mockImplementation(() => {
+			throw new Error("EACCES");
+		});
+		expect(saveConfig({ defaultDisplayMode: "widget" })).toBe(false);
+	});
+
+	it("returns false on mkdirSync failure", () => {
+		vi.mocked(mkdirSync).mockImplementation(() => {
+			throw new Error("EACCES");
+		});
+		expect(saveConfig({ defaultDisplayMode: "widget" })).toBe(false);
 	});
 });

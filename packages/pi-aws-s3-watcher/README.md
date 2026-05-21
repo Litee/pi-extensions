@@ -75,6 +75,8 @@ There is no indefinitely-polling mode.
 | `status`   | Alias for no-args.                                                     |
 | `pause`    | Stop polling. Persisted — survives session reload.                     |
 | `resume`   | Resume polling.                                                        |
+| `settings` | Open an interactive TUI menu for session-level and user-level display mode. The user-level choice is persisted to `~/.pi/agent/pi-aws-s3-watcher.json` and seeds future sessions. |
+| `display`  | **Deprecated.** Flips the session display mode in place; emits a deprecation warning. Use `settings` instead. |
 
 ## Authentication
 
@@ -100,8 +102,9 @@ seeds defaults for fresh sessions:
 
 Precedence on session load: **persisted state > user config > hardcoded
 default (`widget`)**. Once you toggle the display via `/s3-watcher
-display`, the persisted choice wins on subsequent reloads — the config
-file only seeds the first session.
+settings` (session row), the persisted choice wins on subsequent
+reloads. Toggling the user-default row in `/s3-watcher settings`
+rewrites this JSON file so future sessions seed from it.
 
 Fail-soft: a missing file, unreadable file, invalid JSON, or unknown
 value (e.g. `defaultDisplayMode: "inline"`) is silently ignored and

@@ -12,8 +12,10 @@
  * user-level lookup so behaviour is consistent across worktrees.
  */
 
-import { readFileSync } from "node:fs";
-import { join } from "node:path";
+import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
+import { dirname, join } from "node:path";
+
+import { getAgentDir } from "@earendil-works/pi-coding-agent";
 
 /** Valid display modes for the S3 watcher widget / status row. */
 export type DisplayMode = "widget" | "statusline";
@@ -41,12 +43,15 @@ export interface S3WatcherConfig {
  * `defaultDisplayMode: "inline"` is treated the same as the field
  * being absent.
  */
+/** Path to the user-level config JSON. Centralised for tests + saveConfig. */
+export function configFilePath(): string {
+	return join(getAgentDir(), "pi-aws-s3-watcher.json");
+}
+
 export function loadConfig(): S3WatcherConfig {
 	let raw: unknown;
 	try {
-		const home = process.env["HOME"] ?? process.env["USERPROFILE"] ?? "";
-		const configPath = join(home, ".pi", "agent", "pi-aws-s3-watcher.json");
-		const content = readFileSync(configPath, "utf-8");
+		const content = readFileSync(configFilePath(), "utf-8");
 		raw = JSON.parse(content);
 	} catch {
 		return {};
@@ -62,4 +67,35 @@ export function loadConfig(): S3WatcherConfig {
 	}
 
 	return out;
+}
+
+/**
+ * Persist a partial update to `~/.pi/agent/pi-aws-s3-watcher.json`.
+ *
+ * Reads the file fresh and merges `change` over the **raw** JSON object
+ * — not the sanitised result of {@link loadConfig} — so unknown keys
+ * (e.g. fields added by a newer version of the extension) are
+ * preserved on disk when an older build writes back. Returns `true`
+ * on success, `false` if anything threw — callers surface a toast.
+ */
+export function saveConfig(change: Partial<S3WatcherConfig>): boolean {
+	const path = configFilePath();
+	try {
+		let existing: Record<string, unknown> = {};
+		try {
+			const content = readFileSync(path, "utf-8");
+			const parsed: unknown = JSON.parse(content);
+			if (parsed && typeof parsed === "object" && !Array.isArray(parsed)) {
+				existing = parsed as Record<string, unknown>;
+			}
+		} catch {
+			/* missing/unreadable/invalid JSON → start from {} */
+		}
+		const merged = { ...existing, ...change };
+		mkdirSync(dirname(path), { recursive: true });
+		writeFileSync(path, `${JSON.stringify(merged, null, 2)}\n`, "utf-8");
+		return true;
+	} catch {
+		return false;
+	}
 }
