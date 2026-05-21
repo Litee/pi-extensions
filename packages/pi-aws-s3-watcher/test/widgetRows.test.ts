@@ -166,7 +166,7 @@ describe("buildWidgetEntries", () => {
 // ---------------------------------------------------------------------------
 
 describe("renderEntryLine", () => {
-	it("pads the name column to colName width", () => {
+	it("pads the name column to nameColWidth width", () => {
 		const line = renderEntryLine(makeEntry({ displayName: "s3://b/k" }), 20, plainTheme);
 		// The name should be padded to 20 chars
 		expect(line).toContain("s3://b/k            ");
@@ -176,6 +176,16 @@ describe("renderEntryLine", () => {
 		const longName = "s3://very-long-bucket-name/very/long/key/path/to/object.json";
 		const line = renderEntryLine(makeEntry({ displayName: longName }), 10, plainTheme);
 		expect(line).toContain("s3://ve...");
+	});
+
+	it("smart-compresses middle path segments when name is too long", () => {
+		// "s3://my-bucket/2024/01/results/output.json" = 42 chars, nameColWidth=35
+		// compress "2024"→"2": 39 > 35
+		// compress "01"→"0":   38 > 35
+		// compress "results"→"r": 32 <= 35 ✓
+		const uri = "s3://my-bucket/2024/01/results/output.json";
+		const line = renderEntryLine(makeEntry({ displayName: uri }), 35, plainTheme);
+		expect(line).toContain("s3://my-bucket/2/0/r/output.json");
 	});
 
 	it("includes the target column padded to COL_TARGET", () => {

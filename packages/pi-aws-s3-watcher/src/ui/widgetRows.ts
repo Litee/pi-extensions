@@ -7,6 +7,7 @@
 
 import { DEFAULT_POLL_ERROR_THRESHOLD } from "pi-watcher-core/error-tracker";
 import type { WatchMap } from "../types.js";
+import { compressS3Uri } from "../uri.js";
 
 // ---------------------------------------------------------------------------
 // Column widths (characters, before ANSI codes)
@@ -97,20 +98,20 @@ function formatTimeLeft(timeoutAt: number | undefined, now: number): string {
 /**
  * Render one entry to a single line.
  *
- * Format: ` <name:colName> <target:COL_TARGET> <state:COL_STATE> <timeLeft:COL_TIME>`
+ * Format: ` <name:nameColWidth> <target:COL_TARGET> <state:COL_STATE> <timeLeft:COL_TIME>`
  */
 export function renderEntryLine(
 	entry: WidgetEntry,
-	colName: number,
+	nameColWidth: number,
 	theme: WidgetTheme,
 	now: number = Date.now(),
 ): string {
-	// Name column
+	// Name column – use smart mid-segment compression for S3 URIs
 	const nameRaw =
-		entry.displayName.length > colName
-			? `${entry.displayName.substring(0, colName - 3)}...`
+		entry.displayName.length > nameColWidth
+			? compressS3Uri(entry.displayName, nameColWidth)
 			: entry.displayName;
-	const name = theme.fg("text", nameRaw.padEnd(colName));
+	const name = theme.fg("text", nameRaw.padEnd(nameColWidth));
 
 	// Target column (always uncoloured)
 	const targetStr = entry.target.padEnd(COL_TARGET);

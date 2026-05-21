@@ -134,9 +134,9 @@ export class S3Widget {
 			(m, e) => Math.max(m, e.displayName.length),
 			COL_NAME_MIN,
 		);
-		const colName = Math.min(longestName, width - COL_FIXED_OVERHEAD - 1);
+		const nameColWidth = Math.min(longestName, width - COL_FIXED_OVERHEAD - 1);
 
-		const rows = entries.map((entry) => renderEntryLine(entry, colName, t));
+		const rows = entries.map((entry) => renderEntryLine(entry, nameColWidth, t));
 
 		if (rows.length > 0) {
 			container.addChild(new Text(rows.join("\n"), 1, 0));
