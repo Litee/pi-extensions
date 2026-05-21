@@ -47,14 +47,29 @@ const WIDGET_ID = "glue-watcher";
 // ---------------------------------------------------------------------------
 
 /**
- * Format elapsed time since an ISO-8601 timestamp as a compact string.
- * Returns "-" when the timestamp is absent or unparseable.
+ * Format elapsed time as a compact string.
+ *
+ * - With only `startedOn`: returns the live elapsed since `startedOn`
+ *   (recomputed on every render, so the widget keeps ticking for in-flight
+ *   runs).
+ * - With both timestamps: returns the *frozen* run duration
+ *   `completedOn - startedOn`. Once a run reaches a terminal state the
+ *   permanent panel must stop counting up — it should display the final
+ *   wall-clock duration of that run, not minutes-since-it-finished.
+ *
+ * Returns "-" when `startedOn` is absent or unparseable.
  *
  * Examples: "0s", "45s", "7m", "1h30m", "3h5m"
  */
-export function formatElapsed(iso: string | undefined): string {
-	if (!iso) return "-";
-	const ms = Date.now() - new Date(iso).getTime();
+export function formatElapsed(
+	startedOn: string | undefined,
+	completedOn?: string,
+): string {
+	if (!startedOn) return "-";
+	const startMs = new Date(startedOn).getTime();
+	if (Number.isNaN(startMs)) return "-";
+	const endMs = completedOn ? new Date(completedOn).getTime() : Date.now();
+	const ms = (Number.isNaN(endMs) ? Date.now() : endMs) - startMs;
 	const s = Math.floor(ms / 1000);
 	if (s <= 0) return "0s";
 	const h = Math.floor(s / 3600);

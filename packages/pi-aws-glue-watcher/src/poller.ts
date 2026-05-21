@@ -65,6 +65,7 @@ export async function snapshotJobRun(
 		state: resp.JobRun.JobRunState ?? "",
 		errorMessage: resp.JobRun.ErrorMessage ?? "",
 		...(resp.JobRun.StartedOn !== undefined ? { startedOn: resp.JobRun.StartedOn } : {}),
+		...(resp.JobRun.CompletedOn !== undefined ? { completedOn: resp.JobRun.CompletedOn } : {}),
 		...(resp.JobRun.NumberOfWorkers !== undefined ? { numberOfWorkers: resp.JobRun.NumberOfWorkers } : {}),
 		...(resp.JobRun.WorkerType !== undefined ? { workerType: resp.JobRun.WorkerType } : {}),
 	};
@@ -95,6 +96,7 @@ export async function snapshotWorkflowRun(
 				name: n.Name,
 				state: run?.JobRunState ?? "",
 				...(run?.StartedOn !== undefined ? { startedOn: run.StartedOn } : {}),
+				...(run?.CompletedOn !== undefined ? { completedOn: run.CompletedOn } : {}),
 				...(run?.NumberOfWorkers !== undefined ? { numberOfWorkers: run.NumberOfWorkers } : {}),
 				...(run?.WorkerType !== undefined ? { workerType: run.WorkerType } : {}),
 			};
@@ -141,6 +143,7 @@ export async function detectJobChanges(
 		state: resp.JobRun.JobRunState ?? "",
 		errorMessage: resp.JobRun.ErrorMessage ?? "",
 		...(resp.JobRun.StartedOn !== undefined ? { startedOn: resp.JobRun.StartedOn } : {}),
+		...(resp.JobRun.CompletedOn !== undefined ? { completedOn: resp.JobRun.CompletedOn } : {}),
 		...(resp.JobRun.NumberOfWorkers !== undefined ? { numberOfWorkers: resp.JobRun.NumberOfWorkers } : {}),
 		...(resp.JobRun.WorkerType !== undefined ? { workerType: resp.JobRun.WorkerType } : {}),
 	};
@@ -253,6 +256,7 @@ export async function detectWorkflowChanges(
 					name: n.Name,
 					state: run?.JobRunState ?? "",
 					...(run?.StartedOn !== undefined ? { startedOn: run.StartedOn } : {}),
+					...(run?.CompletedOn !== undefined ? { completedOn: run.CompletedOn } : {}),
 					...(run?.NumberOfWorkers !== undefined ? { numberOfWorkers: run.NumberOfWorkers } : {}),
 					...(run?.WorkerType !== undefined ? { workerType: run.WorkerType } : {}),
 				};

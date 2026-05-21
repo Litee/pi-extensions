@@ -29,6 +29,7 @@ export interface WidgetEntry {
 	displayName: string;
 	state: string;
 	startedOn?: string;
+	completedOn?: string;
 	numberOfWorkers?: number;
 	workerType?: string;
 }
@@ -61,8 +62,8 @@ export function stateStyle(state: string): StateStyle {
  * - 1  warning + none  RUNNING / STARTING / PENDING / unknown — active or queued
  * - 2  success  SUCCEEDED / COMPLETED — done successfully, lowest priority
  *
- * Within each rank, entries are further sorted by `startedOn` ascending
- * (oldest / longest-running first); entries with no `startedOn` trail.
+ * Within each rank, entries are further sorted by `startedOn` *descending*
+ * (newest first); entries with no `startedOn` trail.
  */
 export function entryPriority(state: string): number {
 	const s = stateStyle(state);
@@ -89,6 +90,7 @@ export function buildWidgetEntries(watchMap: WatchMap): WidgetEntry[] {
 				displayName: watch.name,
 				state: b?.state ?? "",
 				...(b?.startedOn !== undefined ? { startedOn: b.startedOn } : {}),
+				...(b?.completedOn !== undefined ? { completedOn: b.completedOn } : {}),
 				...(b?.numberOfWorkers !== undefined ? { numberOfWorkers: b.numberOfWorkers } : {}),
 				...(b?.workerType !== undefined ? { workerType: b.workerType } : {}),
 			});
@@ -104,6 +106,7 @@ export function buildWidgetEntries(watchMap: WatchMap): WidgetEntry[] {
 						displayName: `${watch.name}/${node.name}`,
 						state: node.state,
 						...(node.startedOn !== undefined ? { startedOn: node.startedOn } : {}),
+						...(node.completedOn !== undefined ? { completedOn: node.completedOn } : {}),
 						...(node.numberOfWorkers !== undefined ? { numberOfWorkers: node.numberOfWorkers } : {}),
 						...(node.workerType !== undefined ? { workerType: node.workerType } : {}),
 					});
@@ -125,9 +128,9 @@ export function buildWidgetEntries(watchMap: WatchMap): WidgetEntry[] {
 		const pa = entryPriority(a.state);
 		const pb = entryPriority(b.state);
 		if (pa !== pb) return pa - pb;
-		// Same priority: oldest startedOn first (longest-running at top).
+		// Same priority: newest startedOn first.
 		// Entries without a start time trail within their rank.
-		if (a.startedOn && b.startedOn) return a.startedOn < b.startedOn ? -1 : a.startedOn > b.startedOn ? 1 : 0;
+		if (a.startedOn && b.startedOn) return a.startedOn > b.startedOn ? -1 : a.startedOn < b.startedOn ? 1 : 0;
 		if (a.startedOn) return -1;
 		if (b.startedOn) return 1;
 		return 0;
@@ -155,7 +158,7 @@ export function renderEntryLine(
 	const style = stateStyle(state);
 	const stateStr = style === "none" ? stateRaw : theme.fg(style, stateRaw);
 
-	const started = formatElapsed(entry.startedOn).padEnd(COL_STARTED);
+	const started = formatElapsed(entry.startedOn, entry.completedOn).padEnd(COL_STARTED);
 
 	let workersStr = "-";
 	if (entry.numberOfWorkers != null) {

@@ -50,6 +50,8 @@ export interface JobRunResponse {
 		ErrorMessage?: string | undefined;
 		/** ISO-8601 timestamp when the run started. */
 		StartedOn?: string | undefined;
+		/** ISO-8601 timestamp when the run reached a terminal state. */
+		CompletedOn?: string | undefined;
 		NumberOfWorkers?: number | undefined;
 		/** e.g. "G.1X" | "G.2X" | "G.025X" | "Standard" | "Z.2X" */
 		WorkerType?: string | undefined;
@@ -63,6 +65,7 @@ export interface WorkflowRunNode {
 		JobRuns?: Array<{
 			JobRunState: string;
 			StartedOn?: string | undefined;
+			CompletedOn?: string | undefined;
 			NumberOfWorkers?: number | undefined;
 			WorkerType?: string | undefined;
 		}>;
@@ -165,6 +168,7 @@ export function createGlueClient(): GlueClient {
 					JobRunState: jr?.JobRunState ?? "",
 					ErrorMessage: jr?.ErrorMessage,
 					StartedOn: jr?.StartedOn?.toISOString(),
+					CompletedOn: jr?.CompletedOn?.toISOString(),
 					NumberOfWorkers: jr?.NumberOfWorkers,
 					WorkerType: jr?.WorkerType,
 				},
@@ -198,6 +202,7 @@ export function createGlueClient(): GlueClient {
 												JobRuns: (n.JobDetails.JobRuns ?? []).map((jr) => ({
 													JobRunState: jr.JobRunState ?? "",
 													StartedOn: jr.StartedOn?.toISOString(),
+													CompletedOn: jr.CompletedOn?.toISOString(),
 													NumberOfWorkers: jr.NumberOfWorkers,
 													WorkerType: jr.WorkerType,
 												})),

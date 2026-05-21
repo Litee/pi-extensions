@@ -7,7 +7,7 @@ import {
 	stateStyle,
 	type WidgetTheme,
 } from "../src/ui/widgetRows.js";
-import { formatHeaderCountsSuffix } from "../src/ui/glue-widget.js";
+import { formatElapsed, formatHeaderCountsSuffix } from "../src/ui/glue-widget.js";
 
 const plainTheme: WidgetTheme = { fg: (_c, t) => t };
 const taggedTheme: WidgetTheme = { fg: (c, t) => `[${c}]${t}[/]` };
@@ -207,7 +207,7 @@ describe("buildWidgetEntries", () => {
 		]);
 	});
 
-	it("within the same priority, sorts by startedOn ascending (longest-running first)", () => {
+	it("within the same priority, sorts by startedOn descending (newest first)", () => {
 		const entries = buildWidgetEntries({
 			a: job({
 				watchId: "a",
@@ -220,7 +220,7 @@ describe("buildWidgetEntries", () => {
 				baseline: { state: "RUNNING", errorMessage: "", startedOn: "2024-01-01T01:00:00Z" },
 			}),
 		});
-		expect(entries.map((e) => e.displayName)).toEqual(["older", "newer"]);
+		expect(entries.map((e) => e.displayName)).toEqual(["newer", "older"]);
 	});
 
 	it("within the same priority, entries without startedOn trail those with startedOn", () => {
@@ -307,6 +307,112 @@ describe("renderEntryLine", () => {
 			plainTheme,
 		);
 		expect(line).toContain("?");
+	});
+});
+
+// ---------------------------------------------------------------------------
+// formatElapsed — frozen elapsed for terminal runs (completedOn provided)
+// ---------------------------------------------------------------------------
+
+describe("formatElapsed", () => {
+	it("returns '-' when startedOn is undefined", () => {
+		expect(formatElapsed(undefined)).toBe("-");
+	});
+
+	it("returns the frozen run duration when completedOn is provided", () => {
+		// 1h 30m apart — must NOT depend on Date.now().
+		const started = "2024-01-01T00:00:00Z";
+		const completed = "2024-01-01T01:30:00Z";
+		expect(formatElapsed(started, completed)).toBe("1h30m");
+	});
+
+	it("freezes elapsed time at completedOn even after wall-clock advances", () => {
+		// Without the freeze, Date.now() - startedOn would balloon as the
+		// permanent panel ticked through 30s refreshes.
+		const started = "2000-01-01T00:00:00Z";
+		const completed = "2000-01-01T00:00:45Z";
+		expect(formatElapsed(started, completed)).toBe("45s");
+	});
+
+	it("falls back to live elapsed when completedOn is undefined", () => {
+		// Sanity: ongoing runs still tick from now.
+		const now = Date.now();
+		const tenSecondsAgo = new Date(now - 10_000).toISOString();
+		expect(formatElapsed(tenSecondsAgo)).toMatch(/^\d+s$/);
+	});
+});
+
+// ---------------------------------------------------------------------------
+// renderEntryLine — terminal-state rows freeze elapsed time at completedOn
+// ---------------------------------------------------------------------------
+
+describe("renderEntryLine + completedOn", () => {
+	it("renders frozen elapsed for terminal nodes (completedOn set)", () => {
+		const line = renderEntryLine(
+			{
+				displayName: "wf/n1",
+				state: "SUCCEEDED",
+				startedOn: "2000-01-01T00:00:00Z",
+				completedOn: "2000-01-01T00:02:00Z",
+			},
+			20,
+			plainTheme,
+		);
+		// Should show "2m" — frozen duration — not minutes-since-2000.
+		expect(line).toContain("2m");
+		expect(line).not.toMatch(/\b\d+h/);
+	});
+});
+
+// ---------------------------------------------------------------------------
+// buildWidgetEntries — completedOn flows from baseline into widget entries
+// ---------------------------------------------------------------------------
+
+describe("buildWidgetEntries + completedOn", () => {
+	it("propagates completedOn from a job baseline", () => {
+		const entries = buildWidgetEntries({
+			a: job({
+				watchId: "a",
+				name: "j",
+				baseline: {
+					state: "RUNNING",
+					errorMessage: "",
+					startedOn: "2024-01-01T00:00:00Z",
+					completedOn: "2024-01-01T00:05:00Z",
+				},
+			}),
+		});
+		expect(entries[0]?.completedOn).toBe("2024-01-01T00:05:00Z");
+	});
+
+	it("propagates completedOn from each workflow node", () => {
+		const entries = buildWidgetEntries({
+			w: workflow({
+				watchId: "w",
+				name: "wf",
+				baseline: {
+					state: "RUNNING",
+					totalActions: 2,
+					succeededActions: 1,
+					failedActions: 0,
+					runningActions: 1,
+					reportedFailedNodes: [],
+					nodes: [
+						{
+							name: "done",
+							state: "SUCCEEDED",
+							startedOn: "2024-01-01T00:00:00Z",
+							completedOn: "2024-01-01T00:01:30Z",
+						},
+						{ name: "live", state: "RUNNING", startedOn: "2024-01-01T00:00:30Z" },
+					],
+				},
+			}),
+		});
+		const done = entries.find((e) => e.displayName === "wf/done");
+		const live = entries.find((e) => e.displayName === "wf/live");
+		expect(done?.completedOn).toBe("2024-01-01T00:01:30Z");
+		expect(live?.completedOn).toBeUndefined();
 	});
 });
 

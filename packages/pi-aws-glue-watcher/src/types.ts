@@ -38,6 +38,10 @@ export interface JobBaseline {
 	errorMessage: string;
 	/** ISO-8601 timestamp when the run started (from AWS Glue API). */
 	startedOn?: string;
+	/** ISO-8601 timestamp when the run reached a terminal state. Used to
+	 * freeze the displayed elapsed-time once a run is done so the panel
+	 * doesn't keep ticking. */
+	completedOn?: string;
 	/** Configured number of workers for this run. */
 	numberOfWorkers?: number;
 	/** Worker type, e.g. "G.1X", "G.2X", "G.025X", "Standard". */
@@ -49,6 +53,10 @@ export interface WorkflowNodeInfo {
 	name: string;
 	state: string;
 	startedOn?: string;
+	/** ISO-8601 timestamp when this node's job-run reached a terminal
+	 * state. Same role as JobBaseline.completedOn — freezes elapsed-time
+	 * for already-finished nodes inside a still-running workflow. */
+	completedOn?: string;
 	numberOfWorkers?: number;
 	workerType?: string;
 }

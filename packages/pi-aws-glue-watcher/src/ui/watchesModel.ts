@@ -29,6 +29,7 @@ export interface DisplayRow {
 	displayName: string;
 	state: string;
 	startedOn?: string;
+	completedOn?: string;
 	numberOfWorkers?: number;
 	workerType?: string;
 	runId: string;
@@ -86,6 +87,7 @@ export function buildRows(watchMap: WatchMap): DisplayRow[] {
 				displayName: watch.name,
 				state: b?.state ?? "",
 				...(b?.startedOn !== undefined ? { startedOn: b.startedOn } : {}),
+				...(b?.completedOn !== undefined ? { completedOn: b.completedOn } : {}),
 				...(b?.numberOfWorkers !== undefined ? { numberOfWorkers: b.numberOfWorkers } : {}),
 				...(b?.workerType !== undefined ? { workerType: b.workerType } : {}),
 				runId: watch.runId,
@@ -107,6 +109,7 @@ export function buildRows(watchMap: WatchMap): DisplayRow[] {
 						displayName: `${watch.name}/${node.name}`,
 						state: node.state,
 						...(node.startedOn !== undefined ? { startedOn: node.startedOn } : {}),
+						...(node.completedOn !== undefined ? { completedOn: node.completedOn } : {}),
 						...(node.numberOfWorkers !== undefined ? { numberOfWorkers: node.numberOfWorkers } : {}),
 						...(node.workerType !== undefined ? { workerType: node.workerType } : {}),
 						runId: watch.runId,
@@ -156,7 +159,7 @@ export function formatRowLine(
 	const stateRaw = (row.state || "?").padEnd(COL_STATE);
 	const stateText = stateColor(theme, row.state, stateRaw);
 
-	const ageStr = formatElapsed(row.startedOn);
+	const ageStr = formatElapsed(row.startedOn, row.completedOn);
 	const age = theme.fg("dim", ageStr.padEnd(COL_AGE));
 
 	let workersStr = "-";

@@ -169,7 +169,7 @@ export class WatchesView implements Component {
 				` ${t.fg("text", sel.displayName)} — ${t.fg("dim", sel.runId)} | ` +
 					t.fg("dim", `Profile: ${sel.profile} | Region: ${region}`),
 			);
-			const age = formatElapsed(sel.startedOn);
+			const age = formatElapsed(sel.startedOn, sel.completedOn);
 			let workersDetail = "-";
 			if (sel.numberOfWorkers != null) {
 				workersDetail = `${sel.numberOfWorkers}×${sel.workerType ?? "?"}`;
