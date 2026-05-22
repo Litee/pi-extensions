@@ -113,6 +113,35 @@ export default defineConfig({
 				// pi-coding-agent runtime. The pure logic (checker, helpers,
 				// prompt, state) is 100% covered by the other four test files.
 				"**/pi-goal/src/index.ts",
+				// pi-custom-compaction/src/index.ts is the top-level wiring entry
+				// point: it creates the runtime services then calls registerCommands
+				// and registerEvents. All three callees are tested or excluded
+				// separately; the three-line wrapper itself requires a live
+				// pi-coding-agent runtime.
+				"**/pi-custom-compaction/src/index.ts",
+				// pi-custom-compaction/src/commands/register-commands.ts wires
+				// pi.registerCommand() for /compact-policy and /compact-now.
+				// The helper formatters (formatModels, formatTrigger) are exercised
+				// indirectly via the policy tests; the command handlers themselves
+				// call ctx.ui.notify and ctx.compact which require a live runtime.
+				"**/pi-custom-compaction/src/commands/register-commands.ts",
+				// pi-custom-compaction/src/events/register-events.ts wires pi.on()
+				// for agent_end, session_before_compact, session_compact,
+				// session_start, session_tree, and session_shutdown. The
+				// session_before_compact retention-fallback path is covered in
+				// events.test.ts; the remaining branches (custom compaction,
+				// model/API-key resolution, template paths) require a live model
+				// API and session event flow that cannot be exercised in unit tests.
+				"**/pi-custom-compaction/src/events/register-events.ts",
+				// pi-custom-compaction/src/runtime/session-state.ts is a closure
+				// factory (createRuntimeServices). Its inner helpers
+				// (showCompactionWidget, hideCompactionWidget, updateStatus,
+				// triggerCompaction) call ctx.ui.setWidget, ctx.ui.setStatus, and
+				// ctx.compact which all require a live pi-tui runtime. The
+				// orchestration paths are exercised end-to-end through
+				// events.test.ts; the widget/status branches cannot be reached
+				// without a real TUI session.
+				"**/pi-custom-compaction/src/runtime/session-state.ts",
 			],
 			// `json-summary` makes the coverage output machine-readable so CI or
 			// review tooling (e.g. gh-action coverage comments, pi-session-recap

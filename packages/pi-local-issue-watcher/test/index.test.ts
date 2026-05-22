@@ -233,7 +233,7 @@ async function browseViaMenu(pi: StubPi, ctx: StubCtx): Promise<void> {
 		.mockImplementationOnce(
 			(_title: string, items: string[]) => {
 				const browseItem = items.find((i) => i.startsWith(ITEM_BROWSE_PREFIX))!;
-				return Promise.resolve(browseItem);
+				return browseItem;
 			},
 		)
 		.mockResolvedValueOnce(ITEM_CLOSE);
