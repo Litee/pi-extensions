@@ -23,6 +23,7 @@ describe("dispatchKey — normal mode", () => {
 		["t", "toggle-display"],
 		["x", "begin-stop"],
 		["d", "begin-unwatch"],
+		["D", "begin-purge-terminal"],
 	])("maps %s → %s", (data, expected) => {
 		expect(act(false, data).kind).toBe(expected);
 	});
@@ -50,7 +51,7 @@ describe("dispatchKey — confirm mode", () => {
 		expect(act(true, "escape").kind).toBe("cancel");
 	});
 
-	it.each(["up", "down", "r", "t", "x", "d", "q", "zzz"])(
+	it.each(["up", "down", "r", "t", "x", "d", "D", "q", "zzz"])(
 		"ignores %s in confirm-mode",
 		(data) => {
 			expect(act(true, data).kind).toBe("ignore");

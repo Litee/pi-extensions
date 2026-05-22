@@ -21,6 +21,8 @@ export type WatchesAction =
 	| { kind: "toggle-display" }
 	/** User pressed `d` on the selected row — shell should open unwatch-confirm. */
 	| { kind: "begin-unwatch" }
+	/** User pressed `D` — shell should open bulk-purge-terminal confirm. */
+	| { kind: "begin-purge-terminal" }
 	/** In confirm-mode: user pressed `y`. */
 	| { kind: "confirm" }
 	/** In confirm-mode: user pressed `n` or Escape. */
@@ -48,5 +50,6 @@ export function dispatchKey(
 	if (matchesKey(data, "r")) return { kind: "refresh" };
 	if (matchesKey(data, "t")) return { kind: "toggle-display" };
 	if (matchesKey(data, "d")) return { kind: "begin-unwatch" };
+	if (data === "D") return { kind: "begin-purge-terminal" };
 	return { kind: "ignore" };
 }

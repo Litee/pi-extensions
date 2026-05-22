@@ -171,3 +171,75 @@ describe("WatchesView — handleInput", () => {
 		expect(view.render(100).join("\n")).toContain("No watches configured.");
 	});
 });
+
+describe("WatchesView — purge terminal", () => {
+	it("'D' on a list with terminal watches opens the purge-terminal confirm prompt", () => {
+		const { view } = makeView();
+		view.handleInput("D");
+		const lines = view.render(100).join("\n");
+		expect(lines).toContain("Purge 1 completed watch?");
+		expect(lines).toContain("y confirm");
+	});
+
+	it("'D' then 'y' removes all terminal watches", () => {
+		const { view, removeWatch } = makeView();
+		view.handleInput("D");
+		view.handleInput("y");
+		expect(removeWatch).toHaveBeenCalledWith("b"); // watchId "b" is terminal in makeWatches()
+		expect(removeWatch).toHaveBeenCalledTimes(1);
+	});
+
+	it("'D' then 'n' cancels the purge prompt", () => {
+		const { view, removeWatch } = makeView();
+		view.handleInput("D");
+		view.handleInput("n");
+		expect(removeWatch).not.toHaveBeenCalled();
+		expect(view.render(100).join("\n")).not.toContain("Purge");
+	});
+
+	it("'D' is a no-op when there are no terminal watches", () => {
+		const watches: WatchMap = {
+			a: {
+				watchId: "a",
+				bucket: "buck",
+				key: "live.txt",
+				profile: "p",
+				region: undefined,
+				target: "exists",
+				timeoutAt: undefined,
+				addedAt: 100,
+				lastPolledAt: 200,
+				baseline: { exists: false },
+				terminal: false,
+				consecutiveErrors: 0,
+			},
+		};
+		const { view, removeWatch } = makeView({ watches });
+		view.handleInput("D");
+		expect(removeWatch).not.toHaveBeenCalled();
+		expect(view.render(100).join("\n")).not.toContain("Purge");
+	});
+
+	it("'D' shows count > 1 with plural label", () => {
+		const watches: WatchMap = {
+			...makeWatches(),
+			c: {
+				watchId: "c",
+				bucket: "buck",
+				key: "also-done.txt",
+				profile: "p",
+				region: undefined,
+				target: "exists",
+				timeoutAt: undefined,
+				addedAt: 30,
+				lastPolledAt: undefined,
+				baseline: { exists: true },
+				terminal: true,
+				consecutiveErrors: 0,
+			},
+		};
+		const { view } = makeView({ watches });
+		view.handleInput("D");
+		expect(view.render(100).join("\n")).toContain("Purge 2 completed watches?");
+	});
+});

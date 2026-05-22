@@ -26,7 +26,10 @@ type Theme = RowTheme & { bold: (text: string) => string };
 
 export class WatchesView implements Component {
 	private selectedIndex = 0;
-	private confirm: { kind: "stop" | "unwatch"; displayName: string; row: DisplayRow } | null = null;
+	private confirm:
+		| { kind: "purge-terminal"; count: number; watchIds: string[] }
+		| { kind: "stop" | "unwatch"; displayName: string; row: DisplayRow }
+		| null = null;
 	private actionError: string | null = null;
 
 	constructor(
@@ -56,7 +59,11 @@ export class WatchesView implements Component {
 				if (!target) return;
 				this.confirm = null;
 				this.actionError = null;
-				if (target.kind === "stop") {
+				if (target.kind === "purge-terminal") {
+					for (const watchId of target.watchIds) {
+						this.removeWatch(watchId);
+					}
+				} else if (target.kind === "stop") {
 					this.stopRow(target.row)
 						.catch((err: unknown) => {
 							this.actionError = err instanceof Error ? err.message : String(err);
@@ -112,6 +119,18 @@ export class WatchesView implements Component {
 				}
 				return;
 			}
+			case "begin-purge-terminal": {
+				const watches = this.getWatches();
+				const terminalIds = Object.entries(watches)
+					.filter(([, w]) => w.terminal)
+					.map(([id]) => id);
+				if (terminalIds.length > 0) {
+					this.confirm = { kind: "purge-terminal", count: terminalIds.length, watchIds: terminalIds };
+					this.actionError = null;
+					this.requestRender();
+				}
+				return;
+			}
 		}
 	}
 
@@ -135,11 +154,18 @@ export class WatchesView implements Component {
 					t.fg("dim", "  No watches configured.   q close"),
 			);
 		} else if (this.confirm) {
-			const verb = this.confirm.kind === "stop" ? "Stop" : "Unwatch";
-			lines.push(
-				` ${t.fg("warning", `${verb} "${this.confirm.displayName}"?`)}` +
-					t.fg("dim", "  y confirm   n cancel"),
-			);
+			if (this.confirm.kind === "purge-terminal") {
+				lines.push(
+					` ${t.fg("warning", `Purge ${this.confirm.count} completed watch${this.confirm.count === 1 ? "" : "es"}?`)}` +
+						t.fg("dim", "  y confirm   n cancel"),
+				);
+			} else {
+				const verb = this.confirm.kind === "stop" ? "Stop" : "Unwatch";
+				lines.push(
+					` ${t.fg("warning", `${verb} "${this.confirm.displayName}"?`)}` +
+						t.fg("dim", "  y confirm   n cancel"),
+				);
+			}
 		} else if (this.actionError) {
 			lines.push(
 				` ${t.fg("error", `Failed: ${this.actionError}`)}` +
@@ -150,7 +176,7 @@ export class WatchesView implements Component {
 				` ${t.fg("accent", t.bold("Glue Watcher"))}` +
 					t.fg(
 						"dim",
-						` (${rows.length})  —  poll: ${Math.round(this.getPollIntervalMs() / 1000)}s   ↑↓ select   x stop   d unwatch   t → ${this.getDisplayMode() === "widget" ? "statusline" : "widget"}   r refresh   q close`,
+						` (${rows.length})  —  poll: ${Math.round(this.getPollIntervalMs() / 1000)}s   ↑↓ select   x stop   d unwatch   D purge done   t → ${this.getDisplayMode() === "widget" ? "statusline" : "widget"}   r refresh   q close`,
 					),
 			);
 		}
