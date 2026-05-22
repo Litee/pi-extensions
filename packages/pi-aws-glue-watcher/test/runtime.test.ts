@@ -253,6 +253,40 @@ describe("pollOnce — idle back-off via PollScheduler", () => {
 });
 
 // ---------------------------------------------------------------------------
+// triggerTurn
+// ---------------------------------------------------------------------------
+
+describe("pollWatch — triggerTurn on change events", () => {
+	it("uses triggerTurn: true when a state change is detected", async () => {
+		const pi = makePi();
+		// Client returns SUCCEEDED; baseline is RUNNING — state change fires
+		const client = makeClient(makeJobRunResponse("SUCCEEDED"));
+		const rt = makeRuntime(pi, client);
+		const watch = makeJobWatch({ state: "RUNNING", errorMessage: "" });
+		rt.watches[watch.watchId] = watch;
+
+		await pollWatch(rt, watch.watchId);
+
+		expect(pi.sendMessage).toHaveBeenCalledOnce();
+		const [, opts] = pi.sendMessage.mock.calls[0] as [unknown, { triggerTurn?: boolean }];
+		expect(opts.triggerTurn).toBe(true);
+	});
+
+	it("does NOT use triggerTurn: true when there is no state change", async () => {
+		const pi = makePi();
+		// Client returns RUNNING; baseline is RUNNING — no change
+		const client = makeClient(makeJobRunResponse("RUNNING"));
+		const rt = makeRuntime(pi, client);
+		const watch = makeJobWatch({ state: "RUNNING", errorMessage: "" });
+		rt.watches[watch.watchId] = watch;
+
+		await pollWatch(rt, watch.watchId);
+
+		expect(pi.sendMessage).not.toHaveBeenCalled();
+	});
+});
+
+// ---------------------------------------------------------------------------
 // Error classification
 // ---------------------------------------------------------------------------
 

@@ -965,6 +965,39 @@ describe("pollOnce", () => {
 		expect(msg.content).toContain("glue_watcher");
 		expect(msg.content).toContain("activate");
 	});
+
+	it("change notification uses triggerTurn: true so the LLM is woken up", async () => {
+		const pi = makePi();
+		const client = makeClient(); // returns RUNNING
+		const rt = makeRuntime(pi, client);
+		rt.enabled = true;
+		rt.watches["aa"] = makeWatch({
+			watchId: "aa",
+			baseline: { state: "STARTING", errorMessage: "" }, // differs from RUNNING
+		});
+
+		await pollOnce(rt);
+
+		expect(pi.sendMessage).toHaveBeenCalledOnce();
+		const [, opts] = pi.sendMessage.mock.calls[0] as [unknown, { triggerTurn?: boolean; deliverAs?: string }];
+		expect(opts.triggerTurn).toBe(true);
+	});
+
+	it("change notification when tool is inactive still uses triggerTurn: true", async () => {
+		const pi = makePi();
+		const client = makeClient();
+		const rt = makeRuntime(pi, client);
+		rt.enabled = false;
+		rt.watches["aa"] = makeWatch({
+			watchId: "aa",
+			baseline: { state: "STARTING", errorMessage: "" },
+		});
+
+		await pollOnce(rt);
+
+		const [, opts] = pi.sendMessage.mock.calls[0] as [unknown, { triggerTurn?: boolean; deliverAs?: string }];
+		expect(opts.triggerTurn).toBe(true);
+	});
 });
 
 // ---------------------------------------------------------------------------

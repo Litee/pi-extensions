@@ -255,6 +255,53 @@ describe("pollOnce — stops the loop once every watch is terminal", () => {
 });
 
 // ---------------------------------------------------------------------------
+// triggerTurn
+// ---------------------------------------------------------------------------
+
+describe("pollOnce — triggerTurn on change events", () => {
+	it("uses triggerTurn: true when the target fires", async () => {
+		const pi = makePi();
+		// baseline: absent → now exists, target=exists → event fires
+		const client = makeResolvingClient({ exists: true, etag: '"a"', contentLength: 1 });
+		const rt = makeRuntime(pi, client);
+		rt.watches["w1"] = makeWatch("exists", { exists: false });
+
+		await pollOnce(rt);
+
+		expect(pi.sendMessage).toHaveBeenCalledOnce();
+		const [, opts] = pi.sendMessage.mock.calls[0] as [unknown, { triggerTurn?: boolean }];
+		expect(opts.triggerTurn).toBe(true);
+	});
+
+	it("does NOT call sendMessage when no target fires", async () => {
+		const pi = makePi();
+		// Object still absent; target=exists hasn't fired yet
+		const client = makeResolvingClient({ exists: false });
+		const rt = makeRuntime(pi, client);
+		rt.watches["w1"] = makeWatch("exists", { exists: false });
+
+		await pollOnce(rt);
+
+		expect(pi.sendMessage).not.toHaveBeenCalled();
+	});
+
+	it("timeout event also uses triggerTurn: true", async () => {
+		const pi = makePi();
+		const rt = makeRuntime(pi, makeResolvingClient({ exists: false }));
+		rt.now = () => 10_000;
+		const w = makeWatch("exists", { exists: false });
+		w.timeoutAt = 9_000; // already elapsed
+		rt.watches[w.watchId] = w;
+
+		await pollOnce(rt);
+
+		expect(pi.sendMessage).toHaveBeenCalledOnce();
+		const [, opts] = pi.sendMessage.mock.calls[0] as [unknown, { triggerTurn?: boolean }];
+		expect(opts.triggerTurn).toBe(true);
+	});
+});
+
+// ---------------------------------------------------------------------------
 // Error classification
 // ---------------------------------------------------------------------------
 

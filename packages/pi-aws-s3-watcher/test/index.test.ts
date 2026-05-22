@@ -415,6 +415,40 @@ describe("polling decoupled from rt.enabled (#0003)", () => {
 		const content = (changeCalls[0]![0] as { content: string }).content;
 		expect(content).not.toContain("manage_tools");
 	});
+
+	it("change notification uses triggerTurn: true so the LLM is woken up", async () => {
+		vi.useFakeTimers();
+		// Client returns exists=true on first poll (target=exists → fires)
+		const client = makeClient({ exists: true });
+		const active = ["s3_watcher", "read"];
+		const { pi, handlers, sendMessage } = makePi({ activeTools: () => active });
+		createExtensionWithClient(pi, client);
+		await handlers.sessionStart!({}, makeCtx(makePersistedWithWatch(true)));
+		await vi.advanceTimersByTimeAsync(65_000);
+		const changeCalls = sendMessage.mock.calls.filter(
+			(c) => (c[0] as { customType: string }).customType === CUSTOM_MESSAGE_TYPE &&
+				(c[0] as { content: string }).content.includes("detected"),
+		);
+		expect(changeCalls.length).toBeGreaterThan(0);
+		const opts = changeCalls[0]![1] as { triggerTurn?: boolean };
+		expect(opts.triggerTurn).toBe(true);
+	});
+
+	it("change notification when tool is inactive also uses triggerTurn: true", async () => {
+		vi.useFakeTimers();
+		const client = makeClient({ exists: true });
+		const { pi, handlers, sendMessage } = makePi({ activeTools: () => [] });
+		createExtensionWithClient(pi, client);
+		await handlers.sessionStart!({}, makeCtx(makePersistedWithWatch(false)));
+		await vi.advanceTimersByTimeAsync(65_000);
+		const changeCalls = sendMessage.mock.calls.filter(
+			(c) => (c[0] as { customType: string }).customType === CUSTOM_MESSAGE_TYPE &&
+				(c[0] as { content: string }).content.includes("detected"),
+		);
+		expect(changeCalls.length).toBeGreaterThan(0);
+		const opts = changeCalls[0]![1] as { triggerTurn?: boolean };
+		expect(opts.triggerTurn).toBe(true);
+	});
 });
 
 describe("user config: defaultDisplayMode (#0005)", () => {
