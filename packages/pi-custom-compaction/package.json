@@ -1,0 +1,19 @@
+{
+  "name": "pi-custom-compaction",
+  "version": "0.2.5",
+  "private": true,
+  "description": "Pi extension that swaps the model, template, and trigger for context compaction (copy of https://github.com/nicobailon/pi-custom-compaction).",
+  "license": "MIT",
+  "author": "Nico Bailon (upstream); ported by Andrey Lipatkin",
+  "type": "module",
+  "keywords": ["pi-package"],
+  "pi": {
+    "extensions": ["./src/index.ts"]
+  },
+  "peerDependencies": {
+    "@earendil-works/pi-agent-core": "*",
+    "@earendil-works/pi-ai": "*",
+    "@earendil-works/pi-coding-agent": "*",
+    "@earendil-works/pi-tui": "*"
+  }
+}
