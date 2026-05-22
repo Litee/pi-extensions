@@ -55,11 +55,11 @@ export function watchStyle(entry: WidgetEntry): WatchStyle {
 
 /**
  * Build the flat list of widget entries from the watch map.
- * Only non-terminal watches are included.
+ * All watches are included: non-terminal first (newest addedAt first),
+ * then terminal (newest addedAt first).
  */
 export function buildWidgetEntries(watchMap: WatchMap): WidgetEntry[] {
 	return Object.values(watchMap)
-		.filter((w) => !w.terminal)
 		.map((w) => {
 			const state: "present" | "absent" | "?" =
 				w.baseline === undefined ? "?" : w.baseline.exists ? "present" : "absent";
@@ -72,6 +72,12 @@ export function buildWidgetEntries(watchMap: WatchMap): WidgetEntry[] {
 				hasErrors: w.consecutiveErrors >= DEFAULT_POLL_ERROR_THRESHOLD,
 				terminal: w.terminal,
 			};
+		})
+		.sort((a, b) => {
+			// Terminal entries always go after non-terminal ones.
+			if (a.terminal !== b.terminal) return a.terminal ? 1 : -1;
+			// Within the same group: newest addedAt first.
+			return b.addedAt - a.addedAt;
 		});
 }
 
@@ -125,5 +131,6 @@ export function renderEntryLine(
 	const timeLeftRaw = formatTimeLeft(entry.timeoutAt, now).padEnd(COL_TIME);
 	const timeStr = timeLeftRaw;
 
-	return ` ${name} ${targetStr} ${stateStr} ${timeStr}`;
+	const line = ` ${name} ${targetStr} ${stateStr} ${timeStr}`;
+	return entry.terminal ? theme.fg("dim", line) : line;
 }

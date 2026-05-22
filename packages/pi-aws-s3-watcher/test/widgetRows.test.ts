@@ -70,13 +70,14 @@ describe("watchStyle", () => {
 // ---------------------------------------------------------------------------
 
 describe("buildWidgetEntries", () => {
-	it("excludes terminal watches", () => {
+	it("includes terminal watches after non-terminal ones", () => {
 		const entries = buildWidgetEntries({
 			a: makeWatch({ watchId: "a", bucket: "b", key: "k1" }),
 			b: makeWatch({ watchId: "b", bucket: "b", key: "k2", terminal: true }),
 		});
-		expect(entries).toHaveLength(1);
+		expect(entries).toHaveLength(2);
 		expect(entries[0]!.displayName).toBe("s3://b/k1");
+		expect(entries[1]!.displayName).toBe("s3://b/k2");
 	});
 
 	it("builds displayName as 's3://bucket/key'", () => {
@@ -141,22 +142,39 @@ describe("buildWidgetEntries", () => {
 		expect(buildWidgetEntries({})).toHaveLength(0);
 	});
 
-	it("returns empty array when all watches are terminal", () => {
-		expect(buildWidgetEntries({
+	it("includes terminal-only watches", () => {
+		const entries = buildWidgetEntries({
 			a: makeWatch({ watchId: "a", bucket: "b", key: "k", terminal: true }),
-		})).toHaveLength(0);
+		});
+		expect(entries).toHaveLength(1);
+		expect(entries[0]!.terminal).toBe(true);
 	});
 
-	it("preserves insertion order for non-terminal watches", () => {
+	it("sorts non-terminal watches by addedAt descending (newest first)", () => {
 		const entries = buildWidgetEntries({
-			a: makeWatch({ watchId: "a", bucket: "b", key: "a" }),
-			b: makeWatch({ watchId: "b", bucket: "b", key: "b" }),
-			c: makeWatch({ watchId: "c", bucket: "b", key: "c" }),
+			a: makeWatch({ watchId: "a", bucket: "b", key: "a", addedAt: 1_000 }),
+			b: makeWatch({ watchId: "b", bucket: "b", key: "b", addedAt: 3_000 }),
+			c: makeWatch({ watchId: "c", bucket: "b", key: "c", addedAt: 2_000 }),
 		});
 		expect(entries.map((e) => e.displayName)).toEqual([
-			"s3://b/a",
 			"s3://b/b",
 			"s3://b/c",
+			"s3://b/a",
+		]);
+	});
+
+	it("sorts terminal watches after non-terminal, newest first within each group", () => {
+		const entries = buildWidgetEntries({
+			a: makeWatch({ watchId: "a", bucket: "b", key: "a", addedAt: 1_000, terminal: false }),
+			b: makeWatch({ watchId: "b", bucket: "b", key: "b", addedAt: 3_000, terminal: true }),
+			c: makeWatch({ watchId: "c", bucket: "b", key: "c", addedAt: 2_000, terminal: true }),
+			d: makeWatch({ watchId: "d", bucket: "b", key: "d", addedAt: 4_000, terminal: false }),
+		});
+		expect(entries.map((e) => e.displayName)).toEqual([
+			"s3://b/d", // non-terminal, newest
+			"s3://b/a", // non-terminal, older
+			"s3://b/b", // terminal, newest
+			"s3://b/c", // terminal, older
 		]);
 	});
 });
@@ -264,6 +282,25 @@ describe("renderEntryLine", () => {
 			taggedTheme,
 		);
 		expect(line).toContain("[success]present");
+	});
+
+	it("dims the whole line for terminal entries", () => {
+		const line = renderEntryLine(
+			makeEntry({ terminal: true }),
+			20,
+			taggedTheme,
+		);
+		expect(line.startsWith("[dim]")).toBe(true);
+		expect(line.endsWith("[/]")).toBe(true);
+	});
+
+	it("does not dim the line for non-terminal entries", () => {
+		const line = renderEntryLine(
+			makeEntry({ terminal: false }),
+			20,
+			taggedTheme,
+		);
+		expect(line.startsWith("[dim]")).toBe(false);
 	});
 
 	it("target is NOT coloured", () => {
