@@ -118,7 +118,7 @@ export default function skillsBrowserExtension(pi: ExtensionAPI) {
 						: theme.fg("dim", "tokens↓");
 					lines.push(
 						truncateToWidth(
-							`Sort: ${namePart}  ${tokensPart}  ${theme.fg("dim", "(s to switch)")}`,
+							`Sort: ${namePart}  ${tokensPart}`,
 							width,
 						),
 					);

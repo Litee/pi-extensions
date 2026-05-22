@@ -25,9 +25,8 @@ export type MatchesKey = (data: string, keyId: KeyId) => boolean;
 /**
  * Classify a raw stdin chunk into a `SkillsBrowserAction`.
  *
- * Order matters: `s` is checked as a navigation key BEFORE the printable
- * filter-character branch so typing "s" toggles the sort mode instead of
- * being swallowed into the filter query.
+ * Ctrl-S toggles sort mode; bare `s` falls through to the printable
+ * filter-character branch so typing names like "aws-glue" works as expected.
  */
 export function dispatchKey(
 	data: string,

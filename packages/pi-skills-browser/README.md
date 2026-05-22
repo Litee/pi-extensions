@@ -5,8 +5,8 @@ Pi extension that registers a `/skills` command for interactively browsing every
 ## Features
 
 - **Name + token count** — shows each skill's name alongside a compact description token estimate (`chars/4` heuristic)
-- **Two sort modes** — press `s` to toggle between alphabetical by name (default) and descending by description token count
-- **Filter as you type** — any printable character (except `s`) narrows the list by case-insensitive substring match on the skill name
+- **Two sort modes** — press `Ctrl-S` to toggle between alphabetical by name (default) and descending by description token count
+- **Filter as you type** — any printable character narrows the list by case-insensitive substring match on the skill name
 - **Windowed scrolling** — handles large skill sets (100+ skills) with viewport-clamped rendering and a scroll-position indicator
 
 ## Usage
@@ -20,7 +20,7 @@ Pi extension that registers a `/skills` command for interactively browsing every
 | Key | Action |
 |-----|--------|
 | `↑` / `↓` | Navigate the list |
-| `s` | Toggle sort: name ↔ tokens↓ |
+| `Ctrl-S` | Toggle sort: name ↔ tokens↓ |
 | any printable char | Add to filter query |
 | `⌫` Backspace | Remove last filter character |
 | `Esc` | Close |
