@@ -1,5 +1,5 @@
 {
-  "name": "pi-tools-runtime-manager",
+  "name": "pi-tools-management-tool",
   "version": "0.1.0",
   "private": true,
   "description": "Pi extension that registers a manage_tools tool so the LLM can list, activate, deactivate, and reset its own tool set at runtime.",

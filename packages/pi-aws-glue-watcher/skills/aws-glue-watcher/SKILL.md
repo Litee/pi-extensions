@@ -25,7 +25,7 @@ manage_tools({"action": "activate", "tools": ["glue_watcher"]})
 ```
 
 The tool becomes callable on the next turn. `manage_tools` is provided
-by the `pi-tools-runtime-manager` extension; if the call fails with
+by the `pi-tools-management-tool` extension; if the call fails with
 "unknown tool", that extension is not installed — ask the user to
 install it before continuing.
 
@@ -101,7 +101,7 @@ profile name you would use with `aws --profile <name>`.
 
 | Error | Cause | What to do |
 |---|---|---|
-| `manage_tools` not found | `pi-tools-runtime-manager` not installed | Ask the user to install the extension, then restart pi |
+| `manage_tools` not found | `pi-tools-management-tool` not installed | Ask the user to install the extension, then restart pi |
 | `CredentialsProviderError` / `ExpiredToken` on `add` | Stale session | Run `aws sso login --profile <name>`, then retry `add` |
 | `AccessDenied` on `add` | Profile lacks `glue:GetJobRun` or `glue:GetWorkflowRun` | Check IAM policy; `AccessDenied` is not transient — the watch will never fire |
 | `EntityNotFoundException` on `add` | Job or workflow name does not exist in the given region/account | Verify name, profile, and region |

@@ -209,7 +209,7 @@ describe("tool.execute — list", () => {
 		vi.runAllTimers();
 		expect(pi.sendMessage).toHaveBeenCalledTimes(1);
 		const { msg, opts } = firstSendMessageCall(pi);
-		expect(msg.customType).toBe("pi-tools-runtime-manager:refresh");
+		expect(msg.customType).toBe("pi-tools-management-tool:refresh");
 		expect(msg.display).toBe(false);
 		expect(msg.content).toMatch(/Continue\./);
 		expect(opts).toEqual({ triggerTurn: true });
@@ -558,7 +558,7 @@ describe("auto-continue — happy path", () => {
 
 		expect(pi.sendMessage).toHaveBeenCalledTimes(1);
 		const { msg, opts } = firstSendMessageCall(pi);
-		expect(msg.customType).toBe("pi-tools-runtime-manager:refresh");
+		expect(msg.customType).toBe("pi-tools-management-tool:refresh");
 		expect(msg.display).toBe(false);
 		expect(msg.content).toMatch(/Continue\./);
 		// No specific tool names in the generic message
@@ -590,7 +590,7 @@ describe("auto-continue — happy path", () => {
 
 		expect(pi.sendMessage).toHaveBeenCalledTimes(1);
 		const { msg, opts } = firstSendMessageCall(pi);
-		expect(msg.customType).toBe("pi-tools-runtime-manager:refresh");
+		expect(msg.customType).toBe("pi-tools-management-tool:refresh");
 		expect(msg.display).toBe(false);
 		expect(msg.content).toMatch(/edit/);
 		expect(msg.content).toMatch(/Continue\./);
@@ -809,7 +809,7 @@ describe("auto-continue — batched manage_tools (with other tools)", () => {
 		vi.runAllTimers();
 		expect(pi.sendMessage).toHaveBeenCalledTimes(1);
 		const { msg, opts } = firstSendMessageCall(pi);
-		expect(msg.customType).toBe("pi-tools-runtime-manager:refresh");
+		expect(msg.customType).toBe("pi-tools-management-tool:refresh");
 		expect(opts).toEqual({ triggerTurn: true });
 	});
 

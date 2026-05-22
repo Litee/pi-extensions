@@ -1,5 +1,5 @@
 /**
- * pi-tools-runtime-manager — Pi extension.
+ * pi-tools-management-tool — Pi extension.
  *
  * Registers a `manage_tools` tool so the LLM can list, activate, deactivate,
  * and reset its own tool set at runtime. Built on top of pi's own runtime
@@ -92,7 +92,7 @@ const PROTECTED: ReadonlySet<string> = new Set([TOOL_NAME]);
 const MAX_AUTO_REFRESHES = 3;
 
 /** Custom-message type used for the auto-refresh transcript artifact. */
-const REFRESH_CUSTOM_TYPE = "pi-tools-runtime-manager:refresh";
+const REFRESH_CUSTOM_TYPE = "pi-tools-management-tool:refresh";
 
 /**
  * Stop reasons that count as a clean end-of-turn (we may auto-continue).

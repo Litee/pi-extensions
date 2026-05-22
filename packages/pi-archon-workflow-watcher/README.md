@@ -13,7 +13,7 @@ manual sleep-based polling for interactive archon workflows.
 manage_tools({"action": "activate", "tools": ["archon_watcher"]})
 ```
 
-This requires the `pi-tools-runtime-manager` extension. The tool becomes
+This requires the `pi-tools-management-tool` extension. The tool becomes
 callable on the next turn after activation.
 
 ## Polling schedule

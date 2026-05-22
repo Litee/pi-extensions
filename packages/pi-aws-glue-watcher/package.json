@@ -17,7 +17,7 @@
   },
   "peerDependencies": {
     "@earendil-works/pi-coding-agent": "*",
-    "pi-tools-runtime-manager": "*",
+    "pi-tools-management-tool": "*",
     "typebox": "*"
   },
   "dependencies": {

@@ -19,7 +19,7 @@ manage_tools({"action": "activate", "tools": ["glue_watcher"]})
 ```
 
 The tool becomes callable on the next LLM turn. Requires the
-`pi-tools-runtime-manager` extension (peer dependency).
+`pi-tools-management-tool` extension (peer dependency).
 
 **Escape hatch — `/glue-watcher`**: typing this in the pi editor opens an
 interactive TUI menu where the user can browse watches, pause/resume

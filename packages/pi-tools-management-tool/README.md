@@ -1,4 +1,4 @@
-# pi-tools-runtime-manager
+# pi-tools-management-tool
 
 Pi extension that gives the **LLM** a `manage_tools` tool so it can list, activate, deactivate, and reset its own tool set at runtime. Built on top of pi's native runtime tool-management API (`pi.getAllTools` / `pi.getActiveTools` / `pi.setActiveTools`).
 
@@ -7,7 +7,7 @@ When the LLM calls any `manage_tools` action, the extension automatically fires 
 ## How this differs from `pi-tools`
 
 - [`pi-tools`](../pi-tools) is a **user-facing** `/tools` command with an interactive TUI toggle.
-- `pi-tools-runtime-manager` is a **model-facing** tool the LLM calls itself. No UI.
+- `pi-tools-management-tool` is a **model-facing** tool the LLM calls itself. No UI.
 
 Install one, the other, or both. They don't conflict — the `/tools` TUI reflects whatever the LLM has done via `manage_tools`.
 
@@ -71,7 +71,7 @@ pi's agent loop snapshots the tool list once per `agent.prompt()` call. Inside o
 This extension papers over that in two complementary ways:
 
 1. Every `manage_tools` call — including `list`, `deactivate`, and no-op `activate` — sets `terminate: true` on the tool result. The agent loop honors `terminate` only when **every** member of the same tool batch sets it (`pi-agent-core/dist/agent-loop.js:315`), so this ends the run early when `manage_tools` is alone in its batch and is silently ignored when batched with other tools.
-2. An `agent_end` listener fires `pi.sendMessage({display:false, customType:"pi-tools-runtime-manager:refresh"}, {triggerTurn:true})` whenever `manage_tools` was called during the run. By the time `agent_end` listeners run the agent is provably idle, so `triggerTurn` starts a brand-new `agent.prompt()` whose snapshot reflects the current tool state. The injected message is invisible in the TUI but persisted in the transcript and visible to the LLM.
+2. An `agent_end` listener fires `pi.sendMessage({display:false, customType:"pi-tools-management-tool:refresh"}, {triggerTurn:true})` whenever `manage_tools` was called during the run. By the time `agent_end` listeners run the agent is provably idle, so `triggerTurn` starts a brand-new `agent.prompt()` whose snapshot reflects the current tool state. The injected message is invisible in the TUI but persisted in the transcript and visible to the LLM.
    - When tools were actually activated, the message reads _"Continue. Newly available tools: X, Y."_
    - For `list`, `deactivate`, or no-op calls, the message reads _"Continue. Use your tools as appropriate."_
 
@@ -89,7 +89,7 @@ If the auto-continue does not happen for any of these reasons, the user can simp
 
 Both extensions listen on `agent_end` and may try to fire `pi.sendMessage({triggerTurn:true})`. If both are installed and both decide to trigger for the same `agent_end`, only the first one wins; the second hits `"Agent is already processing"` from `agent.prompt()` and gets swallowed (pi's bound `sendMessage` has a `.catch(() => {})`). The `ctx.isIdle()` guard makes this safe — the second listener detects the race and bails — but in either ordering you'll get exactly one auto-triggered run.
 
-`pi-tools-runtime-manager` also bypasses `pi-plan-mode`'s tool restrictions by design: the LLM can re-enable `write` / `edit` even while plan mode disabled them. If plan-mode's restrictions are load-bearing for you, fork this extension to add the plan-mode tool set to `PROTECTED` while plan mode is active.
+`pi-tools-management-tool` also bypasses `pi-plan-mode`'s tool restrictions by design: the LLM can re-enable `write` / `edit` even while plan mode disabled them. If plan-mode's restrictions are load-bearing for you, fork this extension to add the plan-mode tool set to `PROTECTED` while plan mode is active.
 
 ## Protected tools
 
@@ -102,17 +102,17 @@ See [Interaction with `pi-plan-mode`](#interaction-with-pi-plan-mode) above.
 ## Install
 
 ```bash
-pi install git:github.com/<user>/pi-extensions#pi-tools-runtime-manager
+pi install git:github.com/<user>/pi-extensions#pi-tools-management-tool
 ```
 
 or from a local clone:
 
 ```bash
-pi install -l /path/to/pi-extensions/packages/pi-tools-runtime-manager
+pi install -l /path/to/pi-extensions/packages/pi-tools-management-tool
 ```
 
 ## Testing
 
 ```bash
-npx vitest run packages/pi-tools-runtime-manager
+npx vitest run packages/pi-tools-management-tool
 ```

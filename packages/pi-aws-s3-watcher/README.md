@@ -15,7 +15,7 @@ before use:
 manage_tools({"action": "activate", "tools": ["s3_watcher"]})
 ```
 
-`manage_tools` is provided by the `pi-tools-runtime-manager` extension
+`manage_tools` is provided by the `pi-tools-management-tool` extension
 (peer dependency). The tool becomes callable on the next turn after
 activation.
 

@@ -22,7 +22,7 @@ cache.
 manage_tools({"action": "activate", "tools": ["archon_watcher"]})
 ```
 
-`manage_tools` is provided by the `pi-tools-runtime-manager` extension.
+`manage_tools` is provided by the `pi-tools-management-tool` extension.
 If the call fails with "unknown tool", that extension is not installed —
 ask the user to install it before continuing. The tool becomes available
 on the next turn after activation.
@@ -96,7 +96,7 @@ Global toggle, persisted across session reload.
 
 | Error | Cause | What to do |
 |---|---|---|
-| `manage_tools` not found | `pi-tools-runtime-manager` not installed | Ask the user to install the extension, then restart pi |
+| `manage_tools` not found | `pi-tools-management-tool` not installed | Ask the user to install the extension, then restart pi |
 | `archon: command not found` on `add` | `archon` CLI not in `PATH` | Verify archon is installed and in PATH; the watcher still adds the run ID but cannot seed the baseline |
 | Run ID not in active list at `add` time | Run already completed or ID is wrong | Verify with `archon workflow status --json`; the run may have already finished |
 | Watch added but no notification | Polling paused, or run hasn't changed state yet | Call `archon_watcher({action:"status"})` to check; `archon_watcher({action:"poll"})` to check immediately |

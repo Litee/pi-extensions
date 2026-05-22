@@ -22,7 +22,7 @@ cache.
 manage_tools({"action": "activate", "tools": ["s3_watcher"]})
 ```
 
-`manage_tools` is provided by the `pi-tools-runtime-manager` extension.
+`manage_tools` is provided by the `pi-tools-management-tool` extension.
 If the call fails with "unknown tool", that extension is not installed —
 ask the user to install it before continuing. The tool becomes available
 on the next turn after activation.
@@ -100,7 +100,7 @@ profile name you would use with `aws --profile <name>`.
 
 | Error | Cause | What to do |
 |---|---|---|
-| `manage_tools` not found | `pi-tools-runtime-manager` not installed | Ask the user to install the extension, then restart pi |
+| `manage_tools` not found | `pi-tools-management-tool` not installed | Ask the user to install the extension, then restart pi |
 | `CredentialsProviderError` / `ExpiredToken` on `add` | Stale session | Run `aws sso login --profile <name>`, then retry `add` |
 | `AccessDenied` on `add` | Profile lacks `s3:GetObject` or `s3:HeadObject` on the target key | Check IAM policy for the profile; `AccessDenied` is not transient — the watch will never fire |
 | `NoSuchBucket` on `add` | Bucket does not exist or is in a different region | Verify bucket name and pass the correct `region` |
