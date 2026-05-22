@@ -280,6 +280,14 @@ ctx: opus-large-ctx · keep 15% · 50.1% (250500/500000)
 ctx · keep 40000t · 31%
 ```
 
+The trailing percentage is tinted via the active theme: `muted` while
+usage stays below 80% of the effective context window
+(`min(trigger.maxTokens, ctx.contextWindow)`), and `warning` (yellow)
+at or above 80%. The prefix — extension name, profile, and retention —
+is left untinted so the label remains readable across themes. When the
+host has no theme available (e.g. headless test contexts) the status
+falls back to plain text.
+
 ## Summary options
 
 ```json

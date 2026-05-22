@@ -25,6 +25,10 @@ below to diff against upstream and pick up future changes.
 - `package.json` slimmed to the conventions of this repo: `private: true`,
   peerDependencies on the `@earendil-works/pi-*` packages, no standalone
   `test`/`build` scripts (the workspace-level `npm run check` covers it).
+- Status bar now tints the trailing usage percentage via the active theme
+  (`muted` below 80% of the effective context window, `warning` at or above).
+  The threshold lives in `src/runtime/status-format.ts` (`pickUsageAccent`).
+  Upstream renders the whole status line in a single, untinted style.
 
 ## How to check for upstream changes
 
