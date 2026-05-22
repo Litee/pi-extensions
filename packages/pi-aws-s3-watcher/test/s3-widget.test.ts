@@ -100,6 +100,35 @@ describe("S3Widget lifecycle — hide() must prevent later re-show on s3:change"
 	});
 });
 
+describe("S3Widget show() — all watches terminal", () => {
+	it("still calls setWidget (not hide) when every watch is terminal", () => {
+		const events = makeEventBus();
+		const terminalWatch: S3Watch = {
+			...makeActiveWatch(),
+			terminal: true,
+		};
+		const watches: WatchMap = { w1: terminalWatch };
+		const widget = new S3Widget({ events } as never, () => watches, () => 60_000);
+
+		const { ctx, setWidget } = makeCtx();
+		widget.show(ctx);
+
+		// setWidget should have been called with a factory fn, not undefined
+		const registrations = setWidget.mock.calls.filter(
+			(c) => c[0] === "s3-watcher" && typeof c[1] === "function",
+		);
+		expect(registrations.length).toBeGreaterThan(0);
+
+		// should NOT have called hide (setWidget with undefined)
+		const hides = setWidget.mock.calls.filter(
+			(c) => c[0] === "s3-watcher" && c[1] === undefined,
+		);
+		expect(hides.length).toBe(0);
+
+		widget.destroy();
+	});
+});
+
 describe("S3Widget header — AWS prefix in title", () => {
 	it("renders 'AWS S3 Watcher' in the widget header", () => {
 		const events = makeEventBus();

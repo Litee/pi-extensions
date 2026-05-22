@@ -61,8 +61,7 @@ export class S3Widget {
 	show(ctx: unknown): void {
 		this.ctx = ctx;
 
-		const active = Object.values(this.getWatches()).filter((w) => !w.terminal);
-		if (active.length === 0) {
+		if (Object.values(this.getWatches()).length === 0) {
 			this.hide(ctx);
 			return;
 		}
