@@ -14,21 +14,7 @@ below to diff against upstream and pick up future changes.
 - **Initially ported:** `a0e4700` (`chore: release 0.2.5`, 2026-04-04)
 - **Last synced:** `a0e4700` (`chore: release 0.2.5`, 2026-04-04)
 
-## Local divergences
-
-- Source moved from repo root into `src/` so the package matches this monorepo's
-  layout (`packages/*/src/**`, `packages/*/test/**`).
-- Imports rewritten from `@mariozechner/pi-*` to `@earendil-works/pi-*` — this
-  monorepo consumes the `@earendil-works` republish of the pi SDK.
-- Tests ported from `node:test` (`tsx --test`) to `vitest`. The `node:assert`
-  imports are kept as-is; only the `describe`/`it` source changed.
-- `package.json` slimmed to the conventions of this repo: `private: true`,
-  peerDependencies on the `@earendil-works/pi-*` packages, no standalone
-  `test`/`build` scripts (the workspace-level `npm run check` covers it).
-- Status bar now tints the trailing usage percentage via the active theme
-  (`muted` below 80% of the effective context window, `warning` at or above).
-  The threshold lives in `src/runtime/status-format.ts` (`pickUsageAccent`).
-  Upstream renders the whole status line in a single, untinted style.
+For intentional local divergences see **Differences from upstream** in [`README.md`](./README.md).
 
 ## How to check for upstream changes
 

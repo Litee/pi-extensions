@@ -120,17 +120,17 @@ export function createRuntimeServices(): RuntimeServices {
 		const base = policy.ui.name;
 		const prefix = activeProfileName ? `${base}: ${activeProfileName}` : base;
 		const retentionText = formatSummaryRetention(policy.summaryRetention);
-		const statusPrefix = retentionText ? `${prefix} · ${retentionText}` : prefix;
+		const statusPrefix = retentionText ? `${prefix}: ${retentionText}` : prefix;
 
 		if (inFlight.active) {
-			ctx.ui.setStatus(STATUS_KEY, `${statusPrefix} · compacting…`);
+			ctx.ui.setStatus(STATUS_KEY, `${statusPrefix}: compacting…`);
 			return;
 		}
 
 		const usage = ctx.getContextUsage();
 
 		if (!usage || usage.tokens === null) {
-			ctx.ui.setStatus(STATUS_KEY, postCompact ? statusPrefix : `${statusPrefix} · ?`);
+			ctx.ui.setStatus(STATUS_KEY, postCompact ? statusPrefix : `${statusPrefix}: ?`);
 			return;
 		}
 		postCompact = false;
@@ -144,9 +144,10 @@ export function createRuntimeServices(): RuntimeServices {
 		const tail = policy.ui.minimalStatus
 			? `${pct.toFixed(0)}%`
 			: `${pct.toFixed(1)}% (${usage.tokens}/${limit})`;
+		const line = `${statusPrefix}: ${tail}`;
 		const accent = pickUsageAccent(pct);
-		const tinted = ctx.ui.theme?.fg ? ctx.ui.theme.fg(accent, tail) : tail;
-		ctx.ui.setStatus(STATUS_KEY, `${statusPrefix} · ${tinted}`);
+		const tinted = ctx.ui.theme?.fg ? ctx.ui.theme.fg(accent, line) : line;
+		ctx.ui.setStatus(STATUS_KEY, tinted);
 	}
 
 	function loadEffectivePolicy(

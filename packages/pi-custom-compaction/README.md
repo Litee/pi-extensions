@@ -275,18 +275,13 @@ Example update template (`compaction-template-update.md`):
 Status bar examples:
 
 ```
-ctx · keep 20% · 24.7% (86426/350000)
-ctx: opus-large-ctx · keep 15% · 50.1% (250500/500000)
-ctx · keep 40000t · 31%
+compact: 24.7% (86426/350000)
+compact: opus-large-ctx: keep 15%: 50.1% (250500/500000)
+ctx: keep 40000t: 31%
 ```
 
-The trailing percentage is tinted via the active theme: `muted` while
-usage stays below 80% of the effective context window
-(`min(trigger.maxTokens, ctx.contextWindow)`), and `warning` (yellow)
-at or above 80%. The prefix — extension name, profile, and retention —
-is left untinted so the label remains readable across themes. When the
-host has no theme available (e.g. headless test contexts) the status
-falls back to plain text.
+See **Differences from upstream** below for how the line is tinted by
+context usage and why sections are joined with `:` instead of `·`.
 
 ## Summary options
 
@@ -298,3 +293,24 @@ falls back to plain text.
 ```
 
 These are base settings. Model entries and profiles can override `thinkingLevel` and `preservationInstruction` individually.
+
+## Differences from upstream
+
+Not exhaustive — just the highlights that matter if you are considering
+copying this package. Here is what you will be picking up on top of
+upstream `pi-custom-compaction` v0.2.5:
+
+- **Status line tinted by context pressure.** The whole status line is
+  rendered through the active theme's `muted` accent below 80% of the
+  effective context window, and `warning` (yellow) at or above. Threshold
+  lives in `src/runtime/status-format.ts` (`pickUsageAccent`). Upstream
+  renders the status in a single, untinted style.
+- **`:` as the section separator.** `name: profile: retention: pct`
+  instead of upstream's `·`-separated layout. Same change applies to the
+  `compacting…` and unknown-usage variants.
+- **Layout reshuffled to the monorepo's conventions.** Sources moved into
+  `src/`, tests under `test/` and ported from `node:test` (`tsx --test`)
+  to `vitest`; `package.json` slimmed to `private: true` with
+  peerDependencies on the `@earendil-works/pi-*` SDK republish (upstream
+  consumes `@mariozechner/pi-*` directly). No standalone `test` / `build`
+  scripts — the workspace-level `npm run check` covers it.
