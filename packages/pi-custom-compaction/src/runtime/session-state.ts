@@ -4,6 +4,7 @@ import { mergePolicy } from "../policy/merge.js";
 import { readProjectPolicyPatch } from "../policy/config.js";
 import { DEFAULT_POLICY, type CompactionPolicy } from "../policy/types.js";
 import { formatSummaryRetention } from "./retention.js";
+import { pickUsageAccent } from "./status-format.js";
 
 const STATUS_KEY = "compact-policy";
 const WATCHDOG_MS = 120_000;
@@ -140,12 +141,12 @@ export function createRuntimeServices(): RuntimeServices {
 			: usage.contextWindow;
 		const pct = limit > 0 ? (usage.tokens / limit) * 100 : 0;
 
-		ctx.ui.setStatus(
-			STATUS_KEY,
-			policy.ui.minimalStatus
-				? `${statusPrefix} · ${pct.toFixed(0)}%`
-				: `${statusPrefix} · ${pct.toFixed(1)}% (${usage.tokens}/${limit})`,
-		);
+		const tail = policy.ui.minimalStatus
+			? `${pct.toFixed(0)}%`
+			: `${pct.toFixed(1)}% (${usage.tokens}/${limit})`;
+		const accent = pickUsageAccent(pct);
+		const tinted = ctx.ui.theme?.fg ? ctx.ui.theme.fg(accent, tail) : tail;
+		ctx.ui.setStatus(STATUS_KEY, `${statusPrefix} · ${tinted}`);
 	}
 
 	function loadEffectivePolicy(
