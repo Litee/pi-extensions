@@ -142,6 +142,14 @@ export default defineConfig({
 				// events.test.ts; the widget/status branches cannot be reached
 				// without a real TUI session.
 				"**/pi-custom-compaction/src/runtime/session-state.ts",
+				// pi-file-system-watcher/src/index.ts is the lifecycle wiring entry
+				// point: it calls pi.on(session_start/turn_end/session_shutdown),
+				// pi.registerMessageRenderer(), and pi.registerCommand(). All
+				// pure logic (registerToolIfNeeded, rehydrateStateFromSession,
+				// setupWatchFs, pollOnce, refreshStatus, runFsWatcherCommand) is
+				// exported from their respective modules and covered there. The
+				// lifecycle wiring itself requires a live pi-coding-agent runtime.
+				"**/pi-file-system-watcher/src/index.ts",
 			],
 			// `json-summary` makes the coverage output machine-readable so CI or
 			// review tooling (e.g. gh-action coverage comments, pi-session-recap
