@@ -1,0 +1,15 @@
+{
+  "name": "pi-git-worktree-view",
+  "version": "0.1.0",
+  "private": true,
+  "description": "pi extension: opens a local web-based git worktree explorer with file-change list and side-by-side diff viewer",
+  "type": "module",
+  "keywords": ["pi-package"],
+  "pi": {
+    "extensions": ["./src/index.ts"]
+  },
+  "peerDependencies": {
+    "@earendil-works/pi-coding-agent": "*",
+    "typebox": "*"
+  }
+}
