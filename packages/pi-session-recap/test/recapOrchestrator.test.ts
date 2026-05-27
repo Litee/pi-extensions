@@ -41,6 +41,9 @@ interface FakeDepsExtras {
 	setWidget: ReturnType<typeof vi.fn>;
 	setStatus: ReturnType<typeof vi.fn>;
 	getApiKeyAndHeaders: ReturnType<typeof vi.fn>;
+	onError?: (err: unknown) => void;
+	onTrigger?: () => void;
+	onUsage?: (usage: { input: number; output: number }) => void;
 }
 
 function makeDeps(
@@ -519,5 +522,273 @@ describe("recapOrchestrator", () => {
 		});
 		const orch = createRecapOrchestrator(deps);
 		expect(() => orch.onFocusOut()).not.toThrow();
+	});
+
+	// ---- model override & auth coverage ------------------------------------
+
+	it("uses the resolved model when modelOverride() returns a parseable spec that getModel resolves", async () => {
+		const found = { provider: "anthropic", id: "claude-haiku-4-5" };
+		const deps = makeDeps({ config: { modelOverride: () => "anthropic/claude-haiku-4-5" } });
+		deps.getModel.mockReturnValue(found);
+		const orch = createRecapOrchestrator(deps);
+		await orch.runGenerateAndShow({ reason: "manual" });
+
+		expect(deps.completeSimple).toHaveBeenCalledTimes(1);
+		// First argument should be the found model.
+		expect(deps.completeSimple.mock.calls[0]![0]).toBe(found);
+		expect(deps.setWidget).toHaveBeenCalled();
+	});
+
+	it("falls back to ctx.model when modelOverride() returns a parseable spec that getModel cannot resolve", async () => {
+		const deps = makeDeps({ config: { modelOverride: () => "anthropic/claude-haiku-4-5" } });
+		deps.getModel.mockReturnValue(undefined);
+		const orch = createRecapOrchestrator(deps);
+		await orch.runGenerateAndShow({ reason: "manual" });
+
+		expect(deps.completeSimple).toHaveBeenCalledTimes(1);
+		// Falls back to ctx.model since found === undefined.
+		expect(deps.completeSimple.mock.calls[0]![0]).toEqual({ provider: "anthropic", id: "claude-sonnet-4-6" });
+	});
+
+	it("skips model override block entirely when spec has no slash (splitModel returns undefined)", async () => {
+		// A spec with no slash is invalid — splitModel returns undefined.
+		const deps = makeDeps({ config: { modelOverride: () => "no-slash-spec" } });
+		const orch = createRecapOrchestrator(deps);
+		await orch.runGenerateAndShow({ reason: "manual" });
+
+		// getModel should never be consulted.
+		expect(deps.getModel).not.toHaveBeenCalled();
+		// Falls back to ctx.model — recap still generated.
+		expect(deps.completeSimple).toHaveBeenCalledTimes(1);
+	});
+
+	it("returns undefined from runModelCall when ctx.model is undefined and no override resolves", async () => {
+		const deps = makeDeps();
+		// Clear the active model.
+		(deps.ctx as unknown as { model: undefined }).model = undefined;
+		const orch = createRecapOrchestrator(deps);
+		await orch.runGenerateAndShow({ reason: "manual" });
+
+		// No model → runModelCall returns undefined → no completeSimple call.
+		expect(deps.completeSimple).not.toHaveBeenCalled();
+		expect(deps.setWidget).not.toHaveBeenCalled();
+	});
+
+	it("returns undefined from runModelCall when getApiKeyAndHeaders returns ok=false", async () => {
+		const deps = makeDeps();
+		deps.getApiKeyAndHeaders.mockReturnValue({ ok: false, apiKey: undefined });
+		const orch = createRecapOrchestrator(deps);
+		await orch.runGenerateAndShow({ reason: "manual" });
+
+		expect(deps.completeSimple).not.toHaveBeenCalled();
+		expect(deps.setWidget).not.toHaveBeenCalled();
+	});
+
+	// ---- early-return paths in runGenerateAndShow -------------------------
+
+	it("returns early without calling completeSimple when the transcript is empty (all entries have no text)", async () => {
+		// A branch with an assistant message that has no text and no tool calls
+		// → buildRecentTranscript returns only whitespace → early return.
+		const emptyBranch = [
+			{
+				type: "message",
+				message: { role: "user", content: [] },
+			},
+			{
+				type: "message",
+				message: { role: "assistant", content: [] },
+			},
+		];
+		const deps = makeDeps({ branch: emptyBranch });
+		const orch = createRecapOrchestrator(deps);
+		await orch.runGenerateAndShow({ reason: "manual" });
+
+		expect(deps.completeSimple).not.toHaveBeenCalled();
+	});
+
+	it("returns early without calling completeSimple when entries have no meaningful activity and reason is not 'manual'", async () => {
+		// A user message only (no assistant tool calls or long text) fails the
+		// hasMeaningfulActivity check. Non-manual reasons gate on this check.
+		const noActivityBranch = [
+			{
+				type: "message",
+				message: { role: "user", content: [{ type: "text", text: "ping" }] },
+			},
+		];
+		const deps = makeDeps({ branch: noActivityBranch });
+		const orch = createRecapOrchestrator(deps);
+		await orch.runGenerateAndShow({ reason: "idle" });
+
+		expect(deps.completeSimple).not.toHaveBeenCalled();
+	});
+
+	it("does not paint the widget when completeSimple returns an empty text response", async () => {
+		const deps = makeDeps({
+			completeSimpleImpl: () => Promise.resolve({ content: [{ type: "text", text: "" }] }),
+		});
+		const orch = createRecapOrchestrator(deps);
+		await orch.runGenerateAndShow({ reason: "manual" });
+
+		expect(deps.completeSimple).toHaveBeenCalledTimes(1);
+		expect(deps.setWidget.mock.calls.filter((a) => a[1] !== undefined)).toEqual([]);
+	});
+
+	it("focus recap shows directly when onFocusIn clears focusedOutAt while the draft is in flight", async () => {
+		let releaseDraft: ((v: unknown) => void) | undefined;
+		const draftDone = new Promise((res) => {
+			releaseDraft = res;
+		});
+		const completeSimpleImpl = vi.fn(async (_m: unknown, _c: unknown, opts: { signal?: AbortSignal }) => {
+			await draftDone;
+			if (opts.signal?.aborted) throw new Error("aborted");
+			return { content: [{ type: "text", text: "direct recap" }] };
+		});
+		// focusMinMs=0: any focus-out duration meets the threshold (draft not cancelled).
+		const deps = makeDeps({ completeSimpleImpl, config: { focusMinMs: () => 0 } });
+		const orch = createRecapOrchestrator(deps);
+
+		orch.onFocusOut(); // sets focusedOutAt, kicks off held draft
+		await Promise.resolve();
+		await Promise.resolve();
+
+		// onFocusIn with sufficient duration clears focusedOutAt without cancelling
+		orch.onFocusIn();
+
+		// Release the draft — it should find focusedOutAt===undefined → showRecap directly.
+		releaseDraft!(undefined);
+		await new Promise((r) => setTimeout(r, 10));
+
+		const paints = deps.setWidget.mock.calls.filter((a) => a[1] !== undefined);
+		expect(paints).toHaveLength(1);
+	});
+
+	// ---- scheduleRecap & safeHasUI ----------------------------------------
+
+	it("scheduleRecap does nothing when hasUI is false (safeHasUI returns false)", () => {
+		vi.useFakeTimers();
+		const deps = makeDeps({ hasUI: false });
+		const orch = createRecapOrchestrator(deps);
+		orch.scheduleRecap();
+		vi.advanceTimersByTime(10_000);
+		expect(deps.completeSimple).not.toHaveBeenCalled();
+	});
+
+	it("safeHasUI returns false (and does not throw) when ctx.hasUI getter throws a stale-ctx error", () => {
+		vi.useFakeTimers();
+		const deps = makeDeps();
+		Object.defineProperty(deps.ctx, "hasUI", {
+			get: () => { throw new Error("This extension ctx is stale after session replacement or reload."); },
+			configurable: true,
+		});
+		const orch = createRecapOrchestrator(deps);
+		// scheduleRecap calls safeHasUI; stale error should not surface.
+		expect(() => orch.scheduleRecap()).not.toThrow();
+		vi.useRealTimers();
+	});
+
+	it("safeHasUI re-throws non-stale-ctx errors from ctx.hasUI", () => {
+		vi.useFakeTimers();
+		const deps = makeDeps();
+		Object.defineProperty(deps.ctx, "hasUI", {
+			get: () => { throw new Error("permission denied"); },
+			configurable: true,
+		});
+		const orch = createRecapOrchestrator(deps);
+		expect(() => orch.scheduleRecap()).toThrow("permission denied");
+		vi.useRealTimers();
+	});
+
+	it("safeGetBranch re-throws non-stale-ctx errors from sessionManager.getBranch", async () => {
+		const deps = makeDeps();
+		deps.getBranch.mockImplementation(() => {
+			throw new Error("unexpected I/O error");
+		});
+		const orch = createRecapOrchestrator(deps);
+		await expect(orch.runGenerateAndShow({ reason: "manual" })).rejects.toThrow("unexpected I/O error");
+	});
+
+	// ---- optional-chain callbacks (onTrigger, onUsage, onError) -----------
+
+	it("calls onTrigger and onUsage when a recap is successfully generated", async () => {
+		const onTrigger = vi.fn();
+		const onUsage = vi.fn();
+		const deps = makeDeps({
+			completeSimpleImpl: () => Promise.resolve({
+				content: [{ type: "text", text: "recap" }],
+				usage: { input: 42, output: 7 },
+			}),
+		});
+		deps.onTrigger = onTrigger;
+		deps.onUsage = onUsage;
+		const orch = createRecapOrchestrator(deps);
+		await orch.runGenerateAndShow({ reason: "manual" });
+
+		expect(onTrigger).toHaveBeenCalledTimes(1);
+		expect(onUsage).toHaveBeenCalledWith({ input: 42, output: 7 });
+	});
+
+	it("calls onError when completeSimple throws a non-abort error", async () => {
+		const onError = vi.fn();
+		const deps = makeDeps({
+			completeSimpleImpl: () => Promise.reject(new Error("model API failure")),
+		});
+		deps.onError = onError;
+		const orch = createRecapOrchestrator(deps);
+		await orch.runGenerateAndShow({ reason: "manual" });
+
+		expect(onError).toHaveBeenCalledWith(expect.objectContaining({ message: "model API failure" }));
+	});
+
+	it("idle timer's .catch calls onError when runGenerateAndShow rejects with a non-stale-ctx error", async () => {
+		vi.useFakeTimers();
+		const onError = vi.fn();
+		const deps = makeDeps({ config: { idleMs: () => 1000 } });
+		deps.onError = onError;
+		deps.getBranch.mockImplementation(() => {
+			throw new Error("branch read failed");
+		});
+		const orch = createRecapOrchestrator(deps);
+		orch.scheduleRecap();
+		await vi.advanceTimersByTimeAsync(1500);
+		expect(onError).toHaveBeenCalledWith(expect.objectContaining({ message: "branch read failed" }));
+	});
+
+	it("maybeGenerateDeferredFocusRecap's .catch calls onError when runGenerateAndShow rejects", async () => {
+		const onError = vi.fn();
+		const deps = makeDeps();
+		deps.onError = onError;
+		const orch = createRecapOrchestrator(deps);
+
+		orch.onAgentStart();
+		orch.onFocusOut(); // parks deferred focus (agentActive=true)
+
+		// Make getBranch throw on the next call (inside runGenerateAndShow).
+		deps.getBranch.mockImplementation(() => {
+			throw new Error("deferred branch error");
+		});
+		orch.onAgentEnd(); // triggers maybeGenerateDeferredFocusRecap
+		await new Promise((r) => setTimeout(r, 10));
+
+		expect(onError).toHaveBeenCalledWith(expect.objectContaining({ message: "deferred branch error" }));
+	});
+
+	it("onFocusOut's .catch calls onError when runGenerateAndShow rejects with a non-stale-ctx error", async () => {
+		const onError = vi.fn();
+		const deps = makeDeps();
+		deps.onError = onError;
+
+		// First getBranch call (synchronous in onFocusOut): succeeds with activity.
+		// Second call (inside runGenerateAndShow): throws a non-stale error.
+		deps.getBranch
+			.mockReturnValueOnce(branchWithActivity())
+			.mockImplementation(() => {
+				throw new Error("focus branch error");
+			});
+
+		const orch = createRecapOrchestrator(deps);
+		orch.onFocusOut();
+		await new Promise((r) => setTimeout(r, 10));
+
+		expect(onError).toHaveBeenCalledWith(expect.objectContaining({ message: "focus branch error" }));
 	});
 });

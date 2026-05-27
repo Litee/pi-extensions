@@ -223,3 +223,55 @@ describe("runRecapSettingsCommand", () => {
 		expect(warn).toBeUndefined();
 	});
 });
+
+// ---------------------------------------------------------------------------
+// editIdleTimeout — no-input path coverage
+// ---------------------------------------------------------------------------
+
+describe("editIdleTimeout — no input UI available", () => {
+	it("shows a warning toast and returns early when ctx.ui.input is not available", async () => {
+		// Construct a ctx that has select (so the menu opens) but no input.
+		const notify = vi.fn();
+		const ctx = {
+			hasUI: true,
+			ui: {
+				select: vi
+					.fn<SelectImpl>()
+					// First call: user picks the Edit row
+					.mockResolvedValueOnce(`${ITEM_EDIT_IDLE_PREFIX} 300s`)
+					// Second call: user picks Close (exits the loop)
+					.mockResolvedValueOnce(ITEM_CLOSE),
+				// input is intentionally absent — exercises the !input guard.
+				notify,
+			},
+		};
+		const deps = makeDeps({ idle: 300 });
+
+		await runRecapSettingsCommand(ctx, deps);
+
+		expect(deps.setIdleOverride).not.toHaveBeenCalled();
+		const warn = notify.mock.calls.find((c) => c[1] === "warning");
+		expect(warn).toBeDefined();
+		expect(warn![0]).toMatch(/text input.*unavailable/i);
+	});
+
+	it("treats an empty-string (whitespace-only) input as a no-op (trimmed === '' path)", async () => {
+		// The editIdleTimeout function trims raw input and returns early on "".
+		const ctx = makeCtx({
+			select: (() => {
+				let call = 0;
+				return (_t: string, _items: string[]) => {
+					call++;
+					if (call === 1) return Promise.resolve(`${ITEM_EDIT_IDLE_PREFIX} 300s`);
+					return Promise.resolve(ITEM_CLOSE);
+				};
+			})(),
+			input: () => Promise.resolve("   "), // whitespace only
+		});
+		const deps = makeDeps({ idle: 300 });
+
+		await runRecapSettingsCommand(ctx, deps);
+
+		expect(deps.setIdleOverride).not.toHaveBeenCalled();
+	});
+});

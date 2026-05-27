@@ -308,6 +308,47 @@ describe("buildRecentTranscript", () => {
 		expect(buildRecentTranscript([])).toBe("");
 		expect(buildRecentTranscript([userMsg("")])).toBe("");
 	});
+
+	it("omits the Assistant: line when the assistant message has no text (only tool calls)", () => {
+		const out = buildRecentTranscript([
+			userMsg("do it"),
+			assistantMsg("", [{ name: "bash" }]),
+		]);
+		// Tool call line present, but no 'Assistant:' line (empty text is falsy).
+		expect(out).not.toMatch(/^Assistant:/m);
+		expect(out).toContain("- bash(");
+	});
+
+	it("omits the Result() line when the toolResult message has no text", () => {
+		const out = buildRecentTranscript([
+			userMsg("q"),
+			// toolResult with no text content — only non-text blocks.
+			{
+				type: "message",
+				message: {
+					role: "toolResult",
+					toolName: "bash",
+					content: [], // empty content → extractText returns ""
+				},
+			},
+		]);
+		expect(out).not.toContain("Result(");
+	});
+
+	it("uses 'tool' as the tool name when toolName is absent from the toolResult message (covers ?? fallback)", () => {
+		const out = buildRecentTranscript([
+			userMsg("q"),
+			{
+				type: "message",
+				message: {
+					role: "toolResult",
+					// intentionally no toolName — exercises the `?? 'tool'` fallback
+					content: [{ type: "text", text: "output" }],
+				},
+			},
+		]);
+		expect(out).toContain("Result(tool): output");
+	});
 });
 
 // ---------------------------------------------------------------------------
@@ -365,6 +406,17 @@ describe("hasMeaningfulActivity", () => {
 		expect(
 			hasMeaningfulActivity([assistantMsg("hi", [{ name: "bash" }])]),
 		).toBe(true);
+	});
+
+	it("skips non-message entries in the tail without counting them as assistant activity", () => {
+		// A non-message entry (e.g. a session event) must be skipped by the
+		// `if (e.type !== 'message') continue` guard.
+		expect(
+			hasMeaningfulActivity([
+				userMsg("q"),
+				{ type: "session_start" }, // non-message entry
+			]),
+		).toBe(false);
 	});
 });
 

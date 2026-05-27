@@ -363,3 +363,44 @@ it("end-to-end: write → read roundtrip through the real fs", () => {
 	renameSync(newPath(), newPath()); // no-op rename; asserts path resolves
 	expect(readUserRecapConfig(newPath())?.model).toBe("anthropic/claude-haiku-4-5");
 });
+
+// ---------------------------------------------------------------------------
+// Additional coverage: readLegacySettingsJsonModel invalid JSON + leg-1 EXDEV
+// ---------------------------------------------------------------------------
+
+describe("migrateLegacyConfig — additional edge cases", () => {
+	it("leg 2: treats malformed JSON in settings.json as 'no model' (returns {migrated:false})", () => {
+		// readLegacySettingsJsonModel must return undefined on JSON.parse failure.
+		mkdirSync(agentDir, { recursive: true });
+		writeFileSync(settingsJsonPath(), "{ not valid json ", "utf8");
+		expect(migrateLegacyConfig(agentDir, {})).toEqual({ migrated: false });
+		expect(existsSync(newPath())).toBe(false);
+	});
+
+	it("leg 1 EXDEV: falls back to copy-then-delete when migration rename throws EXDEV", () => {
+		writeJson(legacyExtDataPath(), { model: "anthropic/claude-haiku-4-5" });
+
+		// Throw EXDEV on the rename; migrateLegacyConfig leg 1 then falls back to
+		// copyFileSync + unlinkSync (no second renameSync call from leg 1).
+		renameStub.fn = (_from: string, _to: string) => {
+			throw Object.assign(new Error("cross-device link"), { code: "EXDEV" });
+		};
+
+		expect(migrateLegacyConfig(agentDir, {})).toEqual({ migrated: true });
+		expect(existsSync(legacyExtDataPath())).toBe(false);
+		expect(readUserRecapConfig(newPath())).toEqual({ model: "anthropic/claude-haiku-4-5" });
+	});
+
+	it("leg 1: I/O error other than EXDEV in rename causes outer catch to return {migrated:false}", () => {
+		writeJson(legacyExtDataPath(), { model: "anthropic/claude-haiku-4-5" });
+
+		// A non-EXDEV error is re-thrown from the inner catch to the outer catch.
+		renameStub.fn = () => {
+			throw Object.assign(new Error("permission denied"), { code: "EPERM" });
+		};
+
+		expect(() => migrateLegacyConfig(agentDir, {})).not.toThrow();
+		expect(migrateLegacyConfig(agentDir, {})).toEqual({ migrated: false });
+		expect(existsSync(newPath())).toBe(false);
+	});
+});
