@@ -5,15 +5,11 @@
  * render output + storage/scheduler side effects.
  */
 
-import { mkdtempSync, rmSync } from "node:fs";
-import { tmpdir } from "node:os";
-import { join } from "node:path";
-
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import type { Theme } from "@earendil-works/pi-coding-agent";
 import type { CronScheduler } from "../src/scheduler.js";
-import { CronStorage } from "../src/storage.js";
+import { MemCronStorage } from "../src/storage.js";
 import type { CronJob } from "../src/types.js";
 import { JobsView } from "../src/ui/jobs-view.js";
 
@@ -50,8 +46,7 @@ function mkJob(overrides: Partial<CronJob> = {}): CronJob {
 	};
 }
 
-let cwd: string;
-let storage: CronStorage;
+let storage: MemCronStorage;
 let scheduler: {
 	updateJob: ReturnType<typeof vi.fn>;
 	removeJob: ReturnType<typeof vi.fn>;
@@ -61,8 +56,7 @@ let done: () => void;
 let requestRender: () => void;
 
 beforeEach(() => {
-	cwd = mkdtempSync(join(tmpdir(), "pi-prompt-scheduler-jobsview-"));
-	storage = new CronStorage(cwd);
+	storage = new MemCronStorage();
 	scheduler = {
 		updateJob: vi.fn(),
 		removeJob: vi.fn(),
@@ -73,7 +67,6 @@ beforeEach(() => {
 });
 
 afterEach(() => {
-	rmSync(cwd, { recursive: true, force: true });
 	vi.restoreAllMocks();
 });
 

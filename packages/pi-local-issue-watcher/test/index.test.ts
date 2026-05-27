@@ -1,8 +1,8 @@
-import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { mkdirSync, mkdtempSync, readdirSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
-import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 
 import createExtension, {
 	POLL_INTERVAL_MS,
@@ -301,12 +301,24 @@ describe("resolveDbRoot", () => {
 describe("handleSessionStart", () => {
 	let dbRoot: string;
 
+	let _pi_local_issue_watcher_idx_!: string;
+
+	beforeAll(() => {
+		_pi_local_issue_watcher_idx_ = mkdtempSync(join(tmpdir(), "pi-local-issue-watcher-idx-"));
+	});
+
+	afterAll(() => {
+		rmSync(_pi_local_issue_watcher_idx_, { recursive: true, force: true });
+	});
+
 	beforeEach(() => {
-		dbRoot = mkdtempSync(join(tmpdir(), "pi-local-issue-watcher-idx-"));
+		for (const entry of readdirSync(_pi_local_issue_watcher_idx_)) {
+			rmSync(join(_pi_local_issue_watcher_idx_, entry), { recursive: true, force: true });
+		}
+		dbRoot = _pi_local_issue_watcher_idx_;
 	});
-	afterEach(() => {
-		rmSync(dbRoot, { recursive: true, force: true });
-	});
+
+	afterEach(() => {});
 
 	function writeIssue(skill: string, fname: string, body: Record<string, unknown>): string {
 		const skillDir = join(dbRoot, skill);
@@ -645,12 +657,24 @@ describe("handleSessionStart", () => {
 
 describe("/local-issue-watcher command", () => {
 	let dbRoot: string;
+	let _pi_local_issue_watcher_cmd_!: string;
+
+	beforeAll(() => {
+		_pi_local_issue_watcher_cmd_ = mkdtempSync(join(tmpdir(), "pi-local-issue-watcher-cmd-"));
+	});
+
+	afterAll(() => {
+		rmSync(_pi_local_issue_watcher_cmd_, { recursive: true, force: true });
+	});
+
 	beforeEach(() => {
-		dbRoot = mkdtempSync(join(tmpdir(), "pi-local-issue-watcher-cmd-"));
+		for (const entry of readdirSync(_pi_local_issue_watcher_cmd_)) {
+			rmSync(join(_pi_local_issue_watcher_cmd_, entry), { recursive: true, force: true });
+		}
+		dbRoot = _pi_local_issue_watcher_cmd_;
 	});
-	afterEach(() => {
-		rmSync(dbRoot, { recursive: true, force: true });
-	});
+
+	afterEach(() => {});
 
 	function extensionWithDbRoot(pi: StubPi, root: string): void {
 		const prev = process.env["LOCAL_ISSUE_TRACKER_DB_ROOT"];
@@ -1151,12 +1175,24 @@ describe("polling lifecycle", () => {
 describe("run-state persistence", () => {
 	let dbRoot: string;
 
+	let _pi_local_issue_watcher_rs_!: string;
+
+	beforeAll(() => {
+		_pi_local_issue_watcher_rs_ = mkdtempSync(join(tmpdir(), "pi-local-issue-watcher-rs-"));
+	});
+
+	afterAll(() => {
+		rmSync(_pi_local_issue_watcher_rs_, { recursive: true, force: true });
+	});
+
 	beforeEach(() => {
-		dbRoot = mkdtempSync(join(tmpdir(), "pi-local-issue-watcher-rs-"));
+		for (const entry of readdirSync(_pi_local_issue_watcher_rs_)) {
+			rmSync(join(_pi_local_issue_watcher_rs_, entry), { recursive: true, force: true });
+		}
+		dbRoot = _pi_local_issue_watcher_rs_;
 	});
-	afterEach(() => {
-		rmSync(dbRoot, { recursive: true, force: true });
-	});
+
+	afterEach(() => {});
 
 	function writeIssue(skill: string, fname: string, body: Record<string, unknown>): void {
 		const skillDir = join(dbRoot, skill);
@@ -1433,12 +1469,24 @@ describe("run-state persistence", () => {
 
 describe("persistRunState resilience", () => {
 	let dbRoot: string;
+	let _pi_local_issue_watcher_resilience_!: string;
+
+	beforeAll(() => {
+		_pi_local_issue_watcher_resilience_ = mkdtempSync(join(tmpdir(), "pi-local-issue-watcher-resilience-"));
+	});
+
+	afterAll(() => {
+		rmSync(_pi_local_issue_watcher_resilience_, { recursive: true, force: true });
+	});
+
 	beforeEach(() => {
-		dbRoot = mkdtempSync(join(tmpdir(), "pi-local-issue-watcher-resilience-"));
+		for (const entry of readdirSync(_pi_local_issue_watcher_resilience_)) {
+			rmSync(join(_pi_local_issue_watcher_resilience_, entry), { recursive: true, force: true });
+		}
+		dbRoot = _pi_local_issue_watcher_resilience_;
 	});
-	afterEach(() => {
-		rmSync(dbRoot, { recursive: true, force: true });
-	});
+
+	afterEach(() => {});
 
 	it("'/local-issue-watcher pause' does not throw when pi.appendEntry itself throws", async () => {
 		const pi = makeFakePi();
@@ -1471,12 +1519,24 @@ describe("persistRunState resilience", () => {
 
 describe("status line — refresh on every poll (#0016 supersedes #0009)", () => {
 	let dbRoot: string;
+	let _pi_local_issue_watcher_lua_!: string;
+
+	beforeAll(() => {
+		_pi_local_issue_watcher_lua_ = mkdtempSync(join(tmpdir(), "pi-local-issue-watcher-lua-"));
+	});
+
+	afterAll(() => {
+		rmSync(_pi_local_issue_watcher_lua_, { recursive: true, force: true });
+	});
+
 	beforeEach(() => {
-		dbRoot = mkdtempSync(join(tmpdir(), "pi-local-issue-watcher-lua-"));
+		for (const entry of readdirSync(_pi_local_issue_watcher_lua_)) {
+			rmSync(join(_pi_local_issue_watcher_lua_, entry), { recursive: true, force: true });
+		}
+		dbRoot = _pi_local_issue_watcher_lua_;
 	});
-	afterEach(() => {
-		rmSync(dbRoot, { recursive: true, force: true });
-	});
+
+	afterEach(() => {});
 
 	function writeIssue(skill: string, fname: string, body: Record<string, unknown>): string {
 		const skillDir = join(dbRoot, skill);
@@ -1597,12 +1657,24 @@ describe("status line — refresh on every poll (#0016 supersedes #0009)", () =>
 
 describe("startup chat message (#0011)", () => {
 	let dbRoot: string;
+	let _pi_local_issue_watcher_start_!: string;
+
+	beforeAll(() => {
+		_pi_local_issue_watcher_start_ = mkdtempSync(join(tmpdir(), "pi-local-issue-watcher-start-"));
+	});
+
+	afterAll(() => {
+		rmSync(_pi_local_issue_watcher_start_, { recursive: true, force: true });
+	});
+
 	beforeEach(() => {
-		dbRoot = mkdtempSync(join(tmpdir(), "pi-local-issue-watcher-start-"));
+		for (const entry of readdirSync(_pi_local_issue_watcher_start_)) {
+			rmSync(join(_pi_local_issue_watcher_start_, entry), { recursive: true, force: true });
+		}
+		dbRoot = _pi_local_issue_watcher_start_;
 	});
-	afterEach(() => {
-		rmSync(dbRoot, { recursive: true, force: true });
-	});
+
+	afterEach(() => {});
 
 	function writeIssue(skill: string, fname: string, body: Record<string, unknown>): string {
 		const skillDir = join(dbRoot, skill);
@@ -1710,12 +1782,24 @@ describe("startup chat message (#0011)", () => {
 
 describe("handleSessionStart deferMessages (#0015)", () => {
 	let dbRoot: string;
+	let _pi_local_issue_watcher_defer_!: string;
+
+	beforeAll(() => {
+		_pi_local_issue_watcher_defer_ = mkdtempSync(join(tmpdir(), "pi-local-issue-watcher-defer-"));
+	});
+
+	afterAll(() => {
+		rmSync(_pi_local_issue_watcher_defer_, { recursive: true, force: true });
+	});
+
 	beforeEach(() => {
-		dbRoot = mkdtempSync(join(tmpdir(), "pi-local-issue-watcher-defer-"));
+		for (const entry of readdirSync(_pi_local_issue_watcher_defer_)) {
+			rmSync(join(_pi_local_issue_watcher_defer_, entry), { recursive: true, force: true });
+		}
+		dbRoot = _pi_local_issue_watcher_defer_;
 	});
-	afterEach(() => {
-		rmSync(dbRoot, { recursive: true, force: true });
-	});
+
+	afterEach(() => {});
 
 	it("calls pi.sendMessage synchronously by default (existing tests unchanged)", async () => {
 		mkdirSync(join(dbRoot, "skill-a"), { recursive: true });
@@ -2022,12 +2106,24 @@ const fakeTheme = {
 describe("/local-issue-watcher message renderer (#0028)", () => {
 	let dbRoot: string;
 
+	let _pi_local_issue_watcher_renderer_!: string;
+
+	beforeAll(() => {
+		_pi_local_issue_watcher_renderer_ = mkdtempSync(join(tmpdir(), "pi-local-issue-watcher-renderer-"));
+	});
+
+	afterAll(() => {
+		rmSync(_pi_local_issue_watcher_renderer_, { recursive: true, force: true });
+	});
+
 	beforeEach(() => {
-		dbRoot = mkdtempSync(join(tmpdir(), "pi-local-issue-watcher-renderer-"));
+		for (const entry of readdirSync(_pi_local_issue_watcher_renderer_)) {
+			rmSync(join(_pi_local_issue_watcher_renderer_, entry), { recursive: true, force: true });
+		}
+		dbRoot = _pi_local_issue_watcher_renderer_;
 	});
-	afterEach(() => {
-		rmSync(dbRoot, { recursive: true, force: true });
-	});
+
+	afterEach(() => {});
 
 	function extensionWithDbRoot(pi: StubPi, root: string): void {
 		const prev = process.env["LOCAL_ISSUE_TRACKER_DB_ROOT"];
@@ -2221,12 +2317,24 @@ describe("/local-issue-watcher message renderer (#0028)", () => {
 
 describe("one-shot parse-failure toast (#0029)", () => {
 	let dbRoot: string;
+	let _pi_local_issue_watcher_0029_!: string;
+
+	beforeAll(() => {
+		_pi_local_issue_watcher_0029_ = mkdtempSync(join(tmpdir(), "pi-local-issue-watcher-0029-"));
+	});
+
+	afterAll(() => {
+		rmSync(_pi_local_issue_watcher_0029_, { recursive: true, force: true });
+	});
+
 	beforeEach(() => {
-		dbRoot = mkdtempSync(join(tmpdir(), "pi-local-issue-watcher-0029-"));
+		for (const entry of readdirSync(_pi_local_issue_watcher_0029_)) {
+			rmSync(join(_pi_local_issue_watcher_0029_, entry), { recursive: true, force: true });
+		}
+		dbRoot = _pi_local_issue_watcher_0029_;
 	});
-	afterEach(() => {
-		rmSync(dbRoot, { recursive: true, force: true });
-	});
+
+	afterEach(() => {});
 
 	function extensionWithDbRoot(pi: StubPi, root: string): void {
 		const prev = process.env["LOCAL_ISSUE_TRACKER_DB_ROOT"];

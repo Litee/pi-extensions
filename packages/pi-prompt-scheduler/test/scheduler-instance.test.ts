@@ -8,10 +8,6 @@
  * Each test calls `stop()` in afterEach to ensure no leaked timers survive.
  */
 
-import { mkdtempSync, rmSync } from "node:fs";
-import { tmpdir } from "node:os";
-import { join } from "node:path";
-
 import type { ExtensionAPI, ExtensionContext } from "@earendil-works/pi-coding-agent";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
@@ -31,7 +27,7 @@ vi.mock("../src/subagent.js", () => ({
 }));
 
 import { CronScheduler } from "../src/scheduler.js";
-import { CronStorage } from "../src/storage.js";
+import { MemCronStorage } from "../src/storage.js";
 import type { CronChangeEvent, CronJob } from "../src/types.js";
 
 // ---------------------------------------------------------------------------
@@ -79,13 +75,11 @@ function mkJob(overrides: Partial<CronJob> = {}): CronJob {
 // Fixture
 // ---------------------------------------------------------------------------
 
-let cwd: string;
-let storage: CronStorage;
+let storage: MemCronStorage;
 let schedulers: CronScheduler[] = [];
 
 beforeEach(() => {
-	cwd = mkdtempSync(join(tmpdir(), "pi-prompt-scheduler-inst-"));
-	storage = new CronStorage(cwd);
+	storage = new MemCronStorage();
 	schedulers = [];
 });
 
@@ -99,7 +93,6 @@ afterEach(() => {
 			// no-op
 		}
 	}
-	rmSync(cwd, { recursive: true, force: true });
 	vi.restoreAllMocks();
 	vi.useRealTimers();
 });

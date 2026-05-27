@@ -1,8 +1,8 @@
-import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { mkdirSync, mkdtempSync, readdirSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
-import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { scanIssueFiles } from "../src/scanner.js";
 
@@ -13,15 +13,26 @@ import { scanIssueFiles } from "../src/scanner.js";
  *   <db_root>/<skill-name>/<NNNN>-<slug>.json
  */
 describe("scanIssueFiles", () => {
-	let dbRoot: string;
+	let rootDir: string; // one shared tmpdir for the whole describe block
+	let dbRoot: string; // cleaned and re-pointed before each test
+
+	beforeAll(() => {
+		rootDir = mkdtempSync(join(tmpdir(), "pi-issue-watcher-"));
+	});
+
+	afterAll(() => {
+		rmSync(rootDir, { recursive: true, force: true });
+	});
 
 	beforeEach(() => {
-		dbRoot = mkdtempSync(join(tmpdir(), "pi-issue-watcher-"));
+		// Clear leftover files from the previous test without destroying the root.
+		for (const entry of readdirSync(rootDir)) {
+			rmSync(join(rootDir, entry), { recursive: true, force: true });
+		}
+		dbRoot = rootDir; // each test writes into the shared root
 	});
 
-	afterEach(() => {
-		rmSync(dbRoot, { recursive: true, force: true });
-	});
+	afterEach(() => {});
 
 	it("returns an empty snapshot when dbRoot does not exist", () => {
 		const missing = join(dbRoot, "does-not-exist");

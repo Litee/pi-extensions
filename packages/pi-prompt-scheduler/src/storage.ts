@@ -131,3 +131,25 @@ export class CronStorage {
     return this.storePath;
   }
 }
+
+/**
+ * In-memory CronStorage for use in tests — no disk I/O.
+ * Extends CronStorage and overrides only load() and save(); every higher-level
+ * method (addJob, removeJob, etc.) calls those two internally and works as-is.
+ */
+export class MemCronStorage extends CronStorage {
+  private memStore: CronStore = { jobs: [], version: 1 };
+
+  constructor() {
+    super("/dev/null"); // cwd is irrelevant — disk is never touched
+  }
+
+  override load(): CronStore {
+    // Return a deep-enough copy so callers can't mutate our internal store.
+    return { ...this.memStore, jobs: this.memStore.jobs.map((j) => ({ ...j })) };
+  }
+
+  override save(store: CronStore): void {
+    this.memStore = { ...store, jobs: store.jobs.map((j) => ({ ...j })) };
+  }
+}

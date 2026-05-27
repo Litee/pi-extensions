@@ -215,10 +215,11 @@ describe("pollOnce — idle back-off via PollScheduler", () => {
 		stopPolling(rt);
 	});
 
-	it("staggered-start race: delayed scheduler replaced by set-interval does not ghost-start the old one", () => {
+	it("staggered-start race: delayed scheduler replaced by set-interval does not ghost-start the old one", async () => {
 		// Reproduces the bug where the delayMs timeout checks .has(watchId) instead
 		// of identity equality, allowing a replaced scheduler to start as a ghost.
-		return new Promise<void>((resolve, reject) => {
+		vi.useFakeTimers();
+		try {
 			const rt = makeRuntime(makePi(), makeClient(makeJobRunResponse("RUNNING")));
 			rt.enabled = true;
 			const watch = makeJobWatch({ state: "RUNNING", errorMessage: "" });
@@ -236,19 +237,14 @@ describe("pollOnce — idle back-off via PollScheduler", () => {
 			expect(replacementScheduler).not.toBe(originalScheduler);
 			expect(replacementScheduler.isRunning).toBe(true);
 
-			// After the timeout, the original scheduler must NOT have started.
-			setTimeout(() => {
-				try {
-					expect(originalScheduler.isRunning).toBe(false); // ghost prevented
-					expect(rt.schedulers.get(watch.watchId)).toBe(replacementScheduler);
-					stopPolling(rt);
-					resolve();
-				} catch (e) {
-					stopPolling(rt);
-					reject(e instanceof Error ? e : new Error(String(e)));
-				}
-			}, 100);
-		});
+			// After the original 50ms timeout fires, the original scheduler must NOT have started.
+			await vi.advanceTimersByTimeAsync(100);
+			expect(originalScheduler.isRunning).toBe(false); // ghost prevented
+			expect(rt.schedulers.get(watch.watchId)).toBe(replacementScheduler);
+			stopPolling(rt);
+		} finally {
+			vi.useRealTimers();
+		}
 	});
 });
 

@@ -1,6 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
+import { createExtensionWithClient } from "../src/index.js";
 import { initTheme } from "@earendil-works/pi-coding-agent";
 import type { GlueClient, JobRunResponse, WorkflowRunResponse } from "../src/glue-client.js";
 import { makeRuntime, POLL_ERROR_THRESHOLD, pollOnce } from "../src/runtime.js";
@@ -246,7 +247,6 @@ describe("session resume: widget + polling restored from persisted watches", () 
 	}
 
 	it("restores widget when enabled=true is persisted", async () => {
-		const { createExtensionWithClient } = await import("../src/index.js");
 		const pi = makePi();
 		const setWidget = vi.fn();
 		createExtensionWithClient(pi as unknown as ExtensionAPI, makeClient());
@@ -261,7 +261,6 @@ describe("session resume: widget + polling restored from persisted watches", () 
 	it("restores widget when enabled=false but active non-terminal watches exist (crash-recovery path)", async () => {
 		// Regression for #0008: session ended before turn_end persisted enabled=true,
 		// but watches survived. Widget must still be restored.
-		const { createExtensionWithClient } = await import("../src/index.js");
 		const pi = makePi();
 		const setWidget = vi.fn();
 		createExtensionWithClient(pi as unknown as ExtensionAPI, makeClient());
@@ -274,7 +273,6 @@ describe("session resume: widget + polling restored from persisted watches", () 
 	});
 
 	it("does NOT restore widget when there are no active watches", async () => {
-		const { createExtensionWithClient } = await import("../src/index.js");
 		const pi = makePi();
 		const setWidget = vi.fn();
 		createExtensionWithClient(pi as unknown as ExtensionAPI, makeClient());
@@ -289,7 +287,6 @@ describe("startup chat message: triggerTurn + label", () => {
 	// tests in this describe block that exercise the expanded renderer path.
 	beforeEach(() => { initTheme(undefined); });
 	it("sends the startup chat message with triggerTurn: false so it doesn't kick off an LLM round-trip", async () => {
-		const { createExtensionWithClient } = await import("../src/index.js");
 		const pi = makePi();
 		const client = makeClient();
 		createExtensionWithClient(pi as unknown as ExtensionAPI, client);
@@ -335,7 +332,6 @@ describe("startup chat message: triggerTurn + label", () => {
 	});
 
 	it("startup sendMessage includes details.watches and details.date for renderer expand path", async () => {
-		const { createExtensionWithClient } = await import("../src/index.js");
 		const pi = makePi();
 		const client = makeClient();
 		createExtensionWithClient(pi as unknown as ExtensionAPI, client);
@@ -377,8 +373,7 @@ describe("startup chat message: triggerTurn + label", () => {
 		expect(msg.details?.date).toBeDefined();
 	});
 
-	it("renderer: collapsed (default) shows primary lines + expand hint, no sub-fields", async () => {
-		const { createExtensionWithClient } = await import("../src/index.js");
+	it("renderer: collapsed (default) shows primary lines + expand hint, no sub-fields", () => {
 		const pi = makePi();
 		createExtensionWithClient(pi as unknown as ExtensionAPI, makeClient());
 		const [, renderer] = pi.registerMessageRenderer.mock.calls[0] as [
@@ -407,8 +402,7 @@ describe("startup chat message: triggerTurn + label", () => {
 		expect(joined).not.toContain("\u00b7 type:");
 	});
 
-	it("renderer: expanded shows sub-fields and no expand hint", async () => {
-		const { createExtensionWithClient } = await import("../src/index.js");
+	it("renderer: expanded shows sub-fields and no expand hint", () => {
 		const pi = makePi();
 		createExtensionWithClient(pi as unknown as ExtensionAPI, makeClient());
 		const [, renderer] = pi.registerMessageRenderer.mock.calls[0] as [
@@ -437,8 +431,7 @@ describe("startup chat message: triggerTurn + label", () => {
 		expect(joined).not.toContain("… ctrl+o to expand");
 	});
 
-	it("registers a message renderer that labels output 'pi-aws-glue-watcher' (no square brackets)", async () => {
-		const { createExtensionWithClient } = await import("../src/index.js");
+	it("registers a message renderer that labels output 'pi-aws-glue-watcher' (no square brackets)", () => {
 		const pi = makePi();
 		createExtensionWithClient(pi as unknown as ExtensionAPI, makeClient());
 		expect(pi.registerMessageRenderer).toHaveBeenCalled();
@@ -474,8 +467,7 @@ describe("startup chat message: triggerTurn + label", () => {
 		void rendered; // silence unused
 	});
 
-	it("registers /glue-watcher with a menu-style description (no subcommand list)", async () => {
-		const { createExtensionWithClient } = await import("../src/index.js");
+	it("registers /glue-watcher with a menu-style description (no subcommand list)", () => {
 		const pi = makePi();
 		createExtensionWithClient(pi as unknown as ExtensionAPI, makeClient());
 		expect(pi.registerCommand).toHaveBeenCalled();

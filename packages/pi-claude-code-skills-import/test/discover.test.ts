@@ -1,7 +1,7 @@
-import { mkdirSync, mkdtempSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
+import { mkdirSync, mkdtempSync, readdirSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it } from "vitest";
 
 import { discoverAllSkills, resolvesIntoAgentsSkills } from "../src/discover.js";
 
@@ -29,14 +29,22 @@ describe("discoverAllSkills", () => {
 	let tmpRoot: string;
 	let claudeDir: string;
 
-	beforeEach(() => {
+	beforeAll(() => {
 		tmpRoot = mkdtempSync(join(tmpdir(), "pi-ccsi-discover-"));
+	});
+
+	afterAll(() => {
+		rmSync(tmpRoot, { recursive: true, force: true });
+	});
+
+	beforeEach(() => {
+		for (const entry of readdirSync(tmpRoot)) {
+			rmSync(join(tmpRoot, entry), { recursive: true, force: true });
+		}
 		claudeDir = mkdir(tmpRoot, "claude");
 	});
 
-	afterEach(() => {
-		rmSync(tmpRoot, { recursive: true, force: true });
-	});
+	afterEach(() => {});
 
 	it("returns [] when claudeDir is empty and no cwd is given", () => {
 		expect(discoverAllSkills({ claudeDir })).toEqual([]);
@@ -213,12 +221,18 @@ describe("discoverAllSkills", () => {
 describe("resolvesIntoAgentsSkills", () => {
 	let tmpRoot: string;
 
-	beforeEach(() => {
+	beforeAll(() => {
 		tmpRoot = mkdtempSync(join(tmpdir(), "pi-ccsi-agentsfilter-"));
 	});
 
-	afterEach(() => {
+	afterAll(() => {
 		rmSync(tmpRoot, { recursive: true, force: true });
+	});
+
+	beforeEach(() => {
+		for (const entry of readdirSync(tmpRoot)) {
+			rmSync(join(tmpRoot, entry), { recursive: true, force: true });
+		}
 	});
 
 	it("returns true for a path whose realpath lies under a .agents/skills directory", () => {

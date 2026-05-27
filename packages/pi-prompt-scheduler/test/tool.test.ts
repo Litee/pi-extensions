@@ -1,18 +1,14 @@
 /**
  * createCronTool — integration-ish tests over the `schedule_prompt` tool's
- * execute() paths. Uses a real CronStorage against mkdtempSync; stubs the
+ * execute() paths. Uses an in-memory CronStorage; stubs the
  * scheduler interface so no croner timers fire under test.
  */
-
-import { mkdtempSync, rmSync } from "node:fs";
-import { tmpdir } from "node:os";
-import { join } from "node:path";
 
 import type { ExtensionContext, Theme } from "@earendil-works/pi-coding-agent";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import type { CronScheduler } from "../src/scheduler.js";
-import { CronStorage } from "../src/storage.js";
+import { MemCronStorage } from "../src/storage.js";
 import { createCronTool } from "../src/tool.js";
 import type { CronJob, CronToolDetails, CronToolParamsType } from "../src/types.js";
 
@@ -20,8 +16,7 @@ import type { CronJob, CronToolDetails, CronToolParamsType } from "../src/types.
 // Fixtures
 // ---------------------------------------------------------------------------
 
-let cwd: string;
-let storage: CronStorage;
+let storage: MemCronStorage;
 let fakeScheduler: {
 	addJob: ReturnType<typeof vi.fn>;
 	removeJob: ReturnType<typeof vi.fn>;
@@ -30,8 +25,7 @@ let fakeScheduler: {
 };
 
 beforeEach(() => {
-	cwd = mkdtempSync(join(tmpdir(), "pi-prompt-scheduler-tool-"));
-	storage = new CronStorage(cwd);
+	storage = new MemCronStorage();
 	fakeScheduler = {
 		addJob: vi.fn(),
 		removeJob: vi.fn(),
@@ -43,7 +37,6 @@ beforeEach(() => {
 });
 
 afterEach(() => {
-	rmSync(cwd, { recursive: true, force: true });
 	vi.useRealTimers();
 	vi.restoreAllMocks();
 });

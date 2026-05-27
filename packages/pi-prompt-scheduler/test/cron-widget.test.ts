@@ -8,26 +8,20 @@
  * See pi-prompt-scheduler#0002.
  */
 
-import { mkdtempSync, rmSync } from "node:fs";
-import { tmpdir } from "node:os";
-import { join } from "node:path";
-
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 
 import { CronScheduler } from "../src/scheduler.js";
-import { CronStorage } from "../src/storage.js";
+import { MemCronStorage } from "../src/storage.js";
 import type { CronJob } from "../src/types.js";
 import { CronWidget } from "../src/ui/cron-widget.js";
 
-let cwd: string;
+let storage: MemCronStorage;
 
 beforeEach(() => {
-	cwd = mkdtempSync(join(tmpdir(), "pi-prompt-scheduler-widget-"));
+	storage = new MemCronStorage();
 });
 
-afterEach(() => {
-	rmSync(cwd, { recursive: true, force: true });
-});
+afterEach(() => {});
 
 function makeJob(overrides: Partial<CronJob> & { id: string }): CronJob {
 	const { session, id, ...rest } = overrides;
@@ -69,7 +63,6 @@ function makeFakePi() {
 
 describe("CronWidget layout", () => {
 	it("does NOT emit a blank line between the header and the first job row", () => {
-		const storage = new CronStorage(cwd);
 		storage.addJob(makeJob({ id: "job-aaaaaa", name: "first-job" }));
 		storage.addJob(makeJob({ id: "job-bbbbbb", name: "second-job" }));
 		const scheduler = new CronScheduler(storage, makeFakePi(), makeFakeCtx());
@@ -91,7 +84,6 @@ describe("CronWidget layout", () => {
 
 	it("still renders the header when there are zero jobs loaded in this session", () => {
 		// Job scoped to a different session, so loadedJobs() filters it out.
-		const storage = new CronStorage(cwd);
 		storage.addJob(makeJob({ id: "job-ccccc1", session: "other-session" }));
 		const scheduler = new CronScheduler(storage, makeFakePi(), makeFakeCtx());
 		const widget = new CronWidget(storage, scheduler, makeFakePi(), () => true, "this-session");
