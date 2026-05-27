@@ -259,3 +259,217 @@ describe("startServer — /api/worktree-status with files", () => {
 		expect(Array.isArray(data.lines)).toBe(true);
 	});
 });
+
+// ---------------------------------------------------------------------------
+// getWorktreeStatus — full status-character coverage
+// ---------------------------------------------------------------------------
+
+describe("startServer — getWorktreeStatus status chars", () => {
+	const GIT_ENV = {
+		...process.env,
+		GIT_AUTHOR_NAME: "Test",
+		GIT_AUTHOR_EMAIL: "test@test.com",
+		GIT_COMMITTER_NAME: "Test",
+		GIT_COMMITTER_EMAIL: "test@test.com",
+	};
+
+	let statusPort: string;
+	let statusHandle: ServerHandle | null = null;
+
+	beforeEach(async () => {
+		statusHandle = await startServer(tmpDir, 0);
+		statusPort = String(statusHandle.port);
+	});
+
+	afterEach(() => {
+		statusHandle?.close();
+		statusHandle = null;
+	});
+
+	it("returns status=A for a newly staged (index-added) file", async () => {
+		const { writeFileSync } = await import("node:fs");
+		writeFileSync(join(tmpDir, "staged-new.ts"), "export const v = 1;\n");
+		execSync("git add staged-new.ts", { cwd: tmpDir, stdio: "ignore" });
+
+		const res = await get(
+			`/api/worktree-status?path=${encodeURIComponent(tmpDir)}`,
+			statusPort,
+		);
+		expect(res.status).toBe(200);
+		const files = await res.json() as Array<{ path: string; status: string }>;
+		const entry = files.find((f) => f.path === "staged-new.ts");
+		expect(entry).toBeDefined();
+		expect(entry!.status).toBe("A");
+	});
+
+	it("returns status=M for a worktree-modified committed file", async () => {
+		const { writeFileSync } = await import("node:fs");
+		const fp = join(tmpDir, "tracked-m.ts");
+		writeFileSync(fp, "const a = 1;\n");
+		execSync("git add tracked-m.ts", { cwd: tmpDir, stdio: "ignore" });
+		execSync("git commit -m 'add tracked-m'", { cwd: tmpDir, stdio: "ignore", env: GIT_ENV });
+		writeFileSync(fp, "const a = 42;\n"); // modify in working tree
+
+		const res = await get(
+			`/api/worktree-status?path=${encodeURIComponent(tmpDir)}`,
+			statusPort,
+		);
+		expect(res.status).toBe(200);
+		const files = await res.json() as Array<{ path: string; status: string }>;
+		const entry = files.find((f) => f.path === "tracked-m.ts");
+		expect(entry).toBeDefined();
+		expect(entry!.status).toBe("M");
+	});
+
+	it("returns status=D for a staged-deleted file", async () => {
+		const { writeFileSync } = await import("node:fs");
+		writeFileSync(join(tmpDir, "to-rm.ts"), "const z = 3;\n");
+		execSync("git add to-rm.ts", { cwd: tmpDir, stdio: "ignore" });
+		execSync("git commit -m 'add to-rm'", { cwd: tmpDir, stdio: "ignore", env: GIT_ENV });
+		execSync("git rm to-rm.ts", { cwd: tmpDir, stdio: "ignore" });
+
+		const res = await get(
+			`/api/worktree-status?path=${encodeURIComponent(tmpDir)}`,
+			statusPort,
+		);
+		expect(res.status).toBe(200);
+		const files = await res.json() as Array<{ path: string; status: string }>;
+		const entry = files.find((f) => f.path === "to-rm.ts");
+		expect(entry).toBeDefined();
+		expect(entry!.status).toBe("D");
+	});
+
+	it("handles worktree with no changes (empty status)", async () => {
+		const res = await get(
+			`/api/worktree-status?path=${encodeURIComponent(tmpDir)}`,
+			statusPort,
+		);
+		expect(res.status).toBe(200);
+		const files = await res.json() as unknown[];
+		expect(Array.isArray(files)).toBe(true);
+	});
+});
+
+// ---------------------------------------------------------------------------
+// getDiff — coverage for missing branches
+// ---------------------------------------------------------------------------
+
+describe("startServer — getDiff edge cases", () => {
+	const GIT_ENV = {
+		...process.env,
+		GIT_AUTHOR_NAME: "Test",
+		GIT_AUTHOR_EMAIL: "test@test.com",
+		GIT_COMMITTER_NAME: "Test",
+		GIT_COMMITTER_EMAIL: "test@test.com",
+	};
+
+	let edgePort: string;
+	let edgeHandle: ServerHandle | null = null;
+
+	beforeEach(async () => {
+		edgeHandle = await startServer(tmpDir, 0);
+		edgePort = String(edgeHandle.port);
+	});
+
+	afterEach(() => {
+		edgeHandle?.close();
+		edgeHandle = null;
+	});
+
+	it("returns empty lines when untracked file does not exist on disk (readFile catch)", async () => {
+		// status=? but the file is absent — triggers the readFile catch block
+		const res = await get(
+			`/api/diff?worktree=${encodeURIComponent(tmpDir)}&file=does-not-exist.ts&status=?`,
+			edgePort,
+		);
+		expect(res.status).toBe(200);
+		const data = await res.json() as { lines: unknown[] };
+		expect(Array.isArray(data.lines)).toBe(true);
+		expect(data.lines).toHaveLength(0);
+	});
+
+	it("falls back to staged diff when worktree diff is empty (staged-only change)", async () => {
+		const { writeFileSync } = await import("node:fs");
+		const fp = join(tmpDir, "staged-only.ts");
+
+		// Commit the file with content A
+		writeFileSync(fp, "const x = 1;\n");
+		execSync("git add staged-only.ts", { cwd: tmpDir, stdio: "ignore" });
+		execSync("git commit -m 'base'", { cwd: tmpDir, stdio: "ignore", env: GIT_ENV });
+
+		// Modify and stage (index now has B)
+		writeFileSync(fp, "const x = 42;\n");
+		execSync("git add staged-only.ts", { cwd: tmpDir, stdio: "ignore" });
+
+		// Revert the working tree back to A — so HEAD=A, index=B, worktree=A
+		// "git diff HEAD -- file" returns empty (worktree == HEAD)
+		// "git diff --cached -- file" returns the staged change
+		writeFileSync(fp, "const x = 1;\n");
+
+		const res = await get(
+			`/api/diff?worktree=${encodeURIComponent(tmpDir)}&file=staged-only.ts&status=M`,
+			edgePort,
+		);
+		expect(res.status).toBe(200);
+		const data = await res.json() as { lines: unknown[] };
+		expect(Array.isArray(data.lines)).toBe(true);
+		// The fallback staged diff should return non-empty diff lines
+		expect(data.lines.length).toBeGreaterThan(0);
+	});
+
+	it("returns empty lines when git diff fails (invalid worktree path — outer catch)", async () => {
+		const res = await get(
+			`/api/diff?worktree=%2Ftmp%2F__no-such-repo__&file=f.ts&status=M`,
+			edgePort,
+		);
+		expect(res.status).toBe(200);
+		const data = await res.json() as { lines: unknown[] };
+		expect(Array.isArray(data.lines)).toBe(true);
+		expect(data.lines).toHaveLength(0);
+	});
+});
+
+// ---------------------------------------------------------------------------
+// handleRequest — 500 internal-error path
+// ---------------------------------------------------------------------------
+
+describe("startServer — 500 error on broken git repo", () => {
+	it("returns 500 when git command fails for /api/worktrees", async () => {
+		// Start server, then destroy the .git directory so git commands fail
+		const brokenHandle = await startServer(tmpDir, 0);
+		const brokenPort = String(brokenHandle.port);
+		try {
+			const { rmSync } = await import("node:fs");
+			rmSync(join(tmpDir, ".git"), { recursive: true, force: true });
+
+			const res = await get("/api/worktrees", brokenPort);
+			expect(res.status).toBe(500);
+		} finally {
+			brokenHandle.close();
+		}
+	});
+});
+
+// ---------------------------------------------------------------------------
+// getWorktrees — bare worktree and trailing-flush edge cases
+// ---------------------------------------------------------------------------
+
+describe("startServer — getWorktrees porcelain parsing edge cases", () => {
+	it("returns worktree list that includes the main entry (trailing flush path)", async () => {
+		// A single worktree with no other worktrees triggers the
+		// 'flush last entry if no trailing blank line' path in getWorktrees.
+		const singleHandle = await startServer(tmpDir, 0);
+		const singlePort = String(singleHandle.port);
+		try {
+			const res = await get("/api/worktrees", singlePort);
+			expect(res.status).toBe(200);
+			const data = await res.json() as Array<{ path: string; isMain: boolean }>;
+			expect(Array.isArray(data)).toBe(true);
+			expect(data.length).toBeGreaterThan(0);
+			const main = data.find((w) => w.isMain);
+			expect(main).toBeDefined();
+		} finally {
+			singleHandle.close();
+		}
+	});
+});
