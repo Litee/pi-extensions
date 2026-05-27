@@ -13,7 +13,7 @@ below to diff against upstream and pick up future changes.
 ## Copied versions
 
 - **Initially ported:** `88980a4` (initial port)
-- **Last synced:** `88980a4` (`feat: add mouse and arrow transcript scrolling (#16)`, 2026-05-12)
+- **Last synced:** `742f0ee` (`chore: remove pnpm lockfile`, 2026-05-22)
 
 For intentional local divergences see **Differences from upstream** in [`README.md`](./README.md).
 
@@ -22,5 +22,5 @@ For intentional local divergences see **Differences from upstream** in [`README.
 ```bash
 UP=$(mktemp -d)/dbachelder-pi-btw
 git clone --quiet https://github.com/dbachelder/pi-btw.git "$UP"
-git -C "$UP" log --follow 88980a4..origin/HEAD -- extensions/btw.ts tests/btw.runtime.test.ts skills/btw/SKILL.md
+git -C "$UP" log --follow 742f0ee..origin/HEAD -- extensions/btw.ts tests/btw.runtime.test.ts skills/btw/SKILL.md
 ```
