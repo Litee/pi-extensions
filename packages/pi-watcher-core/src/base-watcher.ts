@@ -300,6 +300,12 @@ export abstract class BaseWatcher<
     return `${state.activeCount}/${state.watchCount}`
   }
 
+  /**
+   * Return `true` if the batch of events should mark the watch terminal.
+   * Override when a watcher produces multiple event batches before completion.
+   */
+  protected abstract containsTerminalStateEvent(events: TEvent[]): boolean
+
   // -------------------------------------------------------------------------
   // Tool metadata (user-tool only — overridable)
   // -------------------------------------------------------------------------
@@ -767,8 +773,8 @@ export abstract class BaseWatcher<
       if (result.observedChange) anyObservedChange = true
       if (result.events.length > 0) {
         allEvents.push(...result.events)
-        // For user-tool watchers the event fires once → mark terminal
-        if (this.itemSource === 'user-tool') watch.terminal = true
+        // For user-tool watchers mark terminal only when the batch is terminal
+        if (this.itemSource === 'user-tool' && this.containsTerminalStateEvent(result.events)) watch.terminal = true
       }
     } catch (err) {
       watch.consecutiveErrors += 1

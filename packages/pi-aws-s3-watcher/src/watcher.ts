@@ -341,6 +341,10 @@ export class S3Watcher extends BaseWatcher<S3Watch, S3Baseline, S3Event> {
     return formatChangeChatMessage(Array.from(events), now)
   }
 
+  protected override containsTerminalStateEvent(events: S3Event[]): boolean {
+    return events.some(e => e.isTerminal)
+  }
+
   // ── Add / Remove ───────────────────────────────────────────────────────────
   async addWatch(params: Record<string, unknown>): Promise<ToolResult> {
     const uri = (typeof params['uri'] === 'string' ? params['uri'] : '').trim()

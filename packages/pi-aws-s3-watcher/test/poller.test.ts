@@ -51,6 +51,7 @@ describe("detectChanges — target='exists'", () => {
 		const res = await detectChanges(client, watch);
 		expect(res.events).toHaveLength(1);
 		expect(res.events[0]!.eventType).toBe("exists");
+		expect(res.events[0]!.isTerminal).toBe(true);
 		expect(res.observedChange).toBe(true);
 		expect(res.newBaseline).toEqual({ exists: true, etag: '"a"', contentLength: 1 });
 	});
@@ -78,6 +79,7 @@ describe("detectChanges — target='removed'", () => {
 		const res = await detectChanges(client, watch);
 		expect(res.events).toHaveLength(1);
 		expect(res.events[0]!.eventType).toBe("removed");
+		expect(res.events[0]!.isTerminal).toBe(true);
 		expect(res.observedChange).toBe(true);
 	});
 
@@ -101,6 +103,7 @@ describe("detectChanges — target='updated'", () => {
 		));
 		expect(res.events).toHaveLength(1);
 		expect(res.events[0]!.eventType).toBe("updated");
+		expect(res.events[0]!.isTerminal).toBe(true);
 		expect(res.observedChange).toBe(true);
 	});
 
@@ -140,6 +143,7 @@ describe("buildTimeoutEvent", () => {
 	it("produces a well-formed timeout event", () => {
 		const ev = buildTimeoutEvent(makeWatch("exists"));
 		expect(ev.eventType).toBe("timeout");
+		expect(ev.isTerminal).toBe(true);
 		expect(ev.summary).toMatch(/timed out waiting for 'exists'/);
 		expect(ev.formatted.startsWith("• ")).toBe(true);
 	});

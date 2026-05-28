@@ -113,6 +113,7 @@ function buildTargetEvent(
 				bucket: watch.bucket,
 				key: watch.key,
 				eventType: "exists",
+				isTerminal: true,
 				summary,
 				formatted: `• ${summary} ✓`,
 			};
@@ -124,6 +125,7 @@ function buildTargetEvent(
 				bucket: watch.bucket,
 				key: watch.key,
 				eventType: "removed",
+				isTerminal: true,
 				summary,
 				formatted: `• ${summary} ✓`,
 			};
@@ -137,6 +139,7 @@ function buildTargetEvent(
 				bucket: watch.bucket,
 				key: watch.key,
 				eventType: "updated",
+				isTerminal: true,
 				summary,
 				formatted: `• ${summary} ✓`,
 			};
@@ -187,6 +190,7 @@ export function buildTimeoutEvent(watch: S3Watch): S3Event {
 		bucket: watch.bucket,
 		key: watch.key,
 		eventType: "timeout",
+		isTerminal: true,
 		summary,
 		formatted: `• ${summary} ✗`,
 	};

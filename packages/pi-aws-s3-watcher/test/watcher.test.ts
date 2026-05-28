@@ -288,6 +288,33 @@ describe('S3Watcher.detectChanges', () => {
 })
 
 // ---------------------------------------------------------------------------
+// isTerminalBatch
+// ---------------------------------------------------------------------------
+
+describe('S3Watcher.containsTerminalStateEvent', () => {
+  it('returns true when at least one event has isTerminal: true', () => {
+    const { watcher } = makeWatcher()
+    const events = [
+      {
+        watchId: 'w1', bucket: 'b', key: 'k',
+        eventType: 'exists' as const, isTerminal: true as const,
+        summary: 's', formatted: '• s',
+      },
+    ]
+    expect(
+      (watcher as unknown as { containsTerminalStateEvent(e: typeof events): boolean }).containsTerminalStateEvent(events),
+    ).toBe(true)
+  })
+
+  it('returns false when events array is empty', () => {
+    const { watcher } = makeWatcher()
+    expect(
+      (watcher as unknown as { containsTerminalStateEvent(e: never[]): boolean }).containsTerminalStateEvent([]),
+    ).toBe(false)
+  })
+})
+
+// ---------------------------------------------------------------------------
 // normaliseWatch / normaliseBaseline
 // ---------------------------------------------------------------------------
 
@@ -504,6 +531,7 @@ describe('S3Watcher view', () => {
       bucket: 'b',
       key: 'k',
       eventType: 'exists' as const,
+      isTerminal: true,
       summary: 's3://b/k now exists',
       formatted: '• s3://b/k now exists ✓',
     }

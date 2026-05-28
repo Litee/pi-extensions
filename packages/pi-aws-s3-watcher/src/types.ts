@@ -62,6 +62,12 @@ export interface S3Event {
 	 * `timeout` means `timeoutAt` elapsed before the target was met.
 	 */
 	eventType: "exists" | "updated" | "removed" | "timeout";
+	/**
+	 * All S3 events are terminal — when any event fires the watch is done.
+	 * Always `true`; present so `isTerminalBatch` can inspect the event
+	 * itself rather than relying on `events.length > 0`.
+	 */
+	isTerminal: true;
 	/** Human-readable one-liner. */
 	summary: string;
 	/** Bullet-list line for chat messages (includes `"• "` prefix). */

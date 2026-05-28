@@ -199,6 +199,10 @@ class StubWatcher extends BaseWatcher<StubWatch, StubBaseline, StubEvent> {
     return Promise.resolve({ content: [{ type: 'text', text: 'added' }], details: { action: 'add', ok: true } })
   }
 
+  protected containsTerminalStateEvent(events: StubEvent[]): boolean {
+    return events.length > 0
+  }
+
   // removeWatch is now provided by the base class — no override needed
 
   // Expose internals for testing
@@ -828,6 +832,44 @@ describe('pollWatch', () => {
     resolveW1()
     resolveW2()
     await pollPromise
+  })
+})
+
+// ---------------------------------------------------------------------------
+// isTerminalBatch hook
+// ---------------------------------------------------------------------------
+
+describe('containsTerminalStateEvent', () => {
+  it('default: marks watch terminal when events are produced (existing behaviour)', async () => {
+    const { watcher, pi } = makeWatcher()
+    watcher.detectChangesFn = () => Promise.resolve({
+      newBaseline: { seenAt: 0 },
+      events: [{ watchId: 'w1', summary: 'change' }],
+      observedChange: true,
+    })
+    watcher.testWatches.set('w1', { id: 'w1', label: 'L', terminal: false, consecutiveErrors: 0 })
+    await watcher.pollWatch('w1')
+    expect(watcher.testWatches.get('w1')?.terminal).toBe(true)
+    expect(pi.sendMessage).toHaveBeenCalledOnce()
+  })
+
+  it('override returning false: does NOT mark watch terminal even when events are produced', async () => {
+    class NonTerminalWatcher extends StubWatcher {
+      protected override containsTerminalStateEvent(_events: StubEvent[]): boolean {
+        return false
+      }
+    }
+    const pi = makePi()
+    const watcher = new NonTerminalWatcher({ pi })
+    watcher.detectChangesFn = () => Promise.resolve({
+      newBaseline: { seenAt: 0 },
+      events: [{ watchId: 'w1', summary: 'change' }],
+      observedChange: true,
+    })
+    watcher.testWatches.set('w1', { id: 'w1', label: 'L', terminal: false, consecutiveErrors: 0 })
+    await watcher.pollWatch('w1')
+    expect(watcher.testWatches.get('w1')?.terminal).toBe(false)
+    expect(pi.sendMessage).toHaveBeenCalledOnce() // event message still fires
   })
 })
 
