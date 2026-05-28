@@ -896,7 +896,7 @@ export abstract class BaseWatcher<
   }
 
   // -------------------------------------------------------------------------
-  // Drain
+  // Purge
   // -------------------------------------------------------------------------
 
   /**
@@ -905,7 +905,7 @@ export abstract class BaseWatcher<
    * Returns the list of removed watches (for visual list updates in the browse view).
    * No-op for scan watchers (returns empty array).
    */
-  protected executeDrain(): TWatch[] {
+  protected executePurge(): TWatch[] {
     if (this.itemSource !== 'user-tool') return []
     const removed: TWatch[] = []
     for (const [key, watch] of this.watches) {

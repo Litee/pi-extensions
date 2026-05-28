@@ -279,7 +279,7 @@ export interface BrowseViewOptions<TWatch> {
   view: WatcherView<TWatch, never>
   /** Optional per-row action buttons. */
   rowActions?: ReadonlyArray<RowAction<TWatch>>
-  /** Called when the user removes the currently selected watch (via `ctrl+d` key). */
+  /** Called when the user removes the currently selected watch (via `ctrl+x` key). */
   onRemove?(watch: TWatch): void
   /**
    * Called when the user presses `ctrl+r` to force an immediate refresh of all items.
@@ -287,11 +287,11 @@ export interface BrowseViewOptions<TWatch> {
    */
   onRefresh?(): Promise<void>
   /**
-   * Called when the user presses `ctrl+x` to drain all terminal watches.
+   * Called when the user presses `ctrl+p` to purge all terminal watches.
    * The implementation should remove all terminal watches from the data source
    * and return the list of removed watches so the visual list stays in sync.
    */
-  onDrain?(): TWatch[]
+  onPurge?(): TWatch[]
   /** Called when the user presses `q` to quit entirely (skip menu). */
   onQuit?: () => void
   /**

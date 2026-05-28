@@ -949,13 +949,13 @@ describe('S3Watcher.browseOptions', () => {
     expect(execSpy).toHaveBeenCalledWith(expect.objectContaining({ action: 'remove' }))
   })
 
-  it('browseOptions.onDrain calls executeDrain', () => {
-    const drainSpy = vi.spyOn(watcher as unknown as { executeDrain(): [] }, 'executeDrain').mockReturnValue([])
-    const opts = (watcher as unknown as { browseOptions(): { onDrain?(): [] } }).browseOptions()
+  it('browseOptions.onPurge calls executePurge', () => {
+    const purgeSpy = vi.spyOn(watcher as unknown as { executePurge(): [] }, 'executePurge').mockReturnValue([])
+    const opts = (watcher as unknown as { browseOptions(): { onPurge?(): [] } }).browseOptions()
     // eslint-disable-next-line @typescript-eslint/unbound-method
-    expect(opts.onDrain).toBeDefined()
-    opts.onDrain!()
-    expect(drainSpy).toHaveBeenCalled()
+    expect(opts.onPurge).toBeDefined()
+    opts.onPurge!()
+    expect(purgeSpy).toHaveBeenCalled()
   })
 })
 

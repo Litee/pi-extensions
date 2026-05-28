@@ -254,9 +254,9 @@ function makeStub(opts: StubOpts = {}) {
     public override saveUserDefaultDisplayMode(m: 'widget' | 'statusline' | undefined): void {
       this._userDefault = m
     }
-    // Expose executeDrain for testing
-    executeDrain_pub(): StubWatch[] {
-      return (this as unknown as { executeDrain(): StubWatch[] }).executeDrain()
+    // Expose executePurge for testing
+    executePurge_pub(): StubWatch[] {
+      return (this as unknown as { executePurge(): StubWatch[] }).executePurge()
     }
   }
   const pi = makePi()
@@ -1167,19 +1167,19 @@ describe('userDefaultDisplayMode menu item', () => {
 })
 
 // ---------------------------------------------------------------------------
-// executeDrain
+// executePurge
 // ---------------------------------------------------------------------------
 
 function makeWatch(overrides: Partial<StubWatch> = {}): StubWatch {
   return { id: 'w', label: 'L', terminal: false, consecutiveErrors: 0, ...overrides }
 }
 
-describe('executeDrain', () => {
+describe('executePurge', () => {
   it('removes terminal watches and returns them', () => {
     const stub = makeStub()
     stub.testWatches.set('a', makeWatch({ id: 'a', terminal: false }))
     stub.testWatches.set('b', makeWatch({ id: 'b', terminal: true }))
-    const removed = stub.executeDrain_pub()
+    const removed = stub.executePurge_pub()
     expect(removed).toHaveLength(1)
     expect(removed[0]!.id).toBe('b')
     expect(stub.testWatches.has('b')).toBe(false)
@@ -1189,20 +1189,20 @@ describe('executeDrain', () => {
   it('returns empty array when no terminal watches', () => {
     const stub = makeStub()
     stub.testWatches.set('a', makeWatch({ id: 'a', terminal: false }))
-    expect(stub.executeDrain_pub()).toHaveLength(0)
+    expect(stub.executePurge_pub()).toHaveLength(0)
   })
 
   it('returns empty array for scan watchers', () => {
     const stub = makeStub({ itemSource: 'scan' })
     stub.testWatches.set('a', makeWatch({ id: 'a', terminal: true }))
-    expect(stub.executeDrain_pub()).toHaveLength(0)
+    expect(stub.executePurge_pub()).toHaveLength(0)
   })
 
   it('calls writeState (appendEntry) when watches removed', () => {
     const stub = makeStub()
     stub.testWatches.set('a', makeWatch({ id: 'a', terminal: true }))
     const appendSpy = vi.spyOn(stub.testPi, 'appendEntry')
-    stub.executeDrain_pub()
+    stub.executePurge_pub()
     expect(appendSpy).toHaveBeenCalled()
   })
 
@@ -1210,7 +1210,7 @@ describe('executeDrain', () => {
     const stub = makeStub()
     stub.testWatches.set('a', makeWatch({ id: 'a', terminal: false }))
     const appendSpy = vi.spyOn(stub.testPi, 'appendEntry')
-    stub.executeDrain_pub()
+    stub.executePurge_pub()
     expect(appendSpy).not.toHaveBeenCalled()
   })
 })

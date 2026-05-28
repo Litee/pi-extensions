@@ -465,7 +465,7 @@ export class S3Watcher extends BaseWatcher<S3Watch, S3Baseline, S3Event> {
         },
       ],
       onRefresh: () => this.pollOnce(),
-      onDrain: () => this.executeDrain(),
+      onPurge: () => this.executePurge(),
       getPollIntervalMs: (w: S3Watch) => this.schedulerFor(w.watchId).intervalMs,
     }
   }

@@ -74,7 +74,7 @@ const { MockContainer, MockInput, MockSelectList, MockText, piTuiMatchesKey } = 
   }
 
   const ctrlMap: Record<string, string> = {
-    'ctrl+a': '\x01', 'ctrl+b': '\x02', 'ctrl+c': '\x03', 'ctrl+d': '\x04',
+    'ctrl+a': '\x01', 'ctrl+b': '\x02', 'ctrl+c': '\x03', 'ctrl+d': '\x04', 'ctrl+p': '\x10',
     'ctrl+e': '\x05', 'ctrl+f': '\x06', 'ctrl+r': '\x12', 'ctrl+x': '\x18',
   }
   const piTuiMatchesKey = (data: string, key: string): boolean => {
@@ -189,12 +189,12 @@ function buildTestComponent(
   return component!
 }
 
-/** Object watch that satisfies WatchLike (terminal: true) for drain tests. */
+/** Object watch that satisfies WatchLike (terminal: true) for purge tests. */
 interface TerminalWatch { id: string; terminal: true }
 
 function buildTestComponentWithTerminal(
   watchIds: string[],
-  onDrain: () => TerminalWatch[],
+  onPurge: () => TerminalWatch[],
 ): ComponentLike {
   type TW = TerminalWatch
   const watches: TW[] = watchIds.map(id => ({ id, terminal: true as const }))
@@ -228,7 +228,7 @@ function buildTestComponentWithTerminal(
     view,
     filter: () => true,
     header: () => '',
-    onDrain,
+    onPurge,
   }, ctx)
 
   component!.render(80)
@@ -498,7 +498,7 @@ describe('Fix 4 — ctrl+x hotkey detach watch (unwatch)', () => {
     expect(runSpy).not.toHaveBeenCalled()
   })
 
-  it('ctrl+d does not trigger unwatch (triggers drain instead)', async () => {
+  it('ctrl+p does not trigger unwatch (triggers purge instead)', async () => {
     const runSpy = vi.fn().mockResolvedValue(undefined)
     const { ctx, getComponent } = makeBrowseCtx()
     await openBrowseView(
@@ -507,7 +507,7 @@ describe('Fix 4 — ctrl+x hotkey detach watch (unwatch)', () => {
       }),
       ctx,
     )
-    getComponent()!.handleInput('\x04')  // ctrl+d — now drain, NOT unwatch
+    getComponent()!.handleInput('\x10')  // ctrl+p — now purge, NOT unwatch
     await Promise.resolve()
     expect(runSpy).not.toHaveBeenCalled()
   })
@@ -593,27 +593,27 @@ describe('Fix 4 — r hotkey refresh', () => {
 
 // ---------------------------------------------------------------------------
 // ---------------------------------------------------------------------------
-// ctrl+x hotkey — drain terminal watches
+// ctrl+x hotkey — purge terminal watches
 // ---------------------------------------------------------------------------
 
-describe('ctrl+d hotkey — drain terminal watches', () => {
+describe('ctrl+p hotkey — purge terminal watches', () => {
   beforeEach(() => {
     MockSelectList.reset()
   })
 
-  it('calls onDrain when ctrl+d then y pressed (terminal watches present)', () => {
+  it('calls onPurge when ctrl+p then y pressed (terminal watches present)', () => {
     const w1: TerminalWatch = { id: 'w1', terminal: true }
-    const onDrain = vi.fn().mockReturnValue([w1])
-    const component = buildTestComponentWithTerminal(['w1'], onDrain)
-    component.handleInput('\x04')  // ctrl+d → confirm mode
+    const onPurge = vi.fn().mockReturnValue([w1])
+    const component = buildTestComponentWithTerminal(['w1'], onPurge)
+    component.handleInput('\x10')  // ctrl+p → confirm mode
     component.handleInput('y')     // confirm
-    expect(onDrain).toHaveBeenCalled()
+    expect(onPurge).toHaveBeenCalled()
   })
 
-  it('removes returned watches from visual list after ctrl+d then y', () => {
+  it('removes returned watches from visual list after ctrl+p then y', () => {
     const w1: TerminalWatch = { id: 'w1', terminal: true }
     const w2: TerminalWatch = { id: 'w2', terminal: true }
-    const onDrain = vi.fn().mockReturnValue([w1])
+    const onPurge = vi.fn().mockReturnValue([w1])
 
     type TW = TerminalWatch
     const view: WatcherView<TW, never> = {
@@ -636,48 +636,48 @@ describe('ctrl+d hotkey — drain terminal watches', () => {
         theme,
       },
     }
-    void openBrowseView<TW>({ title: 'Test', watches: [w1, w2], view, filter: () => true, header: () => '', onDrain }, ctx)
+    void openBrowseView<TW>({ title: 'Test', watches: [w1, w2], view, filter: () => true, header: () => '', onPurge }, ctx)
     component!.render(80)
 
     MockSelectList.reset()
-    void openBrowseView<TW>({ title: 'Test', watches: [w1, w2], view, filter: () => true, header: () => '', onDrain }, ctx)
+    void openBrowseView<TW>({ title: 'Test', watches: [w1, w2], view, filter: () => true, header: () => '', onPurge }, ctx)
     component!.render(80)
 
-    component!.handleInput('\x04')  // ctrl+d → confirm
+    component!.handleInput('\x10')  // ctrl+p → confirm
     component!.handleInput('y')     // confirm
-    expect(onDrain).toHaveBeenCalled()
+    expect(onPurge).toHaveBeenCalled()
 
     const sl = MockSelectList.getInstances()[0]!
     expect(sl.filteredItems.map((i: { value: string }) => i.value)).not.toContain('w1')
     expect(sl.filteredItems.map((i: { value: string }) => i.value)).toContain('w2')
   })
 
-  it('single-letter d does NOT trigger drain', async () => {
-    const onDrain = vi.fn().mockReturnValue([])
+  it('single-letter d does NOT trigger purge', async () => {
+    const onPurge = vi.fn().mockReturnValue([])
     const { ctx, getComponent } = makeBrowseCtx()
-    await openBrowseView(makeSimpleBrowseOpts(['w1'], { searchable: false, onDrain }), ctx)
+    await openBrowseView(makeSimpleBrowseOpts(['w1'], { searchable: false, onPurge }), ctx)
     getComponent()!.handleInput('d')  // plain d — should NOT trigger
-    expect(onDrain).not.toHaveBeenCalled()
+    expect(onPurge).not.toHaveBeenCalled()
   })
 
-  it('does nothing when onDrain not provided', async () => {
+  it('does nothing when onPurge not provided', async () => {
     const { ctx, getComponent } = makeBrowseCtx()
     await openBrowseView(makeSimpleBrowseOpts(['w1']), ctx)
-    expect(() => getComponent()!.handleInput('\x04')).not.toThrow()
+    expect(() => getComponent()!.handleInput('\x10')).not.toThrow()
   })
 
-  it('footer hint includes "ctrl+d: drain" when onDrain provided', async () => {
+  it('footer hint includes "ctrl+p: purge" when onPurge provided', async () => {
     const { ctx, getComponent } = makeBrowseCtx()
-    await openBrowseView(makeSimpleBrowseOpts(['w1'], { onDrain: vi.fn().mockReturnValue([]) }), ctx)
+    await openBrowseView(makeSimpleBrowseOpts(['w1'], { onPurge: vi.fn().mockReturnValue([]) }), ctx)
     const rendered = getComponent()!.render(80).join('\n')
-    expect(rendered).toContain('ctrl+d: drain')
+    expect(rendered).toContain('ctrl+p: purge')
   })
 
-  it('footer hint omits "ctrl+d: drain" when onDrain not provided', async () => {
+  it('footer hint omits "ctrl+p: purge" when onPurge not provided', async () => {
     const { ctx, getComponent } = makeBrowseCtx()
     await openBrowseView(makeSimpleBrowseOpts(['w1']), ctx)
     const rendered = getComponent()!.render(80).join('\n')
-    expect(rendered).not.toContain('ctrl+d: drain')
+    expect(rendered).not.toContain('ctrl+p: purge')
   })
 })
 
@@ -1077,7 +1077,7 @@ describe('WatcherView.compressColumns', () => {
 })
 
 // ---------------------------------------------------------------------------
-// Confirmation flow — ctrl+x (unwatch) and ctrl+d (drain)
+// Confirmation flow — ctrl+x (unwatch) and ctrl+p (purge)
 // ---------------------------------------------------------------------------
 
 describe('confirmation flow — ctrl+x (unwatch)', () => {
@@ -1135,39 +1135,39 @@ describe('confirmation flow — ctrl+x (unwatch)', () => {
   })
 })
 
-describe('confirmation flow — ctrl+d (drain)', () => {
+describe('confirmation flow — ctrl+p (purge)', () => {
   beforeEach(() => { MockSelectList.reset() })
 
-  it('ctrl+d does not immediately call onDrain', () => {
-    const onDrain = vi.fn().mockReturnValue([])
-    const component = buildTestComponentWithTerminal(['w1'], onDrain)
-    component.handleInput('\x04')  // ctrl+d
-    expect(onDrain).not.toHaveBeenCalled()
+  it('ctrl+p does not immediately call onPurge', () => {
+    const onPurge = vi.fn().mockReturnValue([])
+    const component = buildTestComponentWithTerminal(['w1'], onPurge)
+    component.handleInput('\x10')  // ctrl+p
+    expect(onPurge).not.toHaveBeenCalled()
   })
 
-  it('ctrl+d then y calls onDrain', () => {
-    const onDrain = vi.fn().mockReturnValue([])
-    const component = buildTestComponentWithTerminal(['w1'], onDrain)
-    component.handleInput('\x04')  // ctrl+d → confirm
+  it('ctrl+p then y calls onPurge', () => {
+    const onPurge = vi.fn().mockReturnValue([])
+    const component = buildTestComponentWithTerminal(['w1'], onPurge)
+    component.handleInput('\x10')  // ctrl+p → confirm
     component.handleInput('y')    // confirm
-    expect(onDrain).toHaveBeenCalledOnce()
+    expect(onPurge).toHaveBeenCalledOnce()
   })
 
-  it('ctrl+d then n does not call onDrain', () => {
-    const onDrain = vi.fn().mockReturnValue([])
-    const component = buildTestComponentWithTerminal(['w1'], onDrain)
-    component.handleInput('\x04')  // ctrl+d
+  it('ctrl+p then n does not call onPurge', () => {
+    const onPurge = vi.fn().mockReturnValue([])
+    const component = buildTestComponentWithTerminal(['w1'], onPurge)
+    component.handleInput('\x10')  // ctrl+p
     component.handleInput('n')    // cancel
-    expect(onDrain).not.toHaveBeenCalled()
+    expect(onPurge).not.toHaveBeenCalled()
   })
 
-  it('ctrl+d does nothing when no terminal watches (drainCount = 0)', () => {
-    // String watches have no `terminal` property so drainCount = 0
-    const onDrain = vi.fn().mockReturnValue([])
-    const component = buildTestComponent(undefined, ['w1'], 80, undefined, { onDrain })
-    component.handleInput('\x04')  // ctrl+d — no confirm since count=0
-    component.handleInput('y')    // y in normal mode should not trigger drain
-    expect(onDrain).not.toHaveBeenCalled()
+  it('ctrl+p does nothing when no terminal watches (purgeCount = 0)', () => {
+    // String watches have no `terminal` property so purgeCount = 0
+    const onPurge = vi.fn().mockReturnValue([])
+    const component = buildTestComponent(undefined, ['w1'], 80, undefined, { onPurge })
+    component.handleInput('\x10')  // ctrl+p — no confirm since count=0
+    component.handleInput('y')    // y in normal mode should not trigger purge
+    expect(onPurge).not.toHaveBeenCalled()
   })
 })
 
@@ -1680,14 +1680,14 @@ describe('header contains hints inline', () => {
     expect(firstContent).not.toContain('Enter: detail')
   })
 
-  it('drain confirm says Purge, not Drain', () => {
+  it('purge confirm says Purge, not Drain', () => {
     const w1: TerminalWatch = { id: 'w1', terminal: true }
-    const onDrain = vi.fn().mockReturnValue([w1])
-    const component = buildTestComponentWithTerminal(['w1'], onDrain)
-    component.handleInput('\x04')  // ctrl+d → confirm mode
+    const onPurge = vi.fn().mockReturnValue([w1])
+    const component = buildTestComponentWithTerminal(['w1'], onPurge)
+    component.handleInput('\x10')  // ctrl+p → confirm mode
     const rendered = component.render(80).join('\n')
     expect(rendered).toContain('Purge')
-    expect(rendered).not.toContain('Drain 1')
+    expect(rendered).not.toContain('Drain')
   })
 })
 

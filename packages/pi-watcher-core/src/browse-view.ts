@@ -264,7 +264,7 @@ function _buildBrowseComponent<TWatch>(
   // ── Confirmation state ───────────────────────────────────────────────────
   type ConfirmState =
     | { kind: 'unwatch'; watch: TWatch; label: string }
-    | { kind: 'drain'; count: number }
+    | { kind: 'purge'; count: number }
     | null
   let confirmState: ConfirmState = null
 
@@ -278,7 +278,7 @@ function _buildBrowseComponent<TWatch>(
     'Enter: detail',
     opts.onRefresh !== undefined ? 'ctrl+r: refresh' : null,
     opts.rowActions?.some((a) => a.id === 'remove') ? 'ctrl+x: unwatch' : null,
-    opts.onDrain !== undefined ? 'ctrl+d: drain' : null,
+    opts.onPurge !== undefined ? 'ctrl+p: purge' : null,
     '←/Esc: back',
     'q: close',
     opts.searchable !== false ? 'type to filter' : null,
@@ -488,7 +488,7 @@ function _buildBrowseComponent<TWatch>(
               requestRender()
             })
           } else {
-            const removed = opts.onDrain?.() ?? []
+            const removed = opts.onPurge?.() ?? []
             if (removed.length > 0) {
               for (const w of removed) {
                 const idx = sortedWatches.indexOf(w)
@@ -553,13 +553,13 @@ function _buildBrowseComponent<TWatch>(
         return
       }
 
-      // ctrl+d — enter confirmation to drain all terminal watches
-      if (matchesKey(data, 'ctrl+d') && opts.onDrain !== undefined) {
-        const drainCount = sortedWatches.filter(
+      // ctrl+p — enter confirmation to purge all terminal watches
+      if (matchesKey(data, 'ctrl+p') && opts.onPurge !== undefined) {
+        const purgeCount = sortedWatches.filter(
           (w) => (w as import('./base-watcher-types.js').WatchLike).terminal,
         ).length
-        if (drainCount > 0) {
-          confirmState = { kind: 'drain', count: drainCount }
+        if (purgeCount > 0) {
+          confirmState = { kind: 'purge', count: purgeCount }
           requestRender()
         }
         return
