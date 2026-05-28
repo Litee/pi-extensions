@@ -39,78 +39,76 @@ describe("parseS3Uri", () => {
 	});
 });
 
-describe("compressS3Uri", () => {
-	it("returns URI as-is when shorter than maxLen", () => {
-		const uri = "s3://b/key.txt";
-		expect(compressS3Uri(uri, 20)).toBe(uri);
-	});
+describe('compressS3Uri — ellipsis strategy', () => {
+	it('returns URI unchanged when it already fits', () => {
+		const uri = 's3://bucket/key.txt'
+		expect(compressS3Uri(uri, 80)).toBe(uri)
+	})
 
-	it("returns URI as-is on exact fit", () => {
-		const uri = "s3://b/key.txt";
-		expect(compressS3Uri(uri, uri.length)).toBe(uri);
-	});
+	it('returns URI unchanged when exactly maxLen', () => {
+		const uri = 's3://bucket/key.txt'
+		expect(compressS3Uri(uri, uri.length)).toBe(uri)
+	})
 
-	it("hard-slices when maxLen <= 3 (too small for ellipsis)", () => {
-		// maxLen<=3: cannot fit "..." so just slice to maxLen characters
-		expect(compressS3Uri("s3://b/key.txt", 2)).toBe("s3");
-		expect(compressS3Uri("s3://b/key.txt", 3)).toBe("s3:");
-	});
+	it('hard-slices when maxLen <= 1', () => {
+		expect(compressS3Uri('s3://b/k', 1)).toBe('s')
+		expect(compressS3Uri('s3://b/k', 0)).toBe('')
+	})
 
-	it("compresses the leftmost overlong middle segment first", () => {
-		// "s3://b/long/file.txt" = 20 chars, maxLen 18
-		expect(compressS3Uri("s3://b/long/file.txt", 18)).toBe("s3://b/l/file.txt");
-	});
+	it('collapses all middle segments to … when keep=0 fits', () => {
+		// s3://b/…/file.txt = 18 chars
+		expect(compressS3Uri('s3://b/very/long/path/file.txt', 18)).toBe('s3://b/…/file.txt')
+	})
 
-	it("compresses multiple middle segments progressively until it fits", () => {
-		// "s3://b/2024/01/results/out.json" = 31 chars, maxLen 25
-		// compress "2024"→"2": "s3://b/2/01/results/out.json" = 28 > 25
-		// compress "01"→"0":   "s3://b/2/0/results/out.json"  = 27 > 25
-		// compress "results"→"r": "s3://b/2/0/r/out.json"      = 21 <= 25 ✓
-		expect(compressS3Uri("s3://b/2024/01/results/out.json", 25)).toBe(
-			"s3://b/2/0/r/out.json",
-		);
-	});
+	it('keeps one prefix segment when keep=0 does not fit but keep=1 does', () => {
+		// s3://b/a/…/file.txt = 20 chars
+		expect(compressS3Uri('s3://b/a/long/path/file.txt', 20)).toBe('s3://b/a/…/file.txt')
+	})
 
-	it("never shortens the last path segment (filename)", () => {
-		// After compressing all middle segments the filename must still be intact
-		// "s3://b/alpha/beta/filename.csv" = 30 chars
-		// maxLen=23: compress "alpha"→"a", "beta"→"b" → "s3://b/a/b/filename.csv" = 23 chars ✓
-		const result = compressS3Uri("s3://b/alpha/beta/filename.csv", 23);
-		expect(result).toContain("filename.csv");
-	});
+	it('preserves the filename (last segment) in full', () => {
+		// s3://bucket/…/longfilename.parquet = 34 chars; maxLen=35 lets keep=0 fit
+		const result = compressS3Uri('s3://bucket/a/b/c/longfilename.parquet', 35)
+		expect(result).toContain('longfilename.parquet')
+		expect(result.length).toBeLessThanOrEqual(35)
+	})
 
-	it("falls back to '...' truncation when even full compression doesn't fit", () => {
-		// bucket prefix alone is 27 chars, maxLen=10 → all compression still > 10
-		const result = compressS3Uri(
-			"s3://very-long-bucket-name/a/b/c/d.txt",
-			10,
-		);
-		expect(result).toHaveLength(10);
-		expect(result).toMatch(/\.\.\.$/u);
-	});
+	it('falls back to end-truncation with … when no ellipsis variant fits', () => {
+		// prefix "s3://verylongbucket/" alone is 21 chars, maxLen=10
+		const result = compressS3Uri('s3://verylongbucket/a/b/file.txt', 10)
+		expect(result).toHaveLength(10)
+		expect(result.endsWith('…')).toBe(true)
+	})
 
-	it("single-segment key (no middle) falls back to '...' truncation", () => {
-		// s3://b/longfilename.txt = 22 chars, maxLen=10
-		// substring(0, 7) = "s3://b/" + "..." = "s3://b/..." (10 chars)
-		const result = compressS3Uri("s3://b/longfilename.txt", 10);
-		expect(result).toHaveLength(10);
-		expect(result).toMatch(/\.\.\.$/u);
-		expect(result).toBe("s3://b/...");
-	});
+	it('falls back to end-truncation for single-segment keys (no middle)', () => {
+		const result = compressS3Uri('s3://bucket/longfilename.txt', 10)
+		expect(result).toHaveLength(10)
+		expect(result.endsWith('…')).toBe(true)
+	})
 
-	it("skips already-single-char middle segments and compresses the next one", () => {
-		// s3://b/a/b/longfolder/file.txt — "a" and "b" are len-1, skip them
-		// s3://b/a/b/longfolder/file.txt = 30 chars, maxLen=25
-		// "a" skip, "b" skip, compress "longfolder"→"l": "s3://b/a/b/l/file.txt" = 21 <= 25 ✓
-		expect(compressS3Uri("s3://b/a/b/longfolder/file.txt", 25)).toBe(
-			"s3://b/a/b/l/file.txt",
-		);
-	});
+	it('falls back to end-truncation for non-s3 URIs', () => {
+		const result = compressS3Uri('https://example.com/very/long/path', 12)
+		expect(result).toHaveLength(12)
+		expect(result.endsWith('…')).toBe(true)
+	})
 
-	it("falls back to end-truncation for non-s3:// URIs", () => {
-		// substring(0, 9) = "https://e" + "..." = "https://e..." (12 chars)
-		const result = compressS3Uri("https://example.com/very/long/path", 12);
-		expect(result).toHaveLength(12);
-		expect(result).toBe("https://e...");
-	});
-});
+	it('handles URIs with no path separator after bucket', () => {
+		const result = compressS3Uri('s3://bucketonly', 5)
+		expect(result.length).toBeLessThanOrEqual(5)
+		expect(result.endsWith('…')).toBe(true)
+	})
+
+	it('uses single … char (not ...)', () => {
+		const result = compressS3Uri('s3://b/very/long/path/file.txt', 18)
+		expect(result).not.toContain('...')
+		expect(result).toContain('…')
+	})
+
+	it('real-world example: long DynamoDB export path', () => {
+		const uri = 's3://andreyli-experiments-825765387814-us-east-1/2026-03-16-ims-dump/20260317-ims-ddb-export/20260317/AWSDynamoDB/01773752049869-f6f098b7/_started'
+		const result = compressS3Uri(uri, 80)
+		expect(result.length).toBeLessThanOrEqual(80)
+		expect(result).toContain('andreyli-experiments-825765387814-us-east-1')  // bucket preserved
+		expect(result).toContain('_started')  // last segment preserved
+		expect(result).toContain('…')
+	})
+})

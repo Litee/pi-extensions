@@ -1,180 +1,29 @@
 /**
  * pi-aws-s3-watcher — pi extension entrypoint.
- *
- * Auto-enabled: the `s3_watcher` tool is registered and active from
- * session_start. The `/s3-watcher` command opens an interactive TUI menu
- * for pause/resume and display-mode toggles without requiring an LLM round-trip.
  */
 
-import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
+import type { ExtensionAPI } from '@earendil-works/pi-coding-agent'
 
-import { createWatcherMessageRenderer } from "pi-watcher-core/renderer";
-import { seedMissingBaselines } from "pi-watcher-core/seed-baselines";
-import { reconcileToolActivation, removeToolFromActive } from "pi-watcher-core/tool-activation";
-import { extractUiSurface } from "pi-watcher-core/ui-surface";
+import { createS3Client, type S3Client } from './s3-client.js'
+import { S3Watcher } from './watcher.js'
 
-import { runS3WatcherCommand } from "./command.js";
-import { loadConfig } from "./config.js";
-import { buildStartupChatMessage } from "./format.js";
-import { rehydrateStateFromSession, writeState } from "./persistence.js";
-import { snapshotObject } from "./poller.js";
-import {
-	CUSTOM_MESSAGE_TYPE,
-	makeRuntime,
-	refreshStatus,
-	startPolling,
-	stopPolling,
-	TOOL_NAME,
-	type Runtime,
-} from "./runtime.js";
-import { createS3Client, type S3Client } from "./s3-client.js";
-import { registerToolIfNeeded } from "./toolAction.js";
-import { S3Widget } from "./ui/s3-widget.js";
-
-/**
- * Wire up the extension with a concrete or injected {@link S3Client}.
- * Exported so tests can supply a stub client without touching AWS.
- */
 export function createExtensionWithClient(pi: ExtensionAPI, client: S3Client): void {
-	const rt: Runtime = makeRuntime(pi, client);
-	rt.widget = new S3Widget(pi, () => rt.watches, () => rt.scheduler.intervalMs);
-
-	pi.on("session_start", async (_event, ctx) => {
-		rt.ui = extractUiSurface(ctx);
-
-		// Register the tool into the registry so it is visible via manage_tools
-		// ({action:"list"}) and can be activated by the LLM on demand.
-		// NOT added to the active set — the LLM must call manage_tools first.
-		registerToolIfNeeded(pi, rt);
-
-		const state = rehydrateStateFromSession(ctx);
-		rt.watches = state?.watches ?? {};
-		rt.paused = state?.paused ?? false;
-		rt.enabled = state?.enabled ?? false;
-		// Display-mode precedence: persisted state > user config > hardcoded
-		// default. Loading the config here (rather than at module-eval time)
-		// keeps it cheap and lets tests override per session_start call.
-		const { defaultDisplayMode } = loadConfig();
-		rt.displayMode = state?.displayMode ?? defaultDisplayMode ?? "widget";
-
-		// Pi auto-activates all extension tools on session_start regardless of
-		// user intent. Undo that if we have no persisted enabled=true so the
-		// tool stays inactive (matching persisted state).
-		if (!rt.enabled) {
-			removeToolFromActive(pi, TOOL_NAME);
-		}
-
-		// Re-seed any watch that never got a baseline (add-time seeding
-		// failed, or persistence dropped the baseline).
-		await seedMissingBaselines(Object.values(rt.watches), {
-			snapshot: (watch) => snapshotObject(client, watch),
-			onError: (watch, err) => {
-				rt.pi.appendEntry("s3-watcher:seed-error", {
-					bucket: watch.bucket,
-					key: watch.key,
-					message: (err as Error).message,
-				});
-			},
-		});
-
-		// Polling runs whenever there are active watches — regardless of
-		// rt.enabled. Tool active state only controls LLM tool access.
-		const activeWatches = Object.values(rt.watches).filter((w) => !w.terminal);
-		if (!rt.paused && activeWatches.length > 0) startPolling(rt);
-		refreshStatus(rt);
-		if (rt.displayMode === "widget") rt.widget?.show(ctx);
-		else rt.widget?.hide(ctx);
-
-		if (Object.keys(rt.watches).length > 0) {
-			// Defer: fire after the interactive UI has painted so the chat
-			// bubble renders as its own message rather than being folded into
-			// the next LLM turn's prompt.
-			setImmediate(() => {
-				pi.sendMessage(
-					{
-						customType: CUSTOM_MESSAGE_TYPE,
-						content: buildStartupChatMessage(rt.watches, new Date()),
-						display: true,
-					},
-					{ deliverAs: "followUp", triggerTurn: false },
-				);
-			});
-		}
-	});
-
-	pi.on("turn_end", (_event, ctx) => {
-		// Reconcile rt.enabled with the active-tools list. The user may have
-		// run manage_tools({action:"activate"}) or deactivate during the turn.
-		const intent = reconcileToolActivation(TOOL_NAME, rt.enabled, pi.getActiveTools());
-		if (intent === "noop") return;
-		if (intent === "activate") {
-			rt.enabled = true;
-			writeState(pi, rt);
-			const anyActive = Object.values(rt.watches).some((w) => !w.terminal);
-			if (!rt.paused && anyActive && !rt.scheduler.isRunning) startPolling(rt);
-			refreshStatus(rt);
-			if (rt.displayMode === "widget") rt.widget?.show(ctx);
-			else rt.widget?.hide(ctx);
-		} else {
-			// Deactivate: remove tool from active set and persist, but keep
-			// polling running — notifications still fire with a re-activation hint.
-			rt.enabled = false;
-			writeState(pi, rt);
-			refreshStatus(rt);
-		}
-	});
-
-	pi.on("session_shutdown", (_event, ctx) => {
-		stopPolling(rt);
-		try {
-			rt.widget?.hide(ctx);
-			rt.widget?.destroy();
-		} catch {
-			/* noop — UI may already be torn down */
-		}
-		rt.ui = null;
-	});
-
-	pi.registerMessageRenderer(
-		CUSTOM_MESSAGE_TYPE,
-		createWatcherMessageRenderer("pi-aws-s3-watcher"),
-	);
-
-	pi.registerCommand("s3-watcher", {
-		description: "Open the S3 object watcher menu",
-		handler: (args, ctx) => runS3WatcherCommand(args, ctx, rt),
-	});
+  new S3Watcher({ pi, client }).register(pi)
 }
 
-/** Default export — wired to the real AWS SDK client. */
 export default function s3Watcher(pi: ExtensionAPI): void {
-	const client = createS3Client();
-	createExtensionWithClient(pi, client);
+  createExtensionWithClient(pi, createS3Client())
 }
 
 // ---------------------------------------------------------------------------
-// Re-exports
+// Re-exports for external consumers and tests
 // ---------------------------------------------------------------------------
 
-export {
-	POLL_INTERVAL_MS,
-	POLL_INTERVAL_MAX_MS,
-	POLL_ERROR_THRESHOLD,
-	CUSTOM_MESSAGE_TYPE,
-	STATUS_KEY,
-	pollOnce,
-} from "./runtime.js";
-export { runS3WatcherCommand } from "./command.js";
-export {
-	handleToolAction,
-	MAX_TIMEOUT_SECONDS,
-	registerToolIfNeeded,
-	resetToolRegisteredForTests,
-} from "./toolAction.js";
-export { STATE_CUSTOM_TYPE } from "./persistence.js";
-export { buildStatusLine, buildChangeChatMessage, buildStartupChatMessage } from "./format.js";
-export { snapshotObject, detectChanges, buildTimeoutEvent } from "./poller.js";
-export { createS3Client, isNotFoundError } from "./s3-client.js";
-export { parseS3Uri, S3UriError } from "./uri.js";
-export type { S3Client, HeadObjectResult } from "./s3-client.js";
-export type { S3Watch, S3Event, WatchMap, S3Baseline, TargetCondition } from "./types.js";
+export { S3Watcher, formatTimeLeft } from './watcher.js'
+export { snapshotObject, detectChanges, buildTimeoutEvent } from './poller.js'
+export { createS3Client, isNotFoundError } from './s3-client.js'
+export { parseS3Uri, S3UriError } from './uri.js'
+export { S3WatcherParams, MAX_TIMEOUT_SECONDS } from './toolAction.js'
+export { buildStatusLine, buildChangeChatMessage, buildStartupChatMessage } from './format.js'
+export type { S3Watch, S3Event, WatchMap, S3Baseline, TargetCondition } from './types.js'
+export type { S3Client, HeadObjectResult } from './s3-client.js'

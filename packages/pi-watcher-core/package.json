@@ -18,6 +18,10 @@
     "./error-tracker": "./src/error-tracker.ts",
     "./tool-activation": "./src/tool-activation.ts",
     "./seed-baselines": "./src/seed-baselines.ts",
+    "./base-watcher-types": "./src/base-watcher-types.ts",
+    "./base-watcher": "./src/base-watcher.ts",
+    "./watcher-widget": "./src/watcher-widget.ts",
+    "./browse-view": "./src/browse-view.ts",
     ".": "./src/lib.ts"
   },
   "peerDependencies": {

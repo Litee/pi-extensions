@@ -24,28 +24,36 @@ export class S3UriError extends Error {
  *
  * Strategy (in order):
  *  1. If it already fits, return as-is.
- *  2. Parse into `s3://bucket/` prefix + middle path segments + last segment.
- *     Compress middle segments to their first letter, left-to-right, until it fits.
- *  3. If still too long after all segments are compressed, fall back to
- *     end-truncation with "..." (3 ASCII dots, not ellipsis char).
+ *  2. If `maxLen <= 1`, hard-slice to `maxLen`.
+ *  3. If not an `s3://` URI, return `uri.slice(0, maxLen - 1) + '…'`.
+ *  4. Parse into `prefix = "s3://bucket/"`, `middle[]` (all segments except
+ *     last), and `last` (filename).
+ *  5. If no middle segments, fallback truncate: `uri.slice(0, maxLen - 1) + '…'`.
+ *  6. Find the most informative ellipsis form that still fits — try forms from
+ *     most-compressed to least-compressed, keeping the last one that fits:
+ *       keep=0: `s3://bucket/…/last`
+ *       keep=1: `s3://bucket/seg0/…/last`
+ *       … up to keep = middle.length - 1
+ *     Since each successive form is strictly longer, iteration stops at the
+ *     first form that exceeds `maxLen`.
+ *  7. If no ellipsis form fits, fallback truncate: `uri.slice(0, maxLen - 1) + '…'`.
  *
- * The last path segment (filename) is always preserved in full.
- * Segments that are already one character long are skipped.
+ * Uses a single `…` (U+2026 HORIZONTAL ELLIPSIS, 1 char) throughout.
+ * The last path segment (filename) is always preserved when any ellipsis form fits.
  */
 export function compressS3Uri(uri: string, maxLen: number): string {
 	if (uri.length <= maxLen) return uri;
-	// Guard: if maxLen is too small to even fit "...", just slice hard.
-	if (maxLen <= 3) return uri.substring(0, maxLen);
+	if (maxLen <= 1) return uri.slice(0, maxLen);
 
 	const lower = uri.toLowerCase();
 	if (!lower.startsWith("s3://")) {
-		return uri.substring(0, maxLen - 3) + "...";
+		return uri.slice(0, maxLen - 1) + "\u2026";
 	}
 
 	const rest = uri.slice("s3://".length);
 	const slashIdx = rest.indexOf("/");
 	if (slashIdx === -1) {
-		return uri.substring(0, maxLen - 3) + "...";
+		return uri.slice(0, maxLen - 1) + "\u2026";
 	}
 
 	const bucket = rest.slice(0, slashIdx);
@@ -53,29 +61,31 @@ export function compressS3Uri(uri: string, maxLen: number): string {
 	const prefix = `s3://${bucket}/`;
 
 	const segments = key.split("/");
-	// Nothing to compress if there's only one segment (no middle segments)
 	if (segments.length <= 1) {
-		return uri.substring(0, maxLen - 3) + "...";
+		return uri.slice(0, maxLen - 1) + "\u2026";
 	}
 
 	const last = segments[segments.length - 1]!;
 	const middle = segments.slice(0, -1);
 
-	// Compress middle segments left-to-right until it fits
-	for (let i = 0; i < middle.length; i++) {
-		if (middle[i]!.length > 1) {
-			middle[i] = middle[i]![0]!;
-			const candidate = `${prefix}${middle.join("/")}/${last}`;
-			if (candidate.length <= maxLen) return candidate;
+	// Find the most informative (largest keep) ellipsis form that still fits.
+	// Since each successive candidate is strictly longer, stop at first overshoot.
+	let best: string | null = null;
+	for (let keep = 0; keep < middle.length; keep++) {
+		const candidate =
+			keep === 0
+				? `${prefix}\u2026/${last}`
+				: `${prefix}${middle.slice(0, keep).join("/")}/\u2026/${last}`;
+		if (candidate.length <= maxLen) {
+			best = candidate;
+		} else {
+			break;
 		}
 	}
+	if (best !== null) return best;
 
-	// All middle segments compressed — try the full-compressed form
-	const compressed = `${prefix}${middle.join("/")}/${last}`;
-	if (compressed.length <= maxLen) return compressed;
-
-	// Still too long: truncate from end
-	return compressed.substring(0, maxLen - 3) + "...";
+	// No ellipsis form fits — fall back to end-truncation
+	return uri.slice(0, maxLen - 1) + "\u2026";
 }
 
 export function parseS3Uri(raw: string): S3Uri {

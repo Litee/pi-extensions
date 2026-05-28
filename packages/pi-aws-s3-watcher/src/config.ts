@@ -78,8 +78,11 @@ export function loadConfig(): S3WatcherConfig {
  * (e.g. fields added by a newer version of the extension) are
  * preserved on disk when an older build writes back. Returns `true`
  * on success, `false` if anything threw — callers surface a toast.
+ *
+ * Fields set to `undefined` are omitted from JSON output, which
+ * effectively removes them from the stored config.
  */
-export function saveConfig(change: Partial<S3WatcherConfig>): boolean {
+export function saveConfig(change: { [K in keyof S3WatcherConfig]?: S3WatcherConfig[K] | undefined }): boolean {
 	const path = configFilePath();
 	try {
 		let existing: Record<string, unknown> = {};
