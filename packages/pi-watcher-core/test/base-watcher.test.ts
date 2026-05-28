@@ -135,14 +135,14 @@ class StubWatcher extends BaseWatcher<StubWatch, StubBaseline, StubEvent> {
   }
 
   // Injected stubs
-  snapshotFn: (watch: StubWatch) => Promise<StubBaseline> = async (_w) => ({
+  snapshotFn: (watch: StubWatch) => Promise<StubBaseline> = (_w) => Promise.resolve({
     seenAt: this._now(),
   })
   detectChangesFn: (_watch: StubWatch) => Promise<{
     newBaseline: StubBaseline
     events: StubEvent[]
     observedChange: boolean
-  }> = async (_w) => ({
+  }> = (_w) => Promise.resolve({
     newBaseline: { seenAt: this._now() },
     events: [],
     observedChange: false,
@@ -176,8 +176,8 @@ class StubWatcher extends BaseWatcher<StubWatch, StubBaseline, StubEvent> {
   }
 
   normaliseBaseline(raw: unknown): StubBaseline | null {
-    if (raw !== null && typeof raw === 'object' && 'seenAt' in (raw as object)) {
-      return { seenAt: Number((raw as { seenAt: unknown }).seenAt) }
+    if (raw !== null && typeof raw === 'object' && 'seenAt' in raw) {
+      return { seenAt: Number((raw as Record<string, unknown>).seenAt) }
     }
     return null
   }
@@ -195,8 +195,8 @@ class StubWatcher extends BaseWatcher<StubWatch, StubBaseline, StubEvent> {
     return events.map((e) => `• ${e.summary}`).join('\n')
   }
 
-  async addWatch(_params: Record<string, unknown>): Promise<ToolResult> {
-    return { content: [{ type: 'text', text: 'added' }], details: { action: 'add', ok: true } }
+  addWatch(_params: Record<string, unknown>): Promise<ToolResult> {
+    return Promise.resolve({ content: [{ type: 'text', text: 'added' }], details: { action: 'add', ok: true } })
   }
 
   // removeWatch is now provided by the base class — no override needed
@@ -247,7 +247,7 @@ function makeStub(opts: StubOpts = {}) {
   class DynStub extends StubWatcher {
     private _userDefault: 'widget' | 'statusline' | undefined = opts.userDefault
     override get hasWidget(): boolean { return opts.hasWidget ?? false }
-    override get itemSource() { return (opts.itemSource ?? 'user-tool') as import('../src/base-watcher-types.js').WatcherItemSource }
+    override get itemSource(): WatcherItemSource { return opts.itemSource ?? 'user-tool' }
     override get userDefaultDisplayMode(): 'widget' | 'statusline' | undefined {
       return this._userDefault
     }
@@ -267,7 +267,7 @@ function makeCommandCtx(stub: StubWatcher): CommandCtx {
   return {
     ui: {} as ReturnType<typeof makePi> as never,
     state: (stub as unknown as { _currentState(): WatcherState })._currentState(),
-    browse: async () => 'stay' as const,
+    browse: () => Promise.resolve('stay' as const),
     refresh: () => {},
     toggle: () => {},
     setDisplayMode: () => {},
@@ -413,7 +413,7 @@ describe('pollOnce', () => {
 
   it('emits sendMessage when detectChanges returns events', async () => {
     const { watcher, pi } = makeWatcher()
-    watcher.detectChangesFn = async () => ({
+    watcher.detectChangesFn = () => Promise.resolve({
       newBaseline: { seenAt: 1_000_000 },
       events: [{ watchId: 'w1', summary: 'thing happened' }],
       observedChange: true,
@@ -429,7 +429,7 @@ describe('pollOnce', () => {
 
   it('does not emit sendMessage when no events', async () => {
     const { watcher, pi } = makeWatcher()
-    watcher.detectChangesFn = async () => ({
+    watcher.detectChangesFn = () => Promise.resolve({
       newBaseline: { seenAt: 1_000_000 },
       events: [],
       observedChange: false,
@@ -451,7 +451,7 @@ describe('pollOnce', () => {
   it('stops polling when all user-tool watches become terminal after poll', async () => {
     vi.useFakeTimers()
     const { watcher } = makeWatcher()
-    watcher.detectChangesFn = async () => ({
+    watcher.detectChangesFn = () => Promise.resolve({
       newBaseline: { seenAt: 1_000_000 },
       events: [{ watchId: 'w1', summary: 'done' }],
       observedChange: true,
@@ -476,7 +476,7 @@ describe('pollOnce', () => {
 
   it('stores the new baseline after detectChanges', async () => {
     const { watcher } = makeWatcher()
-    watcher.detectChangesFn = async () => ({
+    watcher.detectChangesFn = () => Promise.resolve({
       newBaseline: { seenAt: 42 },
       events: [],
       observedChange: false,
@@ -514,6 +514,7 @@ describe('onTurnEnd', () => {
     const pi = makePi()
     ;(pi.getActiveTools as ReturnType<typeof vi.fn>).mockReturnValue([])
     const { watcher } = makeWatcher(pi)
+    // eslint-disable-next-line @typescript-eslint/unbound-method
     const appendEntry = pi.appendEntry as ReturnType<typeof vi.fn>
     watcher.onTurnEnd({})
     // no state change means no writeState call
@@ -563,6 +564,7 @@ describe('refreshStatus', () => {
 describe('writeState', () => {
   it('calls pi.appendEntry with stateCustomType and correct shape', () => {
     const { watcher, pi } = makeWatcher()
+    // eslint-disable-next-line @typescript-eslint/unbound-method
     const appendEntry = pi.appendEntry as ReturnType<typeof vi.fn>
     watcher.testWatches.set('w1', { id: 'w1', label: 'L', terminal: false, consecutiveErrors: 0 })
     watcher.writeState()
@@ -626,7 +628,7 @@ describe('buildMenu', () => {
   it('includes refresh item for scan watchers', () => {
     class ScanWatcher extends StubWatcher {
       override get itemSource(): WatcherItemSource { return 'scan' }
-      override async scanItems() { return [] }
+      override scanItems() { return Promise.resolve([]) }
     }
     const pi = makePi()
     const watcher = new ScanWatcher({ pi, now: () => 0 })
@@ -658,6 +660,7 @@ describe('executeTool', () => {
     vi.useFakeTimers()
     const { watcher, pi } = makeWatcher()
     const addWatchSpy = vi.spyOn(watcher, 'addWatch')
+    // eslint-disable-next-line @typescript-eslint/unbound-method
     const appendEntry = pi.appendEntry as ReturnType<typeof vi.fn>
     const result = await watcher.executeTool({ action: 'add', id: 'w1' })
     expect(addWatchSpy).toHaveBeenCalledOnce()
@@ -861,7 +864,7 @@ describe('noteSchedulerSuccess', () => {
 
   it('passes anyChange=true when detectChanges returns observedChange=true', async () => {
     const { watcher } = makeWatcher()
-    watcher.detectChangesFn = async () => ({
+    watcher.detectChangesFn = () => Promise.resolve({
       newBaseline: { seenAt: 0 },
       events: [],
       observedChange: true,
@@ -962,7 +965,7 @@ describe('statusLabel', () => {
     }
     const pi = makePi()
     const watcher = new LabeledWatcher({ pi, now: () => 0 })
-    watcher.detectChangesFn = async () => { throw new Error('poll failed') }
+    watcher.detectChangesFn = () => Promise.reject(new Error('poll failed'))
     const watch: StubWatch = { id: 'w1', label: 'L', terminal: false, consecutiveErrors: POLL_ERROR_THRESHOLD - 1 }
     watcher.testWatches.set('w1', watch)
     await watcher.pollWatch('w1')
@@ -1215,7 +1218,7 @@ describe('executeDrain', () => {
 describe('browseHeader', () => {
   const call = (count: number, filtered: number, paused?: boolean, activeCount?: number) => {
     const { watcher } = makeWatcher()
-    return (watcher as any).browseHeader({ count, filtered, paused, activeCount })
+    return (watcher as unknown as { browseHeader: (s: { count: number; filtered: number; paused?: boolean; activeCount?: number }) => string }).browseHeader({ count, filtered, paused, activeCount })
   }
 
   it('shows (active/total) format', () => {
@@ -1238,7 +1241,7 @@ describe('browseHeader', () => {
 describe('commandName', () => {
   it('defaults to extensionName', () => {
     const { watcher } = makeWatcher()
-    expect((watcher as any).commandName).toBe('stub-watcher')
+    expect((watcher as unknown as { commandName: string }).commandName).toBe('stub-watcher')
   })
 
   it('register() registers command under commandName', () => {
@@ -1247,6 +1250,7 @@ describe('commandName', () => {
     watcher.register(pi)
     expect(registerCommandSpy).toHaveBeenCalledWith(
       'stub-watcher',
+      // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment
       expect.objectContaining({ handler: expect.any(Function) }),
     )
   })
@@ -1261,6 +1265,7 @@ describe('commandName', () => {
     watcher.register(pi)
     expect(registerCommandSpy).toHaveBeenCalledWith(
       'my-command',
+      // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment
       expect.objectContaining({ handler: expect.any(Function) }),
     )
     // Must NOT be called with extensionName when commandName overrides
@@ -1278,17 +1283,17 @@ describe('commandName', () => {
 describe('browseHeader paused', () => {
   it('shows PAUSED suffix when paused=true', () => {
     const { watcher } = makeWatcher()
-    const result = (watcher as any).browseHeader({ count: 3, filtered: 3, paused: true })
+    const result = (watcher as unknown as { browseHeader: (s: { count: number; filtered: number; paused?: boolean; activeCount?: number }) => string }).browseHeader({ count: 3, filtered: 3, paused: true })
     expect(result).toBe('(3/3) · PAUSED')
   })
   it('no suffix when paused=false', () => {
     const { watcher } = makeWatcher()
-    const result = (watcher as any).browseHeader({ count: 3, filtered: 3, paused: false })
+    const result = (watcher as unknown as { browseHeader: (s: { count: number; filtered: number; paused?: boolean; activeCount?: number }) => string }).browseHeader({ count: 3, filtered: 3, paused: false })
     expect(result).toBe('(3/3)')
   })
   it('shows (active/total) PAUSED when activeCount provided', () => {
     const { watcher } = makeWatcher()
-    const result = (watcher as any).browseHeader({ count: 5, filtered: 2, paused: true, activeCount: 2 })
+    const result = (watcher as unknown as { browseHeader: (s: { count: number; filtered: number; paused?: boolean; activeCount?: number }) => string }).browseHeader({ count: 5, filtered: 2, paused: true, activeCount: 2 })
     expect(result).toBe('(2/5) · PAUSED')
   })
 })
@@ -1361,8 +1366,9 @@ describe('browseAction return value', () => {
     const watcher = makeStub({ hasWidget: false })
     const ctx = makeBrowseCtxForAction()
     const openBrowseViewMock = vi.mocked(browseViewModule.openBrowseView)
-    openBrowseViewMock.mockImplementationOnce(async (opts) => {
+    openBrowseViewMock.mockImplementationOnce((opts) => {
       opts.onQuit?.()
+      return Promise.resolve()
     })
     const result = await watcher.browseAction(ctx)
     expect(result).toBe('close')
@@ -1379,7 +1385,7 @@ describe('Browse menu item returns browseAction result', () => {
     const items = watcher.buildMenu()
     const browse = items.find(i => i.id === 'browse')!
     const ctx = makeCommandCtx(watcher)
-    ctx.browse = async () => 'close'
+    ctx.browse = () => Promise.resolve('close' as const)
     const result = await browse.run(ctx)
     expect(result).toBe('close')
   })
@@ -1389,7 +1395,7 @@ describe('Browse menu item returns browseAction result', () => {
     const items = watcher.buildMenu()
     const browse = items.find(i => i.id === 'browse')!
     const ctx = makeCommandCtx(watcher)
-    ctx.browse = async () => 'stay'
+    ctx.browse = () => Promise.resolve('stay' as const)
     const result = await browse.run(ctx)
     expect(result).toBe('stay')
   })

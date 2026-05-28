@@ -199,15 +199,15 @@ export abstract class BaseWatcher<
    * The base class handles removing the key from `this.watches` and
    * `this.baselines` after this method returns successfully.
    */
-  async removeWatch(watch: TWatch): Promise<ToolResult> {
+  removeWatch(watch: TWatch): Promise<ToolResult> {
     const remaining = this.watches.size - 1
-    return {
+    return Promise.resolve({
       content: [{
         type: 'text' as const,
         text: `${this.statusLabel}: removed '${this.watchKey(watch)}'. ${remaining} watch(es) remaining.`,
       }],
       details: { action: 'remove', ok: true, watchKey: this.watchKey(watch) },
-    }
+    })
   }
 
   // -------------------------------------------------------------------------
@@ -569,8 +569,8 @@ export abstract class BaseWatcher<
         label: this.toolLabel,
         description: this.toolDescription,
         parameters: this.toolParameters() ?? {},
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
         execute: async (_toolCallId: string, params: unknown) =>
+          // eslint-disable-next-line @typescript-eslint/no-unsafe-return, @typescript-eslint/no-explicit-any
           this.executeTool(params as Record<string, unknown>) as unknown as Promise<any>,
       })
     }
@@ -1094,7 +1094,7 @@ export abstract class BaseWatcher<
       label: (state) =>
         `Browse ${this.view.nounPlural ?? this.view.noun + 's'} (${this.browseCount(state)})`,
       disabled: (state) => state.watchCount === 0,
-      run: async (ctx) => ctx.browse(),
+      run: (ctx) => ctx.browse(),
     })
 
     // Refresh (scan watchers only)
@@ -1102,9 +1102,9 @@ export abstract class BaseWatcher<
       items.push({
         id: 'refresh',
         label: () => 'Refresh',
-        run: async (ctx) => {
+        run: (ctx): Promise<MenuResult> => {
           ctx.refresh()
-          return 'rerender'
+          return Promise.resolve('rerender')
         },
       })
     }
@@ -1113,9 +1113,9 @@ export abstract class BaseWatcher<
     items.push({
       id: 'paused',
       label: (state) => `Paused: ${state.paused ? 'on' : 'off'}`,
-      run: async (ctx) => {
+      run: (ctx): Promise<MenuResult> => {
         ctx.toggle('paused')
-        return 'rerender'
+        return Promise.resolve('rerender')
       },
     })
 
@@ -1124,9 +1124,9 @@ export abstract class BaseWatcher<
       items.push({
         id: 'displayMode',
         label: (state) => `Display mode: ${state.displayMode}`,
-        run: async (ctx) => {
+        run: (ctx): Promise<MenuResult> => {
           ctx.setDisplayMode(ctx.state.displayMode === 'widget' ? 'statusline' : 'widget')
-          return 'rerender'
+          return Promise.resolve('rerender')
         },
       })
 
@@ -1134,7 +1134,7 @@ export abstract class BaseWatcher<
       items.push({
         id: 'userDefaultDisplayMode',
         label: (state) => `Default display mode: ${state.userDefaultDisplayMode ?? 'unset'}`,
-        run: async (ctx) => {
+        run: (ctx): Promise<MenuResult> => {
           const current = this.userDefaultDisplayMode
           const next: 'widget' | 'statusline' | undefined =
             current === undefined ? 'widget'
@@ -1150,7 +1150,7 @@ export abstract class BaseWatcher<
               'warning',
             )
           }
-          return 'rerender'
+          return Promise.resolve('rerender')
         },
       })
     }
@@ -1159,7 +1159,7 @@ export abstract class BaseWatcher<
     items.push({
       id: 'close',
       label: () => 'Close',
-      run: async () => 'close',
+      run: (): Promise<MenuResult> => Promise.resolve('close'),
     })
 
     return this.customizeMenu(items)
@@ -1198,7 +1198,7 @@ export abstract class BaseWatcher<
     return {
       ui: surface,
       state,
-      browse: () => this.browseAction(ctx) as Promise<'stay' | 'close'>,
+      browse: () => this.browseAction(ctx),
       refresh: () => this.refreshStatus(),
       toggle: (flag) => {
         if (flag === 'paused') {

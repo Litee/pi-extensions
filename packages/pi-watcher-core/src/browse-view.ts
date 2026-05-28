@@ -127,8 +127,9 @@ export async function openMenuView(
   const ctxUi = (anyCtx as { ui?: { custom?: unknown } })?.ui
   if (typeof (ctxUi as { custom?: unknown })?.custom !== 'function') return
 
-  // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment
-  const customFn = (ctxUi as { custom: Function }).custom.bind(ctxUi)
+  const customFn = (ctxUi as {
+    custom: (factory: (tui: unknown, theme: unknown, kb: unknown, done: (result: _MenuSelection | null) => void) => unknown) => Promise<_MenuSelection | null>
+  }).custom.bind(ctxUi)
 
   let savedIndex = 0
 
@@ -137,15 +138,7 @@ export async function openMenuView(
     if (items.length === 0) break
 
     // Open menu overlay — resolves only when user picks an item or closes
-    // eslint-disable-next-line @typescript-eslint/no-unsafe-call
-    const sel = await (customFn as (
-      factory: (
-        tui: unknown,
-        theme: unknown,
-        kb: unknown,
-        done: (result: _MenuSelection | null) => void,
-      ) => unknown,
-    ) => Promise<_MenuSelection | null>)(
+    const sel = await customFn(
       (
         _tui: unknown,
         _theme: unknown,
@@ -308,7 +301,7 @@ function _buildBrowseComponent<TWatch>(
       }
       const currentFilter = searchInput.getValue()
       const filteredCount = currentFilter
-        ? filterWatches(sortedWatches, currentFilter, opts.filter).length
+        ? filterWatches(sortedWatches, currentFilter, (w, q) => opts.filter(w, q)).length
         : sortedWatches.length
       const hdr = opts.header({ count: sortedWatches.length, filtered: filteredCount })
       const titleLine = hdr
@@ -338,7 +331,7 @@ function _buildBrowseComponent<TWatch>(
   const slInternal = selectList as any
   // eslint-disable-next-line @typescript-eslint/no-unsafe-member-access
   slInternal.setFilter = (filter: string): void => {
-    const filtered = filterWatches(sortedWatches, filter, opts.filter)
+    const filtered = filterWatches(sortedWatches, filter, (w, q) => opts.filter(w, q))
     // eslint-disable-next-line @typescript-eslint/no-unsafe-member-access
     slInternal.filteredItems = filtered.map((w) => ({
       value: opts.view.renderItemRowText(w),
@@ -375,7 +368,7 @@ function _buildBrowseComponent<TWatch>(
       const plainCols = cols.map((c, i) => {
         if (i !== 0) return c
         const { color: _drop, ...rest } = c
-        return rest as typeof c
+        return rest
       })
       return '  ' + renderRowColumns(plainCols, contentWidth, theme)
     }
@@ -392,17 +385,18 @@ function _buildBrowseComponent<TWatch>(
   // ── Shared helper: rebuild filteredItems after mutation ───────────────────────
   function rebuildFilteredItems(): void {
     const currentFilter = searchInput.getValue()
-    const filtered = filterWatches(sortedWatches, currentFilter, opts.filter)
+    const filtered = filterWatches(sortedWatches, currentFilter, (w, q) => opts.filter(w, q))
     // eslint-disable-next-line @typescript-eslint/no-unsafe-member-access
     slInternal.filteredItems = filtered.map((w) => ({
       value: opts.view.renderItemRowText(w),
       label: computeRowLabel(w, opts.view, Math.max(1, lastWidth - SELECT_LIST_OVERHEAD), theme),
     }))
     // eslint-disable-next-line @typescript-eslint/no-unsafe-member-access
-    slInternal.selectedIndex = Math.min(
-      (slInternal.selectedIndex as number) ?? 0,
-      Math.max(0, ((slInternal.filteredItems as unknown[])?.length ?? 1) - 1),
-    )
+    const _currentIdx = (slInternal.selectedIndex as number) ?? 0
+    // eslint-disable-next-line @typescript-eslint/no-unsafe-member-access
+    const _itemCount = (slInternal.filteredItems as unknown[])?.length ?? 1
+    // eslint-disable-next-line @typescript-eslint/no-unsafe-member-access
+    slInternal.selectedIndex = Math.min(_currentIdx, Math.max(0, _itemCount - 1))
   }
 
   // (footer moved into header child above)
@@ -419,7 +413,6 @@ function _buildBrowseComponent<TWatch>(
 
   selectList.onCancel = () => done(undefined)
   selectList.onSelect = (item) => {
-    // eslint-disable-next-line @typescript-eslint/no-unsafe-member-access
     const watch = watchByValue.get(item.value)
     if (watch === undefined) return
     const pollIntervalMs = opts.getPollIntervalMs?.(watch)
@@ -444,7 +437,7 @@ function _buildBrowseComponent<TWatch>(
       if (w !== lastWidth) {
         lastWidth = w
         const currentFilter = searchInput.getValue()
-        const filtered = filterWatches(sortedWatches, currentFilter, opts.filter)
+        const filtered = filterWatches(sortedWatches, currentFilter, (w, q) => opts.filter(w, q))
         // eslint-disable-next-line @typescript-eslint/no-unsafe-member-access
         slInternal.filteredItems = filtered.map((watch) => ({
           value: opts.view.renderItemRowText(watch),
@@ -547,8 +540,10 @@ function _buildBrowseComponent<TWatch>(
         const removeAction = opts.rowActions.find((a) => a.id === 'remove')
         if (removeAction !== undefined) {
           // eslint-disable-next-line @typescript-eslint/no-unsafe-member-access
-          const selectedValue = (slInternal.filteredItems as Array<{ value: string; label: string }> | undefined)
-            ?.[slInternal.selectedIndex as number ?? 0]?.value
+          const _filteredItems = slInternal.filteredItems as Array<{ value: string; label: string }> | undefined
+          // eslint-disable-next-line @typescript-eslint/no-unsafe-member-access
+          const _selectedIdx = (slInternal.selectedIndex as number) ?? 0
+          const selectedValue = _filteredItems?.[_selectedIdx]?.value
           const watch = selectedValue !== undefined ? watchByValue.get(selectedValue) : undefined
           if (watch !== undefined) {
             confirmState = { kind: 'unwatch', watch, label: opts.view.renderItemRowText(watch) }

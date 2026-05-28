@@ -627,8 +627,8 @@ describe('S3Watcher view', () => {
     })
     it('browseOptions.getPollIntervalMs calls schedulerFor with watchId', () => {
       const mockScheduler = { intervalMs: 120_000 }
-      vi.spyOn(watcher as any, 'schedulerFor').mockReturnValue(mockScheduler)
-      const opts = (watcher as any).browseOptions() as { getPollIntervalMs?: (w: import('../src/types.js').S3Watch) => number }
+      vi.spyOn(watcher as unknown as { schedulerFor: () => unknown }, 'schedulerFor').mockReturnValue(mockScheduler)
+      const opts = (watcher as unknown as { browseOptions: () => { getPollIntervalMs?: (w: import('../src/types.js').S3Watch) => number } }).browseOptions()
       const result = opts.getPollIntervalMs?.({ ...baseW, watchId: 'test-id' })
       expect(result).toBe(120_000)
     })
@@ -815,6 +815,7 @@ describe('S3Watcher statusLabel / displayName', () => {
 describe('S3Watcher view.compressColumns', () => {
   it('is defined', () => {
     const { watcher } = makeWatcher()
+    // eslint-disable-next-line @typescript-eslint/unbound-method
     expect(watcher.view.compressColumns).toBeDefined()
   })
 
@@ -951,6 +952,7 @@ describe('S3Watcher.browseOptions', () => {
   it('browseOptions.onDrain calls executeDrain', () => {
     const drainSpy = vi.spyOn(watcher as unknown as { executeDrain(): [] }, 'executeDrain').mockReturnValue([])
     const opts = (watcher as unknown as { browseOptions(): { onDrain?(): [] } }).browseOptions()
+    // eslint-disable-next-line @typescript-eslint/unbound-method
     expect(opts.onDrain).toBeDefined()
     opts.onDrain!()
     expect(drainSpy).toHaveBeenCalled()
@@ -1050,18 +1052,18 @@ describe('timeout column in renderItemRowTUI', () => {
 describe('commandName', () => {
   it('is "aws-s3-watcher"', () => {
     const { watcher } = makeWatcher()
-    expect((watcher as any).commandName).toBe('aws-s3-watcher')
+    expect((watcher as unknown as { commandName: string }).commandName).toBe('aws-s3-watcher')
   })
 
   it('widget opts include commandName "aws-s3-watcher"', () => {
     const { watcher } = makeWatcher()
-    const widgetOpts = (watcher['widget'] as any)?.opts
+    const widgetOpts = (watcher['widget'] as { opts?: { commandName?: string; getPaused?: () => boolean } } | null | undefined)?.opts
     expect(widgetOpts?.commandName).toBe('aws-s3-watcher')
   })
 
   it('widget opts include getPaused function (Change 6)', () => {
     const { watcher } = makeWatcher()
-    const widgetOpts = (watcher['widget'] as any)?.opts
+    const widgetOpts = (watcher['widget'] as { opts?: { commandName?: string; getPaused?: () => boolean } } | null | undefined)?.opts
     expect(typeof widgetOpts?.getPaused).toBe('function')
     // initially not paused
     expect(widgetOpts?.getPaused()).toBe(false)

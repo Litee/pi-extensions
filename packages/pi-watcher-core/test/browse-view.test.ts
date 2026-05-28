@@ -109,7 +109,10 @@ type ComponentLike = {
   handleInput(data: string): void
 }
 
-function makeBrowseCtx(): { ctx: object; getComponent(): ComponentLike | null } {
+/** Factory signature used by ctx.ui.custom in openMenuView tests. */
+type _FactoryFn = (tui: unknown, theme: unknown, kb: unknown, done: (result: unknown) => void) => ComponentLike
+
+function makeBrowseCtx(): { ctx: object; getComponent: () => ComponentLike | null } {
   const fakeTui = { requestRender: vi.fn() }
   const theme = { fg: (_: string, t: string) => t, bold: (t: string) => t }
   let capturedComponent: ComponentLike | null = null
@@ -1068,6 +1071,7 @@ describe('WatcherView.compressColumns', () => {
       renderEventRow: () => '',
       // no compressColumns
     }
+    // eslint-disable-next-line @typescript-eslint/unbound-method
     expect(view.compressColumns).toBeUndefined()
   })
 })
@@ -1218,7 +1222,8 @@ describe('renderItem selection highlighting', () => {
       ...viewOverrides,
     })
     await openBrowseView(makeSimpleBrowseOpts(watches, { view }), ctx)
-    return { component: captured!, sl: MockSelectList.getInstances()[0]! as any }
+    type _SlInternal = { renderItem: (item: { value: string; label: string }, isSelected: boolean, width: number) => string }
+    return { component: captured!, sl: MockSelectList.getInstances()[0]! as unknown as _SlInternal }
   }
 
   it('slInternal.renderItem is patched onto the SelectList instance', async () => {
@@ -1336,7 +1341,7 @@ describe('openMenuView', () => {
   it('calls ctx.ui.custom with a factory function when items exist', async () => {
     // mock: immediately return null (simulate escape) so the loop exits
     const customSpy = vi.fn().mockResolvedValue(null)
-    const items = [{ id: 'a', label: 'A', run: async () => 'close' as const }]
+    const items = [{ id: 'a', label: 'A', run: () => Promise.resolve('close' as const) }]
     const ctx = { ui: { custom: customSpy, theme: { bold: (s: string) => s, fg: (_: string, s: string) => s } } }
     await openMenuView('Test', () => items, ctx)
     expect(customSpy).toHaveBeenCalledOnce()
@@ -1345,22 +1350,22 @@ describe('openMenuView', () => {
 
   it('factory returns a component with render, handleInput, invalidate', () => {
     // Capture the factory without invoking it; return null so the loop exits
-    let capturedFactory: Function | null = null
+    let capturedFactory: _FactoryFn | null = null
     const ctx = {
       ui: {
-        custom: (factory: Function) => { capturedFactory = factory; return Promise.resolve(null) },
+        custom: (factory: _FactoryFn) => { capturedFactory = factory; return Promise.resolve(null) },
         theme: { bold: (s: string) => s, fg: (_: string, s: string) => s },
       },
     }
     // fire-and-forget: capturedFactory is set synchronously on first await suspension
-    void openMenuView('Test', () => [{ id: 'a', label: 'Item A', run: async () => 'close' as const }], ctx)
+    void openMenuView('Test', () => [{ id: 'a', label: 'Item A', run: () => Promise.resolve('close' as const) }], ctx)
     expect(capturedFactory).not.toBeNull()
 
     // Call factory with the 4-arg SDK signature
     const component = capturedFactory!(
       { requestRender: vi.fn() },
       null, null, vi.fn(),
-    ) as { render: unknown; handleInput: unknown; invalidate: unknown }
+    )
     expect(component).toHaveProperty('render')
     expect(component).toHaveProperty('handleInput')
     expect(component).toHaveProperty('invalidate')
@@ -1368,7 +1373,7 @@ describe('openMenuView', () => {
 
   it('Escape calls done(null) and resolves the promise', async () => {
     let doneCalledWithNull = false
-    const customSpy = vi.fn().mockImplementation((factory: Function) => {
+    const customSpy = vi.fn().mockImplementation((factory: _FactoryFn) => {
       const component = factory(
         { requestRender: vi.fn() }, null, null,
         (r: unknown) => { doneCalledWithNull = r === null },
@@ -1376,7 +1381,7 @@ describe('openMenuView', () => {
       component.handleInput('escape')
       return Promise.resolve(null)
     })
-    const items = [{ id: 'a', label: 'A', run: async () => 'close' as const }]
+    const items = [{ id: 'a', label: 'A', run: () => Promise.resolve('close' as const) }]
     const ctx = { ui: { custom: customSpy, theme: { bold: (s: string) => s, fg: (_: string, s: string) => s } } }
     await expect(openMenuView('Test', () => items, ctx)).resolves.toBeUndefined()
     expect(doneCalledWithNull).toBe(true)
@@ -1384,7 +1389,7 @@ describe('openMenuView', () => {
 
   it('"q" calls done(null) and resolves the promise', async () => {
     let doneCalledWithNull = false
-    const customSpy = vi.fn().mockImplementation((factory: Function) => {
+    const customSpy = vi.fn().mockImplementation((factory: _FactoryFn) => {
       const component = factory(
         { requestRender: vi.fn() }, null, null,
         (r: unknown) => { doneCalledWithNull = r === null },
@@ -1392,7 +1397,7 @@ describe('openMenuView', () => {
       component.handleInput('q')
       return Promise.resolve(null)
     })
-    const items = [{ id: 'a', label: 'A', run: async () => 'close' as const }]
+    const items = [{ id: 'a', label: 'A', run: () => Promise.resolve('close' as const) }]
     const ctx = { ui: { custom: customSpy, theme: { bold: (s: string) => s, fg: (_: string, s: string) => s } } }
     await expect(openMenuView('Test', () => items, ctx)).resolves.toBeUndefined()
     expect(doneCalledWithNull).toBe(true)
@@ -1402,12 +1407,12 @@ describe('openMenuView', () => {
     const runSpy = vi.fn().mockResolvedValue('close' as const)
     const items = [{ id: 'a', label: 'A', run: runSpy }]
     let doneCalledWithSelection = false
-    const customSpy = vi.fn().mockImplementation((factory: Function) => {
+    const customSpy = vi.fn().mockImplementation((factory: _FactoryFn) => {
       const component = factory(
         { requestRender: vi.fn() }, null, null,
         (r: unknown) => {
           // done is called with { index, item } synchronously on Enter
-          doneCalledWithSelection = r !== null && typeof r === 'object' && 'item' in (r as object)
+          doneCalledWithSelection = r !== null && typeof r === 'object' && 'item' in (r as Record<string, unknown>)
         },
       )
       component.handleInput('enter')
@@ -1420,7 +1425,7 @@ describe('openMenuView', () => {
   })
 
   it('"close" result from item.run() resolves the promise', async () => {
-    const items = [{ id: 'a', label: 'A', run: async () => 'close' as const }]
+    const items = [{ id: 'a', label: 'A', run: () => Promise.resolve('close' as const) }]
     const customSpy = vi.fn().mockResolvedValue({ index: 0, item: items[0] })
     const ctx = { ui: { custom: customSpy, theme: { bold: (s: string) => s, fg: (_: string, s: string) => s } } }
     await expect(openMenuView('Test', () => items, ctx)).resolves.toBeUndefined()
@@ -1431,7 +1436,7 @@ describe('openMenuView', () => {
       .mockResolvedValueOnce('stay' as const)
       .mockResolvedValueOnce('close' as const)
     const items = [
-      { id: 'a', label: 'A', run: async () => 'close' as const },
+      { id: 'a', label: 'A', run: () => Promise.resolve('close' as const) },
       { id: 'b', label: 'B', run: runFn },
     ]
     const customSpy = vi.fn().mockResolvedValue({ index: 1, item: items[1] })
@@ -1445,10 +1450,10 @@ describe('openMenuView', () => {
     MockSelectList.reset()
     const capturedInitialIndices: number[] = []
     const items = [
-      { id: 'a', label: 'A', run: async () => 'close' as const },
+      { id: 'a', label: 'A', run: () => Promise.resolve('close' as const) },
       { id: 'b', label: 'B', run: vi.fn().mockResolvedValueOnce('stay').mockResolvedValueOnce('close') },
     ]
-    const customSpy = vi.fn().mockImplementation((factory: Function) => {
+    const customSpy = vi.fn().mockImplementation((factory: _FactoryFn) => {
       // Factory creates a new SelectList; capture its initial selectedIndex after factory runs
       const slCountBefore = MockSelectList.getInstances().length
       factory({ requestRender: vi.fn() }, null, null, vi.fn())
@@ -1479,7 +1484,7 @@ describe('openMenuView — close before run (no stacking)', () => {
       label: 'Item A',
       run: vi.fn().mockResolvedValueOnce('stay').mockResolvedValueOnce('close'),
     }]
-    const customSpy = vi.fn().mockImplementation(async (factory: Function) => {
+    const customSpy = vi.fn().mockImplementation((factory: _FactoryFn) => {
       const component = factory({ requestRender: vi.fn() }, null, null, vi.fn())
       component.handleInput('enter')
       return { index: 0, item: items[0] }
@@ -1494,7 +1499,7 @@ describe('openMenuView — close before run (no stacking)', () => {
   it('null result (escape) exits without calling any item.run', async () => {
     const runSpy = vi.fn()
     const items: MenuViewItem[] = [{ id: 'a', label: 'A', run: runSpy }]
-    const customSpy = vi.fn().mockImplementation((factory: Function) => {
+    const customSpy = vi.fn().mockImplementation((factory: _FactoryFn) => {
       const component = factory({ requestRender: vi.fn() }, null, null, vi.fn())
       component.handleInput('escape')
       return Promise.resolve(null)
@@ -1510,9 +1515,9 @@ describe('openMenuView — close before run (no stacking)', () => {
     const items: MenuViewItem[] = [{
       id: 'a',
       label: 'A',
-      run: async () => { events.push('run:start'); return 'close' as const },
+      run: () => { events.push('run:start'); return Promise.resolve('close' as const) },
     }]
-    const customSpy = vi.fn().mockImplementation(async (factory: Function) => {
+    const customSpy = vi.fn().mockImplementation((factory: _FactoryFn) => {
       events.push('custom:open')
       factory({ requestRender: vi.fn() }, null, null, vi.fn())
       const result = { index: 0, item: items[0]! }
@@ -1552,7 +1557,7 @@ describe('openMenuView — disabled items', () => {
     const items: MenuViewItem[] = [
       { id: 'a', label: 'Item A', disabled: true, run: runSpy },
     ]
-    const customSpy = vi.fn().mockImplementation(async (factory: Function) => {
+    const customSpy = vi.fn().mockImplementation((factory: _FactoryFn) => {
       const component = factory({ requestRender: vi.fn() }, null, null, (r: unknown) => r)
       // Press Enter — should be a no-op because item is disabled
       component.handleInput('enter')
@@ -1568,7 +1573,7 @@ describe('openMenuView — disabled items', () => {
     const items: MenuViewItem[] = [
       { id: 'a', label: 'Item A', disabled: false, run: runSpy },
     ]
-    const customSpy = vi.fn().mockImplementation(async (factory: Function) => {
+    const customSpy = vi.fn().mockImplementation((factory: _FactoryFn) => {
       const component = factory({ requestRender: vi.fn() }, null, null, (r: unknown) => r)
       component.handleInput('enter')
       return { index: 0, item: items[0] }
@@ -1580,10 +1585,10 @@ describe('openMenuView — disabled items', () => {
 
   it('slInternal.renderItem renders disabled item with dim prefix', async () => {
     const items: MenuViewItem[] = [
-      { id: 'a', label: 'Item A', disabled: true, run: async () => 'close' as const },
+      { id: 'a', label: 'Item A', disabled: true, run: () => Promise.resolve('close' as const) },
     ]
     let capturedSl: unknown = null
-    const customSpy = vi.fn().mockImplementation(async (factory: Function) => {
+    const customSpy = vi.fn().mockImplementation((factory: _FactoryFn) => {
       const theme = { fg: (alias: string, t: string) => `[${alias}]${t}`, bold: (t: string) => t }
       factory({ requestRender: vi.fn() }, theme, null, (r: unknown) => r)
       // Capture the SelectList instance
@@ -1593,7 +1598,8 @@ describe('openMenuView — disabled items', () => {
     })
     const ctx = { ui: { custom: customSpy, theme: { fg: (alias: string, t: string) => `[${alias}]${t}`, bold: (t: string) => t } } }
     await openMenuView('Test', () => items, ctx)
-    const sl = capturedSl as any
+    type _SlLike = { renderItem?: (item: { value: string; label: string }, isSelected: boolean, width: number) => string }
+    const sl = capturedSl as _SlLike
     if (sl?.renderItem) {
       const result = sl.renderItem({ value: 'a', label: 'Item A' }, false, 40)
       expect(result).toContain('[dim]')
@@ -1602,10 +1608,10 @@ describe('openMenuView — disabled items', () => {
 
   it('selected enabled item has accent on arrow AND label', async () => {
     const items: MenuViewItem[] = [
-      { id: 'a', label: 'Item A', run: async () => 'close' as const },
+      { id: 'a', label: 'Item A', run: () => Promise.resolve('close' as const) },
     ]
     let capturedSl: unknown = null
-    const customSpy = vi.fn().mockImplementation(async (factory: Function) => {
+    const customSpy = vi.fn().mockImplementation((factory: _FactoryFn) => {
       factory({ requestRender: vi.fn() }, null, null, (r: unknown) => r)
       capturedSl = MockSelectList.getInstances().at(-1)
       return null
@@ -1613,7 +1619,8 @@ describe('openMenuView — disabled items', () => {
     const theme = { fg: (alias: string, t: string) => `[${alias}]${t}`, bold: (t: string) => t }
     const ctx = { ui: { custom: customSpy, theme } }
     await openMenuView('Test', () => items, ctx)
-    const sl = capturedSl as any
+    type _SlLike = { renderItem?: (item: { value: string; label: string }, isSelected: boolean, width: number) => string }
+    const sl = capturedSl as _SlLike
     if (sl?.renderItem) {
       const result: string = sl.renderItem({ value: 'a', label: 'Item A' }, true, 40)
       expect(result).toContain('[accent]→')
