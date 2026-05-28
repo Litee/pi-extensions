@@ -177,7 +177,7 @@ class StubWatcher extends BaseWatcher<StubWatch, StubBaseline, StubEvent> {
 
   normaliseBaseline(raw: unknown): StubBaseline | null {
     if (raw !== null && typeof raw === 'object' && 'seenAt' in raw) {
-      return { seenAt: Number((raw as Record<string, unknown>).seenAt) }
+      return { seenAt: Number((raw as Record<string, unknown>)['seenAt']) }
     }
     return null
   }
@@ -1218,7 +1218,7 @@ describe('executeDrain', () => {
 describe('browseHeader', () => {
   const call = (count: number, filtered: number, paused?: boolean, activeCount?: number) => {
     const { watcher } = makeWatcher()
-    return (watcher as unknown as { browseHeader: (s: { count: number; filtered: number; paused?: boolean; activeCount?: number }) => string }).browseHeader({ count, filtered, paused, activeCount })
+    return (watcher as unknown as { browseHeader: (s: { count: number; filtered: number; paused?: boolean; activeCount?: number }) => string }).browseHeader({ count, filtered, ...(paused !== undefined ? { paused } : {}), ...(activeCount !== undefined ? { activeCount } : {}) })
   }
 
   it('shows (active/total) format', () => {

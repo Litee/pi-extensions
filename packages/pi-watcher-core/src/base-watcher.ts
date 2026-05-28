@@ -32,6 +32,7 @@ import type {
   BrowseViewOptions,
   CommandCtx,
   MenuItem,
+  MenuResult,
   ToolResult,
   WatcherItemSource,
   WatcherState,

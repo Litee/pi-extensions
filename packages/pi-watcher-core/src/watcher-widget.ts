@@ -54,7 +54,7 @@ export function formatWidgetHeader(extensionName: string, activeCount: number, t
  * The widget is display-only — directs users to the command menu for actions.
  */
 export function formatWidgetFooter(commandName: string): string {
-  return `/${commandName} for actions`
+  return `/${commandName} for menu`
 }
 
 // ---------------------------------------------------------------------------
@@ -141,15 +141,11 @@ class WatcherWidgetImpl<TWatch extends WatchLike, TEvent> implements WatcherWidg
     const totalCount = watches.length
     const activeCount = watches.filter((w) => !w.terminal).length
     const paused = this.opts.getPaused?.() ?? false
-    const header = formatWidgetHeader(
-      this.opts.displayName ?? this.opts.extensionName,
-      activeCount,
-      totalCount,
-      paused,
-    )
+    const name = this.opts.displayName ?? this.opts.extensionName
+    const count = t.fg('dim', ` (${activeCount}/${totalCount})${paused ? ' · PAUSED' : ''}`)
     const footer = formatWidgetFooter(this.opts.commandName ?? this.opts.extensionName)
 
-    const headerLine = `${t.fg('accent', t.bold(header))}  ${t.fg('dim', footer)}`
+    const headerLine = `${t.fg('accent', t.bold(name))}${count}  ${t.fg('dim', footer)}`
 
     const container = new Container()
     const borderColor = (s: string) => t.fg('accent', s)
@@ -162,9 +158,15 @@ class WatcherWidgetImpl<TWatch extends WatchLike, TEvent> implements WatcherWidg
     for (let i = 0; i < watches.length; i++) {
       const w = watches[i]
       if (w === undefined) continue
-      const rawCols = this.view.renderItemRowTUI(w, { theme: t as never, width })
-      const cols = this.view.compressColumns ? this.view.compressColumns(rawCols, width) : rawCols
-      const rendered = renderRowColumns(cols, width, t)
+      // Render at width-1 to account for the 1-char left padding added by Text(…,1,0).
+      // Strip first-column color (widget rows are plain; accent is reserved for browse selection).
+      const rawCols = this.view.renderItemRowTUI(w, { theme: t as never, width: width - 1 })
+      const baseCols = this.view.compressColumns
+        ? this.view.compressColumns(rawCols, width - 1)
+        : rawCols
+      const { color: _drop, ...firstRest } = baseCols[0] ?? { name: '', text: '' }
+      const cols = [{ ...firstRest } as typeof baseCols[0], ...baseCols.slice(1)]
+      const rendered = renderRowColumns(cols, width - 1, t)
       rowLines.push(rendered)
     }
 

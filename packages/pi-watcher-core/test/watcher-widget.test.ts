@@ -50,7 +50,7 @@ describe('formatWidgetHeader paused', () => {
 
 describe('formatWidgetFooter', () => {
   it('points to command menu instead of hotkeys', () => {
-    expect(formatWidgetFooter('s3-watcher')).toBe('/s3-watcher for actions')
+    expect(formatWidgetFooter('s3-watcher')).toBe('/s3-watcher for menu')
   })
 
   it('uses the provided command name', () => {

@@ -1066,6 +1066,6 @@ describe('commandName', () => {
     const widgetOpts = (watcher['widget'] as { opts?: { commandName?: string; getPaused?: () => boolean } } | null | undefined)?.opts
     expect(typeof widgetOpts?.getPaused).toBe('function')
     // initially not paused
-    expect(widgetOpts?.getPaused()).toBe(false)
+    expect(widgetOpts?.getPaused?.()).toBe(false)
   })
 })
