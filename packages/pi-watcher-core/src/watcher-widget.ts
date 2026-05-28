@@ -65,6 +65,12 @@ class WatcherWidgetImpl<TWatch extends WatchLike, TEvent> implements WatcherWidg
   private ctx: unknown = undefined
   private refreshInterval: NodeJS.Timeout | undefined
   private readonly unsubscribe: () => void
+  /**
+   * Whether the widget panel is currently registered with `setWidget`.
+   * Prevents `refresh()` from calling `setWidget` on every poll cycle,
+   * which would cause pi to reorder panels (#0002).
+   */
+  private _registered = false
 
   constructor(
     private readonly piEvents: Pick<ExtensionAPI['events'], 'on' | 'emit'>,
@@ -87,15 +93,18 @@ class WatcherWidgetImpl<TWatch extends WatchLike, TEvent> implements WatcherWidg
       return
     }
 
-    const anyCtx = ctx as { ui?: { setWidget?: (...args: unknown[]) => void } }
-    anyCtx.ui?.setWidget?.(
-      this.widgetId,
-      (_tui: unknown, theme: unknown) => ({
-        render: (width: number) => this._renderWidget(width, theme),
-        invalidate: () => {},
-      }),
-      { placement: 'belowEditor' },
-    )
+    if (!this._registered) {
+      const anyCtx = ctx as { ui?: { setWidget?: (...args: unknown[]) => void } }
+      anyCtx.ui?.setWidget?.(
+        this.widgetId,
+        (_tui: unknown, theme: unknown) => ({
+          render: (width: number) => this._renderWidget(width, theme),
+          invalidate: () => {},
+        }),
+        { placement: 'belowEditor' },
+      )
+      this._registered = true
+    }
 
     if (this.refreshInterval === undefined) {
       this.refreshInterval = setInterval(
@@ -108,6 +117,7 @@ class WatcherWidgetImpl<TWatch extends WatchLike, TEvent> implements WatcherWidg
   hide(ctx: unknown): void {
     const anyCtx = ctx as { ui?: { setWidget?: (...args: unknown[]) => void } }
     anyCtx.ui?.setWidget?.(this.widgetId, undefined)
+    this._registered = false
     this.ctx = undefined
     if (this.refreshInterval !== undefined) {
       clearInterval(this.refreshInterval)
@@ -125,7 +135,14 @@ class WatcherWidgetImpl<TWatch extends WatchLike, TEvent> implements WatcherWidg
 
   refresh(_watches: readonly TWatch[], _state: WatcherState): void {
     if (this.ctx !== undefined) {
-      this.show(this.ctx)
+      if (!this._registered) {
+        // Widget was hidden (e.g. watch list was empty); re-register now that
+        // watches are present again.
+        this.show(this.ctx)
+      }
+      // else: already registered — render callback already reads live watch
+      // state via getWatches(), so no setWidget call needed. Skipping it
+      // prevents pi from reordering panels on every poll cycle (#0002).
     }
   }
 

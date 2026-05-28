@@ -8,9 +8,11 @@
  * integration-only and excluded from unit-test coverage.
  */
 
-import { describe, expect, it } from 'vitest'
+import { describe, expect, it, vi } from 'vitest'
 
-import { formatWidgetFooter, formatWidgetHeader } from '../src/watcher-widget.js'
+import { createWatcherWidget, formatWidgetFooter, formatWidgetHeader } from '../src/watcher-widget.js'
+import type { WatcherWidgetOptions } from '../src/base-watcher-types.js'
+import type { WatchLike } from '../src/base-watcher-types.js'
 
 // ---------------------------------------------------------------------------
 // formatWidgetHeader
@@ -65,5 +67,88 @@ describe('formatWidgetFooter', () => {
     const footer = formatWidgetFooter('s3-watcher')
     expect(footer).not.toContain('p pause')
     expect(footer).not.toContain('q/esc')
+  })
+})
+
+// ---------------------------------------------------------------------------
+// WatcherWidgetImpl — setWidget guard (#0002)
+// ---------------------------------------------------------------------------
+
+type SimpleWatch = WatchLike & { id: string }
+
+function makeWidget(watches: SimpleWatch[]) {
+  const setWidget = vi.fn()
+  const ctx = { ui: { setWidget } }
+
+  let listener: (() => void) | undefined
+
+  const opts: WatcherWidgetOptions<SimpleWatch> = {
+    extensionName: 'test-watcher',
+    getWatches: () => watches,
+    getPaused: () => false,
+  }
+
+  const view = {
+    renderItemRowText: (w: SimpleWatch) => w.id,
+    renderWidgetRows: () => ['row'],
+  } as unknown as Parameters<typeof createWatcherWidget>[1]
+
+  // piEvents mock: cast through unknown to satisfy ExtensionAPI['events'] shape
+  const piEvents = {
+    on: (_channel: string, cb: (...args: unknown[]) => void) => {
+      listener = cb
+      return () => { listener = undefined }
+    },
+    emit: vi.fn(),
+  } as unknown as Parameters<typeof createWatcherWidget>[0]
+
+  const widget = createWatcherWidget(piEvents, view, opts)
+  return { widget, ctx, setWidget, fireChange: () => listener?.() }
+}
+
+describe('WatcherWidgetImpl — setWidget guard (#0002)', () => {
+  it('calls setWidget exactly once on initial show()', () => {
+    const watches: SimpleWatch[] = [{ id: 'w1', terminal: false, consecutiveErrors: 0 }]
+    const { widget, ctx, setWidget } = makeWidget(watches)
+    widget.show(ctx)
+    expect(setWidget).toHaveBeenCalledTimes(1)
+  })
+
+  it('does NOT call setWidget again when refresh() fires after initial show()', () => {
+    const watches: SimpleWatch[] = [{ id: 'w1', terminal: false, consecutiveErrors: 0 }]
+    const { widget, ctx, setWidget, fireChange } = makeWidget(watches)
+    widget.show(ctx)
+    setWidget.mockClear()
+
+    // Simulate poll cycle firing the change event multiple times
+    fireChange()
+    fireChange()
+    fireChange()
+
+    expect(setWidget).not.toHaveBeenCalled()
+  })
+
+  it('does NOT call setWidget in refresh() after hide() — re-registration requires a new show() call (#0002)', () => {
+    const watches: SimpleWatch[] = [{ id: 'w1', terminal: false, consecutiveErrors: 0 }]
+    const { widget, ctx, setWidget, fireChange } = makeWidget(watches)
+    widget.show(ctx)
+    widget.hide(ctx)
+    setWidget.mockClear()
+
+    // refresh() after hide() should NOT call setWidget — ctx is cleared by
+    // hide(), so the refresh guard already exits early. Re-registration
+    // happens on the next show() call (e.g. next onTurnEnd).
+    fireChange()
+    expect(setWidget).not.toHaveBeenCalled()
+
+    // Explicit show() re-registers.
+    widget.show(ctx)
+    expect(setWidget).toHaveBeenCalledTimes(1)
+  })
+
+  it('does not call setWidget when show() is called with no watches', () => {
+    const { widget, ctx, setWidget } = makeWidget([])
+    widget.show(ctx)
+    expect(setWidget).not.toHaveBeenCalledWith('test-watcher', expect.any(Function), expect.anything())
   })
 })
