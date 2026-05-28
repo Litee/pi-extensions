@@ -160,13 +160,13 @@ class WatcherWidgetImpl<TWatch extends WatchLike, TEvent> implements WatcherWidg
       if (w === undefined) continue
       // Render at width-1 to account for the 1-char left padding added by Text(…,1,0).
       // Strip first-column color (widget rows are plain; accent is reserved for browse selection).
-      const rawCols = this.view.renderItemRowTUI(w, { theme: t as never, width: width - 1 })
+      const rawCols = this.view.renderItemRowTUI(w, { theme: t as never, width: width - 2 })
       const baseCols = this.view.compressColumns
-        ? this.view.compressColumns(rawCols, width - 1)
+        ? this.view.compressColumns(rawCols, width - 2)
         : rawCols
       const { color: _drop, ...firstRest } = baseCols[0] ?? { name: '', text: '' }
       const cols = [{ ...firstRest } as typeof baseCols[0], ...baseCols.slice(1)]
-      const rendered = renderRowColumns(cols, width - 1, t)
+      const rendered = renderRowColumns(cols, width - 2, t)
       rowLines.push(rendered)
     }
 
