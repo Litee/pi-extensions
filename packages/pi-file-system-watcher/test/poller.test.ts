@@ -30,7 +30,6 @@ function makeWatch(filePath: string, target: TargetCondition, baseline?: FsBasel
 		watchId: "w1",
 		path: filePath,
 		target,
-		mode: "poll",
 		timeoutAt: undefined,
 		addedAt: 1_000,
 		lastPolledAt: undefined,

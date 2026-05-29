@@ -10,9 +10,8 @@ waiting for a file or directory to appear, detecting that it was
 modified (mtime/size change), or detecting removal.
 
 Do not use for watching multiple paths simultaneously — only a single
-path per watch is supported. For high-frequency event-driven needs,
-use `inotify`/`kqueue` directly; this watcher polls on a 5 s – 5 min
-back-off schedule with optional `fs.watch` fast-path.
+path per watch is supported. This watcher uses polling on a 60 s – 15 min
+back-off schedule.
 
 ## Activation required
 
@@ -30,19 +29,13 @@ on the next turn after activation.
 
 ## What the tool does
 
-`file_system_watcher` polls `fs.promises.stat` on a back-off schedule (5 s base,
-doubling to a 5 min cap) and fires **one** chat notification when the
+`file_system_watcher` polls `fs.promises.stat` on a back-off schedule (60 s base,
+doubling to a 15 min cap) and fires **one** chat notification when the
 watched condition is met. After firing it marks itself terminal — there
 is no repeating stream. On timeout, one notification is injected and the
 watch is marked terminal. All watches have a maximum duration of 24 h —
 `timeoutSeconds` defaults to 24 h if omitted and is silently capped at
 24 h if higher.
-
-Additionally, when `mode` is `"auto"` (default) or `"event"`, an
-`fs.watch` listener is attached to the path for faster notifications on
-supported platforms. The listener debounces events (500 ms) and triggers
-an immediate poll when fired. This is purely an optimisation — the
-polling loop is always the authoritative source.
 
 ## Actions
 
@@ -53,8 +46,7 @@ file_system_watcher({
   "action": "add",
   "path":   "/absolute/or/relative/path",
   "target": "exists" | "changed" | "removed",
-  "timeoutSeconds": 3600,   // optional; defaults to 24 h; capped at 24 h
-  "mode": "auto"            // optional; "auto" | "event" | "poll"
+  "timeoutSeconds": 3600   // optional; defaults to 24 h; capped at 24 h
 })
 ```
 
@@ -78,7 +70,7 @@ file_system_watcher({"action": "remove", "watchId": "<id from list>"})
 file_system_watcher({"action": "list"})
 ```
 
-Returns one line per watch: `[id] path target mode state`.
+Returns one line per watch: `path  status  timeout  target`.
 
 ### pause / resume
 
@@ -97,14 +89,6 @@ file_system_watcher({"action": "status"})
 
 Shows paused/active state, watch count, and current poll interval.
 
-## mode parameter
-
-| Value  | Behaviour |
-|--------|-----------|
-| `auto` (default) | Try `fs.watch`; fall back to polling silently on error or if path does not exist yet. |
-| `event` | Same as `auto`. |
-| `poll` | Polling only — no `fs.watch`. Use on network mounts, Docker volumes, or CI environments where `fs.watch` is unreliable. |
-
 ## Error handling
 
 | Error | Cause | What to do |
@@ -112,7 +96,7 @@ Shows paused/active state, watch count, and current poll interval.
 | `manage_tools` not found | `pi-tools-management-tool` not installed | Ask the user to install the extension, then restart pi |
 | `target='changed'` rejected at add time | Path does not exist | Wait for the path to exist (use `target='exists'` first), then add a `changed` watch |
 | Watch added but never fires | Target condition not met, or polling paused | Call `file_system_watcher({action:"status"})` to check state; `file_system_watcher({action:"list"})` to inspect the watch |
-| Threshold warning after N poll failures | `stat()` failing (permissions, network mount issue) | Check path accessibility; consider `mode: "poll"` on unreliable mounts |
+| Threshold warning after N poll failures | `stat()` failing (permissions issue) | Check path accessibility |
 
 ## Typical workflow
 
@@ -144,8 +128,7 @@ file_system_watcher({
 file_system_watcher({
   "action": "add",
   "path": "/var/log/app.log",
-  "target": "changed",
-  "mode": "poll"
+  "target": "changed"
 })
 ```
 

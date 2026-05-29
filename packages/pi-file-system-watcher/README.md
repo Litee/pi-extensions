@@ -20,42 +20,27 @@ activation.
 
 ## Detection model
 
-Two detection layers work together for reliability:
-
-1. **`fs.watch` (event-driven)**: when a filesystem event fires,
-   an immediate `pollOnce` is triggered outside the normal schedule.
-   Events are debounced (default 500 ms) to collapse rapid successive
-   writes into a single stat() check.
-
-2. **`PollScheduler` (polling)**: a back-off-aware scheduler polls
-   `fs.promises.stat` at increasing intervals. This is the sole
-   detection path on platforms where `fs.watch` is unavailable
-   (`ENOSYS` / `EPERM`), or when watching a path that does not yet
-   exist (`target: "exists"`).
-
-The authoritative change decision is always made by comparing
+Change detection is **polling-only**. A back-off-aware `PollScheduler`
+calls `fs.promises.stat` at increasing intervals (60 s base, up to
+15 min cap). The authoritative change decision is made by comparing
 `stat({ bigint: true }).mtimeNs` and `stat.size` against the stored
-baseline — `fs.watch` only accelerates the next poll; it does not
-fire the target event directly.
+baseline.
 
 ## Polling schedule
 
-- **Base:** 5 s.
+- **Base:** 60 s.
 - **Idle back-off:** each quiet poll doubles the interval, up to a
-  **5 min cap**.
+  **15 min cap**.
 - **Reset:** any observable change (mtime/size delta or existence flip)
   snaps the interval back to the base.
-- **Re-entry guard:** a slow stat() call can never be re-entered by
-  the timer or an fs.watch trigger — `pollInFlight` blocks concurrent
-  invocations.
 
 ## Tool: `file_system_watcher`
 
 | Action   | Required params | Notes |
 |----------|-----------------|-------|
-| `add`    | `path`, `target` | Optional: `timeoutSeconds`, `mode`. Seeds a baseline via stat(). `timeoutSeconds` defaults to 24 h (86400 s); capped at 24 h if higher. |
-| `remove` | `watchId`        | Stops polling; disposes the fs.watch handle. |
-| `list`   | —               | One line per watch: `[id] path target mode state`. |
+| `add`    | `path`, `target` | Optional: `timeoutSeconds`. Seeds a baseline via stat(). `timeoutSeconds` defaults to 24 h (86400 s); capped at 24 h if higher. |
+| `remove` | `watchId`        | Stops polling for the watch. |
+| `list`   | —               | One line per watch: `path  status  timeout  target`. |
 | `pause`  | —               | Global. Persisted across session reload. |
 | `resume` | —               | Restarts polling iff at least one non-terminal watch exists. |
 | `status` | —               | Paused/active, watch counts, current poll interval. |
@@ -76,24 +61,14 @@ terminal. There is no repeating notification stream.
 `timeoutSeconds` (optional, positive number). Defaults to 24 h
 (86400 s); silently capped at 24 h if higher.
 
-### mode
-
-`mode` (optional): `"auto"` (default) | `"event"` | `"poll"`.
-
-| Mode     | Behaviour |
-|----------|-----------|
-| `auto`   | Attempt `fs.watch` for fast notifications; fall back to polling silently on any error or if the path does not exist yet. |
-| `event`  | Same as `auto` — semantic alias. |
-| `poll`   | Skip `fs.watch`; use polling only. Useful on network mounts, Docker volumes, or CI environments where `fs.watch` is unreliable. |
-
 ## `/file-system-watcher` command
 
-`/file-system-watcher` (with or without arguments) opens an interactive TUI
-menu via `ctx.ui.select`.
+`/file-system-watcher` (with or without arguments) opens an interactive
+TUI menu (browse-view overlay) with:
 
 | Menu row | Effect |
 |----------|--------|
-| `Browse watches (N)` | Notify with the current watch list. |
+| `Browse paths (N)` | Open the full browse overlay. |
 | `Paused: off\|on` | Toggle global pause. Persisted across session reload. |
 | `Display mode: widget\|statusline` | Flip this session's display between the status row and the widget. |
 | `User default display mode: …` | Writes `defaultDisplayMode` to `~/.pi/agent/pi-file-system-watcher.json`. Seeds future sessions. |
@@ -125,32 +100,34 @@ is silently ignored.
 - Raw `stat` error messages land **only** in
   `pi.appendEntry("file-system-watcher:poll-error", …)` — never in chat, tool
   output, or the status line. User-facing text comes from
-  `pi-watcher-core`'s `classifyWatcherError`.
+  `classifyError`.
 - Persistence goes through `pi.appendEntry` only — no writes to
   arbitrary paths.
+
+## Architecture
+
+Built on the `pi-watcher-core` `BaseWatcher` abstract class. Domain
+logic is confined to `watcher.ts`; shared poll-loop, persistence,
+state management, TUI widget, and menu are inherited.
 
 ## Package layout
 
 ```
 src/
-  types.ts        — FsWatch, FsEvent, FsBaseline + target/mode types
+  types.ts        — FsWatch, FsEvent, FsBaseline + TargetCondition types
   poller.ts       — snapshotPath, detectChanges, buildTimeoutEvent (pure)
-  watcher.ts      — createDebounced, tryCreateFsWatch (fs.watch wrapper)
-  runtime.ts      — Runtime, PollScheduler, pollOnce, setup/teardown handles
-  toolAction.ts   — file_system_watcher tool registration + handler
-  persistence.ts  — createPersistence delegate
-  format.ts       — chat message + status-line formatters
+  watcher.ts      — FsWatcher extends BaseWatcher<FsWatch, FsBaseline, FsEvent>
+  fs-client.ts    — FsClient interface + createFsClient() (injectable for tests)
+  toolAction.ts   — FsWatcherParams TypeBox schema + MAX_TIMEOUT_SECONDS
+  format.ts       — buildChangeChatMessage (chat message formatter)
   config.ts       — user-level config loader (~/.pi/agent/pi-file-system-watcher.json)
-  command.ts      — /file-system-watcher TUI menu
-  index.ts        — session lifecycle + /file-system-watcher command
+  index.ts        — extension entrypoint
 skills/
   file-system-watcher/
     SKILL.md      — LLM-facing usage guide
 test/
+  watcher.test.ts     — FsWatcher via executeTool + pollOnce (unit)
   poller.test.ts      — snapshotPath, detectChanges, buildTimeoutEvent (real FS / tmp dirs)
-  watcher.test.ts     — createDebounced debounce logic
-  runtime.test.ts     — pollOnce with injectable snapshot (unit)
-  toolAction.test.ts  — tool handler (unit)
-  persistence.test.ts — rehydrateStateFromSession, writeState (unit)
-  format.test.ts      — chat message + status-line formatters (unit)
+  format.test.ts      — buildChangeChatMessage (unit)
+  config.test.ts      — config loader/saver (unit)
 ```
