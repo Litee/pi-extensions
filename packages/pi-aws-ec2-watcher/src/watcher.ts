@@ -21,7 +21,7 @@ import type {
 } from 'pi-watcher-core/base-watcher-types'
 
 import { loadConfig, saveConfig } from './config.js'
-import { buildChangeChatMessage as formatChangeChatMessage, buildStartupChatMessage } from './format.js'
+import { buildChangeChatMessage as formatChangeChatMessage } from './format.js'
 import { buildTimeoutEvent, detectChanges as pollerDetectChanges, snapshotInstance } from './poller.js'
 import type { Ec2Client } from './ec2-client.js'
 import { MAX_TIMEOUT_SECONDS, Ec2WatcherParams } from './toolAction.js'
@@ -555,21 +555,5 @@ export class Ec2Watcher extends BaseWatcher<Ec2Watch, Ec2Baseline, Ec2Event> {
   // ── Session start override ─────────────────────────────────────────────────
   override async onSessionStart(ctx: unknown): Promise<void> {
     await super.onSessionStart(ctx)
-    const watches = Array.from(this.watches.values())
-    if (watches.length > 0) {
-      setImmediate(() => {
-        const watchMap = Object.fromEntries(
-          watches.map((w) => [w.watchId, w]),
-        )
-        this._pi.sendMessage(
-          {
-            customType: this.customMessageType,
-            content: buildStartupChatMessage(watchMap, new Date()),
-            display: true,
-          },
-          { deliverAs: 'followUp', triggerTurn: false },
-        )
-      })
-    }
   }
 }

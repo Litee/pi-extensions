@@ -692,11 +692,11 @@ describe('Ec2Watcher constructor defaultDisplayMode', () => {
 })
 
 // ---------------------------------------------------------------------------
-// onSessionStart — startup message emitted when watches exist
+// onSessionStart — no startup chat message (silent, matching s3-watcher behaviour)
 // ---------------------------------------------------------------------------
 
 describe('Ec2Watcher.onSessionStart', () => {
-  it('emits startup message when watches are restored', async () => {
+  it('does NOT emit a startup chat message when watches are restored (#0001 — add should be silent)', async () => {
     vi.mocked(loadConfig).mockReturnValue({})
     const { watcher, pi } = makeWatcher({ state: 'running' })
 
@@ -738,10 +738,7 @@ describe('Ec2Watcher.onSessionStart', () => {
     // Flush setImmediate callbacks
     await new Promise<void>((resolve) => setImmediate(resolve))
 
-    expect(pi.sendMessage).toHaveBeenCalledWith(
-      expect.objectContaining({ display: true }),
-      expect.objectContaining({ triggerTurn: false }),
-    )
+    expect(pi.sendMessage).not.toHaveBeenCalled()
   })
 
   it('does NOT emit startup message when no watches', async () => {
