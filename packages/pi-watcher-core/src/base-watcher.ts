@@ -21,6 +21,7 @@
 import type { ExtensionAPI } from '@earendil-works/pi-coding-agent'
 
 import { DEFAULT_POLL_ERROR_THRESHOLD } from './error-tracker.js'
+import { validateAwsProfile } from './validate-aws-profile.js'
 import { PollScheduler } from './poll-scheduler.js'
 import { createWatcherMessageRenderer } from './renderer.js'
 import { statusLineColorAlias } from './status-line.js'
@@ -450,6 +451,11 @@ export abstract class BaseWatcher<
 
     switch (action) {
       case 'add': {
+        const profile = typeof params['profile'] === 'string' ? params['profile'].trim() : ''
+        if (profile) {
+          const profileError = validateAwsProfile(profile)
+          if (profileError) return this._toolError(profileError)
+        }
         const result = await this.addWatch(params)
         this.writeState()
         if (!this.paused) this.startPolling()

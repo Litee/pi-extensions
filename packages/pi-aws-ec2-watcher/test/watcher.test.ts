@@ -16,6 +16,11 @@ import { Ec2Watcher, formatTimeLeft, formatUptime } from '../src/watcher.js'
 // Helpers
 // ---------------------------------------------------------------------------
 
+vi.mock('pi-watcher-core/validate-aws-profile', () => ({
+  validateAwsProfile: vi.fn().mockReturnValue(null),
+}))
+import { validateAwsProfile } from 'pi-watcher-core/validate-aws-profile'
+
 vi.mock('../src/config.js', () => ({
   loadConfig: vi.fn(() => ({})),
   saveConfig: vi.fn(() => true),
@@ -1095,5 +1100,36 @@ describe('commandName', () => {
   it('is "aws-ec2-watcher"', () => {
     const { watcher } = makeWatcher()
     expect((watcher as unknown as { commandName: string }).commandName).toBe('aws-ec2-watcher')
+  })
+})
+
+// ---------------------------------------------------------------------------
+// Ec2Watcher — profile validation (via BaseWatcher)
+// ---------------------------------------------------------------------------
+
+describe('Ec2Watcher — profile validation (via BaseWatcher)', () => {
+  it('returns _toolError without calling addWatch when profile does not exist', async () => {
+    const { watcher, client } = makeWatcher({ state: 'running' })
+
+    // Override the default mock to return an error for this specific test.
+    vi.mocked(validateAwsProfile).mockReturnValueOnce(
+      "profile 'bad-profile' not found — known profiles: default, prod",
+    )
+
+    const result = await watcher.executeTool({
+      action: 'add',
+      instanceId: 'i-0a1b2c3d4e5f67890',
+      profile: 'bad-profile',
+    })
+
+    // Should be a tool error containing the profile name.
+    expect(result.details['ok']).toBe(false)
+    expect((result.content[0] as { text: string }).text).toMatch(/bad-profile/)
+
+    // The EC2 DescribeInstances call must NOT have been made.
+    expect(client.describeInstance).not.toHaveBeenCalled()
+
+    // No watch should have been registered.
+    expect(watcher['watches'].size).toBe(0)
   })
 })

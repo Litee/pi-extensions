@@ -13,4 +13,5 @@ export * from "./seed-baselines.js";
 export * from "./base-watcher-types.js";
 export * from "./base-watcher.js";
 export * from "./browse-view.js";
+export { validateAwsProfile } from './validate-aws-profile.js';
 export * from "./watcher-widget.js";
