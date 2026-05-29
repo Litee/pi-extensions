@@ -785,7 +785,7 @@ describe("FsWatcher view timeout column", () => {
 describe("FsWatcher view.compressColumns", () => {
   it("is defined", () => {
     const { watcher } = makeWatcher();
-    expect(watcher.view.compressColumns).toBeDefined();
+    expect(typeof watcher.view.compressColumns).toBe("function");
   });
 
   it("compresses long paths from the left", () => {
@@ -1148,7 +1148,7 @@ describe("FsWatcher.browseOptions", () => {
     const opts = (
       watcher as unknown as { browseOptions(): { onPurge?(): [] } }
     ).browseOptions();
-    expect(opts.onPurge).toBeDefined();
+    expect(typeof opts.onPurge).toBe("function");
     opts.onPurge!();
     expect(spy).toHaveBeenCalled();
   });

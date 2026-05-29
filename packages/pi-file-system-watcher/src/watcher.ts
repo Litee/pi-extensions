@@ -283,7 +283,7 @@ export class FsWatcher extends BaseWatcher<FsWatch, FsBaseline, FsEvent> {
     }
     // Sync base-class baseline into watch record so poller can read it.
     watch.baseline = this.baselines.get(this.watchKey(watch));
-    return pollerDetectChanges(watch, (this._client as FsClient).snapshot);
+    return pollerDetectChanges(watch, (this._client as FsClient).snapshot.bind(this._client));
   }
 
   normaliseWatch(raw: unknown): FsWatch | null {
