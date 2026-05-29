@@ -177,6 +177,27 @@ describe('Ec2Watcher.addWatch', () => {
     expect(result.details['ok']).toBe(false)
     expect((result.content[0] as { text: string }).text).toMatch(/timeoutSeconds/)
   })
+
+  it('returns _toolError and keeps watches.size at 1 when instanceId is already watched', async () => {
+    const { watcher } = makeWatcher({ state: 'running' })
+    const first = await watcher.executeTool({
+      action: 'add',
+      instanceId: 'i-0a1b2c3d4e5f67890',
+      profile: 'myprofile',
+    })
+    expect(first.details['ok']).toBe(true)
+    const existingWatchId = first.details['watchId'] as string
+
+    const second = await watcher.executeTool({
+      action: 'add',
+      instanceId: 'i-0a1b2c3d4e5f67890',
+      profile: 'myprofile',
+    })
+    expect(second.details['ok']).toBe(false)
+    expect((second.content[0] as { text: string }).text).toMatch(/already being watched/)
+    expect((second.content[0] as { text: string }).text).toContain(existingWatchId)
+    expect(watcher['watches'].size).toBe(1)
+  })
 })
 
 // ---------------------------------------------------------------------------

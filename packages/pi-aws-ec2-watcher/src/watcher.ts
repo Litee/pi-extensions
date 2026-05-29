@@ -369,6 +369,13 @@ export class Ec2Watcher extends BaseWatcher<Ec2Watch, Ec2Baseline, Ec2Event> {
       return this._toolError(msg)
     }
 
+    const existing = Array.from(this.watches.values()).find(w => w.instanceId === instanceId)
+    if (existing) {
+      return this._toolError(
+        `instance '${instanceId}' is already being watched (watchId: ${existing.watchId}). Use action:'remove' first to replace it.`
+      )
+    }
+
     const profile = (typeof params['profile'] === 'string' ? params['profile'] : '').trim()
     if (!profile) {
       return this._toolError("'add' requires a profile.")
