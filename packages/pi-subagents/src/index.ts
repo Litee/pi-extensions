@@ -1235,7 +1235,7 @@ Terse command-style prompts produce shallow, generic work.
         .map(p => theme.fg("dim", p)).join(" " + theme.fg("dim", "·") + " ");
 
       let line = icon + (summary ? " " + summary : "");
-      line += "\n" + theme.fg("muted", "  ⎿  ... Ctrl-o to expand");
+      line += "\n" + theme.fg("muted", "  … ctrl-o to expand");
       return new Text(line, 0, 0);
     },
     execute: async (_toolCallId, params, _signal, _onUpdate, _ctx) => {

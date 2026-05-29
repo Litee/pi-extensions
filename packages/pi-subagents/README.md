@@ -4,4 +4,4 @@ Copy of [`tintinweb/pi-subagents`](https://github.com/tintinweb/pi-subagents) (M
 
 ## Differences from upstream
 
-_None yet — this is a verbatim copy of upstream @ `41308f0`._
+- **Collapsed `get_subagent_result` output.** Added a `renderResult` to the `get_subagent_result` tool. In collapsed mode the result is shown as a single summary line — `✓`/`✗`/`○` icon followed by agent type · status · description — with `… ctrl-o to expand` below it. Pressing Ctrl-o expands to the full result text, each line dim-styled with a two-space indent. Upstream renders the raw text blob with no collapsing.
