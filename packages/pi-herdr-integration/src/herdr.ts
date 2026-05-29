@@ -59,7 +59,7 @@ export async function resolveWorkspaceId(
 
 	let stdout: string;
 	try {
-		const result = await exec("herdr", ["pane", "get", paneId]);
+		const result = await exec("herdr", ["pane", "get", paneId], { timeout: 5000 });
 		if (result.code !== 0) return null;
 		stdout = result.stdout;
 	} catch {
@@ -86,7 +86,7 @@ export async function renameWorkspace(
 	name: string,
 ): Promise<{ ok: true } | { ok: false; reason: string }> {
 	try {
-		const result = await exec("herdr", ["workspace", "rename", workspaceId, name]);
+		const result = await exec("herdr", ["workspace", "rename", workspaceId, name], { timeout: 5000 });
 		if (result.code !== 0) {
 			const reason =
 				result.stderr?.trim()

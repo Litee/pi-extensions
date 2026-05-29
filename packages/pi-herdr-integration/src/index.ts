@@ -5,9 +5,19 @@
  * Triggers:
  *   - `session_start` (startup, resume, reload, fork): restore persisted state
  *     then attempt rename if the session has a name.
- *   - `input`: intercept the built-in `/name <X>` command and rename
- *     immediately using the matched name (does not wait for pi to process the
- *     command).
+ *   - `agent_end`: check whether the session name changed since the last
+ *     successful rename (catches `/name` and any other way the name can be
+ *     set, e.g. pi.setSessionName() from another extension or RPC).
+ *     NOTE: the `input` event does NOT fire for built-in commands like `/name`
+ *     (they are handled at the TUI layer before extension routing). Registering
+ *     an extension command called "name" conflicts with the built-in and is
+ *     also skipped. `agent_end` is therefore the only reliable hook.
+ *
+ * Failure backoff: when a rename fails (workspace unresolvable or herdr CLI
+ * error), the attempted name is recorded in `lastAttemptedName`. Subsequent
+ * events with the same name are silently skipped, preventing repeated CLI
+ * calls and warning toasts. A retry fires when the session name changes, or
+ * when `session_start` fires (which always resets `lastAttemptedName`).
  *
  * No-op when `HERDR_ENV !== "1"` (not running inside herdr).
  */
@@ -18,9 +28,6 @@ import { isInsideHerdr, renameWorkspace, resolveWorkspaceId } from "./herdr.js";
 import type { ExecFn } from "./herdr.js";
 import { STATE_CUSTOM_TYPE, pickLatestState } from "./state.js";
 import type { StateCandidateEntry } from "./state.js";
-
-/** Pattern that detects the built-in `/name <X>` command. */
-const NAME_COMMAND_RE = /^\s*\/name\s+(\S.*?)\s*$/;
 
 /**
  * Subagent sessions get auto-generated names in the form `<agent>#<hex>`,
@@ -34,6 +41,12 @@ const SUBAGENT_NAME_RE = /^[\w-]+#[0-9a-f]{6,}$/i;
 export default function createExtension(pi: ExtensionAPI): void {
 	/** The most recently successfully applied name — guards against re-renaming. */
 	let lastAppliedName: string | undefined;
+	/**
+	 * The most recently attempted name (set before any async work). When a
+	 * rename fails, subsequent calls with the same name are silently skipped
+	 * until the name changes or `session_start` resets this to `undefined`.
+	 */
+	let lastAttemptedName: string | undefined;
 
 	/**
 	 * Build an ExecFn that delegates to pi.exec.
@@ -42,7 +55,7 @@ export default function createExtension(pi: ExtensionAPI): void {
 	const execFn: ExecFn = (cmd, args, opts) => pi.exec(cmd, args, opts);
 
 	/**
-	 * Core rename logic.  Idempotent: bails out if already applied,
+	 * Core rename logic. Idempotent: bails out if already applied,
 	 * not inside herdr, name is falsy, or workspace cannot be resolved.
 	 */
 	async function tryRenameWithName(
@@ -53,11 +66,13 @@ export default function createExtension(pi: ExtensionAPI): void {
 		if (!name) return;
 		if (SUBAGENT_NAME_RE.test(name)) return;
 		if (name === lastAppliedName) return;
+		if (name === lastAttemptedName) return;
+		lastAttemptedName = name;
 
 		const workspaceId = await resolveWorkspaceId(execFn, process.env);
 		if (workspaceId === null) {
 			ctx.ui.notify(
-				"pi-herdr-integration: could not resolve herdr workspace — will retry on next event",
+				"pi-herdr-integration: could not resolve herdr workspace — will retry when name changes",
 				"warning",
 			);
 			return;
@@ -66,28 +81,36 @@ export default function createExtension(pi: ExtensionAPI): void {
 		const renameResult = await renameWorkspace(execFn, workspaceId, name);
 		if (!renameResult.ok) {
 			ctx.ui.notify(
-				`pi-herdr-integration: rename failed — ${renameResult.reason} (will retry)`,
+				`pi-herdr-integration: rename failed — ${renameResult.reason} — will retry when name changes`,
 				"warning",
 			);
 			return;
 		}
 
-		// Success — persist state
+		// Success — persist state and log a low-key info notification in the pi TUI.
 		lastAppliedName = name;
 		pi.appendEntry(STATE_CUSTOM_TYPE, {
 			lastAppliedName,
 			herdrWorkspaceId: workspaceId,
 			appliedAt: Date.now(),
 		});
+		ctx.ui.notify(`herdr workspace renamed to "${name}"`, "info");
 	}
 
 	// ---- session_start -------------------------------------------------------
 
-	pi.on("session_start", async (_event, ctx) => {
-		// Restore lastAppliedName from session history (survives /reload and fork).
+	pi.on("session_start", async (event, ctx) => {
+		// Always reset the backoff guard so reloads, resumes, and forks get a
+		// clean retry slate regardless of previous failure state.
+		lastAttemptedName = undefined;
+
+		// Restore lastAppliedName from session history (survives /reload).
+		// Skip restoration on fork: the child inherits the parent's entries but
+		// lives in a new workspace that hasn't been renamed yet.
+		const sessionEvent = event as { reason?: string };
 		const rawEntries = ctx.sessionManager.getEntries() as StateCandidateEntry[];
 		const saved = pickLatestState(rawEntries);
-		if (saved !== undefined) {
+		if (saved !== undefined && sessionEvent.reason !== "fork") {
 			lastAppliedName = saved.lastAppliedName;
 		}
 
@@ -96,13 +119,11 @@ export default function createExtension(pi: ExtensionAPI): void {
 		await tryRenameWithName(name, ctx);
 	});
 
-	// ---- input: intercept /name <X> -----------------------------------------
+	// ---- agent_end -----------------------------------------------------------
 
-	pi.on("input", async (event, ctx) => {
-		const match = NAME_COMMAND_RE.exec(event.text);
-		if (!match) return undefined;
-		const name = match[1] as string;
+	pi.on("agent_end", async (_event, ctx) => {
+		const name = pi.getSessionName();
+		if (!name) return;
 		await tryRenameWithName(name, ctx);
-		return undefined;
 	});
 }

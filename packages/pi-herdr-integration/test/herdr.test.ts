@@ -66,6 +66,13 @@ describe("resolveWorkspaceId", () => {
 		expect(id).toBe("w652f1910e89a56");
 		expect(exec.mock.calls[0]?.[0]).toBe("herdr");
 		expect(exec.mock.calls[0]?.[1]).toEqual(["pane", "get", "p_6"]);
+		expect(exec.mock.calls[0]?.[2]).toEqual({ timeout: 5000 });
+	});
+
+	it("passes timeout option to exec", async () => {
+		const exec = makeExec();
+		await resolveWorkspaceId(exec, { HERDR_PANE_ID: "p_6" });
+		expect(exec.mock.calls[0]?.[2]).toEqual({ timeout: 5000 });
 	});
 
 	it("returns null when HERDR_PANE_ID is absent", async () => {
@@ -115,6 +122,13 @@ describe("renameWorkspace", () => {
 		await renameWorkspace(exec, "w652f1910e89a56", "my session");
 		expect(exec.mock.calls[0]?.[0]).toBe("herdr");
 		expect(exec.mock.calls[0]?.[1]).toEqual(["workspace", "rename", "w652f1910e89a56", "my session"]);
+		expect(exec.mock.calls[0]?.[2]).toEqual({ timeout: 5000 });
+	});
+
+	it("passes timeout option to exec", async () => {
+		const exec = makeExec(() => Promise.resolve({ code: 0, stdout: "", stderr: "" }));
+		await renameWorkspace(exec, "w652f1910e89a56", "my session");
+		expect(exec.mock.calls[0]?.[2]).toEqual({ timeout: 5000 });
 	});
 
 	it("returns { ok: true } on success (code 0)", async () => {
