@@ -1,0 +1,14 @@
+{
+  "name": "pi-herdr-integration",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Pi extension that renames the herdr workspace to the session display name on session start and when /name is typed.",
+  "type": "module",
+  "keywords": ["pi-package"],
+  "pi": {
+    "extensions": ["./src/index.ts"]
+  },
+  "peerDependencies": {
+    "@earendil-works/pi-coding-agent": "*"
+  }
+}
