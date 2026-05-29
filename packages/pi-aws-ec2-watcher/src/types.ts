@@ -9,7 +9,8 @@ export type Ec2InstanceState =
 	| "shutting-down"
 	| "terminated"
 	| "stopping"
-	| "stopped";
+	| "stopped"
+	| "not_found";
 
 /**
  * States from which an EC2 instance never returns. `terminated` is always
@@ -17,6 +18,7 @@ export type Ec2InstanceState =
  */
 export const ALWAYS_TERMINAL_STATES: ReadonlySet<Ec2InstanceState> = new Set<Ec2InstanceState>([
 	"terminated",
+	"not_found",
 ]);
 
 /** States that are terminal only when `stopOnStopped===true`. */
@@ -37,6 +39,8 @@ export interface Ec2Baseline {
 	availabilityZone?: string;
 	/** Instance type, e.g. `t3.micro`. */
 	instanceType?: string;
+	/** ISO 8601 launch time from DescribeInstances LaunchTime. */
+	launchTime?: string;
 }
 
 /** A single active watch. One record per `watchId`. */

@@ -850,6 +850,7 @@ describe('containsTerminalStateEvent', () => {
     watcher.testWatches.set('w1', { id: 'w1', label: 'L', terminal: false, consecutiveErrors: 0 })
     await watcher.pollWatch('w1')
     expect(watcher.testWatches.get('w1')?.terminal).toBe(true)
+    // eslint-disable-next-line @typescript-eslint/unbound-method
     expect(pi.sendMessage).toHaveBeenCalledOnce()
   })
 
@@ -869,6 +870,7 @@ describe('containsTerminalStateEvent', () => {
     watcher.testWatches.set('w1', { id: 'w1', label: 'L', terminal: false, consecutiveErrors: 0 })
     await watcher.pollWatch('w1')
     expect(watcher.testWatches.get('w1')?.terminal).toBe(false)
+    // eslint-disable-next-line @typescript-eslint/unbound-method
     expect(pi.sendMessage).toHaveBeenCalledOnce() // event message still fires
   })
 })

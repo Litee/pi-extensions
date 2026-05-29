@@ -25,6 +25,8 @@ export interface InstanceStateResult {
 	stateTransitionReason?: string;
 	availabilityZone?: string;
 	instanceType?: string;
+	/** Launch time of the instance. */
+	launchTime?: Date;
 	/** `true` when the instance does not exist in the given account/region. */
 	notFound?: boolean;
 }
@@ -120,6 +122,9 @@ export function createEc2Client(): Ec2Client {
 				}
 				if (typeof instance.InstanceType === "string") {
 					result.instanceType = instance.InstanceType;
+				}
+				if (instance.LaunchTime instanceof Date) {
+					result.launchTime = instance.LaunchTime;
 				}
 				return result;
 			} catch (err) {

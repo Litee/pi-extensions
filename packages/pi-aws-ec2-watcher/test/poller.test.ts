@@ -42,12 +42,14 @@ describe("snapshotInstance", () => {
 			nameTag: "my-vm",
 			availabilityZone: "us-east-1a",
 			instanceType: "t3.micro",
+			launchTime: new Date("2024-06-01T12:00:00.000Z"),
 		});
 		const result = await snapshotInstance(client, makeWatch());
 		expect(result.state).toBe("running");
 		expect(result.nameTag).toBe("my-vm");
 		expect(result.availabilityZone).toBe("us-east-1a");
 		expect(result.instanceType).toBe("t3.micro");
+		expect(result.launchTime).toEqual(new Date("2024-06-01T12:00:00.000Z"));
 	});
 });
 
@@ -57,15 +59,17 @@ describe("snapshotInstance", () => {
 
 describe("detectChanges — no prior baseline", () => {
 	it("sets baseline but emits no event on first poll", async () => {
-		const client = makeClient({ state: "running" });
+		const launchDate = new Date("2024-06-01T10:00:00.000Z");
+		const client = makeClient({ state: "running", launchTime: launchDate });
 		const watch = makeWatch();
 		const result = await detectChanges(client, watch);
 		expect(result.events).toHaveLength(0);
 		expect(result.newBaseline?.state).toBe("running");
+		expect(result.newBaseline?.launchTime).toBe(launchDate.toISOString());
 		expect(result.observedChange).toBe(false);
 	});
 
-	it("sets notFoundBaseline=true when instance not found on first poll", async () => {
+	it("sets notFoundBaseline when instance not found on first poll", async () => {
 		const client = makeClient({ notFound: true });
 		const watch = makeWatch();
 		const result = await detectChanges(client, watch);
@@ -73,6 +77,9 @@ describe("detectChanges — no prior baseline", () => {
 		expect(result.events[0]!.eventType).toBe("not_found");
 		expect(result.events[0]!.isTerminal).toBe(true);
 		expect(result.observedChange).toBe(true);
+		// not_found returns a valid baseline (not undefined)
+		expect(result.newBaseline).toBeDefined();
+		expect(result.newBaseline.state).toBe("not_found");
 	});
 });
 
@@ -137,6 +144,9 @@ describe("detectChanges — state_changed", () => {
 		expect(result.events[0]!.eventType).toBe("not_found");
 		expect(result.events[0]!.isTerminal).toBe(true);
 		expect(result.observedChange).toBe(true);
+		// not_found returns a valid baseline
+		expect(result.newBaseline).toBeDefined();
+		expect(result.newBaseline.state).toBe("not_found");
 	});
 });
 

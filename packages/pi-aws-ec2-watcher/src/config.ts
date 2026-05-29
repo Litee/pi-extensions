@@ -46,7 +46,7 @@ export function loadConfig(): Ec2WatcherConfig {
 	return out;
 }
 
-export function saveConfig(change: Partial<Ec2WatcherConfig>): boolean {
+export function saveConfig(change: { [K in keyof Ec2WatcherConfig]?: Ec2WatcherConfig[K] | undefined }): boolean {
 	const path = configFilePath();
 	try {
 		let existing: Record<string, unknown> = {};

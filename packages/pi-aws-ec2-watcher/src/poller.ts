@@ -90,8 +90,8 @@ export async function snapshotInstance(
 export interface DetectChangesResult {
 	/** At most one event per call. */
 	events: Ec2Event[];
-	/** Updated baseline to persist back into the watch record. `undefined` when instance not found. */
-	newBaseline: Ec2Baseline | undefined;
+	/** Updated baseline to persist back into the watch record. */
+	newBaseline: Ec2Baseline;
 	/**
 	 * `true` iff any observable change was detected (state flip, not-found).
 	 */
@@ -112,7 +112,7 @@ export async function detectChanges(
 	if (now.notFound) {
 		return {
 			events: [buildNotFoundEvent(watch)],
-			newBaseline: undefined,
+			newBaseline: { state: "not_found" },
 			observedChange: true,
 		};
 	}
@@ -122,7 +122,7 @@ export async function detectChanges(
 		// No state returned — treat as no change, keep existing baseline.
 		return {
 			events: [],
-			newBaseline: watch.baseline,
+			newBaseline: watch.baseline ?? { state: "not_found" },
 			observedChange: false,
 		};
 	}
@@ -135,6 +135,7 @@ export async function detectChanges(
 			: {}),
 		...(now.availabilityZone !== undefined ? { availabilityZone: now.availabilityZone } : {}),
 		...(now.instanceType !== undefined ? { instanceType: now.instanceType } : {}),
+		...(now.launchTime !== undefined ? { launchTime: now.launchTime.toISOString() } : {}),
 	};
 
 	const prev = watch.baseline;
