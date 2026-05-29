@@ -468,10 +468,10 @@ export class Ec2Watcher extends BaseWatcher<Ec2Watch, Ec2Baseline, Ec2Event> {
   override removeWatch(watch: Ec2Watch): Promise<ToolResult> {
     const remaining = this.watches.size - 1
     const message = `ec2-watcher: removed watch '${watch.watchId}' (${watch.instanceId}). ${remaining} watch(es) remaining.`
-    return {
+    return Promise.resolve({
       content: [{ type: 'text', text: message }],
       details: { action: 'remove', ok: true, watchKey: this.watchKey(watch) },
-    }
+    })
   }
 
   protected override browseOptions(): Partial<BrowseViewOptions<Ec2Watch>> {
