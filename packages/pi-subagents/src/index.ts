@@ -1198,6 +1198,46 @@ Terse command-style prompts produce shallow, generic work.
         }),
       ),
     }),
+    renderResult(result, { expanded }, theme) {
+      const text = result.content[0]?.type === "text" ? result.content[0].text : "";
+      if (!text) return new Text("", 0, 0);
+
+      const lines = text.split("\n");
+
+      if (expanded) {
+        let out = "";
+        for (const l of lines) {
+          if (out) out += "\n";
+          out += theme.fg("dim", `  ${l}`);
+        }
+        return new Text(out, 0, 0);
+      }
+
+      // Collapsed: extract a brief summary from the header lines
+      // Line 0: "Agent: abc123-..."  -> trim the id
+      // Line 1: "Type: X | Status: completed | ..."
+      // Line 2: "Description: do something"
+      const typeLine = lines[1] ?? "";
+      const descLine = lines[2] ?? "";
+
+      const statusMatch = typeLine.match(/Status:\s*(\S+)/);
+      const status = statusMatch?.[1] ?? "";
+      const typeMatch = typeLine.match(/^Type:\s*([^|]+)/);
+      const agentType = typeMatch?.[1]?.trim() ?? "";
+      const descMatch = descLine.match(/^Description:\s*(.*)/);
+      const desc = descMatch?.[1]?.trim() ?? "";
+
+      const icon = status === "completed" ? theme.fg("success", "✓")
+        : status === "error" ? theme.fg("error", "✗")
+        : theme.fg("dim", "○");
+
+      const summary = [agentType, status, desc].filter(Boolean)
+        .map(p => theme.fg("dim", p)).join(" " + theme.fg("dim", "·") + " ");
+
+      let line = icon + (summary ? " " + summary : "");
+      line += "\n" + theme.fg("muted", "  ⎿  ... Ctrl-o to expand");
+      return new Text(line, 0, 0);
+    },
     execute: async (_toolCallId, params, _signal, _onUpdate, _ctx) => {
       const record = manager.getRecord(params.agent_id);
       if (!record) {
