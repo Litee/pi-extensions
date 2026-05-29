@@ -8,6 +8,7 @@
 import { randomBytes } from 'node:crypto'
 
 import { BaseWatcher, BASE_POLL_MS, MAX_POLL_MS, POLL_ERROR_THRESHOLD } from 'pi-watcher-core/base-watcher'
+import { validateAwsProfile } from 'pi-watcher-core/validate-aws-profile'
 import { PollScheduler } from 'pi-watcher-core/poll-scheduler'
 import { createWatcherWidget } from 'pi-watcher-core/watcher-widget'
 import type { ClassifiedWatcherError } from 'pi-watcher-core/classify-error'
@@ -382,6 +383,9 @@ export class S3Watcher extends BaseWatcher<S3Watch, S3Baseline, S3Event> {
         return this._toolError("'timeoutSeconds' must be a positive finite number.")
       }
     }
+
+    const profileError = validateAwsProfile(profile)
+    if (profileError) return this._toolError(profileError)
 
     const capped = requestedSeconds !== undefined && requestedSeconds > MAX_TIMEOUT_SECONDS
     const effectiveSeconds =

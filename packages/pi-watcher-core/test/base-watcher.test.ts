@@ -9,11 +9,6 @@ import { describe, expect, it, vi } from 'vitest'
 
 import { BaseWatcher, POLL_ERROR_THRESHOLD } from '../src/base-watcher.js'
 import * as browseViewModule from '../src/browse-view.js'
-import * as validateAwsProfileModule from '../src/validate-aws-profile.js'
-
-vi.mock('../src/validate-aws-profile.js', () => ({
-  validateAwsProfile: vi.fn().mockReturnValue(null),
-}))
 
 vi.mock('../src/browse-view.js', async (importOriginal) => {
   const actual = await importOriginal<typeof import('../src/browse-view.js')>()
@@ -777,17 +772,6 @@ describe('executeTool', () => {
     expect(result.content[0]?.text).toContain('Unknown action')
   })
 
-  it('add returns _toolError and skips addWatch when profile validation fails', async () => {
-    const { watcher } = makeWatcher()
-    const addWatchSpy = vi.spyOn(watcher, 'addWatch')
-    const mockValidate = vi.spyOn(validateAwsProfileModule, 'validateAwsProfile')
-      .mockReturnValue("profile 'bad-profile' not found — known profiles: default, prod")
-    const result = await watcher.executeTool({ action: 'add', profile: 'bad-profile' })
-    expect(addWatchSpy).not.toHaveBeenCalled()
-    expect(result.details['ok']).toBe(false)
-    expect(result.content[0]?.text).toContain("'bad-profile'")
-    mockValidate.mockRestore()
-  })
 })
 
 // ---------------------------------------------------------------------------

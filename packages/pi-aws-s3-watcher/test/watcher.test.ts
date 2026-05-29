@@ -20,6 +20,11 @@ vi.mock('../src/config.js', () => ({
   loadConfig: vi.fn(() => ({})),
   saveConfig: vi.fn(() => true),
 }))
+
+vi.mock('pi-watcher-core/validate-aws-profile', () => ({
+  validateAwsProfile: vi.fn().mockReturnValue(null),
+}))
+import { validateAwsProfile } from 'pi-watcher-core/validate-aws-profile'
 import * as configModule from '../src/config.js'
 import { loadConfig } from '../src/config.js'
 
@@ -116,6 +121,22 @@ describe('S3Watcher.addWatch', () => {
     })
     expect(result.details['ok']).toBe(false)
     expect((result.content[0] as { text: string }).text).toMatch(/requires a profile/)
+  })
+
+  it('returns _toolError without polling when profile does not exist', async () => {
+    const { watcher } = makeWatcher()
+    vi.mocked(validateAwsProfile).mockReturnValueOnce(
+      "profile 'bad-profile' not found — known profiles: default, prod",
+    )
+    const result = await watcher.executeTool({
+      action: 'add',
+      uri: 's3://b/k',
+      target: 'exists',
+      profile: 'bad-profile',
+    })
+    expect(result.details['ok']).toBe(false)
+    expect((result.content[0] as { text: string }).text).toMatch(/bad-profile/)
+    expect(watcher['watches'].size).toBe(0)
   })
 
   it("returns error when target='updated' and object is absent", async () => {

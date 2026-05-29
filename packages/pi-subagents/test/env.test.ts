@@ -28,7 +28,7 @@ function mockPi(): ExtensionAPI {
 
 describe("detectEnv", () => {
   it("detects git repo in current project", async () => {
-    const env = await detectEnv(mockPi(), process.cwd());
+    const env = await detectEnv(mockPi(), import.meta.dirname);
     expect(env.isGitRepo).toBe(true);
     expect(env.platform).toBe(process.platform);
   });
