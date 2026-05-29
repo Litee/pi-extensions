@@ -570,12 +570,28 @@ describe("FsWatcher view", () => {
     expect(cols[0]?.color).toBe("accent");
   });
 
-  it("renderItemRowTUI uses muted color for terminal watch", () => {
+  it("renderItemRowTUI uses dim color for terminal watch path column", () => {
     const cols = watcher.view.renderItemRowTUI(
       { ...mockWatch, terminal: true },
       { theme: {} as never, width: 80 },
     );
-    expect(cols[0]?.color).toBe("muted");
+    expect(cols[0]?.color).toBe("dim");
+  });
+
+  it("renderItemRowTUI uses warning color for terminal watch status column", () => {
+    const cols = watcher.view.renderItemRowTUI(
+      { ...mockWatch, terminal: true },
+      { theme: {} as never, width: 80 },
+    );
+    expect(cols[1]?.color).toBe("warning");
+  });
+
+  it("renderItemRowTUI uses dim color for terminal watch timeout column", () => {
+    const cols = watcher.view.renderItemRowTUI(
+      { ...mockWatch, terminal: true },
+      { theme: {} as never, width: 80 },
+    );
+    expect(cols[2]?.color).toBe("dim");
   });
 
   it("renderItemRowTUI uses warning color at error threshold", () => {
@@ -765,10 +781,10 @@ describe("FsWatcher view timeout column", () => {
     expect(cols.find((c) => c.name === "timeout")!.color).toBe("dim");
   });
 
-  it("uses muted color for terminal watch", () => {
+  it("uses dim color for terminal watch", () => {
     const w = { ...baseW, timeoutAt: Date.now() + 10_000, terminal: true, consecutiveErrors: 0 };
     const cols = watcher.view.renderItemRowTUI(w, { theme: {} as never, width: 100 });
-    expect(cols.find((c) => c.name === "timeout")!.color).toBe("muted");
+    expect(cols.find((c) => c.name === "timeout")!.color).toBe("dim");
   });
 
   it("timeout column width is 10", () => {

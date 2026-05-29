@@ -104,7 +104,7 @@ export class FsWatcher extends BaseWatcher<FsWatch, FsBaseline, FsEvent> {
 
     renderItemRowTUI(w, _ctx): RowColumn[] {
       const pathColor = w.terminal
-        ? "muted"
+        ? "dim"
         : w.consecutiveErrors >= POLL_ERROR_THRESHOLD
           ? "warning"
           : "accent";
@@ -116,13 +116,13 @@ export class FsWatcher extends BaseWatcher<FsWatch, FsBaseline, FsEvent> {
             : "WATCHING";
       const statusColor =
         w.terminal
-          ? "muted"
+          ? "warning"
           : w.consecutiveErrors >= POLL_ERROR_THRESHOLD
             ? "error"
             : "warning";
       const timeLeft = formatTimeLeft(w.timeoutAt, Date.now());
       const timeColor: string = w.terminal
-        ? "muted"
+        ? "dim"
         : w.timeoutAt !== undefined && w.timeoutAt - Date.now() < 5 * 60 * 1000
           ? "warning"
           : "dim";
