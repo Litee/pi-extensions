@@ -9,7 +9,7 @@ import { detectEnv } from "../src/env.js";
 /** Minimal mock of pi.exec() that shells out via child_process. */
 function mockPi(): ExtensionAPI {
   return {
-    exec: async (command: string, args: string[], options?: { cwd?: string; timeout?: number }) => {
+    exec: (command: string, args: string[], options?: { cwd?: string; timeout?: number }) => {
       try {
         const stdout = execSync(`${command} ${args.join(" ")}`, {
           cwd: options?.cwd,
@@ -17,9 +17,10 @@ function mockPi(): ExtensionAPI {
           stdio: ["pipe", "pipe", "pipe"],
           timeout: options?.timeout,
         });
-        return { stdout, stderr: "", code: 0, killed: false };
-      } catch (err: any) {
-        return { stdout: "", stderr: err.stderr ?? "", code: err.status ?? 1, killed: false };
+        return Promise.resolve({ stdout, stderr: "", code: 0, killed: false });
+      } catch (err: unknown) {
+        const e = err as { stderr?: string; status?: number };
+        return Promise.resolve({ stdout: "", stderr: e.stderr ?? "", code: e.status ?? 1, killed: false });
       }
     },
   } as unknown as ExtensionAPI;

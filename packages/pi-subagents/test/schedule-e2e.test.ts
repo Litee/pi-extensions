@@ -15,6 +15,8 @@ import { mkdtempSync, readFileSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import type { ExtensionAPI, ExtensionContext } from "@earendil-works/pi-coding-agent";
+import type { AgentManager } from "../src/agent-manager.js";
 import { SubagentScheduler } from "../src/schedule.js";
 import { ScheduleStore } from "../src/schedule-store.js";
 
@@ -27,26 +29,29 @@ type FakeRecord = { status: string; promise: Promise<string>; resolve: () => voi
  */
 function makeFaithfulManager(initialStatus = "completed") {
   const records = new Map<string, FakeRecord>();
+  const spawnFn = vi.fn(function () {
+    const id = "agent-" + Math.random().toString(36).slice(2, 10);
+    let resolve!: () => void;
+    const promise = new Promise<string>(r => { resolve = () => r(""); });
+    records.set(id, { status: initialStatus, promise, resolve });
+    // Auto-resolve on next tick — mimics a fast-finishing real agent.
+    queueMicrotask(() => records.get(id)?.resolve());
+    return id;
+  });
+  const getRecordFn = vi.fn(function (id: string) {
+    return records.get(id);
+  });
   return {
     records,
     initialStatus,
-    spawn: vi.fn(function (this: any) {
-      const id = "agent-" + Math.random().toString(36).slice(2, 10);
-      let resolve!: () => void;
-      const promise = new Promise<string>(r => { resolve = () => r(""); });
-      records.set(id, { status: initialStatus, promise, resolve });
-      // Auto-resolve on next tick — mimics a fast-finishing real agent.
-      queueMicrotask(() => records.get(id)?.resolve());
-      return id;
-    }),
-    getRecord: vi.fn(function (this: any, id: string) {
-      return records.get(id);
-    }),
-  } as any;
+    spawnFn,
+    getRecordFn,
+    manager: { spawn: spawnFn, getRecord: getRecordFn } as unknown as AgentManager,
+  };
 }
 
 function makePi() {
-  return { events: { emit: vi.fn() } } as any;
+  return { events: { emit: vi.fn() } } as unknown as ExtensionAPI;
 }
 
 function makeCtx() {
@@ -54,7 +59,7 @@ function makeCtx() {
     cwd: "/tmp",
     modelRegistry: { find: vi.fn(), getAll: () => [], getAvailable: () => [] },
     sessionManager: { getSessionId: () => "sess-e2e" },
-  } as any;
+  } as unknown as ExtensionContext;
 }
 
 /** Wait for a predicate, polling at 5ms intervals, with a deadline. */
@@ -85,7 +90,7 @@ describe("SubagentScheduler — end-to-end with real timers", () => {
   });
 
   it("one-shot job: real setTimeout fires, agent runs, store reflects success", async () => {
-    const manager = makeFaithfulManager("completed");
+    const { spawnFn, manager } = makeFaithfulManager("completed");
     const pi = makePi();
     scheduler.start(pi, makeCtx(), manager, store);
 
@@ -103,7 +108,7 @@ describe("SubagentScheduler — end-to-end with real timers", () => {
 
     // Wait for the spawn to occur (real timer fires) and the finalize promise
     // chain to settle. Polling, no fake timers.
-    await waitFor(() => manager.spawn.mock.calls.length === 1);
+    await waitFor(() => spawnFn.mock.calls.length === 1);
     await waitFor(() => scheduler.list().find(j => j.id === job.id)?.lastStatus === "success");
 
     const final = scheduler.list().find(j => j.id === job.id)!;
@@ -114,7 +119,7 @@ describe("SubagentScheduler — end-to-end with real timers", () => {
   });
 
   it("one-shot job that errors: store records lastStatus error (regression — bug #1)", async () => {
-    const manager = makeFaithfulManager("error");  // Agent terminates with error status
+    const { spawnFn, manager } = makeFaithfulManager("error");  // Agent terminates with error status
     const pi = makePi();
     scheduler.start(pi, makeCtx(), manager, store);
 
@@ -127,7 +132,7 @@ describe("SubagentScheduler — end-to-end with real timers", () => {
       prompt: "fail",
     });
 
-    await waitFor(() => manager.spawn.mock.calls.length === 1);
+    await waitFor(() => spawnFn.mock.calls.length === 1);
     await waitFor(() => scheduler.list().find(j => j.id === job.id)?.lastStatus !== "running");
 
     expect(scheduler.list().find(j => j.id === job.id)?.lastStatus).toBe("error");
@@ -135,7 +140,7 @@ describe("SubagentScheduler — end-to-end with real timers", () => {
   });
 
   it("interval job: fires repeatedly, runCount grows", async () => {
-    const manager = makeFaithfulManager("completed");
+    const { spawnFn, manager } = makeFaithfulManager("completed");
     const pi = makePi();
     scheduler.start(pi, makeCtx(), manager, store);
 
@@ -151,7 +156,7 @@ describe("SubagentScheduler — end-to-end with real timers", () => {
     // (parseInterval doesn't accept "ms"; we patch the persisted job and re-arm.)
     scheduler.updateJob(job.id, { intervalMs: 100, schedule: "100ms" });
 
-    await waitFor(() => manager.spawn.mock.calls.length >= 3, 2000);
+    await waitFor(() => spawnFn.mock.calls.length >= 3, 2000);
 
     const final = scheduler.list().find(j => j.id === job.id)!;
     expect(final.runCount).toBeGreaterThanOrEqual(3);
@@ -161,8 +166,8 @@ describe("SubagentScheduler — end-to-end with real timers", () => {
     scheduler.removeJob(job.id);
   });
 
-  it("persistence: schedules survive re-instantiating the store on the same file", async () => {
-    const manager = makeFaithfulManager("completed");
+  it("persistence: schedules survive re-instantiating the store on the same file", () => {
+    const { manager } = makeFaithfulManager("completed");
     const pi = makePi();
     scheduler.start(pi, makeCtx(), manager, store);
 
@@ -179,12 +184,12 @@ describe("SubagentScheduler — end-to-end with real timers", () => {
     scheduler.stop();
     const reloadedStore = new ScheduleStore(join(tmp, "schedules.json"));
     expect(reloadedStore.list()).toHaveLength(1);
-    expect(reloadedStore.list()[0].id).toBe(job.id);
-    expect(reloadedStore.list()[0].name).toBe("persistent");
+    expect(reloadedStore.list()[0]!.id).toBe(job.id);
+    expect(reloadedStore.list()[0]!.name).toBe("persistent");
   });
 
-  it("on-disk file shape: version=1 plus jobs array", async () => {
-    const manager = makeFaithfulManager("completed");
+  it("on-disk file shape: version=1 plus jobs array", () => {
+    const { manager } = makeFaithfulManager("completed");
     const pi = makePi();
     scheduler.start(pi, makeCtx(), manager, store);
 
@@ -196,7 +201,7 @@ describe("SubagentScheduler — end-to-end with real timers", () => {
       prompt: "x",
     });
 
-    const onDisk = JSON.parse(readFileSync(join(tmp, "schedules.json"), "utf-8"));
+    const onDisk = JSON.parse(readFileSync(join(tmp, "schedules.json"), "utf-8")) as unknown as { version: number; jobs: unknown[] };
     expect(onDisk.version).toBe(1);
     expect(onDisk.jobs).toHaveLength(1);
     expect(onDisk.jobs[0]).toMatchObject({
@@ -209,8 +214,9 @@ describe("SubagentScheduler — end-to-end with real timers", () => {
   });
 
   it("subagents:scheduled events fire across the lifecycle", async () => {
-    const manager = makeFaithfulManager("completed");
+    const { spawnFn, manager } = makeFaithfulManager("completed");
     const pi = makePi();
+    const emitSpy = (pi as unknown as { events: { emit: ReturnType<typeof vi.fn> } }).events.emit;
     scheduler.start(pi, makeCtx(), manager, store);
 
     const future = new Date(Date.now() + 100).toISOString();
@@ -219,19 +225,19 @@ describe("SubagentScheduler — end-to-end with real timers", () => {
       subagent_type: "general-purpose", prompt: "x",
     });
 
-    await waitFor(() => manager.spawn.mock.calls.length === 1);
+    await waitFor(() => spawnFn.mock.calls.length === 1);
 
-    const eventTypes = pi.events.emit.mock.calls
-      .filter((c: any[]) => c[0] === "subagents:scheduled")
-      .map((c: any[]) => c[1].type);
+    const eventTypes = (emitSpy.mock.calls as unknown[][])
+      .filter((c) => c[0] === "subagents:scheduled")
+      .map((c) => (c[1] as { type: string }).type);
 
     expect(eventTypes).toContain("added");
     expect(eventTypes).toContain("fired");
 
     scheduler.removeJob(job.id);
-    const after = pi.events.emit.mock.calls
-      .filter((c: any[]) => c[0] === "subagents:scheduled")
-      .map((c: any[]) => c[1].type);
+    const after = (emitSpy.mock.calls as unknown[][])
+      .filter((c) => c[0] === "subagents:scheduled")
+      .map((c) => (c[1] as { type: string }).type);
     expect(after).toContain("removed");
   });
 });

@@ -3,7 +3,7 @@ import { type EventBus, PROTOCOL_VERSION, type RpcDeps, registerRpcHandlers, typ
 
 /** Simple in-process event bus for testing. */
 function createEventBus(): EventBus {
-  const listeners = new Map<string, Set<(data: unknown) => void>>();
+  const listeners = new Map<string, Set<(data: unknown) => void | Promise<void>>>();
   return {
     on(event, handler) {
       if (!listeners.has(event)) listeners.set(event, new Set());
@@ -11,7 +11,7 @@ function createEventBus(): EventBus {
       return () => { listeners.get(event)?.delete(handler); };
     },
     emit(event, data) {
-      for (const handler of listeners.get(event) ?? []) handler(data);
+      for (const handler of listeners.get(event) ?? []) void handler(data);
     },
   };
 }
@@ -19,12 +19,16 @@ function createEventBus(): EventBus {
 describe("cross-extension RPC", () => {
   let events: EventBus;
   let manager: SpawnCapable;
+  let spawnFn: ReturnType<typeof vi.fn>;
+  let abortFn: ReturnType<typeof vi.fn>;
   let ctx: object | undefined;
   let deps: RpcDeps;
 
   beforeEach(() => {
     events = createEventBus();
-    manager = { spawn: vi.fn().mockReturnValue("agent-42"), abort: vi.fn().mockReturnValue(true) };
+    spawnFn = vi.fn().mockReturnValue("agent-42");
+    abortFn = vi.fn().mockReturnValue(true);
+    manager = { spawn: spawnFn as unknown as SpawnCapable["spawn"], abort: abortFn as unknown as SpawnCapable["abort"] };
     ctx = { session: true };
     deps = { events, pi: { events }, getCtx: () => ctx, manager };
   });
@@ -78,7 +82,7 @@ describe("cross-extension RPC", () => {
 
       await vi.waitFor(() => expect(reply).toHaveBeenCalled());
       expect(reply).toHaveBeenCalledWith({ success: true, data: { id: "agent-42" } });
-      expect(manager.spawn).toHaveBeenCalledWith(
+      expect(spawnFn).toHaveBeenCalledWith(
         deps.pi, ctx, "general-purpose", "do stuff", {},
       );
     });
@@ -93,7 +97,7 @@ describe("cross-extension RPC", () => {
       });
 
       await vi.waitFor(() => expect(reply).toHaveBeenCalled());
-      expect(manager.spawn).toHaveBeenCalledWith(
+      expect(spawnFn).toHaveBeenCalledWith(
         deps.pi, ctx, "Explore", "find it",
         { description: "search", isBackground: true },
       );
@@ -110,11 +114,11 @@ describe("cross-extension RPC", () => {
 
       await vi.waitFor(() => expect(reply).toHaveBeenCalled());
       expect(reply).toHaveBeenCalledWith({ success: false, error: "No active session" });
-      expect(manager.spawn).not.toHaveBeenCalled();
+      expect(spawnFn).not.toHaveBeenCalled();
     });
 
     it("returns error when manager.spawn throws", async () => {
-      (manager.spawn as ReturnType<typeof vi.fn>).mockImplementation(() => {
+      spawnFn.mockImplementation(() => {
         throw new Error("unknown agent type");
       });
       registerRpcHandlers(deps);
@@ -169,11 +173,11 @@ describe("cross-extension RPC", () => {
 
       await vi.waitFor(() => expect(reply).toHaveBeenCalled());
       expect(reply).toHaveBeenCalledWith({ success: true });
-      expect(manager.abort).toHaveBeenCalledWith("agent-42");
+      expect(abortFn).toHaveBeenCalledWith("agent-42");
     });
 
     it("returns error when agent not found", async () => {
-      (manager.abort as ReturnType<typeof vi.fn>).mockReturnValue(false);
+      abortFn.mockReturnValue(false);
       registerRpcHandlers(deps);
       const reply = vi.fn();
       events.on("subagents:rpc:stop:reply:req-st2", reply);
@@ -213,7 +217,7 @@ describe("cross-extension RPC", () => {
   describe("concurrent requests", () => {
     it("handles multiple simultaneous spawn requests independently", async () => {
       let callCount = 0;
-      (manager.spawn as ReturnType<typeof vi.fn>).mockImplementation(() => `agent-${++callCount}`);
+      spawnFn.mockImplementation(() => `agent-${++callCount}`);
       registerRpcHandlers(deps);
 
       const reply1 = vi.fn();
@@ -262,7 +266,7 @@ describe("cross-extension RPC", () => {
 
       await vi.waitFor(() => expect(reply).toHaveBeenCalled());
       expect(reply).toHaveBeenCalledWith({ success: true, data: { id: "agent-42" } });
-      expect(manager.spawn).toHaveBeenCalledWith(
+      expect(spawnFn).toHaveBeenCalledWith(
         deps.pi, ctx, "general-purpose", "x",
         { model: fakeModel },
       );
@@ -278,7 +282,7 @@ describe("cross-extension RPC", () => {
       });
 
       await vi.waitFor(() => expect(reply).toHaveBeenCalled());
-      expect(manager.spawn).toHaveBeenCalledWith(
+      expect(spawnFn).toHaveBeenCalledWith(
         deps.pi, ctx, "general-purpose", "x",
         { model: fakeModel },
       );
@@ -294,10 +298,10 @@ describe("cross-extension RPC", () => {
       });
 
       await vi.waitFor(() => expect(reply).toHaveBeenCalled());
-      const call = (reply as ReturnType<typeof vi.fn>).mock.calls[0][0];
+      const call = ((reply as ReturnType<typeof vi.fn>).mock.calls as unknown[][])[0]![0] as { success: boolean; error?: string };
       expect(call.success).toBe(false);
       expect(call.error).toMatch(/Model not found/);
-      expect(manager.spawn).not.toHaveBeenCalled();
+      expect(spawnFn).not.toHaveBeenCalled();
     });
 
     it("errors when ctx has no modelRegistry but a string model is given", async () => {
@@ -311,10 +315,10 @@ describe("cross-extension RPC", () => {
       });
 
       await vi.waitFor(() => expect(reply).toHaveBeenCalled());
-      const call = (reply as ReturnType<typeof vi.fn>).mock.calls[0][0];
+      const call = ((reply as ReturnType<typeof vi.fn>).mock.calls as unknown[][])[0]![0] as { success: boolean; error?: string };
       expect(call.success).toBe(false);
       expect(call.error).toMatch(/modelRegistry is unavailable/);
-      expect(manager.spawn).not.toHaveBeenCalled();
+      expect(spawnFn).not.toHaveBeenCalled();
     });
   });
 });

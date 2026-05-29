@@ -19,6 +19,8 @@ import type { ExtensionAPI, ExtensionContext } from "@earendil-works/pi-coding-a
 import { Cron } from "croner";
 import { nanoid } from "nanoid";
 import type { AgentManager } from "./agent-manager.js";
+import type { Api } from "@earendil-works/pi-ai";
+import type { Model } from "@earendil-works/pi-ai";
 import { resolveModel } from "./model-resolver.js";
 import type { ScheduleStore } from "./schedule-store.js";
 import type { IsolationMode, ScheduledSubagent, SubagentType, ThinkingLevel } from "./types.js";
@@ -38,11 +40,11 @@ export interface NewJobInput {
   schedule: string;
   subagent_type: SubagentType;
   prompt: string;
-  model?: string;
-  thinking?: ThinkingLevel;
-  max_turns?: number;
-  isolated?: boolean;
-  isolation?: IsolationMode;
+  model?: string | undefined;
+  thinking?: ThinkingLevel | undefined;
+  max_turns?: number | undefined;
+  isolated?: boolean | undefined;
+  isolation?: IsolationMode | undefined;
 }
 
 export class SubagentScheduler {
@@ -230,10 +232,10 @@ export class SubagentScheduler {
     // Resolve model at fire time — registry contents may have changed since the
     // job was created (auth added/removed). Fall back silently to spawn-default
     // if resolution fails; the spawn path handles undefined model gracefully.
-    let resolvedModel: any | undefined;
+    let resolvedModel: Model<Api> | undefined;
     if (job.model) {
       const r = resolveModel(job.model, ctx.modelRegistry);
-      if (typeof r !== "string") resolvedModel = r;
+      if (typeof r !== "string") resolvedModel = r as Model<Api>;
     }
 
     let agentId: string;
@@ -352,7 +354,7 @@ export class SubagentScheduler {
   static parseRelativeTime(s: string): string | null {
     const m = s.match(/^\+(\d+)(s|m|h|d)$/);
     if (!m) return null;
-    const ms = parseInt(m[1], 10) * { s: 1000, m: 60_000, h: 3_600_000, d: 86_400_000 }[m[2] as "s" | "m" | "h" | "d"];
+    const ms = parseInt(m[1]!, 10) * { s: 1000, m: 60_000, h: 3_600_000, d: 86_400_000 }[m[2] as "s" | "m" | "h" | "d"]
     return new Date(Date.now() + ms).toISOString();
   }
 
@@ -360,6 +362,6 @@ export class SubagentScheduler {
   static parseInterval(s: string): number | null {
     const m = s.match(/^(\d+)(s|m|h|d)$/);
     if (!m) return null;
-    return parseInt(m[1], 10) * { s: 1000, m: 60_000, h: 3_600_000, d: 86_400_000 }[m[2] as "s" | "m" | "h" | "d"];
+    return parseInt(m[1]!, 10) * { s: 1000, m: 60_000, h: 3_600_000, d: 86_400_000 }[m[2] as "s" | "m" | "h" | "d"];
   }
 }

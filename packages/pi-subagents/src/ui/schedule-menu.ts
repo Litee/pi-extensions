@@ -94,7 +94,7 @@ export async function showSchedulesMenu(
 
   const idx = labels.indexOf(choice);
   if (idx < 0) return;
-  const job = jobs[idx];
+  const job = jobs[idx]!
 
   const ok = await ctx.ui.confirm(`Cancel "${job.name}"?`, formatDetails(job, scheduler));
   if (!ok) return;

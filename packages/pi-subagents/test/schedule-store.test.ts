@@ -110,10 +110,10 @@ describe("ScheduleStore", () => {
 
     // Next mutation overwrites the broken file with healthy JSON
     store.add(makeJob({ id: "fresh" }));
-    const data = JSON.parse(readFileSync(file, "utf-8"));
+    const data = JSON.parse(readFileSync(file, "utf-8")) as unknown as { version: number; jobs: Array<{ id: string }> };
     expect(data.version).toBe(1);
     expect(data.jobs).toHaveLength(1);
-    expect(data.jobs[0].id).toBe("fresh");
+    expect(data.jobs[0]!.id).toBe("fresh");
   });
 
   it("recovers from a stale lock left by a dead process", () => {

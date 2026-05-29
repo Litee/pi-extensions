@@ -23,36 +23,36 @@ export type IsolationMode = "worktree";
 /** Unified agent configuration — used for both default and user-defined agents. */
 export interface AgentConfig {
   name: string;
-  displayName?: string;
+  displayName?: string | undefined;
   description: string;
-  builtinToolNames?: string[];
+  builtinToolNames?: string[] | undefined;
   /** Tool denylist — these tools are removed even if `builtinToolNames` or extensions include them. */
-  disallowedTools?: string[];
+  disallowedTools?: string[] | undefined;
   /** true = inherit all, string[] = only listed, false = none */
   extensions: true | string[] | false;
   /** true = inherit all, string[] = only listed, false = none */
   skills: true | string[] | false;
-  model?: string;
-  thinking?: ThinkingLevel;
-  maxTurns?: number;
+  model?: string | undefined;
+  thinking?: ThinkingLevel | undefined;
+  maxTurns?: number | undefined;
   systemPrompt: string;
   promptMode: "replace" | "append";
   /** Default for spawn: fork parent conversation. undefined = caller decides. */
-  inheritContext?: boolean;
+  inheritContext?: boolean | undefined;
   /** Default for spawn: run in background. undefined = caller decides. */
-  runInBackground?: boolean;
+  runInBackground?: boolean | undefined;
   /** Default for spawn: no extension tools. undefined = caller decides. */
-  isolated?: boolean;
+  isolated?: boolean | undefined;
   /** Persistent memory scope — agents with memory get a persistent directory and MEMORY.md */
-  memory?: MemoryScope;
+  memory?: MemoryScope | undefined;
   /** Isolation mode — "worktree" runs the agent in a temporary git worktree */
-  isolation?: IsolationMode;
+  isolation?: IsolationMode | undefined;
   /** true = this is an embedded default agent (informational) */
-  isDefault?: boolean;
+  isDefault?: boolean | undefined;
   /** false = agent is hidden from the registry */
-  enabled?: boolean;
+  enabled?: boolean | undefined;
   /** Where this agent was loaded from */
-  source?: "default" | "project" | "global";
+  source?: "default" | "project" | "global" | undefined;
 }
 
 export type JoinMode = 'async' | 'group' | 'smart';
@@ -62,30 +62,30 @@ export interface AgentRecord {
   type: SubagentType;
   description: string;
   status: "queued" | "running" | "completed" | "steered" | "aborted" | "stopped" | "error";
-  result?: string;
-  error?: string;
+  result?: string | undefined;
+  error?: string | undefined;
   toolUses: number;
   startedAt: number;
-  completedAt?: number;
-  session?: AgentSession;
-  abortController?: AbortController;
-  promise?: Promise<string>;
-  groupId?: string;
-  joinMode?: JoinMode;
+  completedAt?: number | undefined;
+  session?: AgentSession | undefined;
+  abortController?: AbortController | undefined;
+  promise?: Promise<string> | undefined;
+  groupId?: string | undefined;
+  joinMode?: JoinMode | undefined;
   /** Set when result was already consumed via get_subagent_result — suppresses completion notification. */
-  resultConsumed?: boolean;
+  resultConsumed?: boolean | undefined;
   /** Steering messages queued before the session was ready. */
-  pendingSteers?: string[];
+  pendingSteers?: string[] | undefined;
   /** Worktree info if the agent is running in an isolated worktree. */
-  worktree?: { path: string; branch: string };
+  worktree?: { path: string; branch: string } | undefined;
   /** Worktree cleanup result after agent completion. */
-  worktreeResult?: { hasChanges: boolean; branch?: string };
+  worktreeResult?: { hasChanges: boolean; branch?: string | undefined } | undefined;
   /** The tool_use_id from the original Agent tool call. */
-  toolCallId?: string;
+  toolCallId?: string | undefined;
   /** Path to the streaming output transcript file. */
-  outputFile?: string;
+  outputFile?: string | undefined;
   /** Cleanup function for the output file stream subscription. */
-  outputCleanup?: () => void;
+  outputCleanup?: (() => void) | undefined;
   /**
    * Lifetime usage breakdown, accumulated via `message_end` events. Survives
    * compaction. Total = input + output + cacheWrite (cacheRead deliberately
@@ -95,18 +95,18 @@ export interface AgentRecord {
   /** Number of times this agent's session has compacted. Initialized to 0 at spawn. */
   compactionCount: number;
   /** Resolved spawn params, captured for UI display. Fixed at spawn time. */
-  invocation?: AgentInvocation;
+  invocation?: AgentInvocation | undefined;
 }
 
 export interface AgentInvocation {
   /** Short display name, e.g. "haiku" — only set when different from parent. */
-  modelName?: string;
-  thinking?: ThinkingLevel;
-  maxTurns?: number;
-  isolated?: boolean;
-  inheritContext?: boolean;
-  runInBackground?: boolean;
-  isolation?: IsolationMode;
+  modelName?: string | undefined;
+  thinking?: ThinkingLevel | undefined;
+  maxTurns?: number | undefined;
+  isolated?: boolean | undefined;
+  inheritContext?: boolean | undefined;
+  runInBackground?: boolean | undefined;
+  isolation?: IsolationMode | undefined;
 }
 
 /** Details attached to custom notification messages for visual rendering. */
@@ -116,14 +116,14 @@ export interface NotificationDetails {
   status: string;
   toolUses: number;
   turnCount: number;
-  maxTurns?: number;
+  maxTurns?: number | undefined;
   totalTokens: number;
   durationMs: number;
-  outputFile?: string;
-  error?: string;
+  outputFile?: string | undefined;
+  error?: string | undefined;
   resultPreview: string;
   /** Additional agents in a group notification. */
-  others?: NotificationDetails[];
+  others?: NotificationDetails[] | undefined;
 }
 
 export interface EnvInfo {
@@ -147,25 +147,25 @@ export interface ScheduledSubagent {
   schedule: string;
   scheduleType: "cron" | "once" | "interval";
   /** Computed at create time for interval/once. */
-  intervalMs?: number;
+  intervalMs?: number | undefined;
 
   // spawn params (subset of Agent tool params; no inherit_context, no resume)
   subagent_type: SubagentType;
   prompt: string;
-  model?: string;
-  thinking?: ThinkingLevel;
-  max_turns?: number;
-  isolated?: boolean;
-  isolation?: IsolationMode;
+  model?: string | undefined;
+  thinking?: ThinkingLevel | undefined;
+  max_turns?: number | undefined;
+  isolated?: boolean | undefined;
+  isolation?: IsolationMode | undefined;
 
   // state
   enabled: boolean;
   /** ISO timestamp. */
   createdAt: string;
-  lastRun?: string;
-  lastStatus?: "success" | "error" | "running";
+  lastRun?: string | undefined;
+  lastStatus?: "success" | "error" | "running" | undefined;
   /** Refreshed on every fire and on store load. */
-  nextRun?: string;
+  nextRun?: string | undefined;
   runCount: number;
 }
 

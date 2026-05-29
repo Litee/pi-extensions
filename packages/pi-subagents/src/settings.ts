@@ -78,34 +78,34 @@ function sanitize(raw: unknown): SubagentsSettings {
   const r = raw as Record<string, unknown>;
   const out: SubagentsSettings = {};
   if (
-    Number.isInteger(r.maxConcurrent) &&
-    (r.maxConcurrent as number) >= 1 &&
-    (r.maxConcurrent as number) <= MAX_CONCURRENT_CEILING
+    Number.isInteger(r['maxConcurrent']) &&
+    (r['maxConcurrent'] as number) >= 1 &&
+    (r['maxConcurrent'] as number) <= MAX_CONCURRENT_CEILING
   ) {
-    out.maxConcurrent = r.maxConcurrent as number;
+    out.maxConcurrent = r['maxConcurrent'] as number;
   }
   if (
-    Number.isInteger(r.defaultMaxTurns) &&
-    (r.defaultMaxTurns as number) >= 0 &&
-    (r.defaultMaxTurns as number) <= MAX_TURNS_CEILING
+    Number.isInteger(r['defaultMaxTurns']) &&
+    (r['defaultMaxTurns'] as number) >= 0 &&
+    (r['defaultMaxTurns'] as number) <= MAX_TURNS_CEILING
   ) {
-    out.defaultMaxTurns = r.defaultMaxTurns as number;
+    out.defaultMaxTurns = r['defaultMaxTurns'] as number;
   }
   if (
-    Number.isInteger(r.graceTurns) &&
-    (r.graceTurns as number) >= 1 &&
-    (r.graceTurns as number) <= GRACE_TURNS_CEILING
+    Number.isInteger(r['graceTurns']) &&
+    (r['graceTurns'] as number) >= 1 &&
+    (r['graceTurns'] as number) <= GRACE_TURNS_CEILING
   ) {
-    out.graceTurns = r.graceTurns as number;
+    out.graceTurns = r['graceTurns'] as number;
   }
-  if (typeof r.defaultJoinMode === "string" && VALID_JOIN_MODES.has(r.defaultJoinMode)) {
-    out.defaultJoinMode = r.defaultJoinMode as JoinMode;
+  if (typeof r['defaultJoinMode'] === "string" && VALID_JOIN_MODES.has(r['defaultJoinMode'])) {
+    out.defaultJoinMode = r['defaultJoinMode'] as JoinMode;
   }
-  if (typeof r.schedulingEnabled === "boolean") {
-    out.schedulingEnabled = r.schedulingEnabled;
+  if (typeof r['schedulingEnabled'] === "boolean") {
+    out.schedulingEnabled = r['schedulingEnabled'];
   }
-  if (typeof r.scopeModels === "boolean") {
-    out.scopeModels = r.scopeModels;
+  if (typeof r['scopeModels'] === "boolean") {
+    out.scopeModels = r['scopeModels'];
   }
   return out;
 }
@@ -129,6 +129,7 @@ function readSettingsFile(path: string): SubagentsSettings {
     return sanitize(JSON.parse(readFileSync(path, "utf-8")));
   } catch (err) {
     const reason = err instanceof Error ? err.message : String(err);
+    // eslint-disable-next-line no-console
     console.warn(`[pi-subagents] Ignoring malformed settings at ${path}: ${reason}`);
     return {};
   }

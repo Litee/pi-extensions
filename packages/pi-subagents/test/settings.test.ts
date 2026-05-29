@@ -30,13 +30,13 @@ describe("settings persistence", () => {
   beforeEach(() => {
     globalDir = mkdtempSync(join(tmpdir(), "pi-settings-global-"));
     projectDir = mkdtempSync(join(tmpdir(), "pi-settings-project-"));
-    originalAgentDirEnv = process.env.PI_CODING_AGENT_DIR;
-    process.env.PI_CODING_AGENT_DIR = globalDir;
+    originalAgentDirEnv = process.env['PI_CODING_AGENT_DIR'];
+    process.env['PI_CODING_AGENT_DIR'] = globalDir;
   });
 
   afterEach(() => {
-    if (originalAgentDirEnv == null) delete process.env.PI_CODING_AGENT_DIR;
-    else process.env.PI_CODING_AGENT_DIR = originalAgentDirEnv;
+    if (originalAgentDirEnv == null) delete process.env['PI_CODING_AGENT_DIR'];
+    else process.env['PI_CODING_AGENT_DIR'] = originalAgentDirEnv;
     rmSync(globalDir, { recursive: true, force: true });
     rmSync(projectDir, { recursive: true, force: true });
   });
@@ -106,10 +106,10 @@ describe("settings persistence", () => {
     expect(loadSettings(projectDir)).toEqual({});
   });
 
-  it("sanitize drops non-boolean schedulingEnabled silently", async () => {
-    writeProject({ schedulingEnabled: "yes" } as any);
+  it("sanitize drops non-boolean schedulingEnabled silently", () => {
+    writeProject({ schedulingEnabled: "yes" });
     expect(loadSettings(projectDir)).toEqual({});
-    writeProject({ schedulingEnabled: 1 } as any);
+    writeProject({ schedulingEnabled: 1 });
     expect(loadSettings(projectDir)).toEqual({});
   });
 
@@ -139,7 +139,7 @@ describe("settings persistence", () => {
     const loaded = loadSettings(projectDir);
     expect(loaded.maxConcurrent).toBe(2);
     // Unknown fields are stripped by the sanitizer — old versions won't persist garbage
-    expect((loaded as Record<string, unknown>).futureField).toBeUndefined();
+    expect((loaded as Record<string, unknown>)['futureField']).toBeUndefined();
   });
 
   it("composes partial global + partial project correctly", () => {
@@ -284,7 +284,7 @@ describe("settings persistence", () => {
       try {
         expect(loadSettings(projectDir)).toEqual({});
         expect(spy).toHaveBeenCalledTimes(1);
-        expect(String(spy.mock.calls[0][0])).toMatch(/Ignoring malformed settings/);
+        expect(String(spy.mock.calls[0]![0])).toMatch(/Ignoring malformed settings/);
       } finally {
         spy.mockRestore();
       }

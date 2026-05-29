@@ -1,4 +1,8 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
+import type { AgentSession } from "@earendil-works/pi-coding-agent";
+import type { TUI } from "@earendil-works/pi-tui";
+import type { Theme } from "../src/ui/agent-widget.js";
+import type { AgentActivity } from "../src/ui/agent-widget.js";
 import type { AgentRecord } from "../src/types.js";
 
 // ── Mock wrapTextWithAnsi ──────────────────────────────────────────────
@@ -31,16 +35,16 @@ function mockTui(rows = 40, columns = 80) {
   return {
     terminal: { rows, columns },
     requestRender: vi.fn(),
-  } as any;
+  } as unknown as TUI;
 }
 
-function mockSession(messages: any[] = []) {
+function mockSession(messages: unknown[] = []) {
   return {
     messages,
     subscribe: vi.fn(() => vi.fn()),
     dispose: vi.fn(),
     getSessionStats: () => ({ tokens: { input: 0, output: 0, cacheWrite: 0 } }),
-  } as any;
+  } as unknown as AgentSession;
 }
 
 function mockRecord(overrides: Partial<AgentRecord> = {}): AgentRecord {
@@ -55,16 +59,16 @@ function mockRecord(overrides: Partial<AgentRecord> = {}): AgentRecord {
   } as AgentRecord;
 }
 
-function ansiTheme() {
+function ansiTheme(): Theme {
   return {
     fg: (_color: string, text: string) => `\x1b[38;5;240m${text}\x1b[0m`,
     bold: (text: string) => `\x1b[1m${text}\x1b[22m`,
-  } as any;
+  };
 }
 
 function assertAllLinesFit(lines: string[], width: number) {
   for (let i = 0; i < lines.length; i++) {
-    const vw = visibleWidth(lines[i]);
+    const vw = visibleWidth(lines[i]!);
     expect(vw, `line ${i} exceeds width (${vw} > ${width}): ${JSON.stringify(lines[i])}`).toBeLessThanOrEqual(width);
   }
 }
@@ -185,7 +189,7 @@ describe("ConversationViewer", () => {
       ];
       for (const w of widths) {
         const viewer = new ConversationViewer(
-          mockTui(30, w), mockSession(messages), mockRecord({ status: "running" }), activity as any, ansiTheme(), vi.fn(),
+          mockTui(30, w), mockSession(messages), mockRecord({ status: "running" }), activity as unknown as AgentActivity, ansiTheme(), vi.fn(),
         );
         assertAllLinesFit(viewer.render(w), w);
       }
@@ -244,7 +248,7 @@ describe("ConversationViewer", () => {
 
     /** Call the private buildContentLines method directly. */
     function callBuildContentLines(viewer: InstanceType<typeof ConversationViewer>, width: number): string[] {
-      return (viewer as any).buildContentLines(width);
+      return (viewer as unknown as { buildContentLines: (w: number) => string[] }).buildContentLines(width);
     }
 
     it("mock is intercepting wrapTextWithAnsi", async () => {

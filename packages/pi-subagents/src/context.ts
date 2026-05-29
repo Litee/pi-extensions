@@ -6,9 +6,10 @@ import type { ExtensionContext } from "@earendil-works/pi-coding-agent";
 
 /** Extract text from a message content block array. */
 export function extractText(content: unknown[]): string {
-  return content
-    .filter((c: any) => c.type === "text")
-    .map((c: any) => c.text ?? "")
+  type TextBlock = { type: string; text?: string };
+  return (content as TextBlock[])
+    .filter((c) => c.type === "text")
+    .map((c) => c.text ?? "")
     .join("\n");
 }
 

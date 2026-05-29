@@ -92,7 +92,7 @@ describe("streamToOutputFile", () => {
     return readFileSync(outPath, "utf-8")
       .trim()
       .split("\n")
-      .map((line) => JSON.parse(line));
+      .map((line) => JSON.parse(line) as unknown as Record<string, unknown>);
   }
 
   it("writes nothing past the initial entry until turn_end fires", () => {
@@ -118,9 +118,9 @@ describe("streamToOutputFile", () => {
     session.fire({ type: "turn_end" });
 
     const entries = readEntries();
-    expect(entries.map((e) => e.type)).toEqual(["user", "assistant", "user", "toolResult"]);
-    expect(entries.every((e) => e.agentId === "agent-1" && e.isSidechain === true)).toBe(true);
-    expect(entries.every((e) => e.cwd === "/work")).toBe(true);
+    expect(entries.map((e) => e['type'])).toEqual(["user", "assistant", "user", "toolResult"]);
+    expect(entries.every((e) => e['agentId'] === "agent-1" && e['isSidechain'] === true)).toBe(true);
+    expect(entries.every((e) => e['cwd'] === "/work")).toBe(true);
   });
 
   it("never re-emits messages already flushed on a previous turn_end", () => {

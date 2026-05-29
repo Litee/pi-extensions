@@ -14,6 +14,8 @@ import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import type { ExtensionAPI, ExtensionContext } from "@earendil-works/pi-coding-agent";
+import type { AgentManager } from "../src/agent-manager.js";
 import { SubagentScheduler } from "../src/schedule.js";
 import { ScheduleStore } from "../src/schedule-store.js";
 
@@ -22,13 +24,13 @@ function makeMockManager() {
   return {
     spawn: spawnFn,
     getRecord: vi.fn(() => ({ promise: Promise.resolve("done") })),
-  } as any;
+  } as unknown as AgentManager;
 }
 
 function makeMockPi() {
   return {
     events: { emit: vi.fn() },
-  } as any;
+  } as unknown as ExtensionAPI;
 }
 
 function makeMockCtx() {
@@ -36,7 +38,7 @@ function makeMockCtx() {
     cwd: "/tmp",
     modelRegistry: { find: vi.fn(), getAll: () => [], getAvailable: () => [] },
     sessionManager: { getSessionId: () => "sess-1" },
-  } as any;
+  } as unknown as ExtensionContext;
 }
 
 describe("SubagentScheduler — static format parsers", () => {
@@ -95,9 +97,10 @@ describe("SubagentScheduler — lifecycle", () => {
   let tmp: string;
   let store: ScheduleStore;
   let scheduler: SubagentScheduler;
-  let manager: any;
-  let pi: any;
-  let ctx: any;
+  let manager: AgentManager;
+  let pi: ExtensionAPI;
+  let emitSpy: ReturnType<typeof vi.fn>;
+  let ctx: ExtensionContext;
 
   beforeEach(() => {
     tmp = mkdtempSync(join(tmpdir(), "scheduler-test-"));
@@ -105,6 +108,7 @@ describe("SubagentScheduler — lifecycle", () => {
     scheduler = new SubagentScheduler();
     manager = makeMockManager();
     pi = makeMockPi();
+    emitSpy = (pi as unknown as { events: { emit: ReturnType<typeof vi.fn> } }).events.emit;
     ctx = makeMockCtx();
     scheduler.start(pi, ctx, manager, store);
   });
@@ -130,7 +134,7 @@ describe("SubagentScheduler — lifecycle", () => {
     });
     expect(job.scheduleType).toBe("interval");
     expect(scheduler.list()).toHaveLength(1);
-    expect(pi.events.emit).toHaveBeenCalledWith("subagents:scheduled", expect.objectContaining({ type: "added" }));
+    expect(emitSpy).toHaveBeenCalledWith("subagents:scheduled", expect.objectContaining({ type: "added" }));
   });
 
   it("addJob rejects duplicate names", () => {
@@ -144,13 +148,13 @@ describe("SubagentScheduler — lifecycle", () => {
     const job = scheduler.addJob({ name: "j1", description: "x", schedule: "1h", subagent_type: "general-purpose", prompt: "p" });
     expect(scheduler.removeJob(job.id)).toBe(true);
     expect(scheduler.list()).toEqual([]);
-    expect(pi.events.emit).toHaveBeenCalledWith("subagents:scheduled", expect.objectContaining({ type: "removed", jobId: job.id }));
+    expect(emitSpy).toHaveBeenCalledWith("subagents:scheduled", expect.objectContaining({ type: "removed", jobId: job.id }));
   });
 
   it("updateJob({enabled: false}) unschedules but keeps the record", () => {
     const job = scheduler.addJob({ name: "j1", description: "x", schedule: "1h", subagent_type: "general-purpose", prompt: "p" });
     scheduler.updateJob(job.id, { enabled: false });
-    expect(scheduler.list()[0].enabled).toBe(false);
+    expect(scheduler.list()[0]!.enabled).toBe(false);
     expect(scheduler.getNextRun(job.id)).toBeUndefined();
   });
 
@@ -220,9 +224,13 @@ describe("SubagentScheduler — lifecycle", () => {
     const reloaded = scheduler.list().find(j => j.id === "reload-test");
     expect(reloaded?.enabled).toBe(false);
     expect(reloaded?.lastStatus).toBe("error");
-    expect(pi.events.emit).toHaveBeenCalledWith("subagents:scheduled", expect.objectContaining({
-      type: "error", jobId: "reload-test", error: expect.stringMatching(/in the past/),
-    }));
+    expect(emitSpy).toHaveBeenCalledWith("subagents:scheduled",
+      expect.objectContaining({
+        type: "error", jobId: "reload-test",
+        // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment
+        error: expect.stringMatching(/in the past/),
+      }),
+    );
   });
 });
 
@@ -230,9 +238,12 @@ describe("SubagentScheduler — fire path", () => {
   let tmp: string;
   let store: ScheduleStore;
   let scheduler: SubagentScheduler;
-  let manager: any;
-  let pi: any;
-  let ctx: any;
+  let manager: AgentManager;
+  let spawnSpy: ReturnType<typeof vi.fn>;
+  let getRecordSpy: ReturnType<typeof vi.fn>;
+  let pi: ExtensionAPI;
+  let emitSpy: ReturnType<typeof vi.fn>;
+  let ctx: ExtensionContext;
 
   beforeEach(() => {
     vi.useFakeTimers();
@@ -240,7 +251,10 @@ describe("SubagentScheduler — fire path", () => {
     store = new ScheduleStore(join(tmp, "s.json"));
     scheduler = new SubagentScheduler();
     manager = makeMockManager();
+    spawnSpy = (manager as unknown as { spawn: ReturnType<typeof vi.fn> }).spawn;
+    getRecordSpy = (manager as unknown as { getRecord: ReturnType<typeof vi.fn> }).getRecord;
     pi = makeMockPi();
+    emitSpy = (pi as unknown as { events: { emit: ReturnType<typeof vi.fn> } }).events.emit;
     ctx = makeMockCtx();
     scheduler.start(pi, ctx, manager, store);
   });
@@ -257,28 +271,28 @@ describe("SubagentScheduler — fire path", () => {
       subagent_type: "general-purpose", prompt: "tick",
     });
 
-    expect(manager.spawn).toHaveBeenCalledTimes(0);
+    expect(spawnSpy).toHaveBeenCalledTimes(0);
     vi.advanceTimersByTime(10_000);
-    expect(manager.spawn).toHaveBeenCalledTimes(1);
+    expect(spawnSpy).toHaveBeenCalledTimes(1);
     vi.advanceTimersByTime(20_000);
-    expect(manager.spawn).toHaveBeenCalledTimes(3);
+    expect(spawnSpy).toHaveBeenCalledTimes(3);
   });
 
-  it("one-shot fires once and auto-disables", async () => {
+  it("one-shot fires once and auto-disables", () => {
     const job = scheduler.addJob({
       name: "soon", description: "once", schedule: "+1s",
       subagent_type: "general-purpose", prompt: "once",
     });
 
     vi.advanceTimersByTime(2_000);
-    expect(manager.spawn).toHaveBeenCalledTimes(1);
+    expect(spawnSpy).toHaveBeenCalledTimes(1);
 
     // The auto-disable update happens synchronously inside the timer callback
     expect(scheduler.list().find(j => j.id === job.id)?.enabled).toBe(false);
 
     // Subsequent ticks shouldn't fire again
     vi.advanceTimersByTime(60_000);
-    expect(manager.spawn).toHaveBeenCalledTimes(1);
+    expect(spawnSpy).toHaveBeenCalledTimes(1);
   });
 
   it("fire passes bypassQueue: true to manager.spawn", () => {
@@ -288,8 +302,8 @@ describe("SubagentScheduler — fire path", () => {
     });
 
     vi.advanceTimersByTime(1_000);
-    expect(manager.spawn).toHaveBeenCalledTimes(1);
-    const optsArg = manager.spawn.mock.calls[0][4];
+    expect(spawnSpy).toHaveBeenCalledTimes(1);
+    const optsArg = (spawnSpy.mock.calls as unknown[][])[0]![4] as { bypassQueue: boolean; isBackground: boolean };
     expect(optsArg.bypassQueue).toBe(true);
     expect(optsArg.isBackground).toBe(true);
   });
@@ -301,7 +315,7 @@ describe("SubagentScheduler — fire path", () => {
     });
     scheduler.updateJob(job.id, { enabled: false });
     vi.advanceTimersByTime(5_000);
-    expect(manager.spawn).toHaveBeenCalledTimes(0);
+    expect(spawnSpy).toHaveBeenCalledTimes(0);
   });
 
   it("emits fired event with agentId on successful spawn", () => {
@@ -310,13 +324,17 @@ describe("SubagentScheduler — fire path", () => {
       subagent_type: "general-purpose", prompt: "x",
     });
     vi.advanceTimersByTime(2_000);
-    expect(pi.events.emit).toHaveBeenCalledWith("subagents:scheduled", expect.objectContaining({
-      type: "fired", name: "fire-once", agentId: expect.stringMatching(/^agent-/),
-    }));
+    expect(emitSpy).toHaveBeenCalledWith("subagents:scheduled",
+      expect.objectContaining({
+        type: "fired", name: "fire-once",
+        // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment
+        agentId: expect.stringMatching(/^agent-/),
+      }),
+    );
   });
 
-  it("records lastStatus error and emits when manager.spawn throws", async () => {
-    manager.spawn.mockImplementationOnce(() => { throw new Error("no slots"); });
+  it("records lastStatus error and emits when manager.spawn throws", () => {
+    spawnSpy.mockImplementationOnce(() => { throw new Error("no slots"); });
     const job = scheduler.addJob({
       name: "boom", description: "x", schedule: "+1s",
       subagent_type: "general-purpose", prompt: "x",
@@ -325,7 +343,7 @@ describe("SubagentScheduler — fire path", () => {
 
     // Update is synchronous in the spawn-throw path
     expect(scheduler.list().find(j => j.id === job.id)?.lastStatus).toBe("error");
-    expect(pi.events.emit).toHaveBeenCalledWith("subagents:scheduled", expect.objectContaining({
+    expect(emitSpy).toHaveBeenCalledWith("subagents:scheduled", expect.objectContaining({
       type: "error", jobId: job.id, error: "no slots",
     }));
   });
@@ -339,14 +357,14 @@ describe("SubagentScheduler — fire path", () => {
 
     function installFaithfulMock(): Map<string, FakeRecord> {
       const records = new Map<string, FakeRecord>();
-      manager.spawn.mockImplementation(() => {
+      spawnSpy.mockImplementation(() => {
         const id = "agent-" + Math.random().toString(36).slice(2, 10);
         let resolve!: () => void;
         const promise = new Promise<string>(r => { resolve = () => r(""); });
         records.set(id, { status: "running", promise, resolve });
         return id;
       });
-      manager.getRecord.mockImplementation((id: string) => records.get(id));
+      getRecordSpy.mockImplementation((id: string) => records.get(id));
       return records;
     }
 
@@ -358,10 +376,10 @@ describe("SubagentScheduler — fire path", () => {
       });
 
       vi.advanceTimersByTime(2_000);
-      expect(manager.spawn).toHaveBeenCalledTimes(1);
+      expect(spawnSpy).toHaveBeenCalledTimes(1);
 
       // The agent ran and ended in error — same shape the real AgentManager produces.
-      const r = [...records.values()][0];
+      const r = [...records.values()][0]!;
       r.status = "error";
       r.resolve();
 
@@ -379,7 +397,7 @@ describe("SubagentScheduler — fire path", () => {
       });
 
       vi.advanceTimersByTime(2_000);
-      const r = [...records.values()][0];
+      const r = [...records.values()][0]!;
       r.status = "completed";
       r.resolve();
 
@@ -401,10 +419,10 @@ describe("SubagentScheduler — fire path", () => {
 
       vi.advanceTimersByTime(3_000);
       const recs = [...records.values()];
-      recs[0].status = "aborted";
-      recs[0].resolve();
-      recs[1].status = "stopped";
-      recs[1].resolve();
+      recs[0]!.status = "aborted";
+      recs[0]!.resolve();
+      recs[1]!.status = "stopped";
+      recs[1]!.resolve();
 
       await vi.advanceTimersByTimeAsync(0);
 

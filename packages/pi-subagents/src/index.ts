@@ -12,13 +12,13 @@
 
 import { existsSync, mkdirSync, readFileSync, unlinkSync } from "node:fs";
 import { join } from "node:path";
-import { defineTool, type ExtensionAPI, type ExtensionCommandContext, type ExtensionContext, getAgentDir, getSettingsListTheme } from "@earendil-works/pi-coding-agent";
+import { defineTool, type AgentSession, type ExtensionAPI, type ExtensionCommandContext, type ExtensionContext, getAgentDir, getSettingsListTheme } from "@earendil-works/pi-coding-agent";
 import { Container, Key, matchesKey, type SettingItem, SettingsList, Spacer, Text } from "@earendil-works/pi-tui";
 import { Type } from "@sinclair/typebox";
 import { AgentManager } from "./agent-manager.js";
 import { getAgentConversation, getDefaultMaxTurns, getGraceTurns, normalizeMaxTurns, setDefaultMaxTurns, setGraceTurns, steerAgent } from "./agent-runner.js";
 import { BUILTIN_TOOL_NAMES, getAgentConfig, getAllTypes, getAvailableTypes, getDefaultAgentNames, getUserAgentNames, registerAgents, resolveType } from "./agent-types.js";
-import { registerRpcHandlers } from "./cross-extension-rpc.js";
+import { registerRpcHandlers, type SpawnCapable } from "./cross-extension-rpc.js";
 import { loadCustomAgents } from "./custom-agents.js";
 import { isModelInScope, readEnabledModels, resolveEnabledModels } from "./enabled-models.js";
 import { GroupJoinManager } from "./group-join.js";
@@ -28,7 +28,7 @@ import { createOutputFilePath, streamToOutputFile, writeInitialEntry } from "./o
 import { SubagentScheduler } from "./schedule.js";
 import { resolveStorePath, ScheduleStore } from "./schedule-store.js";
 import { applyAndEmitLoaded, type SubagentsSettings, saveAndEmitChanged } from "./settings.js";
-import { type AgentConfig, type AgentInvocation, type AgentRecord, type JoinMode, type NotificationDetails, type SubagentType } from "./types.js";
+import { type AgentConfig, type AgentInvocation, type AgentRecord, type JoinMode, type NotificationDetails } from "./types.js";
 import {
   type AgentActivity,
   type AgentDetails,
@@ -42,7 +42,6 @@ import {
   getDisplayName,
   getPromptModeLabel,
   SPINNER,
-  type UICtx,
 } from "./ui/agent-widget.js";
 import { showSchedulesMenu } from "./ui/schedule-menu.js";
 import { addUsage, getLifetimeTotal, getSessionContextPercent, type LifetimeUsage } from "./usage.js";
@@ -51,7 +50,7 @@ import { addUsage, getLifetimeTotal, getSessionContextPercent, type LifetimeUsag
 
 /** Tool execute return value for a text response. */
 function textResult(msg: string, details?: AgentDetails) {
-  return { content: [{ type: "text" as const, text: msg }], details: details as any };
+  return { content: [{ type: "text" as const, text: msg }], details: details as unknown as Record<string, unknown> };
 }
 
 /** Format an agent's lifetime token total, or "" when zero. */
@@ -95,7 +94,7 @@ function createActivityTracker(maxTurns?: number, onStreamUpdate?: () => void) {
       state.turnCount = turnCount;
       onStreamUpdate?.();
     },
-    onSessionCreated: (session: any) => {
+    onSessionCreated: (session: AgentSession) => {
       state.session = session;
     },
     onAssistantUsage: (usage: { input: number; output: number; cacheWrite: number }) => {
@@ -164,7 +163,7 @@ function formatTaskNotification(record: AgentRecord, resultMaxLen: number): stri
 /** Build AgentDetails from a base + record-specific fields. */
 function buildDetails(
   base: Pick<AgentDetails, "displayName" | "description" | "subagentType" | "modelName" | "tags">,
-  record: { toolUses: number; startedAt: number; completedAt?: number; status: string; error?: string; id?: string; session?: any; lifetimeUsage: LifetimeUsage },
+  record: { toolUses: number; startedAt: number; completedAt?: number | undefined; status: string; error?: string | undefined; id?: string | undefined; session?: AgentSession | undefined; lifetimeUsage: LifetimeUsage },
   activity?: AgentActivity,
   overrides?: Partial<AgentDetails>,
 ): AgentDetails {
@@ -328,7 +327,7 @@ export default function (pi: ExtensionAPI) {
           : `${unconsumed.length} agent(s) finished`;
 
         const [first, ...rest] = unconsumed;
-        const details = buildNotificationDetails(first, 300, agentActivity.get(first.id));
+        const details = buildNotificationDetails(first!, 300, agentActivity.get(first!.id));
         if (rest.length > 0) {
           details.others = rest.map(r => buildNotificationDetails(r, 300, agentActivity.get(r.id)));
         }
@@ -432,11 +431,11 @@ export default function (pi: ExtensionAPI) {
   // Expose manager via Symbol.for() global registry for cross-package access.
   // Standard Node.js pattern for cross-package singletons (used by OpenTelemetry, etc.).
   const MANAGER_KEY = Symbol.for("pi-subagents:manager");
-  (globalThis as any)[MANAGER_KEY] = {
+  (globalThis as unknown as Record<symbol, unknown>)[MANAGER_KEY] = {
     waitForAll: () => manager.waitForAll(),
     hasRunning: () => manager.hasRunning(),
-    spawn: (piRef: any, ctx: any, type: string, prompt: string, options: any) =>
-      manager.spawn(piRef, ctx, type, prompt, options),
+    spawn: (piRef: ExtensionAPI, ctx: ExtensionContext, type: string, prompt: string, options: Record<string, unknown>) =>
+      manager.spawn(piRef, ctx, type, prompt, options as unknown as Parameters<typeof manager.spawn>[4]),
     getRecord: (id: string) => manager.getRecord(id),
   };
 
@@ -460,12 +459,13 @@ export default function (pi: ExtensionAPI) {
     } catch (err) {
       // Scheduling is non-essential — log and move on so the rest of the
       // extension keeps working if e.g. .pi/ is unwritable.
+      // eslint-disable-next-line no-console
       console.warn("[pi-subagents] Failed to start scheduler:", err);
     }
   }
 
   // Capture ctx from session_start for RPC spawn handler + start the scheduler.
-  pi.on("session_start", async (_event, ctx) => {
+  pi.on("session_start", (_event, ctx) => {
     currentCtx = ctx;
     manager.clearCompleted();
     if (isSchedulingEnabled() && !scheduler.isActive()) startScheduler(ctx);
@@ -480,7 +480,7 @@ export default function (pi: ExtensionAPI) {
     events: pi.events,
     pi,
     getCtx: () => currentCtx,
-    manager,
+    manager: manager as unknown as SpawnCapable,
   });
 
   // Broadcast readiness so extensions loaded after us can discover us
@@ -488,12 +488,12 @@ export default function (pi: ExtensionAPI) {
 
   // On shutdown, abort all agents immediately and clean up.
   // If the session is going down, there's nothing left to consume agent results.
-  pi.on("session_shutdown", async () => {
+  pi.on("session_shutdown", () => {
     unsubSpawnRpc();
     unsubStopRpc();
     unsubPingRpc();
     currentCtx = undefined;
-    delete (globalThis as any)[MANAGER_KEY];
+    delete (globalThis as unknown as Record<symbol, unknown>)[MANAGER_KEY];
     scheduler.stop();
     manager.abortAll();
     for (const timer of pendingNudges.values()) clearTimeout(timer);
@@ -574,8 +574,8 @@ export default function (pi: ExtensionAPI) {
   }
 
   // Grab UI context from first tool execution + clear lingering widget on new turn
-  pi.on("tool_execution_start", async (_event, ctx) => {
-    widget.setUICtx(ctx.ui as UICtx);
+  pi.on("tool_execution_start", (_event, ctx) => {
+    widget.setUICtx(ctx.ui);
     widget.onTurnStart();
   });
 
@@ -780,7 +780,7 @@ Terse command-style prompts produce shallow, generic work.
 
       // ---- While running (streaming) ----
       if (isPartial || details.status === "running") {
-        const frame = SPINNER[details.spinnerFrame ?? 0];
+        const frame = SPINNER[details.spinnerFrame ?? 0]!;
         const s = stats(details);
         let line = theme.fg("accent", frame) + (s ? " " + s : "");
         line += "\n" + theme.fg("dim", `  ⎿  ${details.activity ?? "thinking…"}`);
@@ -844,12 +844,10 @@ Terse command-style prompts produce shallow, generic work.
 
     execute: async (toolCallId, params, signal, onUpdate, ctx) => {
       // Ensure we have UI context for widget rendering
-      widget.setUICtx(ctx.ui as UICtx);
-
-      // Reload custom agents so new .pi/agents/*.md files are picked up without restart
+      widget.setUICtx(ctx.ui);
       reloadCustomAgents();
 
-      const rawType = params.subagent_type as SubagentType;
+      const rawType = params.subagent_type;
       const resolved = resolveType(rawType);
       const subagentType = resolved ?? "general-purpose";
       const fellBack = resolved === undefined;
@@ -869,7 +867,7 @@ Terse command-style prompts produce shallow, generic work.
           if (resolvedConfig.modelFromParams) return textResult(resolved);
           // config-specified: silent fallback to parent
         } else {
-          model = resolved;
+          model = resolved as typeof model;
         }
       }
 
@@ -956,12 +954,12 @@ Terse command-style prompts produce shallow, generic work.
         }
         try {
           const job = scheduler.addJob({
-            name: params.description as string,
-            description: params.description as string,
+            name: params.description,
+            description: params.description,
             schedule: params.schedule as string,
             subagent_type: subagentType,
-            prompt: params.prompt as string,
-            model: params.model as string | undefined,
+            prompt: params.prompt,
+            model: params.model,
             thinking: thinking,
             max_turns: effectiveMaxTurns,
             isolated: isolated,
@@ -1006,7 +1004,7 @@ Terse command-style prompts produce shallow, generic work.
         // rather than closing over a value that doesn't exist yet.
         let id: string;
         const origBgOnSession = bgCallbacks.onSessionCreated;
-        bgCallbacks.onSessionCreated = (session: any) => {
+        bgCallbacks.onSessionCreated = (session: AgentSession) => {
           origBgOnSession(session);
           const rec = manager.getRecord(id);
           if (rec?.outputFile) {
@@ -1099,7 +1097,7 @@ Terse command-style prompts produce shallow, generic work.
         };
         onUpdate?.({
           content: [{ type: "text", text: `${fgState.toolUses} tool uses...` }],
-          details: details as any,
+          details: details,
         });
       };
 
@@ -1107,7 +1105,7 @@ Terse command-style prompts produce shallow, generic work.
 
       // Wire session creation to register in widget
       const origOnSession = fgCallbacks.onSessionCreated;
-      fgCallbacks.onSessionCreated = (session: any) => {
+      fgCallbacks.onSessionCreated = (session: AgentSession) => {
         origOnSession(session);
         for (const a of manager.listAgents()) {
           if (a.session === session) {
@@ -1437,7 +1435,7 @@ Terse command-style prompts produce shallow, generic work.
     const choice = await ctx.ui.select("Agent types", options);
     if (!choice) return;
 
-    const agentName = choice.split(" · ")[0].replace(/^[•◦✕\s]+/, "").trim();
+    const agentName = (choice.split(" · ")[0] ?? "").replace(/^[•◦✕\s]+/, "").trim();
     if (getAgentConfig(agentName)) {
       await showAgentDetail(ctx, agentName);
       await showAllAgentsList(ctx);
@@ -1463,7 +1461,7 @@ Terse command-style prompts produce shallow, generic work.
     // Find the selected agent by matching the option index
     const idx = options.indexOf(choice);
     if (idx < 0) return;
-    const record = agents[idx];
+    const record = agents[idx]!;
 
     await viewAgentConversation(ctx, record);
     // Back-navigation: re-show the list
@@ -1967,7 +1965,7 @@ ${systemPrompt}
         (id, newValue) => {
           applyValue(id, newValue);
         },
-        () => done(undefined as undefined),
+        () => done(undefined),
       );
 
       const container = new Container();
@@ -1987,8 +1985,8 @@ ${systemPrompt}
           }
 
           // Enter on numeric field → close and prompt for typed input
-          if (matchesKey(data, Key.enter) && NUMERIC_IDS.has(items[currentIndex].id)) {
-            done(items[currentIndex].id);
+          if (matchesKey(data, Key.enter) && NUMERIC_IDS.has(items[currentIndex]!.id)) {
+            done(items[currentIndex]!.id);
             return;
           }
           list.handleInput?.(data);

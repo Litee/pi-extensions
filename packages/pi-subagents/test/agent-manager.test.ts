@@ -1,5 +1,7 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { AgentManager } from "../src/agent-manager.js";
+import type { RunOptions } from "../src/agent-runner.js";
+import type { ExtensionAPI, ExtensionContext } from "@earendil-works/pi-coding-agent";
 import type { AgentRecord } from "../src/types.js";
 
 vi.mock("../src/agent-runner.js", () => ({
@@ -15,10 +17,10 @@ vi.mock("../src/worktree.js", () => ({
 
 import { runAgent } from "../src/agent-runner.js";
 
-const mockPi = {} as any;
-const mockCtx = { cwd: "/tmp" } as any;
+const mockPi = {} as unknown as ExtensionAPI;
+const mockCtx = { cwd: "/tmp" } as unknown as ExtensionContext;
 
-const mockSession = () => ({ dispose: vi.fn() } as any);
+const mockSession = () => ({ dispose: vi.fn() } as unknown as import("@earendil-works/pi-coding-agent").AgentSession);
 
 const resolvedRun = () =>
   vi.mocked(runAgent).mockResolvedValue({
@@ -141,7 +143,7 @@ describe("AgentManager — cleanup timer", () => {
   it("does not keep the process alive on its own", () => {
     manager = new AgentManager();
 
-    expect((manager as any).cleanupInterval.hasRef()).toBe(false);
+    expect((manager as unknown as { cleanupInterval: { hasRef(): boolean } }).cleanupInterval.hasRef()).toBe(false);
   });
 });
 
@@ -167,7 +169,7 @@ describe("AgentManager — Bug 3 clearCompleted", () => {
     expect(manager.listAgents()).toHaveLength(0);
   });
 
-  it("clearCompleted does not remove running or queued agents", async () => {
+  it("clearCompleted does not remove running or queued agents", () => {
     // Use maxConcurrent=0 to keep agents queued, then spawn one running via foreground
     manager = new AgentManager(undefined, 1);
 
@@ -206,7 +208,7 @@ describe("AgentManager — Bug 3 clearCompleted", () => {
     const sess = { dispose: disposeSpy };
     vi.mocked(runAgent).mockResolvedValue({
       responseText: "done",
-      session: sess as any,
+      session: sess as unknown as import("@earendil-works/pi-coding-agent").AgentSession,
       aborted: false,
       steered: false,
     });
@@ -268,13 +270,13 @@ describe("AgentManager — lifetime usage + compaction count are eagerly initial
     manager = new AgentManager();
 
     // Capture the options passed to runAgent so we can drive callbacks
-    let captured: any;
-    vi.mocked(runAgent).mockImplementation(async (_ctx, _type, _prompt, opts: any) => {
+    let captured: RunOptions | undefined;
+    vi.mocked(runAgent).mockImplementation((_ctx, _type, _prompt, opts: RunOptions) => {
       captured = opts;
       // Two assistant messages with usage
       opts.onAssistantUsage?.({ input: 100, output: 50, cacheWrite: 10 });
       opts.onAssistantUsage?.({ input: 200, output: 80, cacheWrite: 20 });
-      return { responseText: "done", session: mockSession(), aborted: false, steered: false };
+      return Promise.resolve({ responseText: "done", session: mockSession(), aborted: false, steered: false });
     });
 
     const id = manager.spawn(mockPi, mockCtx, "general-purpose", "test", {
@@ -291,14 +293,14 @@ describe("AgentManager — lifetime usage + compaction count are eagerly initial
 
   it("onCompaction from runAgent increments record.compactionCount", async () => {
     manager = new AgentManager();
-    const compactSeen: any[] = [];
+    const compactSeen: { count: number; reason: string }[] = [];
 
-    vi.mocked(runAgent).mockImplementation(async (_ctx, _type, _prompt, opts: any) => {
+    vi.mocked(runAgent).mockImplementation((_ctx, _type, _prompt, opts: RunOptions) => {
       // Compaction fires while the agent is still running — the record passed to
       // onCompact should reflect the just-incremented count.
       opts.onCompaction?.({ reason: "threshold", tokensBefore: 12345 });
       opts.onCompaction?.({ reason: "manual", tokensBefore: 22222 });
-      return { responseText: "done", session: mockSession(), aborted: false, steered: false };
+      return Promise.resolve({ responseText: "done", session: mockSession(), aborted: false, steered: false });
     });
 
     manager = new AgentManager(undefined, undefined, undefined, (record, info) => {
@@ -325,7 +327,7 @@ describe("AgentManager — lifetime usage + compaction count are eagerly initial
     const session = { ...mockSession() };
     vi.mocked(runAgent).mockResolvedValue({
       responseText: "first",
-      session: session as any,
+      session: session as unknown as import("@earendil-works/pi-coding-agent").AgentSession,
       aborted: false,
       steered: false,
     });
@@ -342,10 +344,10 @@ describe("AgentManager — lifetime usage + compaction count are eagerly initial
 
     // Now resume — drive callbacks via the mocked resumeAgent
     const { resumeAgent: resumeMock } = await import("../src/agent-runner.js");
-    vi.mocked(resumeMock).mockImplementation(async (_session, _prompt, opts: any) => {
-      opts.onAssistantUsage?.({ input: 70, output: 30, cacheWrite: 5 });
-      opts.onCompaction?.({ reason: "overflow", tokensBefore: 999 });
-      return "second";
+    vi.mocked(resumeMock).mockImplementation((_session, _prompt, opts: Parameters<typeof resumeMock>[2]) => {
+      opts?.onAssistantUsage?.({ input: 70, output: 30, cacheWrite: 5 });
+      opts?.onCompaction?.({ reason: "overflow", tokensBefore: 999 });
+      return Promise.resolve("second");
     });
 
     await manager.resume(id, "more");

@@ -7,7 +7,7 @@
  */
 
 import { randomUUID } from "node:crypto";
-import type { Model } from "@earendil-works/pi-ai";
+import type { Model, Api } from "@earendil-works/pi-ai";
 import type { AgentSession, ExtensionAPI, ExtensionContext } from "@earendil-works/pi-coding-agent";
 import { resumeAgent, runAgent, type ToolActivity } from "./agent-runner.js";
 import type { AgentInvocation, AgentRecord, IsolationMode, SubagentType, ThinkingLevel } from "./types.js";
@@ -32,44 +32,44 @@ interface SpawnArgs {
 
 interface SpawnOptions {
   description: string;
-  model?: Model<any>;
-  maxTurns?: number;
-  isolated?: boolean;
-  inheritContext?: boolean;
-  thinkingLevel?: ThinkingLevel;
-  isBackground?: boolean;
+  model?: Model<Api> | undefined;
+  maxTurns?: number | undefined;
+  isolated?: boolean | undefined;
+  inheritContext?: boolean | undefined;
+  thinkingLevel?: ThinkingLevel | undefined;
+  isBackground?: boolean | undefined;
   /**
    * Skip the maxConcurrent queue check for this spawn — start immediately even
    * if the configured concurrency limit would otherwise queue it. Used by the
    * scheduler so a fired job can't be deferred past its trigger window.
    */
-  bypassQueue?: boolean;
+  bypassQueue?: boolean | undefined;
   /** Isolation mode — "worktree" creates a temp git worktree for the agent. */
-  isolation?: IsolationMode;
+  isolation?: IsolationMode | undefined;
   /** Resolved invocation snapshot captured for UI display. */
-  invocation?: AgentInvocation;
+  invocation?: AgentInvocation | undefined;
   /** Parent abort signal — when aborted, the subagent is also stopped. */
-  signal?: AbortSignal;
+  signal?: AbortSignal | undefined;
   /** Called on tool start/end with activity info (for streaming progress to UI). */
-  onToolActivity?: (activity: ToolActivity) => void;
+  onToolActivity?: ((activity: ToolActivity) => void) | undefined;
   /** Called on streaming text deltas from the assistant response. */
-  onTextDelta?: (delta: string, fullText: string) => void;
+  onTextDelta?: ((delta: string, fullText: string) => void) | undefined;
   /** Called when the agent session is created (for accessing session stats). */
-  onSessionCreated?: (session: AgentSession) => void;
+  onSessionCreated?: ((session: AgentSession) => void) | undefined;
   /** Called at the end of each agentic turn with the cumulative count. */
-  onTurnEnd?: (turnCount: number) => void;
+  onTurnEnd?: ((turnCount: number) => void) | undefined;
   /** Called once per assistant message_end with that message's usage delta. */
-  onAssistantUsage?: (usage: { input: number; output: number; cacheWrite: number }) => void;
+  onAssistantUsage?: ((usage: { input: number; output: number; cacheWrite: number }) => void) | undefined;
   /** Called when the session successfully compacts. */
-  onCompaction?: (info: CompactionInfo) => void;
+  onCompaction?: ((info: CompactionInfo) => void) | undefined;
 }
 
 export class AgentManager {
   private agents = new Map<string, AgentRecord>();
   private cleanupInterval: ReturnType<typeof setInterval>;
-  private onComplete?: OnAgentComplete;
-  private onStart?: OnAgentStart;
-  private onCompact?: OnAgentCompact;
+  private onComplete?: OnAgentComplete | undefined;
+  private onStart?: OnAgentStart | undefined;
+  private onCompact?: OnAgentCompact | undefined;
   private maxConcurrent: number;
 
   /** Queue of background agents waiting to start. */
@@ -463,7 +463,7 @@ export class AgentManager {
       const pending = [...this.agents.values()]
         .filter(r => r.status === "running" || r.status === "queued")
         .map(r => r.promise)
-        .filter(Boolean);
+        .filter((p): p is Promise<string> => p !== undefined);
       if (pending.length === 0) break;
       await Promise.allSettled(pending);
     }

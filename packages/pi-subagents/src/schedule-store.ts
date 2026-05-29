@@ -26,8 +26,8 @@ function acquireLock(lockPath: string): void {
     try {
       writeFileSync(lockPath, `${process.pid}`, { flag: "wx" });
       return;
-    } catch (e: any) {
-      if (e.code === "EEXIST") {
+    } catch (e: unknown) {
+      if ((e as { code?: string }).code === "EEXIST") {
         try {
           const pid = parseInt(readFileSync(lockPath, "utf-8"), 10);
           if (pid && !isProcessRunning(pid)) {
@@ -74,7 +74,7 @@ export class ScheduleStore {
   private load(): void {
     if (!existsSync(this.filePath)) return;
     try {
-      const data: ScheduleStoreData = JSON.parse(readFileSync(this.filePath, "utf-8"));
+      const data = JSON.parse(readFileSync(this.filePath, "utf-8")) as ScheduleStoreData;
       this.jobs.clear();
       for (const j of data.jobs ?? []) this.jobs.set(j.id, j);
     } catch { /* corrupt — start fresh, next save rewrites */ }

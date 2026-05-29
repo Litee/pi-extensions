@@ -2,7 +2,7 @@
  * agent-runner.ts — Core execution engine: creates sessions, runs agents, collects results.
  */
 
-import type { Model } from "@earendil-works/pi-ai";
+import type { Model, Api } from "@earendil-works/pi-ai";
 import type { ExtensionContext } from "@earendil-works/pi-coding-agent";
 import {
   type AgentSession,
@@ -53,10 +53,10 @@ export function setGraceTurns(n: number): void { graceTurns = Math.max(1, n); }
  * Priority: explicit option > config.model > parent model.
  */
 function resolveDefaultModel(
-  parentModel: Model<any> | undefined,
-  registry: { find(provider: string, modelId: string): Model<any> | undefined; getAvailable?(): Model<any>[] },
+  parentModel: Model<Api> | undefined,
+  registry: { find(provider: string, modelId: string): Model<Api> | undefined; getAvailable?(): Array<{ provider: string; id: string }> },
   configModel?: string,
-): Model<any> | undefined {
+): Model<Api> | undefined {
   if (configModel) {
     const slashIdx = configModel.indexOf("/");
     if (slashIdx !== -1) {
@@ -66,7 +66,7 @@ function resolveDefaultModel(
       // Build a set of available model keys for fast lookup
       const available = registry.getAvailable?.();
       const availableKeys = available
-        ? new Set(available.map((m: any) => `${m.provider}/${m.id}`))
+        ? new Set(available.map((m) => `${m.provider}/${m.id}`))
         : undefined;
       const isAvailable = (p: string, id: string) =>
         !availableKeys || availableKeys.has(`${p}/${id}`);
@@ -89,33 +89,33 @@ export interface RunOptions {
   /** ExtensionAPI instance — used for pi.exec() instead of execSync. */
   pi: ExtensionAPI;
   /** Manager-assigned id; suffixes session name to disambiguate parallel spawns (e.g. `Explore#a1b2c3d4`). */
-  agentId?: string;
-  model?: Model<any>;
-  maxTurns?: number;
-  signal?: AbortSignal;
-  isolated?: boolean;
-  inheritContext?: boolean;
-  thinkingLevel?: ThinkingLevel;
+  agentId?: string | undefined;
+  model?: Model<Api> | undefined;
+  maxTurns?: number | undefined;
+  signal?: AbortSignal | undefined;
+  isolated?: boolean | undefined;
+  inheritContext?: boolean | undefined;
+  thinkingLevel?: ThinkingLevel | undefined;
   /** Override working directory (e.g. for worktree isolation). */
-  cwd?: string;
+  cwd?: string | undefined;
   /** Called on tool start/end with activity info. */
-  onToolActivity?: (activity: ToolActivity) => void;
+  onToolActivity?: ((activity: ToolActivity) => void) | undefined;
   /** Called on streaming text deltas from the assistant response. */
-  onTextDelta?: (delta: string, fullText: string) => void;
-  onSessionCreated?: (session: AgentSession) => void;
+  onTextDelta?: ((delta: string, fullText: string) => void) | undefined;
+  onSessionCreated?: ((session: AgentSession) => void) | undefined;
   /** Called at the end of each agentic turn with the cumulative count. */
-  onTurnEnd?: (turnCount: number) => void;
+  onTurnEnd?: ((turnCount: number) => void) | undefined;
   /**
    * Called once per assistant message_end with that message's usage delta.
    * Lets callers maintain a lifetime accumulator that survives compaction
    * (which replaces session.state.messages and resets stats-derived sums).
    */
-  onAssistantUsage?: (usage: { input: number; output: number; cacheWrite: number }) => void;
+  onAssistantUsage?: ((usage: { input: number; output: number; cacheWrite: number }) => void) | undefined;
   /**
    * Called when the session successfully compacts. `tokensBefore` is upstream's
    * pre-compaction context size estimate. Aborted compactions don't fire.
    */
-  onCompaction?: (info: { reason: "manual" | "threshold" | "overflow"; tokensBefore: number }) => void;
+  onCompaction?: ((info: { reason: "manual" | "threshold" | "overflow"; tokensBefore: number }) => void) | undefined;
 }
 
 export interface RunResult {
@@ -147,7 +147,7 @@ function collectResponseText(session: AgentSession) {
 /** Get the last assistant text from the completed session history. */
 function getLastAssistantText(session: AgentSession): string {
   for (let i = session.messages.length - 1; i >= 0; i--) {
-    const msg = session.messages[i];
+    const msg = session.messages[i]!;
     if (msg.role !== "assistant") continue;
     const text = extractText(msg.content).trim();
     if (text) return text;
@@ -161,7 +161,7 @@ function getLastAssistantText(session: AgentSession): string {
  */
 function forwardAbortSignal(session: AgentSession, signal?: AbortSignal): () => void {
   if (!signal) return () => {};
-  const onAbort = () => session.abort();
+  const onAbort = () => { void session.abort(); };
   signal.addEventListener("abort", onAbort, { once: true });
   return () => signal.removeEventListener("abort", onAbort);
 }
@@ -266,13 +266,13 @@ export async function runAgent(
   // Resolve thinking level: explicit option > agent config > undefined (inherit)
   const thinkingLevel = options.thinkingLevel ?? agentConfig?.thinking;
 
-  const sessionOpts: Parameters<typeof createAgentSession>[0] = {
+  const sessionOpts: NonNullable<Parameters<typeof createAgentSession>[0]> = {
     cwd: effectiveCwd,
     agentDir,
     sessionManager: SessionManager.inMemory(effectiveCwd),
     settingsManager: SettingsManager.create(effectiveCwd, agentDir),
     modelRegistry: ctx.modelRegistry,
-    model,
+    ...(model !== undefined ? { model } : {}),
     tools: toolNames,
     resourceLoader: loader,
   };
@@ -341,10 +341,10 @@ export async function runAgent(
       if (maxTurns != null) {
         if (!softLimitReached && turnCount >= maxTurns) {
           softLimitReached = true;
-          session.steer("You have reached your turn limit. Wrap up immediately — provide your final answer now.");
+          void session.steer("You have reached your turn limit. Wrap up immediately — provide your final answer now.");
         } else if (softLimitReached && turnCount >= maxTurns + graceTurns) {
           aborted = true;
-          session.abort();
+          void session.abort();
         }
       }
     }
@@ -362,7 +362,7 @@ export async function runAgent(
       options.onToolActivity?.({ type: "end", toolName: event.toolName });
     }
     if (event.type === "message_end" && event.message.role === "assistant") {
-      const u = (event.message as any).usage;
+      const u = (event.message as { usage?: { input?: number; output?: number; cacheWrite?: number } }).usage;
       if (u) options.onAssistantUsage?.({
         input: u.input ?? 0,
         output: u.output ?? 0,
@@ -405,10 +405,10 @@ export async function resumeAgent(
   session: AgentSession,
   prompt: string,
   options: {
-    onToolActivity?: (activity: ToolActivity) => void;
-    onAssistantUsage?: (usage: { input: number; output: number; cacheWrite: number }) => void;
-    onCompaction?: (info: { reason: "manual" | "threshold" | "overflow"; tokensBefore: number }) => void;
-    signal?: AbortSignal;
+    onToolActivity?: ((activity: ToolActivity) => void) | undefined;
+    onAssistantUsage?: ((usage: { input: number; output: number; cacheWrite: number }) => void) | undefined;
+    onCompaction?: ((info: { reason: "manual" | "threshold" | "overflow"; tokensBefore: number }) => void) | undefined;
+    signal?: AbortSignal | undefined;
   } = {},
 ): Promise<string> {
   const collector = collectResponseText(session);
@@ -419,7 +419,7 @@ export async function resumeAgent(
         if (event.type === "tool_execution_start") options.onToolActivity?.({ type: "start", toolName: event.toolName });
         if (event.type === "tool_execution_end") options.onToolActivity?.({ type: "end", toolName: event.toolName });
         if (event.type === "message_end" && event.message.role === "assistant") {
-          const u = (event.message as any).usage;
+          const u = (event.message as { usage?: { input?: number; output?: number; cacheWrite?: number } }).usage;
           if (u) options.onAssistantUsage?.({
             input: u.input ?? 0,
             output: u.output ?? 0,
@@ -471,7 +471,7 @@ export function getAgentConversation(session: AgentSession): string {
       const toolCalls: string[] = [];
       for (const c of msg.content) {
         if (c.type === "text" && c.text) textParts.push(c.text);
-        else if (c.type === "toolCall") toolCalls.push(`  Tool: ${(c as any).name ?? (c as any).toolName ?? "unknown"}`);
+        else if (c.type === "toolCall") toolCalls.push(`  Tool: ${(c as { name?: string; toolName?: string }).name ?? (c as { name?: string; toolName?: string }).toolName ?? "unknown"}`);
       }
       if (textParts.length > 0) parts.push(`[Assistant]: ${textParts.join("\n")}`);
       if (toolCalls.length > 0) parts.push(`[Tool Calls]:\n${toolCalls.join("\n")}`);

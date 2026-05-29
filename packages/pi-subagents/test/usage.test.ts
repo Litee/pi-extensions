@@ -1,14 +1,15 @@
 import { describe, expect, it } from "vitest";
+import type { SessionLike } from "../src/usage.js";
 import { getLifetimeTotal, getSessionContextPercent, getSessionTokens } from "../src/usage.js";
 
 // Regression for issue #38 — token semantics + context indicator
 describe("usage", () => {
   describe("getSessionTokens", () => {
     it("uses billed-token semantics (input + output + cacheWrite), not inflated total", () => {
-      const session = {
+      const session: SessionLike = {
         getSessionStats: () => ({
-          tokens: { input: 100, output: 200, cacheRead: 500_000, cacheWrite: 50, total: 500_350 } as any,
-          contextUsage: { tokens: 50_300, contextWindow: 200_000, percent: 25 },
+          tokens: { input: 100, output: 200, cacheWrite: 50 },
+          contextUsage: { percent: 25 },
         }),
       };
       expect(getSessionTokens(session)).toBe(350);
@@ -16,7 +17,7 @@ describe("usage", () => {
 
     it("returns 0 when session is undefined or stats throw", () => {
       expect(getSessionTokens(undefined)).toBe(0);
-      const broken = { getSessionStats: () => { throw new Error("nope"); } } as any;
+      const broken = { getSessionStats: () => { throw new Error("nope"); } } as unknown as SessionLike;
       expect(getSessionTokens(broken)).toBe(0);
     });
   });

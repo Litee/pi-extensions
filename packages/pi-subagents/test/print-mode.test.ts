@@ -1,4 +1,5 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
+import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
 
 vi.mock("../src/agent-runner.js", async () => {
   const actual = await vi.importActual<typeof import("../src/agent-runner.js")>("../src/agent-runner.js");
@@ -12,23 +13,23 @@ import { runAgent } from "../src/agent-runner.js";
 import subagentsExtension from "../src/index.js";
 
 function makePi() {
-  const tools = new Map<string, any>();
-  const handlers = new Map<string, any>();
-  const eventHandlers = new Map<string, any>();
+  const tools = new Map<string, { execute: (...args: unknown[]) => unknown; name: string }>();
+  const handlers = new Map<string, (...args: unknown[]) => unknown>();
+  const eventHandlers = new Map<string, (...args: unknown[]) => unknown>();
 
   return {
     pi: {
       registerMessageRenderer: vi.fn(),
-      registerTool: vi.fn((tool: any) => {
+      registerTool: vi.fn((tool: { name: string; execute: (...args: unknown[]) => unknown }) => {
         tools.set(tool.name, tool);
       }),
       registerCommand: vi.fn(),
-      on: vi.fn((event: string, handler: any) => {
+      on: vi.fn((event: string, handler: (...args: unknown[]) => unknown) => {
         handlers.set(event, handler);
       }),
       events: {
         emit: vi.fn(),
-        on: vi.fn((event: string, handler: any) => {
+        on: vi.fn((event: string, handler: (...args: unknown[]) => unknown) => {
           eventHandlers.set(event, handler);
           return vi.fn();
         }),
@@ -37,7 +38,7 @@ function makePi() {
       sendMessage: vi.fn(() => {
         throw new Error("stale extension context");
       }),
-    } as any,
+    } as unknown as ExtensionAPI,
     tools,
     handlers,
   };
@@ -61,7 +62,7 @@ function makeHeadlessCtx() {
       getBranch: vi.fn(() => []),
     },
     getSystemPrompt: vi.fn(() => "parent prompt"),
-  } as any;
+  } as unknown as import("@earendil-works/pi-coding-agent").ExtensionContext;
 }
 
 describe("print mode background notifications", () => {
@@ -73,7 +74,7 @@ describe("print mode background notifications", () => {
   it("ignores stale-context errors from delayed completion nudges", async () => {
     vi.mocked(runAgent).mockResolvedValue({
       responseText: "done",
-      session: { dispose: vi.fn() } as any,
+      session: { dispose: vi.fn() } as unknown as import("@earendil-works/pi-coding-agent").AgentSession,
       aborted: false,
       steered: false,
     });
@@ -83,7 +84,7 @@ describe("print mode background notifications", () => {
     vi.useFakeTimers();
 
     const agentTool = tools.get("Agent");
-    await agentTool.execute(
+    await agentTool?.execute(
       "tool-call-1",
       {
         prompt: "reply done",
@@ -99,7 +100,7 @@ describe("print mode background notifications", () => {
     await vi.advanceTimersByTimeAsync(100); // smart-join batch debounce
     await vi.advanceTimersByTimeAsync(200); // notification hold window
 
-    expect(pi.sendMessage).toHaveBeenCalled();
+    expect((pi as unknown as { sendMessage: ReturnType<typeof vi.fn> }).sendMessage).toHaveBeenCalled();
 
     await handlers.get("session_shutdown")?.({}, makeHeadlessCtx());
   });

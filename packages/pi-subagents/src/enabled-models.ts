@@ -34,7 +34,7 @@ import type { ModelEntry } from "./model-resolver.js";
 /** Minimal registry shape — only the methods resolveEnabledModels actually calls. */
 export interface ModelRegistryRef {
   getAll(): unknown[];
-  getAvailable?(): unknown[];
+  getAvailable?(): unknown[] | undefined;
 }
 
 /** Paths to pi's settings.json files: [project, global] (project takes precedence). */
@@ -49,8 +49,8 @@ function settingsPaths(cwd: string): [project: string, global: string] {
 function readField(path: string): string[] | undefined {
   if (!existsSync(path)) return undefined;
   try {
-    const raw = JSON.parse(readFileSync(path, "utf-8"));
-    if (Array.isArray(raw?.enabledModels)) return raw.enabledModels as string[];
+    const raw = JSON.parse(readFileSync(path, "utf-8")) as Record<string, unknown>;
+    if (Array.isArray(raw?.['enabledModels'])) return raw['enabledModels'] as string[];
   } catch {
     /* corrupt file — silent */
   }

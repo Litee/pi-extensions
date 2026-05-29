@@ -8,16 +8,21 @@ import { loadCustomAgents } from "../src/custom-agents.js";
 describe("loadCustomAgents", () => {
   let tmpDir: string;
   let originalHome: string | undefined;
+  let originalAgentDir: string | undefined;
 
   beforeEach(() => {
     tmpDir = mkdtempSync(join(tmpdir(), "pi-test-"));
-    originalHome = process.env.HOME;
-    process.env.HOME = tmpDir;
+    originalHome = process.env['HOME'];
+    process.env['HOME'] = tmpDir;
+    originalAgentDir = process.env['PI_CODING_AGENT_DIR'];
+    process.env['PI_CODING_AGENT_DIR'] = join(tmpDir, '.pi', 'agent');
   });
 
   afterEach(() => {
-    if (originalHome == null) delete process.env.HOME;
-    else process.env.HOME = originalHome;
+    if (originalHome == null) delete process.env['HOME'];
+    else process.env['HOME'] = originalHome;
+    if (originalAgentDir == null) delete process.env['PI_CODING_AGENT_DIR'];
+    else process.env['PI_CODING_AGENT_DIR'] = originalAgentDir;
     rmSync(tmpDir, { recursive: true, force: true });
   });
 
@@ -439,8 +444,8 @@ Bad isolation.`);
 
   it("honors PI_CODING_AGENT_DIR for global custom agent discovery", () => {
     const altAgentDir = mkdtempSync(join(tmpdir(), "pi-alt-agent-"));
-    const originalEnv = process.env.PI_CODING_AGENT_DIR;
-    process.env.PI_CODING_AGENT_DIR = altAgentDir;
+    const originalEnv = process.env['PI_CODING_AGENT_DIR'];
+    process.env['PI_CODING_AGENT_DIR'] = altAgentDir;
     try {
       const globalAgentsDir = join(altAgentDir, "agents");
       mkdirSync(globalAgentsDir, { recursive: true });
@@ -455,8 +460,8 @@ Bad isolation.`);
       expect(result.has("via-env")).toBe(true);
       expect(result.get("via-env")!.description).toBe("Discovered via env var");
     } finally {
-      if (originalEnv == null) delete process.env.PI_CODING_AGENT_DIR;
-      else process.env.PI_CODING_AGENT_DIR = originalEnv;
+      if (originalEnv == null) delete process.env['PI_CODING_AGENT_DIR'];
+      else process.env['PI_CODING_AGENT_DIR'] = originalEnv;
       rmSync(altAgentDir, { recursive: true, force: true });
     }
   });

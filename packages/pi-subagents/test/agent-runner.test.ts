@@ -1,4 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
+import type { AgentSession, ExtensionAPI, ExtensionContext } from "@earendil-works/pi-coding-agent";
 
 const {
   createAgentSession,
@@ -17,7 +18,7 @@ const {
 vi.mock("@earendil-works/pi-coding-agent", () => ({
   createAgentSession,
   DefaultResourceLoader: class {
-    constructor(options: any) {
+    constructor(options: unknown) {
       defaultResourceLoaderCtor(options);
     }
 
@@ -55,7 +56,7 @@ vi.mock("../src/agent-types.js", () => ({
 }));
 
 vi.mock("../src/env.js", () => ({
-  detectEnv: vi.fn(async () => ({ isGitRepo: false, branch: "", platform: "linux" })),
+  detectEnv: vi.fn(() => Promise.resolve({ isGitRepo: false, branch: "", platform: "linux" })),
 }));
 
 vi.mock("../src/prompts.js", () => ({
@@ -74,14 +75,14 @@ vi.mock("../src/skill-loader.js", () => ({
 import { getAgentConversation, resumeAgent, runAgent } from "../src/agent-runner.js";
 
 function createSession(finalText: string) {
-  const listeners: Array<(event: any) => void> = [];
+  const listeners: Array<(event: unknown) => void> = [];
   const session = {
-    messages: [] as any[],
-    subscribe: vi.fn((listener: (event: any) => void) => {
+    messages: [] as unknown[],
+    subscribe: vi.fn((listener: (event: unknown) => void) => {
       listeners.push(listener);
       return () => {};
     }),
-    prompt: vi.fn(async () => {
+    prompt: vi.fn(() => {
       session.messages.push({
         role: "assistant",
         content: [{ type: "text", text: finalText }],
@@ -103,9 +104,9 @@ const ctx = {
   modelRegistry: { find: vi.fn(), getAvailable: vi.fn(() => []) },
   getSystemPrompt: vi.fn(() => "parent prompt"),
   sessionManager: { getBranch: vi.fn(() => []) },
-} as any;
+} as unknown as ExtensionContext;
 
-const pi = {} as any;
+const pi = {} as unknown as ExtensionAPI;
 
 beforeEach(() => {
   createAgentSession.mockReset();
@@ -133,11 +134,12 @@ describe("agent-runner final output capture", () => {
 
     expect(session.bindExtensions).toHaveBeenCalledTimes(1);
     expect(session.bindExtensions).toHaveBeenCalledWith(
+      // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment
       expect.objectContaining({ onError: expect.any(Function) }),
     );
 
-    const bindOrder = session.bindExtensions.mock.invocationCallOrder[0];
-    const promptOrder = session.prompt.mock.invocationCallOrder[0];
+    const bindOrder = session.bindExtensions.mock.invocationCallOrder[0]!;
+    const promptOrder = session.prompt.mock.invocationCallOrder[0]!;
     expect(bindOrder).toBeLessThan(promptOrder);
   });
 
@@ -171,18 +173,19 @@ describe("agent-runner final output capture", () => {
     expect(defaultResourceLoaderCtor).toHaveBeenCalledWith(
       expect.objectContaining({
         noContextFiles: true,
+        // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment
         appendSystemPromptOverride: expect.any(Function),
       }),
     );
     // The override returns an empty list so any loaded sources are discarded.
-    const ctorArgs = defaultResourceLoaderCtor.mock.calls[0][0];
+    const ctorArgs = (defaultResourceLoaderCtor.mock.calls as unknown[][])[0]![0] as { appendSystemPromptOverride: (s: string[]) => string[] };
     expect(ctorArgs.appendSystemPromptOverride(["would-be-loaded"])).toEqual([]);
   });
 
   it("resumeAgent also falls back to the final assistant message text", async () => {
     const { session } = createSession("RESUMED");
 
-    const result = await resumeAgent(session as any, "Continue");
+    const result = await resumeAgent(session as unknown as AgentSession, "Continue");
 
     expect(result).toBe("RESUMED");
   });
@@ -194,8 +197,8 @@ describe("agent-runner final output capture", () => {
     await runAgent(ctx, "Explore", "go", { pi });
 
     expect(session.setSessionName).toHaveBeenCalledWith("Explore");
-    const setOrder = session.setSessionName.mock.invocationCallOrder[0];
-    const bindOrder = session.bindExtensions.mock.invocationCallOrder[0];
+    const setOrder = session.setSessionName.mock.invocationCallOrder[0]!;
+    const bindOrder = session.bindExtensions.mock.invocationCallOrder[0]!;
     expect(setOrder).toBeLessThan(bindOrder);
   });
 
@@ -214,7 +217,7 @@ describe("agent-runner final output capture", () => {
 // callback. The callback feeds the AgentRecord lifetime accumulator, which
 // is the source of truth for total tokens (survives compaction).
 describe("agent-runner usage callback wiring", () => {
-  function emitMessageEnd(listeners: Array<(e: any) => void>, usage: any) {
+  function emitMessageEnd(listeners: Array<(e: unknown) => void>, usage: { input?: number; output?: number; cacheWrite?: number } | undefined) {
     const event = { type: "message_end", message: { role: "assistant", usage } };
     for (const l of listeners) l(event);
   }
@@ -224,7 +227,7 @@ describe("agent-runner usage callback wiring", () => {
     createAgentSession.mockResolvedValue({ session });
 
     const seen: Array<{ input: number; output: number; cacheWrite: number }> = [];
-    session.prompt = vi.fn(async () => {
+    session.prompt = vi.fn(() => {
       // Two assistant messages over the run
       emitMessageEnd(listeners, { input: 100, output: 50, cacheWrite: 10 });
       emitMessageEnd(listeners, { input: 200, output: 80, cacheWrite: 20 });
@@ -246,8 +249,8 @@ describe("agent-runner usage callback wiring", () => {
     const { session, listeners } = createSession("OK");
     createAgentSession.mockResolvedValue({ session });
 
-    const seen: any[] = [];
-    session.prompt = vi.fn(async () => {
+    const seen: Array<{ input: number; output: number; cacheWrite: number }> = [];
+    session.prompt = vi.fn(() => {
       emitMessageEnd(listeners, { input: 50 }); // output, cacheWrite missing
       session.messages.push({ role: "assistant", content: [{ type: "text", text: "OK" }] });
     });
@@ -265,7 +268,7 @@ describe("agent-runner usage callback wiring", () => {
     createAgentSession.mockResolvedValue({ session });
 
     const cb = vi.fn();
-    session.prompt = vi.fn(async () => {
+    session.prompt = vi.fn(() => {
       emitMessageEnd(listeners, undefined);
       session.messages.push({ role: "assistant", content: [{ type: "text", text: "OK" }] });
     });
@@ -277,14 +280,14 @@ describe("agent-runner usage callback wiring", () => {
 
   it("resumeAgent forwards usage on message_end the same way", async () => {
     const { session, listeners } = createSession("RESUMED");
-    const seen: any[] = [];
+    const seen: Array<{ input: number; output: number; cacheWrite: number }> = [];
 
-    session.prompt = vi.fn(async () => {
+    session.prompt = vi.fn(() => {
       emitMessageEnd(listeners, { input: 10, output: 20, cacheWrite: 5 });
       session.messages.push({ role: "assistant", content: [{ type: "text", text: "RESUMED" }] });
     });
 
-    await resumeAgent(session as any, "continue", {
+    await resumeAgent(session as unknown as AgentSession, "continue", {
       onAssistantUsage: (u) => seen.push(u),
     });
 
@@ -295,8 +298,8 @@ describe("agent-runner usage callback wiring", () => {
     const { session, listeners } = createSession("OK");
     createAgentSession.mockResolvedValue({ session });
 
-    const seen: any[] = [];
-    session.prompt = vi.fn(async () => {
+    const seen: Array<{ reason: string; tokensBefore: number }> = [];
+    session.prompt = vi.fn(() => {
       // Successful compaction — should fire
       for (const l of listeners) l({
         type: "compaction_end",

@@ -5,7 +5,7 @@
  * Uses the callback form of setWidget for themed rendering.
  */
 
-import { truncateToWidth } from "@earendil-works/pi-tui";
+import { truncateToWidth, type TUI } from "@earendil-works/pi-tui";
 import type { AgentManager } from "../agent-manager.js";
 import { getConfig } from "../agent-types.js";
 import type { AgentInvocation, SubagentType } from "../types.js";
@@ -44,7 +44,7 @@ export type UICtx = {
   setStatus(key: string, text: string | undefined): void;
   setWidget(
     key: string,
-    content: undefined | ((tui: any, theme: Theme) => { render(): string[]; invalidate(): void }),
+    content: undefined | ((tui: TUI, theme: Theme) => { render(): string[]; invalidate(): void }),
     options?: { placement?: "aboveEditor" | "belowEditor" },
   ): void;
 };
@@ -54,11 +54,11 @@ export interface AgentActivity {
   activeTools: Map<string, string>;
   toolUses: number;
   responseText: string;
-  session?: SessionLike;
+  session?: SessionLike | undefined;
   /** Current turn count. */
   turnCount: number;
   /** Effective max turns for this agent (undefined = unlimited). */
-  maxTurns?: number;
+  maxTurns?: number | undefined;
   /** Lifetime usage breakdown — see LifetimeUsage docs. */
   lifetimeUsage: LifetimeUsage;
 }
@@ -73,19 +73,19 @@ export interface AgentDetails {
   durationMs: number;
   status: "queued" | "running" | "completed" | "steered" | "aborted" | "stopped" | "error" | "background";
   /** Human-readable description of what the agent is currently doing. */
-  activity?: string;
+  activity?: string | undefined;
   /** Current spinner frame index (for animated running indicator). */
-  spinnerFrame?: number;
+  spinnerFrame?: number | undefined;
   /** Short model name if different from parent (e.g. "haiku", "sonnet"). */
-  modelName?: string;
+  modelName?: string | undefined;
   /** Notable config tags (e.g. ["thinking: high", "isolated"]). */
-  tags?: string[];
+  tags?: string[] | undefined;
   /** Current turn count. */
-  turnCount?: number;
+  turnCount?: number | undefined;
   /** Effective max turns (undefined = unlimited). */
-  maxTurns?: number;
-  agentId?: string;
-  error?: string;
+  maxTurns?: number | undefined;
+  agentId?: string | undefined;
+  error?: string | undefined;
 }
 
 // ---- Formatting helpers ----
@@ -165,7 +165,7 @@ export function buildInvocationTags(
   if (invocation.inheritContext) tags.push("inherit context");
   if (invocation.runInBackground) tags.push("background");
   if (invocation.maxTurns != null) tags.push(`max turns: ${invocation.maxTurns}`);
-  return { modelName: invocation.modelName, tags };
+  return { ...(invocation.modelName !== undefined ? { modelName: invocation.modelName } : {}), tags };
 }
 
 /** Truncate text to a single line, max `len` chars. */
@@ -217,7 +217,7 @@ export class AgentWidget {
   /** Whether the widget callback is currently registered with the TUI. */
   private widgetRegistered = false;
   /** Cached TUI reference from widget factory callback, used for requestRender(). */
-  private tui: any | undefined;
+  private tui: TUI | undefined;
   /** Last status bar text, used to avoid redundant setStatus calls. */
   private lastStatusText: string | undefined;
 
@@ -273,7 +273,7 @@ export class AgentWidget {
   }
 
   /** Render a finished agent line. */
-  private renderFinishedLine(a: { id: string; type: SubagentType; status: string; description: string; toolUses: number; startedAt: number; completedAt?: number; error?: string }, theme: Theme): string {
+  private renderFinishedLine(a: { id: string; type: SubagentType; status: string; description: string; toolUses: number; startedAt: number; completedAt?: number | undefined; error?: string | undefined }, theme: Theme): string {
     const name = getDisplayName(a.type);
     const modeLabel = getPromptModeLabel(a.type);
     const duration = formatMs((a.completedAt ?? Date.now()) - a.startedAt);
@@ -313,7 +313,7 @@ export class AgentWidget {
    * Render the widget content. Called from the registered widget's render() callback,
    * reading live state each time instead of capturing it in a closure.
    */
-  private renderWidget(tui: any, theme: Theme): string[] {
+  private renderWidget(tui: TUI, theme: Theme): string[] {
     const allAgents = this.manager.listAgents();
     const running = allAgents.filter(a => a.status === "running");
     const queued = allAgents.filter(a => a.status === "queued");
@@ -332,7 +332,7 @@ export class AgentWidget {
     const truncate = (line: string) => truncateToWidth(line, w);
     const headingColor = hasActive ? "accent" : "dim";
     const headingIcon = hasActive ? "●" : "○";
-    const frame = SPINNER[this.widgetFrame % SPINNER.length];
+    const frame = SPINNER[this.widgetFrame % SPINNER.length]!;
 
     // Build sections separately for overflow-aware assembly.
     // Each running agent = 2 lines (header + activity), finished = 1 line, queued = 1 line.
@@ -389,13 +389,13 @@ export class AgentWidget {
       // Fix last connector: swap ├─ → └─ and │ → space for activity lines.
       if (lines.length > 1) {
         const last = lines.length - 1;
-        lines[last] = lines[last].replace("├─", "└─");
+        lines[last] = lines[last]!.replace("├─", "└─");
         // If last item is a running agent activity line, fix indent of that line
         // and fix the header line above it.
         if (runningLines.length > 0 && !queuedLine) {
           // The last two lines are the last running agent's header + activity.
           if (last >= 2) {
-            lines[last - 1] = lines[last - 1].replace("├─", "└─");
+            lines[last - 1] = lines[last - 1]!.replace("├─", "└─");
             lines[last] = lines[last].replace("│  ", "   ");
           }
         }

@@ -16,7 +16,7 @@ const MODELS = [
 function makeRegistry(models = MODELS, available?: typeof MODELS): ModelRegistryRef {
   return {
     getAll() { return models; },
-    getAvailable: available ? () => available : undefined,
+    ...(available !== undefined ? { getAvailable: () => available } : {}),
   };
 }
 
@@ -31,13 +31,13 @@ describe("readEnabledModels", () => {
   beforeEach(() => {
     agentDir = mkdtempSync(join(tmpdir(), "pi-em-global-"));
     projectDir = mkdtempSync(join(tmpdir(), "pi-em-project-"));
-    originalEnv = process.env.PI_CODING_AGENT_DIR;
-    process.env.PI_CODING_AGENT_DIR = agentDir;
+    originalEnv = process.env['PI_CODING_AGENT_DIR'];
+    process.env['PI_CODING_AGENT_DIR'] = agentDir;
   });
 
   afterEach(() => {
-    if (originalEnv == null) delete process.env.PI_CODING_AGENT_DIR;
-    else process.env.PI_CODING_AGENT_DIR = originalEnv;
+    if (originalEnv == null) delete process.env['PI_CODING_AGENT_DIR'];
+    else process.env['PI_CODING_AGENT_DIR'] = originalEnv;
     rmSync(agentDir, { recursive: true, force: true });
     rmSync(projectDir, { recursive: true, force: true });
   });
@@ -192,7 +192,7 @@ describe("resolveEnabledModels", () => {
 
   describe("getAvailable filtering", () => {
     it("resolves only against available models when getAvailable present", () => {
-      const available = [MODELS[0], MODELS[3]]; // google + haiku only
+      const available = [MODELS[0]!, MODELS[3]!]; // google + haiku only
       const result = resolveEnabledModels(
         ["anthropic/claude-haiku-4-5", "anthropic/claude-sonnet-4-6", "google/gemma-4-31b-it"],
         makeRegistry(MODELS, available),
