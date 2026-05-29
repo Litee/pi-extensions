@@ -286,7 +286,7 @@ describe("startup chat message: triggerTurn + label", () => {
 	// Markdown.render() requires initTheme() to be called; do so once for all
 	// tests in this describe block that exercise the expanded renderer path.
 	beforeEach(() => { initTheme(undefined); });
-	it("sends the startup chat message with triggerTurn: false so it doesn't kick off an LLM round-trip", async () => {
+	it("does NOT send a startup chat message when resuming with active watches", async () => {
 		const pi = makePi();
 		const client = makeClient();
 		createExtensionWithClient(pi as unknown as ExtensionAPI, client);
@@ -321,17 +321,14 @@ describe("startup chat message: triggerTurn + label", () => {
 		});
 		// Flush setImmediate + microtasks.
 		await new Promise((resolve) => setImmediate(resolve));
-		expect(pi.sendMessage).toHaveBeenCalled();
+		// No startup chat message should be injected on session resume.
 		const startupCall = pi.sendMessage.mock.calls.find(
 			(c) => (c[0] as { customType?: string }).customType === "pi-aws-glue-watcher",
 		);
-		expect(startupCall).toBeDefined();
-		const [, opts] = startupCall as [unknown, { triggerTurn?: boolean; deliverAs?: string }];
-		expect(opts.triggerTurn).toBe(false);
-		expect(opts.deliverAs).toBe("followUp");
+		expect(startupCall).toBeUndefined();
 	});
 
-	it("startup sendMessage includes details.watches and details.date for renderer expand path", async () => {
+	it("does NOT inject a sendMessage with watches/date details on session resume", async () => {
 		const pi = makePi();
 		const client = makeClient();
 		createExtensionWithClient(pi as unknown as ExtensionAPI, client);
@@ -364,13 +361,11 @@ describe("startup chat message: triggerTurn + label", () => {
 			},
 		});
 		await new Promise((resolve) => setImmediate(resolve));
+		// The startup sendMessage block is removed — no message with watches details should be sent.
 		const startupCall = pi.sendMessage.mock.calls.find(
 			(c) => (c[0] as { customType?: string }).customType === "pi-aws-glue-watcher",
 		);
-		expect(startupCall).toBeDefined();
-		const msg = startupCall![0] as { details?: { watches?: unknown; date?: unknown } };
-		expect(msg.details?.watches).toBeDefined();
-		expect(msg.details?.date).toBeDefined();
+		expect(startupCall).toBeUndefined();
 	});
 
 	it("renderer: collapsed (default) shows primary lines + expand hint, no sub-fields", () => {

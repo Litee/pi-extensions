@@ -96,20 +96,6 @@ export function createExtensionWithClient(pi: ExtensionAPI, client: GlueClient):
 		if (rt.displayMode === "widget") rt.widget?.show(ctx);
 		else rt.widget?.hide(ctx);
 
-		if (Object.keys(rt.watches).length > 0) {
-			setImmediate(() => {
-				const pollMs = minIntervalMs(rt);
-				pi.sendMessage(
-					{
-						customType: CUSTOM_MESSAGE_TYPE,
-						content: buildStartupChatMessage(rt.watches, new Date(), { pollMs }),
-						display: true,
-						details: { watches: rt.watches, date: new Date().toISOString(), pollMs },
-					},
-					{ deliverAs: "followUp", triggerTurn: false },
-				);
-			});
-		}
 	});
 
 	pi.on("turn_end", (_event, ctx) => {
