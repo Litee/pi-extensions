@@ -58,7 +58,7 @@ export function loadConfig(): FsWatcherConfig {
  * Persist a partial update to `~/.pi/agent/pi-file-system-watcher.json`.
  * Returns `true` on success, `false` if anything threw.
  */
-export function saveConfig(change: Partial<FsWatcherConfig>): boolean {
+export function saveConfig(change: { [K in keyof FsWatcherConfig]?: FsWatcherConfig[K] | undefined }): boolean {
 	const path = configFilePath();
 	try {
 		let existing: Record<string, unknown> = {};

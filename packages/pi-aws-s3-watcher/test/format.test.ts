@@ -72,10 +72,12 @@ describe("buildChangeChatMessage", () => {
 		const events: S3Event[] = [
 			{
 				watchId: "w1", bucket: "b", key: "k", eventType: "exists",
+				isTerminal: true as const,
 				summary: "s3://b/k now exists", formatted: "• s3://b/k now exists ✓",
 			},
 			{
 				watchId: "w2", bucket: "b", key: "other", eventType: "timeout",
+				isTerminal: true as const,
 				summary: "timed out", formatted: "• s3://b/other timed out ✗",
 			},
 		];
@@ -88,6 +90,7 @@ describe("buildChangeChatMessage", () => {
 	it("singular header when exactly one event", () => {
 		const events: S3Event[] = [{
 			watchId: "w1", bucket: "b", key: "k", eventType: "exists",
+			isTerminal: true as const,
 			summary: "x", formatted: "• x",
 		}];
 		expect(buildChangeChatMessage(events, new Date(2024, 0, 1, 9, 5)))

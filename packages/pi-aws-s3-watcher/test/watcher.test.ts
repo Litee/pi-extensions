@@ -531,7 +531,7 @@ describe('S3Watcher view', () => {
       bucket: 'b',
       key: 'k',
       eventType: 'exists' as const,
-      isTerminal: true,
+      isTerminal: true as const,
       summary: 's3://b/k now exists',
       formatted: '• s3://b/k now exists ✓',
     }
