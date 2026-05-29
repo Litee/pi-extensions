@@ -28,6 +28,7 @@ Use **npm** (workspaces): `npm install`, `npm test`, `npm run check`.
 ## Issue Fixing Workflow
 
 - Each issue gets its own worktree named after the issue (e.g. `fix-use-cmux-terminal-0008`). Exception: closely related issues touching the same file(s) that would produce a coherent single commit may share one worktree.
+- **All implementation work MUST be done by a subagent — never directly by the primary agent.** The primary agent's role is: read the issue, investigate the relevant source files, form the fix plan, dispatch a subagent with a precise prompt, review the diff the subagent produces, then commit + merge after user approval. The primary agent must not write source or test code itself.
 - Dispatch one sub-agent per worktree so independent issues are worked on concurrently and the main session stays uncluttered.
 - Mark an issue `done` only after its fix is merged into `main`, not when committed to a worktree branch.
 
