@@ -13,7 +13,6 @@ function makeWatch(overrides: Partial<Ec2Watch> = {}): Ec2Watch {
 		instanceId: "i-1234abcd",
 		profile: "p",
 		region: undefined,
-		stopOnStopped: false,
 		timeoutAt: undefined,
 		addedAt: 0,
 		lastPolledAt: undefined,

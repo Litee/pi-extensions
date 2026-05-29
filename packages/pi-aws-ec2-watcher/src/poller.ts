@@ -13,7 +13,6 @@
 import type { Ec2Client, InstanceStateResult } from "./ec2-client.js";
 import {
 	ALWAYS_TERMINAL_STATES,
-	OPT_TERMINAL_STATES,
 	type Ec2Baseline,
 	type Ec2Event,
 	type Ec2Watch,
@@ -23,14 +22,9 @@ import {
 // Helpers
 // ---------------------------------------------------------------------------
 
-/** Return `true` iff `state` is terminal given the watch's `stopOnStopped` flag. */
-export function isTerminalState(
-	state: string,
-	stopOnStopped: boolean,
-): boolean {
-	if (ALWAYS_TERMINAL_STATES.has(state as never)) return true;
-	if (stopOnStopped && OPT_TERMINAL_STATES.has(state as never)) return true;
-	return false;
+/** Return `true` iff `state` is terminal (only `terminated` and `not_found`). */
+export function isTerminalState(state: string): boolean {
+	return ALWAYS_TERMINAL_STATES.has(state as never);
 }
 
 function buildNotFoundEvent(watch: Ec2Watch): Ec2Event {
@@ -161,7 +155,7 @@ export async function detectChanges(
 	}
 
 	// State changed
-	const terminal = isTerminalState(newState, watch.stopOnStopped);
+	const terminal = isTerminalState(newState);
 	const event = buildStateChangedEvent(watch, prevState, newState, terminal, now.nameTag);
 	return {
 		events: [event],

@@ -13,17 +13,13 @@ export type Ec2InstanceState =
 	| "not_found";
 
 /**
- * States from which an EC2 instance never returns. `terminated` is always
- * terminal; `stopped` is terminal when the watch has `stopOnStopped=true`.
+ * States from which an EC2 instance never returns.
+ * Only `terminated` and `not_found` are terminal — `stopped` is NOT terminal
+ * because a stopped instance can be restarted.
  */
 export const ALWAYS_TERMINAL_STATES: ReadonlySet<Ec2InstanceState> = new Set<Ec2InstanceState>([
 	"terminated",
 	"not_found",
-]);
-
-/** States that are terminal only when `stopOnStopped===true`. */
-export const OPT_TERMINAL_STATES: ReadonlySet<Ec2InstanceState> = new Set<Ec2InstanceState>([
-	"stopped",
 ]);
 
 /**
@@ -51,12 +47,6 @@ export interface Ec2Watch {
 	profile: string;
 	/** AWS region; `undefined` falls back to the profile default. */
 	region: string | undefined;
-	/**
-	 * When `true`, the watch is considered terminal once the instance
-	 * reaches `stopped` state (in addition to the always-terminal
-	 * `terminated` state).
-	 */
-	stopOnStopped: boolean;
 	/**
 	 * Absolute epoch ms at which a `timeout` event fires. `undefined` means
 	 * no timeout.

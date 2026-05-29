@@ -43,12 +43,6 @@ export const Ec2WatcherParams = Type.Object({
 			description: "AWS region. Falls back to profile default when omitted.",
 		}),
 	),
-	stopOnStopped: Type.Optional(
-		Type.Boolean({
-			description:
-				"When true, the watch is marked terminal when the instance reaches 'stopped' state. Defaults to false.",
-		}),
-	),
 	timeoutSeconds: Type.Optional(
 		Type.Number({
 			description:

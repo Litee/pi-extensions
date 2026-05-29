@@ -172,19 +172,6 @@ describe('Ec2Watcher.addWatch', () => {
     expect(result.details['ok']).toBe(false)
     expect((result.content[0] as { text: string }).text).toMatch(/timeoutSeconds/)
   })
-
-  it('sets stopOnStopped from params', async () => {
-    const { watcher } = makeWatcher({ state: 'running' })
-    const result = await watcher.executeTool({
-      action: 'add',
-      instanceId: 'i-0a1b2c3d4e5f67890',
-      profile: 'p',
-      stopOnStopped: true,
-    })
-    expect(result.details['ok']).toBe(true)
-    const watchId = result.details['watchId'] as string
-    expect(watcher['watches'].get(watchId)?.stopOnStopped).toBe(true)
-  })
 })
 
 // ---------------------------------------------------------------------------
@@ -319,7 +306,6 @@ describe('Ec2Watcher.normaliseWatch', () => {
       instanceId: 'i-0a1b2c3d4e5f67890',
       profile: 'dev',
       region: 'us-east-1',
-      stopOnStopped: true,
       timeoutAt: 99999,
       addedAt: 12345,
       lastPolledAt: 12400,
@@ -331,17 +317,8 @@ describe('Ec2Watcher.normaliseWatch', () => {
     expect(result).not.toBeNull()
     expect(result?.watchId).toBe('abc')
     expect(result?.instanceId).toBe('i-0a1b2c3d4e5f67890')
-    expect(result?.stopOnStopped).toBe(true)
     expect(result?.baseline?.state).toBe('running')
     expect(result?.baseline?.nameTag).toBe('my-vm')
-  })
-
-  it('defaults stopOnStopped to false when missing', () => {
-    const raw = {
-      watchId: 'w1', instanceId: 'i-abc', profile: 'p',
-      addedAt: 0, terminal: false, consecutiveErrors: 0,
-    }
-    expect(watcher.normaliseWatch(raw)?.stopOnStopped).toBe(false)
   })
 })
 
@@ -490,7 +467,6 @@ describe('Ec2Watcher view', () => {
     instanceId: 'i-0a1b2c3d4e5f67890',
     profile: 'dev',
     region: 'us-east-1',
-    stopOnStopped: false,
     timeoutAt: undefined,
     addedAt: new Date('2024-01-01').getTime(),
     lastPolledAt: undefined,
@@ -542,7 +518,6 @@ describe('Ec2Watcher view', () => {
     expect(fields.find((f) => f.label === 'uptime')?.value).toBe('unknown')
     expect(fields.find((f) => f.label === 'profile')).toBeDefined()
     expect(fields.find((f) => f.label === 'region')).toBeDefined()
-    expect(fields.find((f) => f.label === 'stopOnStopped')).toBeDefined()
     expect(fields.find((f) => f.label === 'added')).toBeDefined()
     expect(fields.find((f) => f.label === 'polled')?.value).toBe('never')
     expect(fields.find((f) => f.label === 'timeout')?.value).toBe('none')
@@ -580,7 +555,7 @@ describe('Ec2Watcher view', () => {
   describe('status column — ALL_CAPS', () => {
     const base = {
       watchId: 'w1', instanceId: 'i-0a1b2c3d4e5f67890', profile: 'p', region: undefined,
-      stopOnStopped: false, timeoutAt: undefined, addedAt: 0,
+      timeoutAt: undefined, addedAt: 0,
       lastPolledAt: undefined, baseline: { state: 'running' as const },
     }
 
@@ -638,7 +613,7 @@ describe('timeout column in renderItemRowTUI', () => {
 
   const base = {
     watchId: 'w1', instanceId: 'i-0a1b2c3d4e5f67890', profile: 'p', region: undefined,
-    stopOnStopped: false, addedAt: 0,
+    addedAt: 0,
     lastPolledAt: undefined, baseline: { state: 'running' as const },
   }
 
@@ -718,7 +693,6 @@ describe('Ec2Watcher.onSessionStart', () => {
                   instanceId: 'i-0a1b2c3d4e5f67890',
                   profile: 'p',
                   region: undefined,
-                  stopOnStopped: false,
                   timeoutAt: undefined,
                   addedAt: 1,
                   lastPolledAt: undefined,
@@ -921,7 +895,7 @@ describe('Ec2Watcher.browseOptions', () => {
     const opts = (watcher as unknown as { browseOptions(): { getPollIntervalMs?: (w: import('../src/types.js').Ec2Watch) => number } }).browseOptions()
     const mockW = {
       watchId: 'test-id', instanceId: 'i-abc', profile: 'p', region: undefined,
-      stopOnStopped: false, timeoutAt: undefined, addedAt: 0, lastPolledAt: undefined,
+      timeoutAt: undefined, addedAt: 0, lastPolledAt: undefined,
       baseline: undefined, terminal: false, consecutiveErrors: 0,
     }
     const result = opts.getPollIntervalMs?.(mockW)
@@ -989,7 +963,7 @@ describe('instanceType column in renderItemRowTUI', () => {
 
   const base = {
     watchId: 'w1', instanceId: 'i-0a1b2c3d4e5f67890', profile: 'p', region: undefined,
-    stopOnStopped: false, addedAt: 0,
+    addedAt: 0,
     lastPolledAt: undefined,
   }
 
@@ -1016,7 +990,7 @@ describe('instanceType and uptime in renderItemDetail', () => {
 
   const base = {
     watchId: 'w1', instanceId: 'i-0a1b2c3d4e5f67890', profile: 'p', region: undefined,
-    stopOnStopped: false, timeoutAt: undefined, addedAt: 0,
+    timeoutAt: undefined, addedAt: 0,
     lastPolledAt: undefined, terminal: false, consecutiveErrors: 0,
   }
 

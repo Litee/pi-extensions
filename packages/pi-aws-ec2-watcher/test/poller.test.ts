@@ -14,7 +14,6 @@ function makeWatch(overrides: Partial<Ec2Watch> = {}): Ec2Watch {
 		instanceId: "i-1234abcd",
 		profile: "p",
 		region: undefined,
-		stopOnStopped: false,
 		timeoutAt: undefined,
 		addedAt: 1_000,
 		lastPolledAt: undefined,
@@ -110,18 +109,10 @@ describe("detectChanges — state_changed", () => {
 		expect(result.events[0]!.isTerminal).toBe(true);
 	});
 
-	it("marks terminal for stopped when stopOnStopped=true", async () => {
+	it("does NOT mark terminal for stopped state", async () => {
 		const client = makeClient({ state: "stopped" });
 		const baseline: Ec2Baseline = { state: "stopping" };
-		const watch = makeWatch({ baseline, stopOnStopped: true });
-		const result = await detectChanges(client, watch);
-		expect(result.events[0]!.isTerminal).toBe(true);
-	});
-
-	it("does NOT mark terminal for stopped when stopOnStopped=false", async () => {
-		const client = makeClient({ state: "stopped" });
-		const baseline: Ec2Baseline = { state: "stopping" };
-		const watch = makeWatch({ baseline, stopOnStopped: false });
+		const watch = makeWatch({ baseline });
 		const result = await detectChanges(client, watch);
 		expect(result.events[0]!.isTerminal).toBe(false);
 	});

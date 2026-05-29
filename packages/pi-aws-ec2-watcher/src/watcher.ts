@@ -181,7 +181,6 @@ export class Ec2Watcher extends BaseWatcher<Ec2Watch, Ec2Baseline, Ec2Event> {
         { label: 'uptime',        value: uptime },
         { label: 'profile',       value: w.profile },
         { label: 'region',        value: w.region ?? 'default' },
-        { label: 'stopOnStopped', value: w.stopOnStopped ? 'yes' : 'no' },
         { label: 'added',         value: new Date(w.addedAt).toISOString() },
         { label: 'polled',        value: w.lastPolledAt !== undefined ? new Date(w.lastPolledAt).toISOString() : 'never' },
         { label: 'timeout',       value: w.timeoutAt !== undefined ? new Date(w.timeoutAt).toISOString() : 'none' },
@@ -293,7 +292,6 @@ export class Ec2Watcher extends BaseWatcher<Ec2Watch, Ec2Baseline, Ec2Event> {
       instanceId: r['instanceId'],
       profile: r['profile'],
       region: typeof r['region'] === 'string' ? r['region'] : undefined,
-      stopOnStopped: typeof r['stopOnStopped'] === 'boolean' ? r['stopOnStopped'] : false,
       timeoutAt:
         typeof r['timeoutAt'] === 'number' && Number.isFinite(r['timeoutAt'])
           ? r['timeoutAt']
@@ -381,9 +379,6 @@ export class Ec2Watcher extends BaseWatcher<Ec2Watch, Ec2Baseline, Ec2Event> {
         ? params['region'].trim()
         : undefined
 
-    const stopOnStopped =
-      typeof params['stopOnStopped'] === 'boolean' ? params['stopOnStopped'] : false
-
     const requestedSeconds =
       typeof params['timeoutSeconds'] === 'number' ? params['timeoutSeconds'] : undefined
     if (requestedSeconds !== undefined) {
@@ -405,7 +400,6 @@ export class Ec2Watcher extends BaseWatcher<Ec2Watch, Ec2Baseline, Ec2Event> {
       instanceId,
       profile,
       region,
-      stopOnStopped,
       timeoutAt,
       addedAt: this._now(),
       lastPolledAt: undefined,
