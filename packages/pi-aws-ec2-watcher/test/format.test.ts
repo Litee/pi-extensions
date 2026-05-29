@@ -87,8 +87,8 @@ describe("buildChangeChatMessage", () => {
 				eventType: "state_changed",
 				previousState: "pending",
 				newState: "running",
-				summary: "EC2 i-1234abcd: pending → running",
-				formatted: "• EC2 i-1234abcd: pending → running",
+				summary: "i-1234abcd: pending → running",
+				formatted: "• i-1234abcd: pending → running",
 				isTerminal: false,
 			},
 			{
@@ -97,15 +97,15 @@ describe("buildChangeChatMessage", () => {
 				eventType: "timeout",
 				previousState: "running",
 				newState: "",
-				summary: "EC2 instance i-abcd1234 timed out",
-				formatted: "• EC2 instance i-abcd1234 timed out ✗",
+				summary: "i-abcd1234: timed out",
+				formatted: "• i-abcd1234: timed out ✗",
 				isTerminal: true,
 			},
 		];
 		const out = buildChangeChatMessage(events, new Date(2024, 0, 1, 10, 30));
-		expect(out).toContain("[10:30] 2 events detected");
-		expect(out).toContain("• EC2 i-1234abcd: pending → running");
-		expect(out).toContain("• EC2 instance i-abcd1234 timed out ✗");
+		expect(out).toContain("[10:30] 2 changes detected");
+		expect(out).toContain("• i-1234abcd: pending → running");
+		expect(out).toContain("• i-abcd1234: timed out ✗");
 	});
 
 	it("singular header when exactly one event", () => {
@@ -122,7 +122,7 @@ describe("buildChangeChatMessage", () => {
 			},
 		];
 		expect(buildChangeChatMessage(events, new Date(2024, 0, 1, 9, 5)))
-			.toContain("[09:05] 1 event detected");
+			.toContain("[09:05] 1 change detected");
 	});
 });
 

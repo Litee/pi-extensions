@@ -28,7 +28,7 @@ export function isTerminalState(state: string): boolean {
 }
 
 function buildNotFoundEvent(watch: Ec2Watch): Ec2Event {
-	const summary = `EC2 instance ${watch.instanceId} was not found`;
+	const summary = `${watch.instanceId}: not found`;
 	return {
 		watchId: watch.watchId,
 		instanceId: watch.instanceId,
@@ -50,7 +50,7 @@ function buildStateChangedEvent(
 ): Ec2Event {
 	const label = nameTag ? `${watch.instanceId} (${nameTag})` : watch.instanceId;
 	const termIcon = terminal ? " ✓" : "";
-	const summary = `EC2 ${label}: ${prevState} → ${newState}${termIcon}`;
+	const summary = `${label}: ${prevState} → ${newState}${termIcon}`;
 	return {
 		watchId: watch.watchId,
 		instanceId: watch.instanceId,
@@ -170,7 +170,7 @@ export async function detectChanges(
 
 /** Build a `timeout` event for a watch whose `timeoutAt` has elapsed. */
 export function buildTimeoutEvent(watch: Ec2Watch): Ec2Event {
-	const summary = `EC2 instance ${watch.instanceId} timed out`;
+	const summary = `${watch.instanceId}: timed out`;
 	return {
 		watchId: watch.watchId,
 		instanceId: watch.instanceId,

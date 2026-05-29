@@ -75,6 +75,8 @@ describe("detectChanges — no prior baseline", () => {
 		expect(result.events).toHaveLength(1);
 		expect(result.events[0]!.eventType).toBe("not_found");
 		expect(result.events[0]!.isTerminal).toBe(true);
+		expect(result.events[0]!.summary).toBe("i-1234abcd: not found");
+		expect(result.events[0]!.formatted).toBe("• i-1234abcd: not found ✗");
 		expect(result.observedChange).toBe(true);
 		// not_found returns a valid baseline (not undefined)
 		expect(result.newBaseline).toBeDefined();
@@ -98,6 +100,8 @@ describe("detectChanges — state_changed", () => {
 		expect(ev.previousState).toBe("pending");
 		expect(ev.newState).toBe("running");
 		expect(ev.isTerminal).toBe(false);
+		expect(ev.summary).toBe("i-1234abcd: pending → running");
+		expect(ev.formatted).toBe("• i-1234abcd: pending → running");
 		expect(result.observedChange).toBe(true);
 	});
 
@@ -134,6 +138,8 @@ describe("detectChanges — state_changed", () => {
 		expect(result.events).toHaveLength(1);
 		expect(result.events[0]!.eventType).toBe("not_found");
 		expect(result.events[0]!.isTerminal).toBe(true);
+		expect(result.events[0]!.summary).toBe("i-1234abcd: not found");
+		expect(result.events[0]!.formatted).toBe("• i-1234abcd: not found ✗");
 		expect(result.observedChange).toBe(true);
 		// not_found returns a valid baseline
 		expect(result.newBaseline).toBeDefined();
@@ -150,7 +156,7 @@ describe("buildTimeoutEvent", () => {
 		const ev = buildTimeoutEvent(makeWatch());
 		expect(ev.eventType).toBe("timeout");
 		expect(ev.isTerminal).toBe(true);
-		expect(ev.summary).toMatch(/timed out/);
-		expect(ev.formatted.startsWith("• ")).toBe(true);
+		expect(ev.summary).toBe("i-1234abcd: timed out");
+		expect(ev.formatted).toBe("• i-1234abcd: timed out ✗");
 	});
 });

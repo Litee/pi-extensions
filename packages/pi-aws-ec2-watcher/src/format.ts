@@ -53,7 +53,7 @@ export function buildStatusLine(input: StatusLineInput): StatusLineResult {
  * Build the chat-message content for a detected-change notification.
  */
 export function buildChangeChatMessage(events: Ec2Event[], date: Date): string {
-	const noun = events.length === 1 ? "event" : "events";
+	const noun = events.length === 1 ? "change" : "changes";
 	const header = `[${formatShortTime(date)}] ${events.length} ${noun} detected`;
 	const bullets = events.map((e) => e.formatted).join("\n");
 	return `${header}\n\n${bullets}`;
