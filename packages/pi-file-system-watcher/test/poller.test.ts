@@ -92,6 +92,15 @@ describe("detectChanges — target='exists' (appear)", () => {
 		expect(res.newBaseline.exists).toBe(true);
 	});
 
+	it("exists event formatted as 'absent → present' [#0001]", async () => {
+		const filePath = path.join(tmpDir, "appear.txt");
+		const watch = makeWatch(filePath, "exists", { exists: false });
+		fs.writeFileSync(filePath, "hi");
+		const res = await detectChanges(watch);
+		expect(res.events).toHaveLength(1);
+		expect(res.events[0]!.formatted).toBe(`• ${filePath}: absent → present`);
+	});
+
 	it("does not fire while path remains absent", async () => {
 		const filePath = path.join(tmpDir, "still-missing.txt");
 		const watch = makeWatch(filePath, "exists", { exists: false });
@@ -138,6 +147,17 @@ describe("detectChanges — target='removed' (disappear)", () => {
 		expect(res.observedChange).toBe(true);
 	});
 
+	it("removed event formatted as 'present → absent' [#0001]", async () => {
+		const filePath = path.join(tmpDir, "gone.txt");
+		fs.writeFileSync(filePath, "hello");
+		const snap = await snapshotPath(filePath);
+		const watch = makeWatch(filePath, "removed", snap);
+		fs.unlinkSync(filePath);
+		const res = await detectChanges(watch);
+		expect(res.events).toHaveLength(1);
+		expect(res.events[0]!.formatted).toBe(`• ${filePath}: present → absent`);
+	});
+
 	it("does not fire while file remains present", async () => {
 		const filePath = path.join(tmpDir, "file.txt");
 		fs.writeFileSync(filePath, "hello");
@@ -172,6 +192,17 @@ describe("detectChanges — target='changed' (modify)", () => {
 		expect(res.events).toHaveLength(1);
 		expect(res.events[0]!.eventType).toBe("changed");
 		expect(res.observedChange).toBe(true);
+	});
+
+	it("changed event formatted as 'unchanged → changed' [#0001]", async () => {
+		const filePath = path.join(tmpDir, "modified.txt");
+		fs.writeFileSync(filePath, "hello");
+		const snap = await snapshotPath(filePath);
+		const watch = makeWatch(filePath, "changed", snap);
+		fs.writeFileSync(filePath, "hello world extended content");
+		const res = await detectChanges(watch);
+		expect(res.events).toHaveLength(1);
+		expect(res.events[0]!.formatted).toBe(`• ${filePath}: unchanged → changed`);
 	});
 
 	it("fires changed event when file size decreases", async () => {
@@ -238,5 +269,11 @@ describe("buildTimeoutEvent", () => {
 		expect(ev.summary).toMatch(/timed out waiting for 'exists'/);
 		expect(ev.formatted).toMatch(/^• /);
 		expect(ev.formatted).toMatch(/✗/);
+	});
+
+	it("timeout event formatted as '<path>: timed out ✗' [#0001]", () => {
+		const watch = makeWatch("/some/path/file.txt", "exists");
+		const ev = buildTimeoutEvent(watch);
+		expect(ev.formatted).toBe("• /some/path/file.txt: timed out ✗");
 	});
 });

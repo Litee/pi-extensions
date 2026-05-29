@@ -473,6 +473,11 @@ export class FsWatcher extends BaseWatcher<FsWatch, FsBaseline, FsEvent> {
       ? `file-system-watcher: added watch ${watchId} for ${watchPath} (target=${target}${timeoutLabel}), but seeding failed (${seedError}). Will retry on next poll.`
       : `file-system-watcher: added watch ${watchId} for ${watchPath} (target=${target}${timeoutLabel}) — baseline=${stateLabel}.`;
 
+    // Mark the watcher as enabled so that any poll notification fired before
+    // onTurnEnd does not include the stale "Run manage_tools" reactivation hint.
+    // (The tool can only be invoked if it is already in the active-tools set.)
+    this.enabled = true;
+
     return {
       content: [{ type: "text", text: message }],
       details: {

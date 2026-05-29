@@ -1227,3 +1227,57 @@ describe("compressPath", () => {
     expect(compressPath("/a/b", 0)).toBe("…");
   });
 });
+
+// ---------------------------------------------------------------------------
+// enabled flag — issue #0002
+// ---------------------------------------------------------------------------
+
+describe("FsWatcher.addWatch sets enabled=true [#0002]", () => {
+  it("sets enabled=true on the watcher after a successful addWatch", async () => {
+    vi.mocked(loadConfig).mockReturnValue({});
+    const { watcher } = makeWatcher({ exists: false });
+    // enabled starts false (base-class default)
+    expect((watcher as unknown as { enabled: boolean }).enabled).toBe(false);
+
+    await watcher.executeTool({
+      action: "add",
+      path: "/tmp/watch-me.txt",
+      target: "exists",
+    });
+
+    // After addWatch the watcher should consider itself enabled so that
+    // any poll notification fired before onTurnEnd does NOT include the
+    // stale "Run manage_tools(...)" reactivation hint.
+    expect((watcher as unknown as { enabled: boolean }).enabled).toBe(true);
+  });
+
+  it("notification fired after addWatch does NOT include reactivation hint [#0002]", async () => {
+    vi.useFakeTimers();
+    vi.mocked(loadConfig).mockReturnValue({});
+    const pi = makePi();
+    // Snapshot: absent first, then present after 65 s → triggers 'exists' event
+    const client: FsClient = {
+      snapshot: vi.fn()
+        .mockResolvedValueOnce({ exists: false })
+        .mockResolvedValue({ exists: true }),
+    };
+    const watcher = new FsWatcher({ pi: pi as never, client, now: Date.now });
+
+    await watcher.executeTool({
+      action: "add",
+      path: "/tmp/hint-test.txt",
+      target: "exists",
+    });
+
+    // Advance timer past first poll interval so the poll fires and detects the change
+    await vi.advanceTimersByTimeAsync(65_000);
+
+    const changeCalls = (pi.sendMessage as ReturnType<typeof vi.fn>).mock.calls.filter(
+      (c) => (c[0] as { content?: string }).content?.includes("detected"),
+    );
+    expect(changeCalls.length).toBeGreaterThan(0);
+    const content = (changeCalls[0]![0] as { content: string }).content;
+    expect(content).not.toContain("manage_tools");
+    vi.useRealTimers();
+  });
+});

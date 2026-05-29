@@ -93,21 +93,20 @@ function anyChange(prev: FsBaseline | undefined, now: FsBaseline): boolean {
 	return false;
 }
 
-function buildTargetEvent(watch: FsWatch, _prev: FsBaseline | undefined, now: FsBaseline): FsEvent {
+function buildTargetEvent(watch: FsWatch, _prev: FsBaseline | undefined, _now: FsBaseline): FsEvent {
 	const { path, watchId } = watch;
 	switch (watch.target) {
 		case "exists": {
-			const sizeNote = now.size !== undefined ? ` (${now.size} bytes)` : "";
-			const summary = `${path} now exists${sizeNote}`;
-			return { watchId, path, eventType: "exists", summary, formatted: `• ${summary} ✓` };
+			const summary = `${path} now exists`;
+			return { watchId, path, eventType: "exists", summary, formatted: `• ${path}: absent → present` };
 		}
 		case "removed": {
 			const summary = `${path} was removed`;
-			return { watchId, path, eventType: "removed", summary, formatted: `• ${summary} ✓` };
+			return { watchId, path, eventType: "removed", summary, formatted: `• ${path}: present → absent` };
 		}
 		case "changed": {
 			const summary = `${path} changed`;
-			return { watchId, path, eventType: "changed", summary, formatted: `• ${summary} ✓` };
+			return { watchId, path, eventType: "changed", summary, formatted: `• ${path}: unchanged → changed` };
 		}
 	}
 }
@@ -147,5 +146,5 @@ export async function detectChanges(
 export function buildTimeoutEvent(watch: FsWatch): FsEvent {
 	const { path, watchId } = watch;
 	const summary = `${path} timed out waiting for '${watch.target}'`;
-	return { watchId, path, eventType: "timeout", summary, formatted: `• ${summary} ✗` };
+	return { watchId, path, eventType: "timeout", summary, formatted: `• ${path}: timed out ✗` };
 }
