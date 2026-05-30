@@ -71,49 +71,6 @@ upstream example:
 - **Expanded bash view.** Shows the full command verbatim instead of
   truncating to a single line.
 
-## Optional: tighter tool block layout
-
-Pi's built-in `Box` component adds one blank line of vertical padding inside
-every coloured tool block by default. This extension's compact renderers
-already strip unnecessary whitespace from the text they produce, but that
-outer box padding is applied unconditionally by the host component and cannot
-be overridden from an extension.
-
-If you prefer a denser layout where tool output starts and ends flush with
-the coloured border — no blank line between the border and the first or last
-line of text — you can patch the pi-coding-agent package directly after each
-upgrade. This is purely cosmetic and entirely optional; the default padding
-exists to give the output some visual breathing room.
-
-### How to apply the patch
-
-Find the package root:
-
-```bash
-dirname $(realpath $(which pi))
-# e.g. …/node_modules/@earendil-works/pi-coding-agent/dist
-```
-
-**File:** `dist/modes/interactive/components/tool-execution.js`
-
-The `Box` constructor signature is `Box(paddingX, paddingY, bgFn)`. Find the
-`contentBox` line in the `ToolExecutionComponent` constructor and set
-`paddingY` to `0`:
-
-```diff
--this.contentBox = new Box(1, 1, (text) => theme.bg("toolPendingBg", text));
-+this.contentBox = new Box(1, 0, (text) => theme.bg("toolPendingBg", text));
-```
-
-A quick way to locate the line after any upgrade:
-
-```bash
-grep -n 'new Box(1, 1,' dist/modes/interactive/components/tool-execution.js
-```
-
-Leave the `Spacer(1)` a few lines above it untouched — that is the gap
-*between* tool blocks, not the padding inside them.
-
 ## License
 
 MIT (inherited from the upstream). See [`LICENSE`](LICENSE).
