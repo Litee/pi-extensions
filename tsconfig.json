@@ -9,6 +9,6 @@
     "noEmit": true,
     "allowImportingTsExtensions": true
   },
-  "include": ["packages/*/src/**/*", "packages/*/test/**/*", "packages/*/scripts/**/*"],
+  "include": ["packages/*/src/**/*", "packages/*/test/**/*", "packages/*/scripts/**/*", "packages/*/examples/**/*"],
   "exclude": ["node_modules", "**/node_modules", "**/dist"]
 }
