@@ -1,0 +1,24 @@
+{
+  "name": "pi-sandboxed-workflows",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Pi extension that loads user-authored TypeScript workflow scripts from <cwd>/.pi/workflows/ and registers each as /workflow:<name>. Workflows run in pi's own process and orchestrate sandboxed agents via an in-package claude CLI engine (srt sandbox helper bundled).",
+  "type": "module",
+  "types": "./src/types.ts",
+  "keywords": ["pi-package"],
+  "pi": {
+    "extensions": ["./src/index.ts"]
+  },
+  "files": [
+    "src/**",
+    "examples/**",
+    "README.md"
+  ],
+  "peerDependencies": {
+    "@earendil-works/pi-coding-agent": "*",
+    "@earendil-works/pi-tui": "*"
+  },
+  "dependencies": {
+    "ajv": "^8.0.0"
+  }
+}
