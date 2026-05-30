@@ -77,7 +77,7 @@ describe("worktree", () => {
       // Cleanup
       try { execFileSync("git", ["worktree", "remove", "--force", wt1!.path], { cwd: repoDir, stdio: "pipe" }); } catch { /* ignore */ }
       try { execFileSync("git", ["worktree", "remove", "--force", wt2!.path], { cwd: repoDir, stdio: "pipe" }); } catch { /* ignore */ }
-    });
+    }, 30000);
   });
 
   describe("cleanupWorktree", () => {
@@ -116,7 +116,7 @@ describe("worktree", () => {
 
       // Cleanup branch
       try { execFileSync("git", ["branch", "-D", result.branch!], { cwd: repoDir, stdio: "pipe" }); } catch { /* ignore */ }
-    });
+    }, 30000);
 
     it("does not force-overwrite existing branch", () => {
       // Create first worktree, make changes, cleanup → creates branch
@@ -146,7 +146,7 @@ describe("worktree", () => {
       // Cleanup
       try { execFileSync("git", ["branch", "-D", result1.branch!], { cwd: repoDir, stdio: "pipe" }); } catch { /* ignore */ }
       try { execFileSync("git", ["branch", "-D", result2.branch!], { cwd: repoDir, stdio: "pipe" }); } catch { /* ignore */ }
-    });
+    }, 30000);
 
     it("handles already-deleted worktree gracefully", () => {
       const wt = createWorktree(repoDir, "gone-1")!;

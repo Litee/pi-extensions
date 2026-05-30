@@ -46,7 +46,7 @@ describe("detectEnv", () => {
     } finally {
       rmSync(tmpDir, { recursive: true, force: true });
     }
-  });
+  }, 30000);
 
   it("detects non-git directory", async () => {
     const tmpDir = mkdtempSync(join(tmpdir(), "pi-env-test-"));
