@@ -355,17 +355,19 @@ export class AgentWidget {
       const contextPercent = getSessionContextPercent(bg?.session);
       const tokenText = tokens > 0 ? formatSessionTokens(tokens, contextPercent, theme, a.compactionCount) : "";
 
-      const parts: string[] = [];
-      if (bg) parts.push(formatTurns(bg.turnCount, bg.maxTurns));
-      if (toolUses > 0) parts.push(`${toolUses} tool use${toolUses === 1 ? "" : "s"}`);
-      if (tokenText) parts.push(tokenText);
-      parts.push(elapsed);
-      const statsText = parts.join(" · ");
+      const dimPart = (s: string) => theme.fg("dim", s);
+      const sep = dimPart(" · ");
+      const styledParts: string[] = [];
+      if (bg) styledParts.push(dimPart(formatTurns(bg.turnCount, bg.maxTurns)));
+      if (toolUses > 0) styledParts.push(dimPart(`${toolUses} tool use${toolUses === 1 ? "" : "s"}`));
+      if (tokenText) styledParts.push(tokenText);  // already styled
+      styledParts.push(dimPart(elapsed));
+      const statsText = styledParts.join(sep);
 
       const activity = bg ? describeActivity(bg.activeTools, bg.responseText) : "thinking…";
 
       runningLines.push([
-        truncate(theme.fg("dim", "├─") + ` ${theme.fg("accent", frame)} ${theme.bold(name)}${modeTag}  ${theme.fg("muted", a.description)} ${theme.fg("dim", "·")} ${theme.fg("dim", statsText)}`),
+        truncate(theme.fg("dim", "├─") + ` ${theme.fg("accent", frame)} ${theme.bold(name)}${modeTag}  ${theme.fg("muted", a.description)} ${theme.fg("dim", "·")} ${statsText}`),
         truncate(theme.fg("dim", "│  ") + theme.fg("dim", `  ⎿  ${activity}`)),
       ]);
     }
