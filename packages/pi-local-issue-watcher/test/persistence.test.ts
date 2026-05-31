@@ -338,3 +338,118 @@ describe("constants", () => {
 		expect(RUNSTATE_ENTRY_TYPE).toBe("pi-local-issue-watcher:runstate");
 	});
 });
+
+// ---------------------------------------------------------------------------
+// Additional _normaliseSnapshotItems branch coverage
+// ---------------------------------------------------------------------------
+
+describe("_normaliseSnapshotItems — additional branches", () => {
+	it("skips single-element tuples (entry.length < 2)", () => {
+		const ctx = makeCtx([
+			entry(STATE_ENTRY_TYPE, snapshotEntryData(
+				[
+					["/db/single"] as unknown as [string, unknown], // length=1
+					["/db/valid.json", SAMPLE_ISSUE_SERIALISED],
+				],
+			)),
+		]);
+		const got = rehydrateFromSession(ctx);
+		expect(Object.keys(got!.snapshot)).toEqual(["/db/valid.json"]);
+	});
+
+	it("skips entries where first element is not a string", () => {
+		const ctx = makeCtx([
+			entry(STATE_ENTRY_TYPE, snapshotEntryData(
+				[
+					[42, SAMPLE_ISSUE_SERIALISED] as unknown as [string, unknown], // non-string key
+					["/db/valid.json", SAMPLE_ISSUE_SERIALISED],
+				],
+			)),
+		]);
+		const got = rehydrateFromSession(ctx);
+		expect(Object.keys(got!.snapshot)).toEqual(["/db/valid.json"]);
+	});
+
+	it("skips entries where value is null (entry[1] is falsy)", () => {
+		const ctx = makeCtx([
+			entry(STATE_ENTRY_TYPE, snapshotEntryData(
+				[
+					["/db/null-val.json", null] as unknown as [string, unknown],
+					["/db/valid.json", SAMPLE_ISSUE_SERIALISED],
+				],
+			)),
+		]);
+		const got = rehydrateFromSession(ctx);
+		expect(Object.keys(got!.snapshot)).toEqual(["/db/valid.json"]);
+	});
+
+	it("skips entries where value is a non-object primitive", () => {
+		const ctx = makeCtx([
+			entry(STATE_ENTRY_TYPE, snapshotEntryData(
+				[
+					["/db/string-val.json", "not-an-object"] as unknown as [string, unknown],
+					["/db/valid.json", SAMPLE_ISSUE_SERIALISED],
+				],
+			)),
+		]);
+		const got = rehydrateFromSession(ctx);
+		expect(Object.keys(got!.snapshot)).toEqual(["/db/valid.json"]);
+	});
+
+	it("uses default empty string when issueId is not a string", () => {
+		const ctx = makeCtx([
+			entry(STATE_ENTRY_TYPE, snapshotEntryData(
+				[["/db/a.json", { ...SAMPLE_ISSUE_SERIALISED, issueId: 42 }]],
+			)),
+		]);
+		const got = rehydrateFromSession(ctx);
+		expect(got!.snapshot["/db/a.json"]?.issueId).toBe("");
+	});
+
+	it("uses empty array when comments is not an array", () => {
+		const ctx = makeCtx([
+			entry(STATE_ENTRY_TYPE, snapshotEntryData(
+				[["/db/a.json", { ...SAMPLE_ISSUE_SERIALISED, comments: "not-an-array" }]],
+			)),
+		]);
+		const got = rehydrateFromSession(ctx);
+		expect(got!.snapshot["/db/a.json"]?.comments).toEqual([]);
+	});
+
+	it("uses \"0\" string (then 0n bigint) for mtimeNs when the raw value is not a string", () => {
+		// rawInfo["mtimeNs"] is a number → `typeof rawInfo["mtimeNs"] === "string"` is false
+		// → _normaliseSnapshotItems stores "0" → _toBigint("0") = 0n
+		const ctx = makeCtx([
+			entry(STATE_ENTRY_TYPE, snapshotEntryData(
+				[["/db/a.json", { ...SAMPLE_ISSUE_SERIALISED, mtimeNs: 12345 as unknown as string }]],
+			)),
+		]);
+		const got = rehydrateFromSession(ctx);
+		expect(got!.snapshot["/db/a.json"]?.mtimeNs).toBe(0n);
+	});
+
+	it("uses default empty strings when status, title, description, skill, skillVersion are not strings", () => {
+		// Each ternary `typeof rawInfo[field] === "string" ? rawInfo[field] : ""` has its
+		// false branch hit when the value is not a string.
+		const malformed = {
+			...SAMPLE_ISSUE_SERIALISED,
+			status: 1 as unknown as string,
+			title: true as unknown as string,
+			description: null as unknown as string,
+			skill: [] as unknown as string,
+			skillVersion: {} as unknown as string,
+		};
+		const ctx = makeCtx([
+			entry(STATE_ENTRY_TYPE, snapshotEntryData(
+				[["/db/b.json", malformed]],
+			)),
+		]);
+		const got = rehydrateFromSession(ctx);
+		const item = got!.snapshot["/db/b.json"]!;
+		expect(item.status).toBe("");
+		expect(item.title).toBe("");
+		expect(item.description).toBe("");
+		expect(item.skill).toBe("");
+		expect(item.skillVersion).toBe("");
+	});
+});

@@ -816,3 +816,85 @@ describe("schedule_prompt tool / add content text", () => {
 		expect(text).not.toContain("a\nb");
 	});
 });
+
+// ---------------------------------------------------------------------------
+// shouldCollapsePrompt and buildJobSummaryLines — branch coverage
+// ---------------------------------------------------------------------------
+import { shouldCollapsePrompt, buildJobSummaryLines } from "../src/tool.js";
+
+describe("shouldCollapsePrompt", () => {
+  it("returns true for multiline prompts", () => {
+    expect(shouldCollapsePrompt("line1\nline2")).toBe(true);
+  });
+
+  it("returns true for prompts longer than the collapse threshold", () => {
+    expect(shouldCollapsePrompt("x".repeat(200))).toBe(true);
+  });
+
+  it("returns false for short single-line prompts", () => {
+    expect(shouldCollapsePrompt("short prompt")).toBe(false);
+  });
+});
+
+describe("buildJobSummaryLines", () => {
+  it("includes model line with no-notify variant when model is set", () => {
+    const lines = buildJobSummaryLines("Created", {
+      name: "test", id: "id1", type: "interval" as const,
+      schedule: "0 9 * * 1-5", prompt: "do stuff", model: "anthropic/haiku", notify: false,
+    }, { collapse: false });
+    expect(lines.some(l => l.includes("haiku"))).toBe(true);
+    expect(lines.some(l => l.includes("notifies parent"))).toBe(false);
+    expect(lines.some(l => l.includes("runs in subagent"))).toBe(true);
+  });
+
+  it("includes notify annotation when model and notify are both set", () => {
+    const lines = buildJobSummaryLines("Updated", {
+      name: "test", id: "id2", type: "interval" as const,
+      schedule: "0 9 * * 1-5", prompt: "do stuff", model: "openai/gpt-4", notify: true,
+    }, { collapse: false });
+    expect(lines.some(l => l.includes("notifies parent"))).toBe(true);
+  });
+
+  it("skips model line when model is not set", () => {
+    const lines = buildJobSummaryLines("Created", {
+      name: "test", id: "id3", type: "interval" as const,
+      schedule: "0 9 * * 1-5", prompt: "do stuff", notify: false,
+    }, { collapse: false });
+    expect(lines.some(l => l.startsWith("Model:"))).toBe(false);
+  });
+
+  it("shows collapse hint when collapse=true", () => {
+    const lines = buildJobSummaryLines("Created", {
+      name: "test", id: "id4", type: "interval" as const,
+      schedule: "0 9 * * 1-5", prompt: "do stuff", notify: false,
+    }, { collapse: true });
+    expect(lines.some(l => l.includes("ctrl+o"))).toBe(true);
+  });
+
+  it("shows full prompt when collapse=false", () => {
+    const prompt = "What did you accomplish?";
+    const lines = buildJobSummaryLines("Created", {
+      name: "test", id: "id5", type: "interval" as const,
+      schedule: "0 9 * * 1-5", prompt, notify: false,
+    }, { collapse: false });
+    expect(lines.some(l => l.includes("Prompt:"))).toBe(true);
+    expect(lines.some(l => l.includes(prompt))).toBe(true);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Anti-recursion guard
+// ---------------------------------------------------------------------------
+
+describe("schedule_prompt tool / anti-recursion guard", () => {
+	it("throws when trying to add a scheduled prompt from within a scheduled prompt", async () => {
+		const tool = makeTool();
+		// Simulate being inside a scheduled prompt by having a recent scheduled_prompt entry
+		const entries = [
+			{ type: "custom", customType: "scheduled_prompt", data: { jobId: "some-job" } },
+		];
+		await expect(
+			exec(tool, { action: "add", schedule: "+1m", prompt: "nested prompt" }, { entries }),
+		).rejects.toThrow(/Cannot create scheduled prompts from within/);
+	});
+});

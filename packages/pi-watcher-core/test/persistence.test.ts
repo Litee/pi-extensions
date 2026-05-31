@@ -310,6 +310,34 @@ describe("writeState", () => {
 		expect(arg.message).toBe("disk full");
 	});
 
+	it("wraps_a_thrown_string_into_an_Error_before_invoking_onError", () => {
+		// Arrange — appendEntry throws a plain string, not an Error instance.
+		// This exercises the `err instanceof Error ? err : new Error(String(err))` false branch.
+		const onError = vi.fn();
+		const p = createPersistence<Items, Baselines>({
+			stateCustomType: "str:state",
+			watchItemsKey: "items",
+			normaliseItems: (r) => (Array.isArray(r) ? (r as string[]) : []),
+			normaliseBaselines: () => ({}),
+			onError,
+		});
+		const pi = {
+			appendEntry: () => {
+				// eslint-disable-next-line @typescript-eslint/only-throw-error
+				throw "disk full";
+			},
+		};
+
+		// Act
+		p.writeState(pi, { items: [], paused: false, baselines: {} });
+
+		// Assert — onError receives an Error wrapping the string
+		expect(onError).toHaveBeenCalledTimes(1);
+		const arg = onError.mock.calls[0]?.[0] as Error;
+		expect(arg).toBeInstanceOf(Error);
+		expect(arg.message).toBe("disk full");
+	});
+
 	it("does_not_invoke_onError_on_successful_appendEntry", () => {
 		// Arrange
 		const onError = vi.fn();

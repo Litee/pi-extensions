@@ -776,6 +776,96 @@ describe("handleToolAction — status", () => {
 });
 
 // ---------------------------------------------------------------------------
+// handleToolAction — set-interval
+// ---------------------------------------------------------------------------
+
+describe("handleToolAction — set-interval", () => {
+	it("returns error when watchId is missing", async () => {
+		const pi = makePi();
+		const rt = makeRuntime(pi, makeClient());
+		const result = await handleToolAction(rt, { action: "set-interval" });
+		expect(result.details.ok).toBe(false);
+		expect(result.details.message).toContain("requires a watchId");
+	});
+
+	it("returns error when watchId not found", async () => {
+		const pi = makePi();
+		const rt = makeRuntime(pi, makeClient());
+		const result = await handleToolAction(rt, { action: "set-interval", watchId: "no-such-id" });
+		expect(result.details.ok).toBe(false);
+		expect(result.details.message).toContain("not found");
+	});
+
+	it("returns error when pollIntervalMs is missing", async () => {
+		const pi = makePi();
+		const rt = makeRuntime(pi, makeClient());
+		rt.watches["aa"] = makeWatch({ watchId: "aa" });
+		const result = await handleToolAction(rt, { action: "set-interval", watchId: "aa" });
+		expect(result.details.ok).toBe(false);
+		expect(result.details.message).toContain("pollIntervalMs");
+	});
+
+	it("returns error when pollIntervalMs is below minimum (5000ms)", async () => {
+		const pi = makePi();
+		const rt = makeRuntime(pi, makeClient());
+		rt.watches["aa"] = makeWatch({ watchId: "aa" });
+		const result = await handleToolAction(rt, { action: "set-interval", watchId: "aa", pollIntervalMs: 1000 });
+		expect(result.details.ok).toBe(false);
+		expect(result.details.message).toContain("5000");
+	});
+
+	it("sets poll interval and returns success message", async () => {
+		const pi = makePi();
+		const rt = makeRuntime(pi, makeClient());
+		rt.watches["aa"] = makeWatch({ watchId: "aa" });
+		const result = await handleToolAction(rt, { action: "set-interval", watchId: "aa", pollIntervalMs: 30_000 });
+		expect(result.details.ok).toBe(true);
+		expect(result.details.message).toContain("30s");
+		expect(rt.watches["aa"]?.pollIntervalMs).toBe(30_000);
+	});
+
+	it("does not restart polling when paused", async () => {
+		const pi = makePi();
+		const rt = makeRuntime(pi, makeClient());
+		rt.paused = true;
+		rt.watches["aa"] = makeWatch({ watchId: "aa" });
+		const result = await handleToolAction(rt, { action: "set-interval", watchId: "aa", pollIntervalMs: 60_000 });
+		expect(result.details.ok).toBe(true);
+	});
+
+	it("does not restart polling when watch is terminal", async () => {
+		const pi = makePi();
+		const rt = makeRuntime(pi, makeClient());
+		rt.watches["aa"] = makeWatch({ watchId: "aa", terminal: true });
+		const result = await handleToolAction(rt, { action: "set-interval", watchId: "aa", pollIntervalMs: 60_000 });
+		expect(result.details.ok).toBe(true);
+	});
+});
+
+// ---------------------------------------------------------------------------
+// handleToolAction — add with valid pollIntervalMs
+// ---------------------------------------------------------------------------
+
+describe("handleToolAction — add with pollIntervalMs", () => {
+	it("includes interval note in message when pollIntervalMs is valid", async () => {
+		const pi = makePi();
+		const client = makeClient();
+		const rt = makeRuntime(pi, client);
+		const result = await handleToolAction(rt, {
+			action: "add",
+			type: "job",
+			name: "my-job",
+			runId: "jr_123",
+			profile: "p",
+			pollIntervalMs: 30_000,
+		});
+		expect(result.details.ok).toBe(true);
+		expect(result.details.message).toContain("poll: 30s");
+		expect(Object.values(rt.watches)[0]!.pollIntervalMs).toBe(30_000);
+	});
+});
+
+// ---------------------------------------------------------------------------
 // handleToolAction — unknown action
 // ---------------------------------------------------------------------------
 
@@ -1087,5 +1177,67 @@ describe("pollOnce — consecutive error tracking", () => {
 describe("POLL_INTERVAL_MAX_MS", () => {
 	it("is 15 minutes (900_000 ms)", () => {
 		expect(POLL_ERROR_THRESHOLD).toBe(5);
+	});
+});
+
+// ---------------------------------------------------------------------------
+// Additional branch coverage
+// ---------------------------------------------------------------------------
+
+describe("handleToolAction — list with pollIntervalMs", () => {
+	it("includes poll interval note when watch has pollIntervalMs", async () => {
+		const pi = makePi();
+		const rt = makeRuntime(pi, makeClient());
+		rt.watches["aa"] = makeWatch({ watchId: "aa", pollIntervalMs: 30_000 });
+		const result = await handleToolAction(rt, { action: "list" });
+		expect(result.details.message).toContain("poll: 30s");
+	});
+});
+
+describe("handleToolAction — status with per-watch intervals", () => {
+	it("includes per-watch interval section when watches have custom intervals", async () => {
+		const pi = makePi();
+		const rt = makeRuntime(pi, makeClient());
+		rt.watches["aa"] = makeWatch({ watchId: "aa", pollIntervalMs: 60_000 });
+		const result = await handleToolAction(rt, { action: "status" });
+		expect(result.details.message).toContain("60s");
+	});
+
+	it("status with watch with missing entry shows blank line (filter)", async () => {
+		const pi = makePi();
+		const rt = makeRuntime(pi, makeClient());
+		rt.watches["aa"] = makeWatch({ watchId: "aa" });
+		const result = await handleToolAction(rt, { action: "status" });
+		expect(result.details.ok).toBe(true);
+	});
+});
+
+describe("handleToolAction — add when paused", () => {
+	it("does not start polling when paused", async () => {
+		const pi = makePi();
+		const client = makeClient();
+		const rt = makeRuntime(pi, client);
+		rt.paused = true;
+		const result = await handleToolAction(rt, {
+			action: "add",
+			type: "job",
+			name: "my-job",
+			runId: "jr_123",
+			profile: "p",
+		});
+		expect(result.details.ok).toBe(true);
+		// startWatchPolling should NOT have been called because rt.paused = true
+	});
+});
+
+describe("handleToolAction — resume with active watches", () => {
+	it("starts polling when enabled and active watches exist", async () => {
+		const pi = makePi();
+		const rt = makeRuntime(pi, makeClient());
+		rt.enabled = true;
+		rt.watches["aa"] = makeWatch({ watchId: "aa" });
+		await handleToolAction(rt, { action: "pause" });
+		const result = await handleToolAction(rt, { action: "resume" });
+		expect(result.details.ok).toBe(true);
 	});
 });

@@ -264,3 +264,94 @@ describe("formatSessionDebugInfo", () => {
 		expect(result).not.toContain("## Token Usage");
 	});
 });
+
+// ---------------------------------------------------------------------------
+// registerSessionDebugInfoTool — exercise the pi.registerTool execute() path
+// ---------------------------------------------------------------------------
+import { registerSessionDebugInfoTool } from "../src/tool.js";
+
+describe("registerSessionDebugInfoTool — execute() handler", () => {
+	function makeMockPi() {
+		let capturedExecute:
+			| ((
+					toolCallId: string,
+					params: Record<string, unknown>,
+					signal: AbortSignal | undefined,
+					onUpdate: unknown,
+					ctx: unknown,
+				) => Promise<{ content: { type: string; text: string }[]; details: { debugInfo: string } }>)
+			| undefined;
+
+		const pi = {
+			registerTool: vi.fn((def: { execute: typeof capturedExecute }) => {
+				capturedExecute = def.execute;
+			}),
+		};
+		return { pi, getExecute: () => capturedExecute! };
+	}
+
+	function makeCtx(overrides: Partial<{
+		sessionId: string;
+		leafId: string | null;
+		cwd: string;
+		sessionFile: string | null;
+		entries: unknown[];
+		contextUsage: { tokens: number; contextWindow: number; percent: number } | null;
+		systemPrompt: string;
+	}> = {}) {
+		return {
+			sessionManager: {
+				getSessionId: vi.fn(() => overrides.sessionId ?? "sess-test-123"),
+				getLeafId: vi.fn(() => overrides.leafId ?? "leaf-test-456"),
+				getSessionFile: vi.fn(() => overrides.sessionFile ?? "/tmp/session.json"),
+				getEntries: vi.fn(() => overrides.entries ?? []),
+			},
+			cwd: overrides.cwd ?? "/tmp/project",
+			getContextUsage: vi.fn(() => overrides.contextUsage ?? { tokens: 1000, contextWindow: 100000, percent: 1.0 }),
+			getSystemPrompt: vi.fn(() => overrides.systemPrompt ?? "You are helpful."),
+		};
+	}
+
+	it("registers the tool and execute() returns content with debugInfo", async () => {
+		const { pi, getExecute } = makeMockPi();
+		registerSessionDebugInfoTool(pi as never);
+
+		expect(pi.registerTool).toHaveBeenCalledOnce();
+		const execute = getExecute();
+		const ctx = makeCtx();
+
+		const result = await execute("call-1", {}, undefined, undefined, ctx);
+		expect(result.content[0]?.type).toBe("text");
+		expect(result.details.debugInfo).toBeTruthy();
+	});
+
+	it("execute() includes metadata section when metadata=true (default)", async () => {
+		const { pi, getExecute } = makeMockPi();
+		registerSessionDebugInfoTool(pi as never);
+		const ctx = makeCtx({ sessionId: "sid-42", leafId: null });
+
+		const result = await getExecute()("call-2", { metadata: true }, undefined, undefined, ctx);
+		expect(result.details.debugInfo).toContain("## Metadata");
+		expect(result.details.debugInfo).toContain("sid-42");
+		expect(result.details.debugInfo).toContain("(none)"); // leafId is null
+	});
+
+	it("execute() includes system_prompt section when system_prompt=true", async () => {
+		const { pi, getExecute } = makeMockPi();
+		registerSessionDebugInfoTool(pi as never);
+		const ctx = makeCtx({ systemPrompt: "Super system prompt." });
+
+		const result = await getExecute()("call-3", { system_prompt: true }, undefined, undefined, ctx);
+		expect(result.details.debugInfo).toContain("## System Prompt");
+		expect(result.details.debugInfo).toContain("Super system prompt.");
+	});
+
+	it("execute() respects metadata=false to skip that section", async () => {
+		const { pi, getExecute } = makeMockPi();
+		registerSessionDebugInfoTool(pi as never);
+		const ctx = makeCtx();
+
+		const result = await getExecute()("call-4", { metadata: false, usage: false, entries: false }, undefined, undefined, ctx);
+		expect(result.details.debugInfo).toContain("No sections requested");
+	});
+});

@@ -205,3 +205,36 @@ describe("pickLatestPlanState", () => {
 		expect(picked?.state.enabled).toBe(true);
 	});
 });
+
+describe("loadPlanModeConfig — HOME/USERPROFILE fallback", () => {
+	it("uses USERPROFILE when HOME is not set", () => {
+		const savedHome = process.env["HOME"];
+		const savedUserProfile = process.env["USERPROFILE"];
+		try {
+			delete process.env["HOME"];
+			process.env["USERPROFILE"] = "/test/userprofile";
+			// readFileSync is mocked to throw ENOENT — config falls back to {}
+			expect(loadPlanModeConfig()).toEqual({});
+		} finally {
+			if (savedHome !== undefined) process.env["HOME"] = savedHome;
+			else delete process.env["HOME"];
+			if (savedUserProfile !== undefined) process.env["USERPROFILE"] = savedUserProfile;
+			else delete process.env["USERPROFILE"];
+		}
+	});
+
+	it("falls back to empty string when neither HOME nor USERPROFILE is set", () => {
+		const savedHome = process.env["HOME"];
+		const savedUserProfile = process.env["USERPROFILE"];
+		try {
+			delete process.env["HOME"];
+			delete process.env["USERPROFILE"];
+			expect(loadPlanModeConfig()).toEqual({});
+		} finally {
+			if (savedHome !== undefined) process.env["HOME"] = savedHome;
+			else delete process.env["HOME"];
+			if (savedUserProfile !== undefined) process.env["USERPROFILE"] = savedUserProfile;
+			else delete process.env["USERPROFILE"];
+		}
+	});
+});

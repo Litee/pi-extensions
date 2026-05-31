@@ -1522,3 +1522,804 @@ describe('userDefaultDisplayMode menu item notifications', () => {
     expect(result).toBe('rerender')
   })
 })
+
+// ---------------------------------------------------------------------------
+// _rehydrateState — baselines path coverage
+// ---------------------------------------------------------------------------
+
+describe('_rehydrateState — baselines from session log', () => {
+  it('rehydrates baselines from session log when present', async () => {
+    const { watcher } = makeWatcher()
+    const entry = {
+      type: 'custom',
+      customType: 'stub-watcher:state',
+      data: {
+        savedAt: Date.now(),
+        paused: false,
+        enabled: false,
+        displayMode: 'widget',
+        watches: [{ id: 'w1', label: 'Watch 1', terminal: false, consecutiveErrors: 0 }],
+        baselines: {
+          'w1': { seenAt: 12345 },
+        },
+      },
+    }
+    const ctx = makeCtx([entry])
+    await watcher.onSessionStart(ctx)
+    expect(watcher.testBaselines.has('w1')).toBe(true)
+    expect(watcher.testBaselines.get('w1')?.seenAt).toBe(12345)
+  })
+
+  it('skips invalid baseline entries (normaliseBaseline returns null)', async () => {
+    const { watcher } = makeWatcher()
+    const entry = {
+      type: 'custom',
+      customType: 'stub-watcher:state',
+      data: {
+        savedAt: Date.now(),
+        paused: false,
+        enabled: false,
+        displayMode: 'widget',
+        watches: [],
+        baselines: {
+          'w1': 'not-a-baseline',  // normaliseBaseline returns null for this
+        },
+      },
+    }
+    const ctx = makeCtx([entry])
+    await watcher.onSessionStart(ctx)
+    expect(watcher.testBaselines.has('w1')).toBe(false)
+  })
+
+  it('skips array baselines (must be plain object)', async () => {
+    const { watcher } = makeWatcher()
+    const entry = {
+      type: 'custom',
+      customType: 'stub-watcher:state',
+      data: {
+        savedAt: Date.now(),
+        paused: false,
+        enabled: false,
+        displayMode: 'widget',
+        watches: [],
+        baselines: ['not-an-object'],  // Array → should be skipped
+      },
+    }
+    const ctx = makeCtx([entry])
+    await watcher.onSessionStart(ctx)
+    expect(watcher.testBaselines.size).toBe(0)
+  })
+})
+
+// ---------------------------------------------------------------------------
+// pollOnce — empty active watches + scan mode
+// ---------------------------------------------------------------------------
+
+describe('pollOnce — edge cases', () => {
+  it('calls refreshStatus and returns early when no active watches', async () => {
+    const { watcher } = makeWatcher()
+    // No watches added → active.length === 0
+    const setStatusSpy = vi.fn()
+    const ctx = makeCtxWithState({ displayMode: 'statusline' })
+    await watcher.onSessionStart(ctx)
+    ;(watcher as unknown as { ui: { setStatus: ReturnType<typeof vi.fn> } }).ui = {
+      setStatus: setStatusSpy,
+    }
+    await watcher.pollOnce()
+    // refreshStatus was called (status line updated)
+    expect(setStatusSpy).toHaveBeenCalled()
+  })
+
+  it('scans items and updates watch list for scan-mode watchers', async () => {
+    const stub = makeStub({ itemSource: 'scan' })
+    ;(stub as unknown as { scanItems: () => Promise<StubWatch[]> }).scanItems = vi.fn().mockResolvedValue([
+      { id: 'scan-1', label: 'Scanned', terminal: false, consecutiveErrors: 0 },
+    ])
+    ;(stub as unknown as { detectChangesFn: unknown }).detectChangesFn = vi.fn().mockResolvedValue({
+      newBaseline: { seenAt: 0 },
+      events: [],
+      observedChange: false,
+    })
+    await stub.pollOnce()
+    expect(stub.testWatches.has('scan-1')).toBe(true)
+  })
+
+  it('removes watches that disappear from scan results', async () => {
+    const stub = makeStub({ itemSource: 'scan' })
+    stub.testWatches.set('old-watch', {
+      id: 'old-watch', label: 'Old', terminal: false, consecutiveErrors: 0,
+    })
+    ;(stub as unknown as { scanItems: unknown }).scanItems = vi.fn().mockResolvedValue([
+      { id: 'new-watch', label: 'New', terminal: false, consecutiveErrors: 0 },
+    ])
+    ;(stub as unknown as { detectChangesFn: unknown }).detectChangesFn = vi.fn().mockResolvedValue({
+      newBaseline: { seenAt: 0 },
+      events: [],
+      observedChange: false,
+    })
+    await stub.pollOnce()
+    expect(stub.testWatches.has('old-watch')).toBe(false)
+    expect(stub.testWatches.has('new-watch')).toBe(true)
+  })
+})
+
+// ---------------------------------------------------------------------------
+// Additional base-watcher coverage
+// ---------------------------------------------------------------------------
+
+describe('refreshStatus — statusline with no active watches', () => {
+  it('clears status when displayMode is statusline but all watches are terminal', async () => {
+    const { watcher } = makeWatcher()
+    const ctx = makeCtxWithState({
+      displayMode: 'statusline',
+      watches: [{ id: 'w1', label: 'L', terminal: true, consecutiveErrors: 0 }],
+    })
+    await watcher.onSessionStart(ctx)
+    watcher.stopPolling()
+    const ui = (ctx as { ui: { setStatus: ReturnType<typeof vi.fn> } }).ui
+    ui.setStatus.mockClear()
+    watcher.refreshStatus()
+    expect(ui.setStatus).toHaveBeenCalledWith('stub-watcher', undefined)
+  })
+
+  it('appends (errors) suffix when consecutiveErrors >= threshold', async () => {
+    const { watcher } = makeWatcher()
+    const ctx = makeCtxWithState({
+      displayMode: 'statusline',
+      watches: [{
+        id: 'w1', label: 'L', terminal: false,
+        consecutiveErrors: POLL_ERROR_THRESHOLD,
+      }],
+    })
+    await watcher.onSessionStart(ctx)
+    watcher.stopPolling()
+    const ui = (ctx as { ui: { setStatus: ReturnType<typeof vi.fn> } }).ui
+    ui.setStatus.mockClear()
+    watcher.refreshStatus()
+    const [, text] = ui.setStatus.mock.calls[0] as [string, string]
+    expect(text).toContain('(errors)')
+  })
+
+  it('appends (paused) suffix when paused', async () => {
+    const { watcher } = makeWatcher()
+    const ctx = makeCtxWithState({
+      paused: true,
+      displayMode: 'statusline',
+      watches: [{ id: 'w1', label: 'L', terminal: false, consecutiveErrors: 0 }],
+    })
+    await watcher.onSessionStart(ctx)
+    watcher.stopPolling()
+    const ui = (ctx as { ui: { setStatus: ReturnType<typeof vi.fn> } }).ui
+    ui.setStatus.mockClear()
+    watcher.refreshStatus()
+    const [, text] = ui.setStatus.mock.calls[0] as [string, string]
+    expect(text).toContain('(paused)')
+  })
+})
+
+describe('_seedMissingBaselines — error path', () => {
+  it('calls appendEntry with seed-error when snapshot() throws', async () => {
+    const { watcher, pi } = makeWatcher()
+    watcher.snapshotFn = vi.fn().mockRejectedValue(new Error('network down'))
+    const appendSpy = vi.spyOn(pi, 'appendEntry')
+    appendSpy.mockClear()
+
+    const ctx = makeCtxWithState({
+      watches: [{ id: 'w1', label: 'L', terminal: false, consecutiveErrors: 0 }],
+    })
+    await watcher.onSessionStart(ctx)
+
+    // One call for writeState, plus potentially the seed-error call
+    const seedErrorCall = appendSpy.mock.calls.find(
+      ([type]) => type === 'stub-watcher:seed-error',
+    )
+    expect(seedErrorCall).toBeDefined()
+  })
+})
+
+describe('onSessionShutdown — widget cleanup', () => {
+  it('hides and destroys widget on shutdown', () => {
+    const { watcher } = makeWatcher()
+    const hideSpy = vi.fn()
+    const destroySpy = vi.fn()
+    ;(watcher as unknown as { widget: unknown }).widget = {
+      hide: hideSpy,
+      destroy: destroySpy,
+      show: vi.fn(),
+    }
+    watcher.onSessionShutdown({})
+    expect(hideSpy).toHaveBeenCalled()
+    expect(destroySpy).toHaveBeenCalled()
+  })
+
+  it('swallows errors from widget.hide', () => {
+    const { watcher } = makeWatcher()
+    ;(watcher as unknown as { widget: unknown }).widget = {
+      hide: vi.fn(() => { throw new Error('ui torn down') }),
+      destroy: vi.fn(),
+      show: vi.fn(),
+    }
+    expect(() => watcher.onSessionShutdown({})).not.toThrow()
+  })
+
+  it('runs without widget (widget is null)', () => {
+    const { watcher } = makeWatcher()
+    expect(() => watcher.onSessionShutdown({})).not.toThrow()
+  })
+})
+
+// ---------------------------------------------------------------------------
+// executeTool — uncovered branches
+// ---------------------------------------------------------------------------
+
+describe('executeTool — list with terminal and errored watches', () => {
+  it('list marks terminal watches with (done) suffix', async () => {
+    const { watcher } = makeWatcher()
+    watcher.testWatches.set('w1', { id: 'w1', label: 'Terminal Watch', terminal: true, consecutiveErrors: 0 })
+    const result = await watcher.executeTool({ action: 'list' })
+    expect(result.content[0]?.text).toContain('(done)')
+  })
+
+  it('list marks watches with consecutive errors with (N errors) suffix', async () => {
+    const { watcher } = makeWatcher()
+    watcher.testWatches.set('w1', { id: 'w1', label: 'Errored Watch', terminal: false, consecutiveErrors: 3 })
+    const result = await watcher.executeTool({ action: 'list' })
+    expect(result.content[0]?.text).toContain('(3 errors)')
+  })
+})
+
+describe('executeTool — status with errors', () => {
+  it('status includes error count when a watch has repeated errors', async () => {
+    const { watcher } = makeWatcher()
+    watcher.testWatches.set('w1', { id: 'w1', label: 'L', terminal: false, consecutiveErrors: POLL_ERROR_THRESHOLD })
+    const result = await watcher.executeTool({ action: 'status' })
+    expect(result.content[0]?.text).toContain('repeated errors')
+  })
+})
+
+describe('executeTool — add when paused', () => {
+  it('add does not start polling when watcher is paused', async () => {
+    const { watcher } = makeWatcher()
+    ;(watcher as unknown as { paused: boolean }).paused = true
+    const addWatchSpy = vi.spyOn(watcher, 'addWatch')
+    await watcher.executeTool({ action: 'add', id: 'w1' })
+    expect(addWatchSpy).toHaveBeenCalledOnce()
+    // Scheduler should NOT be running since paused
+    expect(watcher.testScheduler.isRunning).toBe(false)
+  })
+})
+
+describe('executeTool — remove with fallback id params', () => {
+  it('remove accepts "id" as fallback when watchId is absent', async () => {
+    const { watcher } = makeWatcher()
+    watcher.testWatches.set('w1', { id: 'w1', label: 'L', terminal: false, consecutiveErrors: 0 })
+    const result = await watcher.executeTool({ action: 'remove', id: 'w1' })
+    expect(result.content[0]?.text).toContain("removed")
+    expect(watcher.testWatches.has('w1')).toBe(false)
+  })
+
+  it('remove accepts "watchKey" as fallback when watchId and id are absent', async () => {
+    const { watcher } = makeWatcher()
+    watcher.testWatches.set('w1', { id: 'w1', label: 'L', terminal: false, consecutiveErrors: 0 })
+    const result = await watcher.executeTool({ action: 'remove', watchKey: 'w1' })
+    expect(result.content[0]?.text).toContain("removed")
+  })
+})
+
+// ---------------------------------------------------------------------------
+// browseAction — headless UI (no ctx.ui.custom)
+// ---------------------------------------------------------------------------
+
+describe('browseAction — headless (no ctx.ui.custom)', () => {
+  it('notifies and returns "stay" when ctx.ui.custom is absent', async () => {
+    const watcher = makeStub()
+    const notifySpy = vi.fn()
+    const ctx = {
+      hasUI: true,
+      ui: { notify: notifySpy, setStatus: vi.fn(), theme: { fg: (_: string, t: string) => t } },
+      sessionManager: { getEntries: () => [] },
+    }
+    const result = await watcher.browseAction(ctx)
+    expect(result).toBe('stay')
+    expect(notifySpy).toHaveBeenCalledWith(
+      expect.stringContaining('browse requires an interactive UI'),
+      'warning',
+    )
+  })
+})
+
+// ---------------------------------------------------------------------------
+// buildMenu — nounPlural vs noun fallback
+// ---------------------------------------------------------------------------
+
+describe('buildMenu — nounPlural', () => {
+  it('uses nounPlural from view when provided', () => {
+    class NounPluralWatcher extends StubWatcher {
+      override get view() {
+        return {
+          ...super.view,
+          nounPlural: 'things',
+          noun: 'thing',
+        }
+      }
+    }
+    const stub = new NounPluralWatcher({ pi: makePi(), now: () => 0 })
+    const menu = stub.buildMenu()
+    const browseItem = menu.find(m => m.id === 'browse')!
+    const state = (stub as unknown as { _currentState(): unknown })._currentState() as Parameters<typeof browseItem.label>[0]
+    expect(browseItem.label(state)).toContain('things')
+  })
+
+  it('appends s to noun when nounPlural is undefined', () => {
+    class NounOnlyWatcher extends StubWatcher {
+      override get view() {
+        return {
+          ...super.view,
+          nounPlural: undefined as unknown as string,
+          noun: 'watch',
+        }
+      }
+    }
+    const stub = new NounOnlyWatcher({ pi: makePi(), now: () => 0 })
+    const menu = stub.buildMenu()
+    const browseItem = menu.find(m => m.id === 'browse')!
+    const state = (stub as unknown as { _currentState(): unknown })._currentState() as Parameters<typeof browseItem.label>[0]
+    expect(browseItem.label(state)).toContain('watchs') // noun + 's'
+  })
+})
+
+// ---------------------------------------------------------------------------
+// _currentState — userDefaultDisplayMode
+// ---------------------------------------------------------------------------
+
+describe('_currentState — userDefaultDisplayMode', () => {
+  it('includes userDefaultDisplayMode when set', () => {
+    const stub = makeStub({ userDefault: 'widget' })
+    const state = (stub as unknown as { _currentState(): unknown })._currentState() as Record<string, unknown>
+    expect(state['userDefaultDisplayMode']).toBe('widget')
+  })
+
+  it('omits userDefaultDisplayMode when not set', () => {
+    const { watcher } = makeWatcher()
+    const state = (watcher as unknown as { _currentState(): unknown })._currentState() as Record<string, unknown>
+    expect(state['userDefaultDisplayMode']).toBeUndefined()
+  })
+})
+
+// ---------------------------------------------------------------------------
+// onTurnEnd — scan watcher early return
+// ---------------------------------------------------------------------------
+
+describe('onTurnEnd — scan watcher', () => {
+  it('returns early without activating tool for scan watchers', () => {
+    const stub = makeStub({ itemSource: 'scan' })
+    const appendSpy = vi.spyOn(stub.testPi, 'appendEntry')
+    stub.onTurnEnd({})
+    expect(appendSpy).not.toHaveBeenCalled()
+  })
+})
+
+// ---------------------------------------------------------------------------
+// writeState — displayMode
+// ---------------------------------------------------------------------------
+
+describe('writeState — includes displayMode', () => {
+  it('includes displayMode in persisted state entry', () => {
+    const { watcher, pi } = makeWatcher()
+    ;(watcher as unknown as { displayMode: string }).displayMode = 'statusline'
+    const appendSpy = vi.spyOn(pi, 'appendEntry')
+    watcher.writeState()
+    const [, data] = appendSpy.mock.calls[0] as [string, Record<string, unknown>]
+    expect(data['displayMode']).toBe('statusline')
+  })
+})
+
+// ---------------------------------------------------------------------------
+// pollWatch — lastPolledAt and reactivation hint
+// ---------------------------------------------------------------------------
+
+describe('pollWatch — lastPolledAt stamping', () => {
+  it('stamps lastPolledAt on a watch that has the field', async () => {
+    const { watcher } = makeWatcher()
+    const watchWithTime: StubWatch & { lastPolledAt?: number } = {
+      id: 'w1', label: 'L', terminal: false, consecutiveErrors: 0, lastPolledAt: undefined as unknown as number,
+    }
+    watcher.testWatches.set('w1', watchWithTime)
+    watcher.testBaselines.set('w1', { seenAt: 0 })
+    watcher.detectChangesFn = vi.fn().mockResolvedValue({
+      newBaseline: { seenAt: 1 },
+      events: [],
+      observedChange: false,
+    })
+
+    await watcher.pollWatch('w1')
+
+    expect(watchWithTime.lastPolledAt).toBeDefined()
+    expect(typeof watchWithTime.lastPolledAt).toBe('number')
+  })
+})
+
+describe('pollWatch — reactivation hint when disabled', () => {
+  it('includes reactivation hint in chat message when watcher is disabled', async () => {
+    const { watcher, pi } = makeWatcher()
+    ;(watcher as unknown as { enabled: boolean }).enabled = false
+    watcher.testWatches.set('w1', { id: 'w1', label: 'L', terminal: false, consecutiveErrors: 0 })
+    watcher.testBaselines.set('w1', { seenAt: 0 })
+    watcher.detectChangesFn = vi.fn().mockResolvedValue({
+      newBaseline: { seenAt: 1 },
+      events: [{ watchId: 'w1', summary: 'state changed' }],
+      observedChange: true,
+    })
+
+    await watcher.pollWatch('w1')
+
+    const mockPi = pi as unknown as { sendMessage: ReturnType<typeof vi.fn> }
+    const calls = mockPi.sendMessage.mock.calls as Array<[{ content: string }]>
+    const chatMessage = calls.find(([msg]) => msg.content.includes('state changed'))
+    expect(chatMessage).toBeDefined()
+    // Reactivation hint should be included since enabled=false and itemSource=user-tool
+    expect(chatMessage![0].content).toContain('manage_tools')
+  })
+})
+
+describe('pollWatch — stop polling when all watches terminal', () => {
+  it('calls stopPolling when last active watch goes terminal', async () => {
+    vi.useFakeTimers()
+    const { watcher } = makeWatcher()
+    const stopPollingSpy = vi.spyOn(watcher, 'stopPolling')
+    watcher.testWatches.set('w1', { id: 'w1', label: 'L', terminal: false, consecutiveErrors: 0 })
+    watcher.testBaselines.set('w1', { seenAt: 0 })
+    watcher.detectChangesFn = vi.fn().mockResolvedValue({
+      newBaseline: { seenAt: 1 },
+      events: [{ watchId: 'w1', summary: 'done', isTerminal: true }],
+      observedChange: true,
+    })
+    watcher.startPolling();
+    await watcher.pollWatch('w1')
+
+    // After terminal event, the watch is marked terminal → no more active → stopPolling
+    expect(stopPollingSpy).toHaveBeenCalled()
+    vi.useRealTimers()
+  })
+})
+
+// ---------------------------------------------------------------------------
+// buildMenu — run callbacks and labels
+// ---------------------------------------------------------------------------
+
+describe('buildMenu — close item run callback', () => {
+  it('close item resolves to "close"', async () => {
+    const stub = makeStub()
+    const menu = stub.buildMenu()
+    const closeItem = menu.find(m => m.id === 'close')!
+    const ctx = makeCommandCtx(stub)
+    const result = await closeItem.run(ctx)
+    expect(result).toBe('close')
+  })
+})
+
+describe('buildMenu — paused item run callback', () => {
+  it('paused item calls ctx.toggle("paused") and returns rerender', async () => {
+    const stub = makeStub()
+    const menu = stub.buildMenu()
+    const pausedItem = menu.find(m => m.id === 'paused')!
+    const ctx = makeCommandCtx(stub)
+    const toggleSpy = vi.spyOn(ctx, 'toggle')
+    const result = await pausedItem.run(ctx)
+    expect(toggleSpy).toHaveBeenCalledWith('paused')
+    expect(result).toBe('rerender')
+  })
+})
+
+describe('buildMenu — refresh item run callback (scan watcher)', () => {
+  it('refresh item calls ctx.refresh() and returns rerender', async () => {
+    const stub = makeStub({ itemSource: 'scan' })
+    const menu = stub.buildMenu()
+    const refreshItem = menu.find(m => m.id === 'refresh')!
+    const ctx = makeCommandCtx(stub)
+    const refreshSpy = vi.spyOn(ctx, 'refresh')
+    const result = await refreshItem.run(ctx)
+    expect(refreshSpy).toHaveBeenCalled()
+    expect(result).toBe('rerender')
+  })
+})
+
+describe('buildMenu — displayMode item run callback (widget watcher)', () => {
+  it('displayMode item calls ctx.setDisplayMode with toggled mode', async () => {
+    const stub = makeStub({ hasWidget: true })
+    const menu = stub.buildMenu()
+    const displayItem = menu.find(m => m.id === 'displayMode')!
+    const ctx = makeCommandCtx(stub)
+    const setDisplayModeSpy = vi.spyOn(ctx, 'setDisplayMode')
+
+    // Current mode is default (widget), toggle should set statusline
+    await displayItem.run(ctx)
+    expect(setDisplayModeSpy).toHaveBeenCalledWith('statusline')
+  })
+})
+
+describe('buildMenu — userDefaultDisplayMode save fails', () => {
+  it('notifies with warning when saveUserDefaultDisplayMode throws', async () => {
+    const stub = makeStub({ hasWidget: true })
+    vi.spyOn(stub, 'saveUserDefaultDisplayMode').mockImplementation(() => {
+      throw new Error('disk write failed')
+    })
+    const menu = stub.buildMenu()
+    const item = menu.find(m => m.id === 'userDefaultDisplayMode')!
+    const notifySpy = vi.fn()
+    const ctx: CommandCtx = {
+      ui: { notify: notifySpy },
+      state: (stub as unknown as { _currentState(): WatcherState })._currentState(),
+      browse: () => Promise.resolve('stay' as const),
+      refresh: () => {},
+      toggle: () => {},
+      setDisplayMode: () => {},
+      setUserDefault: () => {},
+    }
+    await item.run(ctx)
+    // Should have notified with warning
+    expect(notifySpy).toHaveBeenCalled()
+    const [, level] = notifySpy.mock.calls[notifySpy.mock.calls.length - 1] as [string, string]
+    expect(level).toBe('warning')
+  })
+})
+
+// ---------------------------------------------------------------------------
+// pollWatch — itemSource === 'scan' (no stopPolling on terminal)
+// ---------------------------------------------------------------------------
+
+describe('pollWatch — scan watcher does not stopPolling on terminal', () => {
+  it('scan watcher with terminal event does not call stopPolling', async () => {
+    const stub = makeStub({ itemSource: 'scan' })
+    const stopPollingSpy = vi.spyOn(stub, 'stopPolling')
+    stub.testWatches.set('w1', { id: 'w1', label: 'L', terminal: false, consecutiveErrors: 0 })
+    stub.testBaselines.set('w1', { seenAt: 0 })
+    stub.detectChangesFn = vi.fn().mockResolvedValue({
+      newBaseline: { seenAt: 1 },
+      events: [{ watchId: 'w1', summary: 'terminal event', isTerminal: true }],
+      observedChange: true,
+    })
+
+    await stub.pollWatch('w1')
+
+    // For scan watchers, stopPolling should NOT be called based on terminal events
+    // (scan watchers manage their own polling cycle)
+    // Actually looking at the code: `if (this.itemSource === 'user-tool' && ...)` 
+    // So scan watcher does NOT call stopPolling based on stillActive check
+    expect(stopPollingSpy).not.toHaveBeenCalled()
+  })
+})
+
+// ---------------------------------------------------------------------------
+// onSessionStart — widget show/hide and user-tool enabled=true path
+// ---------------------------------------------------------------------------
+
+describe('onSessionStart — widget show and hide', () => {
+  it('shows widget in widget mode when hasWidget=true and widget is set', async () => {
+    const stub = makeStub({ hasWidget: true })
+    const showSpy = vi.fn()
+    const hideSpy = vi.fn()
+    ;(stub as unknown as { widget: unknown }).widget = {
+      show: showSpy,
+      hide: hideSpy,
+      destroy: vi.fn(),
+    }
+    const ctx = makeCtxWithState({ displayMode: 'widget' })
+    await stub.onSessionStart(ctx)
+    expect(showSpy).toHaveBeenCalled()
+    expect(hideSpy).not.toHaveBeenCalled()
+  })
+
+  it('hides widget in statusline mode when hasWidget=true and widget is set', async () => {
+    const stub = makeStub({ hasWidget: true })
+    const showSpy = vi.fn()
+    const hideSpy = vi.fn()
+    ;(stub as unknown as { widget: unknown }).widget = {
+      show: showSpy,
+      hide: hideSpy,
+      destroy: vi.fn(),
+    }
+    const ctx = makeCtxWithState({ displayMode: 'statusline' })
+    await stub.onSessionStart(ctx)
+    expect(hideSpy).toHaveBeenCalled()
+    expect(showSpy).not.toHaveBeenCalled()
+  })
+})
+
+describe('onSessionStart — user-tool with enabled=true skips removeToolFromActive', () => {
+  it('does not call removeToolFromActive when enabled=true', async () => {
+    const pi = makePi()
+    ;(pi.getActiveTools as ReturnType<typeof vi.fn>).mockReturnValue(['stub_watcher'])
+    const { watcher } = makeWatcher(pi)
+    ;(watcher as unknown as { enabled: boolean }).enabled = true
+    const ctx = makeCtxWithState({ enabled: true })
+    // eslint-disable-next-line @typescript-eslint/unbound-method
+    const setActiveSpy = pi.setActiveTools as ReturnType<typeof vi.fn>
+    setActiveSpy.mockClear()
+    await watcher.onSessionStart(ctx)
+    // setActiveTools should NOT be called (tool already active and enabled=true)
+    expect(setActiveSpy).not.toHaveBeenCalled()
+  })
+})
+
+// ---------------------------------------------------------------------------
+// commandHandler — _makeCommandCtx branches through real menu item run
+// ---------------------------------------------------------------------------
+
+describe('commandHandler — _makeCommandCtx toggle(paused) paths', () => {
+  it('toggle("paused") from paused=false sets paused=true and stops polling', async () => {
+    vi.useFakeTimers()
+    const { watcher } = makeWatcher()
+    watcher.testWatches.set('w1', { id: 'w1', label: 'L', terminal: false, consecutiveErrors: 0 })
+    watcher.startPolling()
+    expect(watcher.testScheduler.isRunning).toBe(true)
+
+    // Override openMenuView to invoke the "paused" item's run callback
+    const openMenuViewMock = vi.mocked(browseViewModule.openMenuView)
+    openMenuViewMock.mockImplementationOnce(async (_title, getItems) => {
+      const items = getItems()
+      const pausedItem = items.find(i => i.id === 'paused')
+      await pausedItem?.run()
+    })
+
+    const ctx = {
+      hasUI: true,
+      ui: {
+        hasUI: true,
+        notify: vi.fn(),
+        setStatus: vi.fn(),
+        theme: { fg: (_: string, t: string) => t, bold: (t: string) => t },
+        custom: vi.fn(),
+      },
+      sessionManager: { getEntries: () => [] },
+    }
+    await watcher.commandHandler()(undefined, ctx)
+
+    expect(watcher.testPaused).toBe(true)
+    expect(watcher.testScheduler.isRunning).toBe(false)
+    vi.useRealTimers()
+  })
+
+  it('toggle("paused") from paused=true with active watches starts polling', async () => {
+    vi.useFakeTimers()
+    const { watcher } = makeWatcher()
+    watcher.testWatches.set('w1', { id: 'w1', label: 'L', terminal: false, consecutiveErrors: 0 })
+    ;(watcher as unknown as { paused: boolean }).paused = true
+
+    const openMenuViewMock = vi.mocked(browseViewModule.openMenuView)
+    openMenuViewMock.mockImplementationOnce(async (_title, getItems) => {
+      const items = getItems()
+      const pausedItem = items.find(i => i.id === 'paused')
+      await pausedItem?.run()
+    })
+
+    const ctx = {
+      hasUI: true,
+      ui: {
+        hasUI: true,
+        notify: vi.fn(),
+        setStatus: vi.fn(),
+        theme: { fg: (_: string, t: string) => t, bold: (t: string) => t },
+        custom: vi.fn(),
+      },
+      sessionManager: { getEntries: () => [] },
+    }
+    await watcher.commandHandler()(undefined, ctx)
+
+    expect(watcher.testPaused).toBe(false)
+    expect(watcher.testScheduler.isRunning).toBe(true)
+    watcher.stopPolling()
+    vi.useRealTimers()
+  })
+})
+
+describe('commandHandler — _makeCommandCtx setDisplayMode paths', () => {
+  function makeCtxForCommandHandler() {
+    return {
+      hasUI: true,
+      ui: {
+        hasUI: true,
+        notify: vi.fn(),
+        setStatus: vi.fn(),
+        theme: { fg: (_: string, t: string) => t, bold: (t: string) => t },
+        custom: vi.fn(),
+        select: vi.fn(),
+      },
+      sessionManager: { getEntries: () => [] },
+    }
+  }
+
+  it('setDisplayMode widget → shows widget and clears status', async () => {
+    const stub = makeStub({ hasWidget: true })
+    const showSpy = vi.fn()
+    const hideSpy = vi.fn()
+    ;(stub as unknown as { widget: unknown }).widget = { show: showSpy, hide: hideSpy, destroy: vi.fn() }
+    ;(stub as unknown as { displayMode: string }).displayMode = 'statusline' // start in statusline
+
+    const openMenuViewMock = vi.mocked(browseViewModule.openMenuView)
+    openMenuViewMock.mockImplementationOnce(async (_title, getItems) => {
+      const items = getItems()
+      const displayItem = items.find(i => i.id === 'displayMode')
+      await displayItem?.run()
+    })
+
+    const ctx = makeCtxForCommandHandler()
+    await stub.commandHandler()(undefined, ctx)
+
+    // After toggling from statusline → widget: shows widget, clears status
+    expect(showSpy).toHaveBeenCalled()
+  })
+
+  it('setDisplayMode statusline → hides widget and refreshes status', async () => {
+    const stub = makeStub({ hasWidget: true })
+    const showSpy = vi.fn()
+    const hideSpy = vi.fn()
+    ;(stub as unknown as { widget: unknown }).widget = { show: showSpy, hide: hideSpy, destroy: vi.fn() }
+    ;(stub as unknown as { displayMode: string }).displayMode = 'widget' // start in widget
+
+    const openMenuViewMock = vi.mocked(browseViewModule.openMenuView)
+    openMenuViewMock.mockImplementationOnce(async (_title, getItems) => {
+      const items = getItems()
+      const displayItem = items.find(i => i.id === 'displayMode')
+      await displayItem?.run()
+    })
+
+    const ctx = makeCtxForCommandHandler()
+    await stub.commandHandler()(undefined, ctx)
+
+    // After toggling from widget → statusline: hides widget
+    expect(hideSpy).toHaveBeenCalled()
+  })
+})
+
+describe('commandHandler — _makeCommandCtx setDisplayMode without widget', () => {
+  it('setDisplayMode calls refreshStatus when hasWidget is false', async () => {
+    const { watcher } = makeWatcher() // hasWidget defaults to false
+    const ctx = makeCtxWithState({ displayMode: 'widget' })
+    await watcher.onSessionStart(ctx) // set up UI
+
+    const openMenuViewMock = vi.mocked(browseViewModule.openMenuView)
+    openMenuViewMock.mockImplementationOnce((_title, getItems) => {
+      getItems()
+      // No displayMode item for non-widget watchers; use another item like paused
+      // Actually, let's test by invoking the setDisplayMode directly through a custom item
+      return Promise.resolve()
+    })
+
+    // Since makeWatcher has no hasWidget, displayMode item isn't in menu.
+    // Instead, test setDisplayMode through a widget-less watcher directly.
+    // Get the real CommandCtx from the internal _makeCommandCtx
+    const ctxForCmd = {
+      hasUI: true,
+      ui: {
+        hasUI: true,
+        notify: vi.fn(),
+        setStatus: vi.fn(),
+        theme: { fg: (_: string, t: string) => t },
+        custom: vi.fn(),
+      },
+      sessionManager: { getEntries: () => [] },
+    }
+    const surface = { setStatus: vi.fn(), notify: vi.fn() } as never
+    const state = (watcher as unknown as { _currentState(): WatcherState })._currentState()
+    const cmdCtx = (watcher as unknown as { _makeCommandCtx(s: unknown, st: unknown, c: unknown): CommandCtx })._makeCommandCtx(surface, state, ctxForCmd)
+
+    // Call setDisplayMode - no widget (hasWidget=false), so refreshStatus branch
+    cmdCtx.setDisplayMode('statusline')
+    expect(watcher.testDisplayMode).toBe('statusline')
+  })
+})
+
+describe('commandHandler — browse callback', () => {
+  it('browse() callback calls browseAction', async () => {
+    const stub = makeStub()
+    const browseActionSpy = vi.spyOn(stub, 'browseAction')
+    const surface = { setStatus: vi.fn(), notify: vi.fn() } as never
+    const state = (stub as unknown as { _currentState(): WatcherState })._currentState()
+    const ctx = {}
+    const cmdCtx = (stub as unknown as { _makeCommandCtx(s: unknown, st: unknown, c: unknown): CommandCtx })._makeCommandCtx(surface, state, ctx)
+
+    await cmdCtx.browse()
+    expect(browseActionSpy).toHaveBeenCalled()
+  })
+})

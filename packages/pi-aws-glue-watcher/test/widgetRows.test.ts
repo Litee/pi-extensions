@@ -587,3 +587,63 @@ describe("formatHeaderCountsSuffix", () => {
 		expect(formatHeaderCountsSuffix(watches, 120_000, { hasErrors: true })).toBe(" (0/2) ⚠");
 	});
 });
+
+// ---------------------------------------------------------------------------
+// Additional coverage: workflow node optional fields and sort edge cases
+// ---------------------------------------------------------------------------
+describe("buildWidgetEntries — workflow node optional fields", () => {
+	it("propagates numberOfWorkers and workerType from workflow nodes", () => {
+		const entries = buildWidgetEntries({
+			w: workflow({
+				watchId: "w",
+				name: "wf",
+				baseline: {
+					state: "RUNNING",
+					totalActions: 1,
+					succeededActions: 0,
+					failedActions: 0,
+					runningActions: 1,
+					reportedFailedNodes: [],
+					nodes: [{
+						name: "step",
+						state: "RUNNING",
+						numberOfWorkers: 5,
+						workerType: "G.2X",
+					}],
+				},
+			}),
+		});
+		const entry = entries.find((e) => e.displayName === "wf/step");
+		expect(entry?.numberOfWorkers).toBe(5);
+		expect(entry?.workerType).toBe("G.2X");
+	});
+});
+
+describe("buildWidgetEntries — sort edge cases", () => {
+	it("returns stable order when two entries have equal startedOn", () => {
+		const same = "2024-01-01T00:00:00Z";
+		const entries = buildWidgetEntries({
+			a: job({
+				watchId: "a",
+				name: "j-a",
+				baseline: { state: "RUNNING", errorMessage: "", startedOn: same },
+			}),
+			b: job({
+				watchId: "b",
+				name: "j-b",
+				baseline: { state: "RUNNING", errorMessage: "", startedOn: same },
+			}),
+		});
+		// Both have same priority and same startedOn → stable, just 2 entries
+		expect(entries).toHaveLength(2);
+	});
+
+	it("places terminal entries after non-terminal when mixed", () => {
+		const entries = buildWidgetEntries({
+			t: job({ watchId: "t", name: "terminal", terminal: true, baseline: { state: "SUCCEEDED", errorMessage: "" } }),
+			a: job({ watchId: "a", name: "active" }),
+		});
+		expect(entries[0]?.isTerminal).toBe(false);
+		expect(entries[1]?.isTerminal).toBe(true);
+	});
+});

@@ -276,3 +276,323 @@ describe("parseModelSelector", () => {
 		}
 	});
 });
+
+// ---------------------------------------------------------------------------
+// Additional branch coverage for uncovered paths
+// ---------------------------------------------------------------------------
+
+describe("parsePolicyPatch — additional branches", () => {
+	it("rejects non-integer number for trigger.maxTokens", () => {
+		const result = parsePolicyPatch({ trigger: { maxTokens: 100.5 } });
+		assert.equal(result.ok, false);
+		if (result.ok) return;
+		assert.ok(result.error.includes("non-negative integer"), `got: ${result.error}`);
+	});
+
+	it("rejects negative number for trigger.maxTokens", () => {
+		const result = parsePolicyPatch({ trigger: { maxTokens: -5 } });
+		assert.equal(result.ok, false);
+	});
+
+	it("rejects non-numeric string for trigger.maxTokens", () => {
+		const result = parsePolicyPatch({ trigger: { trigger: { maxTokens: "abc" } } });
+		assert.equal(result.ok, false);
+	});
+
+	it("rejects builtinSkipMarginPercent above 100", () => {
+		const result = parsePolicyPatch({ trigger: { builtinSkipMarginPercent: 101 } });
+		assert.equal(result.ok, false);
+		if (result.ok) return;
+		assert.ok(result.error.includes("[0,100]"), `got: ${result.error}`);
+	});
+
+	it("rejects builtinSkipMarginPercent below 0", () => {
+		const result = parsePolicyPatch({ trigger: { builtinSkipMarginPercent: -1 } });
+		assert.equal(result.ok, false);
+	});
+
+	it("parses builtinSkipMarginPercent from string", () => {
+		const result = parsePolicyPatch({ trigger: { builtinSkipMarginPercent: "50" } });
+		assert.equal(result.ok, true);
+		if (!result.ok) return;
+		assert.equal(result.value.trigger?.builtinSkipMarginPercent, 50);
+	});
+
+	it("rejects empty string for trigger.maxTokens (parseNumberLike)", () => {
+		const result = parsePolicyPatch({ trigger: { maxTokens: "" } });
+		assert.equal(result.ok, false);
+	});
+
+	it("rejects non-numeric string for trigger.cooldownMs", () => {
+		const result = parsePolicyPatch({ trigger: { cooldownMs: "not-a-number" } });
+		assert.equal(result.ok, false);
+	});
+
+	it("rejects empty ui.name", () => {
+		const result = parsePolicyPatch({ ui: { name: "" } });
+		assert.equal(result.ok, false);
+		if (result.ok) return;
+		assert.ok(result.error.includes("non-empty"), `got: ${result.error}`);
+	});
+
+	it("rejects ui.name with surrounding whitespace", () => {
+		const result = parsePolicyPatch({ ui: { name: " my-status " } });
+		assert.equal(result.ok, false);
+	});
+
+	it("rejects summary.thinkingLevel other than off/low/medium/high", () => {
+		const result = parsePolicyPatch({ summary: { thinkingLevel: "xhigh" } });
+		assert.equal(result.ok, false);
+		if (result.ok) return;
+		assert.ok(result.error.includes("off, low, medium, high"), `got: ${result.error}`);
+	});
+
+	it("accepts summary.thinkingLevel=off", () => {
+		const result = parsePolicyPatch({ summary: { thinkingLevel: "off" } });
+		assert.equal(result.ok, true);
+	});
+
+	it("accepts summary.thinkingLevel=low", () => {
+		const result = parsePolicyPatch({ summary: { thinkingLevel: "low" } });
+		assert.equal(result.ok, true);
+	});
+
+	it("rejects summary.preservationInstruction with surrounding whitespace", () => {
+		const result = parsePolicyPatch({ summary: { preservationInstruction: "  text  " } });
+		assert.equal(result.ok, false);
+	});
+
+	it("rejects non-string summary.preservationInstruction", () => {
+		const result = parsePolicyPatch({ summary: { preservationInstruction: 42 } });
+		assert.equal(result.ok, false);
+	});
+
+	it("rejects non-object summaryRetention", () => {
+		const result = parsePolicyPatch({ summaryRetention: "tokens" });
+		assert.equal(result.ok, false);
+	});
+
+	it("rejects summaryRetention with unknown mode", () => {
+		const result = parsePolicyPatch({ summaryRetention: { mode: "count", value: 5 } });
+		assert.equal(result.ok, false);
+		if (result.ok) return;
+		assert.ok(result.error.includes("tokens"), `got: ${result.error}`);
+	});
+
+	it("rejects summaryRetention missing value field", () => {
+		const result = parsePolicyPatch({ summaryRetention: { mode: "tokens" } });
+		assert.equal(result.ok, false);
+		if (result.ok) return;
+		assert.ok(result.error.includes("value"), `got: ${result.error}`);
+	});
+
+	it("rejects summaryRetention with unknown key", () => {
+		const result = parsePolicyPatch({ summaryRetention: { mode: "tokens", value: 5000, extra: "bad" } });
+		assert.equal(result.ok, false);
+		if (result.ok) return;
+		assert.ok(result.error.includes("unknown key"), `got: ${result.error}`);
+	});
+
+	it("rejects summaryRetention tokens mode with negative value", () => {
+		const result = parsePolicyPatch({ summaryRetention: { mode: "tokens", value: -1 } });
+		assert.equal(result.ok, false);
+	});
+
+	it("rejects summaryRetention percent mode with value > 100", () => {
+		const result = parsePolicyPatch({ summaryRetention: { mode: "percent", value: 200 } });
+		assert.equal(result.ok, false);
+	});
+
+	it("rejects non-array models", () => {
+		const result = parsePolicyPatch({ models: "openai/gpt-4" });
+		assert.equal(result.ok, false);
+	});
+
+	it("rejects empty models array", () => {
+		const result = parsePolicyPatch({ models: [] });
+		assert.equal(result.ok, false);
+	});
+
+	it("rejects model entry that is not string or object", () => {
+		const result = parsePolicyPatch({ models: [42] });
+		assert.equal(result.ok, false);
+	});
+
+	it("rejects model entry object missing 'model' field", () => {
+		const result = parsePolicyPatch({ models: [{ thinkingLevel: "low" }] });
+		assert.equal(result.ok, false);
+		if (result.ok) return;
+		assert.ok(result.error.includes("model"), `got: ${result.error}`);
+	});
+
+	it("rejects model entry with unknown key", () => {
+		const result = parsePolicyPatch({ models: [{ model: "openai/gpt-4", badKey: "oops" }] });
+		assert.equal(result.ok, false);
+		if (result.ok) return;
+		assert.ok(result.error.includes("unknown key"), `got: ${result.error}`);
+	});
+
+	it("rejects model entry with invalid thinkingLevel", () => {
+		const result = parsePolicyPatch({ models: [{ model: "openai/gpt-4", thinkingLevel: "extreme" }] });
+		assert.equal(result.ok, false);
+	});
+
+	it("rejects model entry with invalid preservationInstruction", () => {
+		const result = parsePolicyPatch({ models: [{ model: "openai/gpt-4", preservationInstruction: 99 }] });
+		assert.equal(result.ok, false);
+	});
+
+	it("parses model entry with thinkingLevel and preservationInstruction", () => {
+		const result = parsePolicyPatch({ models: [{ model: "openai/gpt-4", thinkingLevel: "high", preservationInstruction: "Keep errors." }] });
+		assert.equal(result.ok, true);
+		if (!result.ok) return;
+		assert.equal(result.value.models?.[0]?.thinkingLevel, "high");
+	});
+
+	it("parseBooleanLiteral rejects non-boolean non-string values", () => {
+		const result = parsePolicyPatch({ ui: { quiet: 1 } });
+		assert.equal(result.ok, false);
+		if (result.ok) return;
+		assert.ok(result.error.includes("true or false"), `got: ${result.error}`);
+	});
+
+	it("parseNumberLike rejects non-finite string (NaN)", () => {
+		const result = parsePolicyPatch({ trigger: { maxTokens: "NaN" } });
+		assert.equal(result.ok, false);
+	});
+
+	it("rejects non-object input to parsePolicyPatch", () => {
+		assert.deepEqual(parsePolicyPatch("bad"), { ok: false, error: "Policy patch must be an object" });
+		assert.deepEqual(parsePolicyPatch(null), { ok: false, error: "Policy patch must be an object" });
+		assert.deepEqual(parsePolicyPatch([]), { ok: false, error: "Policy patch must be an object" });
+	});
+
+	it("rejects unknown top-level key", () => {
+		const result = parsePolicyPatch({ unknownKey: true });
+		assert.equal(result.ok, false);
+		if (result.ok) return;
+		assert.ok(result.error.toLowerCase().includes("unknown"), `got: ${result.error}`);
+	});
+});
+
+describe("parsePolicyPatch — profile branches", () => {
+	it("rejects non-object profiles value", () => {
+		const result = parsePolicyPatch({ profiles: "bad" });
+		assert.equal(result.ok, false);
+	});
+
+	it("rejects profile with non-object trigger section", () => {
+		const result = parsePolicyPatch({
+			profiles: { fast: { match: "openai/gpt-4", trigger: "bad" } },
+		});
+		assert.equal(result.ok, false);
+		if (result.ok) return;
+		assert.ok(result.error.includes("trigger"), `got: ${result.error}`);
+	});
+
+	it("rejects profile with invalid trigger key", () => {
+		const result = parsePolicyPatch({
+			profiles: { fast: { match: "openai/gpt-4", trigger: { unknownTriggerKey: 5 } } },
+		});
+		assert.equal(result.ok, false);
+		if (result.ok) return;
+		assert.ok(result.error.includes("unknown"), `got: ${result.error}`);
+	});
+
+	it("rejects profile with invalid trigger value", () => {
+		const result = parsePolicyPatch({
+			profiles: { fast: { match: "openai/gpt-4", trigger: { maxTokens: -1 } } },
+		});
+		assert.equal(result.ok, false);
+	});
+
+	it("parses profile with trigger section", () => {
+		const result = parsePolicyPatch({
+			profiles: { fast: { match: "openai/gpt-4", trigger: { maxTokens: 50000 } } },
+		});
+		assert.equal(result.ok, true);
+		if (!result.ok) return;
+		assert.equal(result.value.profiles?.['fast']?.trigger?.maxTokens, 50000);
+	});
+
+	it("parses profile with summary override", () => {
+		const result = parsePolicyPatch({
+			profiles: { fast: { match: "openai/gpt-4", summary: { thinkingLevel: "low" } } },
+		});
+		assert.equal(result.ok, true);
+	});
+
+	it("rejects profile summary with invalid thinkingLevel", () => {
+		const result = parsePolicyPatch({
+			profiles: { fast: { match: "openai/gpt-4", summary: { thinkingLevel: "extreme" } } },
+		});
+		assert.equal(result.ok, false);
+	});
+
+	it("rejects profile summary with invalid preservationInstruction", () => {
+		const result = parsePolicyPatch({
+			profiles: { fast: { match: "openai/gpt-4", summary: { preservationInstruction: 42 } } },
+		});
+		assert.equal(result.ok, false);
+	});
+
+	it("rejects profile summary with unknown key", () => {
+		const result = parsePolicyPatch({
+			profiles: { fast: { match: "openai/gpt-4", summary: { badKey: "oops" } } },
+		});
+		assert.equal(result.ok, false);
+	});
+
+	it("parses profile with template", () => {
+		const result = parsePolicyPatch({
+			profiles: { fast: { match: "openai/gpt-4", template: "~/.pi/templates/fast.md" } },
+		});
+		assert.equal(result.ok, true);
+		if (!result.ok) return;
+		assert.equal(result.value.profiles?.['fast']?.template, "~/.pi/templates/fast.md");
+	});
+
+	it("rejects profile template with surrounding whitespace", () => {
+		const result = parsePolicyPatch({
+			profiles: { fast: { match: "openai/gpt-4", template: " bad " } },
+		});
+		assert.equal(result.ok, false);
+		if (result.ok) return;
+		assert.ok(result.error.includes("template"), `got: ${result.error}`);
+	});
+
+	it("rejects profile template that is empty", () => {
+		const result = parsePolicyPatch({
+			profiles: { fast: { match: "openai/gpt-4", template: "" } },
+		});
+		assert.equal(result.ok, false);
+	});
+
+	it("parses profile with updateTemplate", () => {
+		const result = parsePolicyPatch({
+			profiles: { fast: { match: "openai/gpt-4", updateTemplate: "~/.pi/templates/update.md" } },
+		});
+		assert.equal(result.ok, true);
+		if (!result.ok) return;
+		assert.equal(result.value.profiles?.['fast']?.updateTemplate, "~/.pi/templates/update.md");
+	});
+
+	it("rejects profile updateTemplate with surrounding whitespace", () => {
+		const result = parsePolicyPatch({
+			profiles: { fast: { match: "openai/gpt-4", updateTemplate: " bad " } },
+		});
+		assert.equal(result.ok, false);
+	});
+
+	it("rejects non-object profile value", () => {
+		const result = parsePolicyPatch({ profiles: { fast: "bad" } });
+		assert.equal(result.ok, false);
+	});
+
+	it("rejects profile missing match field", () => {
+		const result = parsePolicyPatch({ profiles: { fast: { trigger: { maxTokens: 5000 } } } });
+		assert.equal(result.ok, false);
+		if (result.ok) return;
+		assert.ok(result.error.includes("match"), `got: ${result.error}`);
+	});
+});

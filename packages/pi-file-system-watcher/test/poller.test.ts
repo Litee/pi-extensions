@@ -256,6 +256,39 @@ describe("detectChanges — target='changed' (modify)", () => {
 });
 
 // ---------------------------------------------------------------------------
+// detectChanges — target='changed' with undefined mtime
+// ---------------------------------------------------------------------------
+
+describe("detectChanges — target='changed' with undefined mtimeNs", () => {
+	it("fires changed event based on size difference when mtimeNs is undefined in both snapshots", async () => {
+		// Cover the second `return true` branch in targetFired (line 80):
+		// when mtimeNs is undefined on both sides the mtime check is skipped;
+		// the size check then fires because sizes differ.
+		const prevBaseline: FsBaseline = { exists: true, size: 100 };
+		const watch = makeWatch("/synthetic/file", "changed", prevBaseline);
+		const mockSnapshot = (_p: string): Promise<FsBaseline> => Promise.resolve({
+			exists: true,
+			size: 200,
+		});
+		const res = await detectChanges(watch, mockSnapshot);
+		expect(res.events).toHaveLength(1);
+		expect(res.events[0]!.eventType).toBe("changed");
+		expect(res.observedChange).toBe(true);
+	});
+
+	it("does not fire changed when both size and mtime are undefined", async () => {
+		// Both undefined → no change can be detected → no event.
+		const prevBaseline: FsBaseline = { exists: true };
+		const watch = makeWatch("/synthetic/file", "changed", prevBaseline);
+		const mockSnapshot = (_p: string): Promise<FsBaseline> => Promise.resolve({
+			exists: true,
+		});
+		const res = await detectChanges(watch, mockSnapshot);
+		expect(res.events).toHaveLength(0);
+	});
+});
+
+// ---------------------------------------------------------------------------
 // buildTimeoutEvent
 // ---------------------------------------------------------------------------
 

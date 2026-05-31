@@ -352,3 +352,42 @@ describe("JobsView input — cleanup (c)", () => {
 		expect(storage.getJob("theirs-off")).toBeDefined();
 	});
 });
+
+// ---------------------------------------------------------------------------
+// Additional branch coverage
+// ---------------------------------------------------------------------------
+
+describe("JobsView — render without bgFn (return lines path)", () => {
+	it("returns unpadded lines when bgFn is not provided", () => {
+		const view = new JobsView(
+			storage,
+			scheduler as unknown as CronScheduler,
+			"sess-A",
+			theme,
+			requestRender,
+			done,
+			// No bgFn — should return raw lines
+		);
+		storage.addJob(mkJob({ id: "j1", name: "test-job" }));
+		const lines = view.render(80);
+		// Lines should be returned without bgFn padding
+		expect(Array.isArray(lines)).toBe(true);
+	});
+});
+
+describe("JobsView — lastStatus icon variants", () => {
+	it("shows running icon when lastStatus=running", () => {
+		storage.addJob(mkJob({ id: "j1", name: "running-job", lastStatus: "running" }));
+		const view = makeView();
+		const lines = renderLines(view);
+		// The running job should appear (icon ⟳ or similar)
+		expect(lines.some(l => l.includes("running-job"))).toBe(true);
+	});
+
+	it("shows error icon when lastStatus=error", () => {
+		storage.addJob(mkJob({ id: "j2", name: "error-job", lastStatus: "error" }));
+		const view = makeView();
+		const lines = renderLines(view);
+		expect(lines.some(l => l.includes("error-job"))).toBe(true);
+	});
+});

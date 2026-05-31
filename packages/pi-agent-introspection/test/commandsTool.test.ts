@@ -88,3 +88,34 @@ describe("formatCommands", () => {
 		expect(result).toContain("(no description)");
 	});
 });
+
+// ---------------------------------------------------------------------------
+// registerCommandsTool — execute() handler
+// ---------------------------------------------------------------------------
+import { registerCommandsTool } from "../src/commandsTool.js";
+
+describe("registerCommandsTool — execute() handler", () => {
+  it("registers the tool and execute() returns formatted commands", async () => {
+    let capturedExecute:
+      | ((...args: unknown[]) => Promise<{ content: { type: string; text: string }[]; details: { commands: string } }>)
+      | undefined;
+
+    const pi = {
+      registerTool: vi.fn((def: Record<string, unknown>) => {
+        capturedExecute = def['execute'] as typeof capturedExecute;
+      }),
+      getCommands: vi.fn(() => [
+        { name: "plan", description: "Manage plan mode" },
+        { name: "agents", description: "Manage subagents" },
+      ]),
+    };
+
+    registerCommandsTool(pi as never);
+    expect(pi.registerTool).toHaveBeenCalledOnce();
+
+    const result = await capturedExecute!("call-1", {}, undefined, undefined, {});
+    expect(result.content[0]?.type).toBe("text");
+    expect(result.details.commands).toContain("plan");
+    expect(result.details.commands).toContain("agents");
+  });
+});

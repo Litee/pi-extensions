@@ -441,3 +441,97 @@ describe("detectJobChanges — TIMEOUT event includes timeout suffix", () => {
 		expect(events[0]!.formatted).not.toContain("timeout:");
 	});
 });
+
+// ---------------------------------------------------------------------------
+// Additional snapshot coverage: optional fields
+// ---------------------------------------------------------------------------
+
+describe("snapshotJobRun — optional fields", () => {
+	it("includes CompletedOn when present in the response", async () => {
+		const client: GlueClient = {
+			getJobRun: vi.fn().mockResolvedValue({
+				JobRun: {
+					JobRunState: "SUCCEEDED",
+					ErrorMessage: "",
+					CompletedOn: "2024-01-01T01:00:00Z",
+				},
+			} satisfies JobRunResponse),
+			getWorkflowRun: vi.fn(), getLatestJobRunId: vi.fn(),
+			getLatestWorkflowRunId: vi.fn(), stopJobRun: vi.fn(), stopWorkflowRun: vi.fn(),
+		};
+		const baseline = await snapshotJobRun(client, makeJobWatch());
+		expect(baseline.completedOn).toBe("2024-01-01T01:00:00Z");
+	});
+
+	it("omits CompletedOn when absent from response", async () => {
+		const client = makeJobClient("RUNNING");
+		const baseline = await snapshotJobRun(client, makeJobWatch());
+		expect(baseline.completedOn).toBeUndefined();
+	});
+});
+
+describe("snapshotWorkflowRun — node optional fields", () => {
+	it("includes CompletedOn, NumberOfWorkers, WorkerType, and timeout for workflow nodes", async () => {
+		const nodes: WorkflowRunNode[] = [
+			{
+				Name: "step-1",
+				Type: "JOB",
+				JobDetails: {
+					JobRuns: [{
+						JobRunState: "SUCCEEDED",
+						CompletedOn: "2024-01-01T01:00:00Z",
+						NumberOfWorkers: 5,
+						WorkerType: "G.2X",
+						Timeout: 30,
+					}],
+				},
+			},
+		];
+		const client = makeWorkflowClient("COMPLETED", {}, nodes);
+		const baseline = await snapshotWorkflowRun(client, makeWorkflowWatch());
+		const node = baseline.nodes![0]!;
+		expect(node.completedOn).toBe("2024-01-01T01:00:00Z");
+		expect(node.numberOfWorkers).toBe(5);
+		expect(node.workerType).toBe("G.2X");
+		expect(node.timeoutMinutes).toBe(30);
+	});
+
+	it("excludes CompletedOn/NumberOfWorkers/WorkerType when absent", async () => {
+		const nodes: WorkflowRunNode[] = [
+			{
+				Name: "step-1",
+				Type: "JOB",
+				JobDetails: { JobRuns: [{ JobRunState: "RUNNING" }] },
+			},
+		];
+		const client = makeWorkflowClient("RUNNING", {}, nodes);
+		const baseline = await snapshotWorkflowRun(client, makeWorkflowWatch());
+		const node = baseline.nodes![0]!;
+		expect(node.completedOn).toBeUndefined();
+		expect(node.numberOfWorkers).toBeUndefined();
+		expect(node.workerType).toBeUndefined();
+	});
+
+	it("excludes timeoutMinutes when Timeout is 0", async () => {
+		const nodes: WorkflowRunNode[] = [
+			{
+				Name: "step-1",
+				Type: "JOB",
+				JobDetails: { JobRuns: [{ JobRunState: "RUNNING", Timeout: 0 }] },
+			},
+		];
+		const client = makeWorkflowClient("RUNNING", {}, nodes);
+		const baseline = await snapshotWorkflowRun(client, makeWorkflowWatch());
+		expect(baseline.nodes![0]?.timeoutMinutes).toBeUndefined();
+	});
+
+	it("returns unknown-type node state as empty string via nodeState fallback", async () => {
+		const nodes: WorkflowRunNode[] = [
+			{ Name: "trigger-node", Type: "TRIGGER", JobDetails: undefined, CrawlerDetails: undefined },
+		];
+		const client = makeWorkflowClient("RUNNING", {}, nodes);
+		const baseline = await snapshotWorkflowRun(client, makeWorkflowWatch());
+		// TRIGGER type is not JOB/CRAWLER, nodeState returns "" → not in reportedFailedNodes
+		expect(baseline.reportedFailedNodes).not.toContain("trigger-node");
+	});
+});

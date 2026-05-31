@@ -201,3 +201,75 @@ describe("findMatchingProfile", () => {
 		assert.equal(result, undefined);
 	});
 });
+
+// ---------------------------------------------------------------------------
+// Additional pure.ts coverage
+// ---------------------------------------------------------------------------
+
+describe("resolveEffectivePolicy — additional coverage", () => {
+	it("returns sessionModel=undefined when ctx.model is absent", () => {
+		const base = makePolicy();
+		const result = resolveEffectivePolicy({}, base);
+		assert.equal(result.sessionModel, undefined);
+		assert.equal(result.profileName, undefined);
+	});
+
+	it("includes profileTemplates when profile has template field", () => {
+		const base = makePolicy();
+		base.profiles = {
+			"with-template": {
+				match: "openai/gpt-4",
+				template: "/path/to/template.md",
+			},
+		};
+		const result = resolveEffectivePolicy({ model: { provider: "openai", id: "gpt-4" } }, base);
+		assert.ok(result.profileTemplates !== undefined);
+		assert.equal(result.profileTemplates?.template, "/path/to/template.md");
+	});
+
+	it("includes profileTemplates.updateTemplate when profile has updateTemplate field", () => {
+		const base = makePolicy();
+		base.profiles = {
+			"with-update": {
+				match: "openai/gpt-4",
+				updateTemplate: "/path/to/update.md",
+			},
+		};
+		const result = resolveEffectivePolicy({ model: { provider: "openai", id: "gpt-4" } }, base);
+		assert.ok(result.profileTemplates !== undefined);
+		assert.equal(result.profileTemplates?.updateTemplate, "/path/to/update.md");
+	});
+
+	it("omits profileTemplates when profile has no template fields", () => {
+		const base = makePolicy();
+		base.profiles = {
+			"no-template": {
+				match: "openai/gpt-4",
+				trigger: { minTokens: 1000 },
+			},
+		};
+		const result = resolveEffectivePolicy({ model: { provider: "openai", id: "gpt-4" } }, base);
+		assert.equal(result.profileTemplates, undefined);
+	});
+});
+
+describe("findMatchingProfile — additional coverage", () => {
+	it("returns undefined when modelSelector is undefined", () => {
+		const result = findMatchingProfile({ a: { match: "openai/gpt-4" } }, undefined);
+		assert.equal(result, undefined);
+	});
+});
+
+describe("shouldTriggerProactiveCompact — additional coverage", () => {
+	it("returns false when usage.percent is null (only percent null)", () => {
+		const result = shouldTriggerProactiveCompact({
+			lastAssistantMessage: { stopReason: "end_turn" } as never,
+			usage: { tokens: 50000, percent: null, contextWindow: 200000 },
+			inFlight: false,
+			nowMs: 1000,
+			lastProactiveAtMs: undefined,
+			policy: makePolicy(),
+		});
+		assert.equal(result, false);
+	});
+});

@@ -18,6 +18,8 @@ import { Value } from "typebox/value";
 
 import {
 	handleUpdateGoal,
+	registerUpdateGoalTool,
+	resetUpdateGoalToolRegisteredForTests,
 	UpdateGoalParams,
 	type UpdateGoalCallbacks,
 } from "../src/updateGoalTool.js";
@@ -79,5 +81,36 @@ describe("handleUpdateGoal (#0004)", () => {
 		const result = await handleUpdateGoal({ status: "blocked", summary: "" }, cbs);
 		expect(cbs.blockedMock).toHaveBeenCalledWith("");
 		expect(result.details.ok).toBe(true);
+	});
+
+	it("falls back to empty string when summary is undefined (covers ?? \"\" branch)", async () => {
+		const cbs = makeCallbacks();
+		// Pass undefined via a type cast to exercise the `params.summary ?? ""` branch.
+		const result = await handleUpdateGoal(
+			{ status: "blocked", summary: undefined as unknown as string },
+			cbs,
+		);
+		expect(cbs.blockedMock).toHaveBeenCalledWith("");
+		expect(result.content[0]?.text).toContain("(no summary)");
+		expect(result.details.ok).toBe(true);
+	});
+});
+
+describe("registerUpdateGoalTool (#0004)", () => {
+	it("is idempotent: calling twice only registers the tool once", () => {
+		resetUpdateGoalToolRegisteredForTests();
+		const registerTool = vi.fn();
+		const mockPi = { registerTool } as unknown as import("@earendil-works/pi-coding-agent").ExtensionAPI;
+		const resolveCbs = (_ctx: unknown): UpdateGoalCallbacks => ({
+			onBlocked: vi.fn(),
+		});
+
+		registerUpdateGoalTool(mockPi, resolveCbs);
+		registerUpdateGoalTool(mockPi, resolveCbs); // second call — should be a no-op
+
+		expect(registerTool).toHaveBeenCalledTimes(1);
+
+		// Cleanup so other tests in this file start clean.
+		resetUpdateGoalToolRegisteredForTests();
 	});
 });

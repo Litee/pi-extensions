@@ -147,6 +147,30 @@ describe("detectChanges — state_changed", () => {
 	});
 });
 
+describe("detectChanges — empty state (no state returned)", () => {
+	it("returns no events and keeps no-baseline as not_found when instance has no state", async () => {
+		// An edge case: AWS returned a response but state is an empty string.
+		const client = makeClient({ state: "" as never });
+		const watch = makeWatch(); // baseline is undefined
+		const result = await detectChanges(client, watch);
+		expect(result.events).toHaveLength(0);
+		expect(result.observedChange).toBe(false);
+		// When baseline is undefined, the ?? fallback yields { state: "not_found" }
+		expect(result.newBaseline.state).toBe("not_found");
+	});
+
+	it("preserves existing baseline when instance has no state", async () => {
+		const client = makeClient({ state: "" as never });
+		const baseline: Ec2Baseline = { state: "running" };
+		const watch = makeWatch({ baseline });
+		const result = await detectChanges(client, watch);
+		expect(result.events).toHaveLength(0);
+		expect(result.observedChange).toBe(false);
+		// baseline is defined, so ?? left side is used
+		expect(result.newBaseline).toBe(baseline);
+	});
+});
+
 // ---------------------------------------------------------------------------
 // buildTimeoutEvent
 // ---------------------------------------------------------------------------

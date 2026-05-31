@@ -491,3 +491,124 @@ describe("CronScheduler.executeJobInSubagent", () => {
 		expect(storage.getJob("sub-abort")?.lastStatus).toBe("running");
 	});
 });
+
+// ---------------------------------------------------------------------------
+// Additional coverage: executeJob with interval job (getNextRun=null)
+// ---------------------------------------------------------------------------
+
+describe("CronScheduler.executeJob — interval job (getNextRun returns null)", () => {
+	it("stores success without nextRun when job is interval type", () => {
+		const intervalJob = mkJob({
+			id: "interval-job",
+			type: "interval",
+			schedule: "60s",
+		});
+		storage.addJob(intervalJob);
+		const { scheduler } = makeScheduler();
+
+		(scheduler as unknown as SchedulerPrivate).executeJob(intervalJob);
+
+		const stored = storage.getJob("interval-job")!;
+		expect(stored.lastStatus).toBe("success");
+		// nextRun should not be set since getNextRun returns null for intervals
+	});
+});
+
+// ---------------------------------------------------------------------------
+// Additional branch coverage: executeJob model branch (line 224)
+// ---------------------------------------------------------------------------
+
+describe("CronScheduler.executeJob — delegates to subagent when model is set (line 224)", () => {
+	beforeEach(() => {
+		runSubagentMock.mockClear();
+		runSubagentMock.mockResolvedValue({ ok: true as const, text: "done" });
+	});
+
+	async function flushMicrotasks(): Promise<void> {
+		for (let i = 0; i < 5; i++) await Promise.resolve();
+	}
+
+	it("executeJob calls executeJobInSubagent and returns early when job.model is set", async () => {
+		const job = mkJob({ id: "model-via-executejob", model: "anthropic/claude-haiku-4-5" });
+		storage.addJob(job);
+		const { scheduler, pi } = makeScheduler();
+
+		(scheduler as unknown as SchedulerPrivate).executeJob(job);
+		await flushMicrotasks();
+
+		// The subagent runner must have been invoked (via executeJobInSubagent)
+		expect(runSubagentMock).toHaveBeenCalledOnce();
+		// The direct inline path (sendUserMessage) must NOT have been taken
+		expect(pi.sendUserMessage).not.toHaveBeenCalled();
+	});
+});
+
+// ---------------------------------------------------------------------------
+// Additional branch coverage: marker-error catch blocks (lines 373, 404-410)
+// ---------------------------------------------------------------------------
+
+describe("CronScheduler.executeJobInSubagent — marker-error catch blocks", () => {
+	beforeEach(() => {
+		runSubagentMock.mockClear();
+	});
+
+	async function flushMicrotasks(): Promise<void> {
+		for (let i = 0; i < 5; i++) await Promise.resolve();
+	}
+
+	it("records appendEntry marker-error when sendMessage throws on subagent_done (line 373)", async () => {
+		runSubagentMock.mockResolvedValueOnce({ ok: true as const, text: "great output" });
+		const job = mkJob({ id: "marker-err-done", model: "anthropic/claude-haiku-4-5" });
+		storage.addJob(job);
+
+		const { pi } = makeFakePi();
+		let callCount = 0;
+		vi.mocked(pi.sendMessage).mockImplementation(() => {
+			callCount++;
+			if (callCount >= 2) throw new Error("sendMessage exploded on done");
+			return undefined;
+		});
+		const scheduler = new CronScheduler(
+			storage,
+			pi as unknown as ExtensionAPI,
+			makeFakeCtx("sess-A") as unknown as ExtensionContext,
+		);
+		schedulers.push(scheduler);
+
+		(scheduler as unknown as SchedulerPrivate).executeJobInSubagent(job);
+		await flushMicrotasks();
+
+		expect(pi.appendEntry).toHaveBeenCalledWith(
+			"schedule-prompt:marker-error",
+			expect.objectContaining({ jobId: job.id, phase: "subagent_done" }),
+		);
+	});
+
+	it("records appendEntry marker-error when sendMessage throws on subagent_error (lines 404-410)", async () => {
+		runSubagentMock.mockResolvedValueOnce({ ok: false as const, error: "model failed" });
+		const job = mkJob({ id: "marker-err-error", model: "anthropic/claude-haiku-4-5" });
+		storage.addJob(job);
+
+		const { pi } = makeFakePi();
+		let callCount = 0;
+		vi.mocked(pi.sendMessage).mockImplementation(() => {
+			callCount++;
+			if (callCount >= 2) throw new Error("sendMessage exploded on error");
+			return undefined;
+		});
+		const scheduler = new CronScheduler(
+			storage,
+			pi as unknown as ExtensionAPI,
+			makeFakeCtx("sess-A") as unknown as ExtensionContext,
+		);
+		schedulers.push(scheduler);
+
+		(scheduler as unknown as SchedulerPrivate).executeJobInSubagent(job);
+		await flushMicrotasks();
+
+		expect(pi.appendEntry).toHaveBeenCalledWith(
+			"schedule-prompt:marker-error",
+			expect.objectContaining({ jobId: job.id, phase: "subagent_error" }),
+		);
+	});
+});

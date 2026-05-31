@@ -384,3 +384,283 @@ describe("PollScheduler re-entry guard", () => {
 		stopPolling(rt);
 	});
 });
+
+// ---------------------------------------------------------------------------
+// refreshStatus, toggleDisplayMode, minIntervalMs
+// ---------------------------------------------------------------------------
+import {
+	minIntervalMs,
+	refreshStatus,
+	toggleDisplayMode,
+} from "../src/runtime.js";
+
+function makeRtWithUi() {
+	const setStatusSpy = vi.fn();
+	const rt = makeRuntime(
+		{
+			sendMessage: vi.fn(),
+			appendEntry: vi.fn(),
+			registerTool: vi.fn(),
+			getActiveTools: vi.fn(() => [] as string[]),
+			setActiveTools: vi.fn(),
+			events: { emit: vi.fn(), on: vi.fn() },
+		} as unknown as import("@earendil-works/pi-coding-agent").ExtensionAPI,
+		{} as unknown as import("../src/glue-client.js").GlueClient,
+	);
+	rt.ui = {
+		setStatus: setStatusSpy,
+		theme: { fg: (_c: string, t: string) => t },
+	} satisfies NonNullable<typeof rt.ui>;
+	return { rt, setStatusSpy };
+}
+
+describe("refreshStatus", () => {
+	it("clears status when displayMode is not 'statusline'", () => {
+		const { rt, setStatusSpy } = makeRtWithUi();
+		rt.displayMode = "widget";
+		refreshStatus(rt);
+		expect(setStatusSpy).toHaveBeenCalledWith(expect.any(String), undefined);
+	});
+
+	it("sets a status string when displayMode is 'statusline' with no watches", () => {
+		const { rt, setStatusSpy } = makeRtWithUi();
+		rt.displayMode = "statusline";
+		refreshStatus(rt);
+		expect(setStatusSpy).toHaveBeenCalledWith(expect.any(String), expect.any(String));
+	});
+
+	it("includes error indicator in status when a watch has consecutiveErrors >= threshold", () => {
+		const { rt, setStatusSpy } = makeRtWithUi();
+		rt.displayMode = "statusline";
+		rt.watches["aa"] = {
+			watchId: "aa",
+			type: "job",
+			name: "my-job",
+			runId: "jr_1",
+			profile: "p",
+			region: undefined,
+			addedAt: Date.now(),
+			lastPolledAt: undefined,
+			baseline: { state: "RUNNING", errorMessage: "" },
+			terminal: false,
+			consecutiveErrors: POLL_ERROR_THRESHOLD,
+		};
+		refreshStatus(rt);
+		expect(setStatusSpy).toHaveBeenCalledWith(expect.any(String), expect.any(String));
+	});
+
+	it("is a no-op when rt.ui is null", () => {
+		const rt = makeRuntime({} as never, {} as never);
+		rt.displayMode = "statusline";
+		expect(() => refreshStatus(rt)).not.toThrow();
+	});
+});
+
+describe("toggleDisplayMode", () => {
+	it("switches from widget to statusline and calls widget.hide + refreshStatus", () => {
+		const { rt } = makeRtWithUi();
+		const hideSpy = vi.fn();
+		rt.widget = { hide: hideSpy, show: vi.fn() } as never;
+		rt.displayMode = "widget";
+
+		toggleDisplayMode(rt, {});
+
+		expect(rt.displayMode).toBe("statusline");
+		expect(hideSpy).toHaveBeenCalled();
+	});
+
+	it("switches from statusline to widget and calls widget.show", () => {
+		const { rt, setStatusSpy } = makeRtWithUi();
+		const showSpy = vi.fn();
+		rt.widget = { hide: vi.fn(), show: showSpy } as never;
+		rt.displayMode = "statusline";
+
+		toggleDisplayMode(rt, {});
+
+		expect(rt.displayMode).toBe("widget");
+		expect(showSpy).toHaveBeenCalled();
+		// When switching to widget, status is cleared
+		expect(setStatusSpy).toHaveBeenCalledWith(expect.any(String), undefined);
+	});
+
+	it("works when widget is null (no-op on hide/show)", () => {
+		const { rt } = makeRtWithUi();
+		rt.widget = null;
+		rt.displayMode = "widget";
+		expect(() => toggleDisplayMode(rt, {})).not.toThrow();
+		expect(rt.displayMode).toBe("statusline");
+	});
+});
+
+describe("minIntervalMs", () => {
+	it("returns POLL_INTERVAL_MS when no schedulers exist", () => {
+		const rt = makeRuntime({} as never, {} as never);
+		expect(minIntervalMs(rt)).toBe(POLL_INTERVAL_MS);
+	});
+
+	it("returns the minimum intervalMs across all schedulers", () => {
+		const rt = makeRuntime({} as never, {} as never);
+		rt.schedulers.set("a", { intervalMs: 30_000 } as never);
+		rt.schedulers.set("b", { intervalMs: 10_000 } as never);
+		rt.schedulers.set("c", { intervalMs: 60_000 } as never);
+		expect(minIntervalMs(rt)).toBe(10_000);
+	});
+
+	it("returns POLL_INTERVAL_MS when all schedulers have Infinity intervalMs", () => {
+		const rt = makeRuntime({} as never, {} as never);
+		rt.schedulers.set("a", { intervalMs: Infinity } as never);
+		expect(minIntervalMs(rt)).toBe(POLL_INTERVAL_MS);
+	});
+});
+
+// ---------------------------------------------------------------------------
+// pollWatch — workflow type and terminal events
+// ---------------------------------------------------------------------------
+import type { WorkflowRunResponse } from "../src/glue-client.js";
+
+describe("pollWatch — workflow watch calls detectWorkflowChanges", () => {
+	it("polls a workflow watch", async () => {
+		const pi = makePi();
+		const client: GlueClient = {
+			getJobRun: vi.fn(),
+			getWorkflowRun: vi.fn().mockResolvedValue({
+				Run: {
+					Status: "RUNNING",
+					Statistics: { TotalActions: 2, SucceededActions: 0, FailedActions: 0, RunningActions: 2 },
+					Graph: { Nodes: [] },
+				},
+			} satisfies WorkflowRunResponse),
+			getLatestJobRunId: vi.fn(),
+			getLatestWorkflowRunId: vi.fn(),
+			stopJobRun: vi.fn(),
+			stopWorkflowRun: vi.fn(),
+		};
+		const rt = makeRuntime(pi, client);
+		rt.enabled = true;
+		const watch: GlueWatch = {
+			watchId: "wf1",
+			type: "workflow",
+			name: "my-wf",
+			runId: "wr_1",
+			profile: "p",
+			region: undefined,
+			addedAt: 1000,
+			lastPolledAt: undefined,
+			baseline: { state: "RUNNING", totalActions: 2, succeededActions: 0, failedActions: 0, runningActions: 2, reportedFailedNodes: [], nodes: [] },
+			terminal: false,
+			consecutiveErrors: 0,
+		};
+		rt.watches["wf1"] = watch;
+
+		await pollWatch(rt, "wf1");
+
+		expect(client.getWorkflowRun).toHaveBeenCalled();
+	});
+});
+
+describe("pollWatch — terminal event marks watch as terminal", () => {
+	it("marks watch.terminal = true when a terminal event is detected", async () => {
+		const pi = makePi();
+		const client = makeClient(makeJobRunResponse("SUCCEEDED"));
+		const rt = makeRuntime(pi, client);
+		rt.enabled = true;
+		const watch = makeJobWatch({ state: "RUNNING", errorMessage: "" });
+		rt.watches[watch.watchId] = watch;
+
+		await pollWatch(rt, watch.watchId);
+
+		expect(watch.terminal).toBe(true);
+	});
+});
+
+describe("pollWatch — recovery message on consecutive errors then success", () => {
+	it("sends recovery message when consecutiveErrors >= threshold then succeeds", async () => {
+		const pi = makePi();
+		const client = makeClient(makeJobRunResponse("RUNNING"));
+		const rt = makeRuntime(pi, client);
+		rt.enabled = true;
+		const watch = makeJobWatch({ state: "RUNNING", errorMessage: "" });
+		watch.consecutiveErrors = POLL_ERROR_THRESHOLD; // previously hit threshold
+		rt.watches[watch.watchId] = watch;
+
+		await pollWatch(rt, watch.watchId);
+
+		const sendCalls = (pi.sendMessage as ReturnType<typeof vi.fn>).mock.calls as Array<[{ content: string }]>;
+		const recovery = sendCalls.find(([msg]) => msg.content.includes("recovered"));
+		expect(recovery).toBeDefined();
+	});
+});
+
+// ---------------------------------------------------------------------------
+// Additional branch coverage: delayed scheduler identity check passes (line 176)
+// ---------------------------------------------------------------------------
+
+describe("startWatchPolling — delayed scheduler starts when identity check passes", () => {
+	beforeEach(() => { vi.useFakeTimers(); });
+	afterEach(() => { vi.useRealTimers(); });
+
+	it("scheduler.start() is called inside setTimeout when the scheduler is still the current one (line 176)", async () => {
+		const rt = makeRuntime(makePi(), makeClient(makeJobRunResponse("RUNNING")));
+		rt.enabled = true;
+		const watch = makeJobWatch({ state: "RUNNING", errorMessage: "" });
+		rt.watches[watch.watchId] = watch;
+
+		startWatchPolling(rt, watch.watchId, 50);
+		const scheduler = rt.schedulers.get(watch.watchId)!;
+		expect(scheduler.isRunning).toBe(false); // not yet started
+
+		// Do NOT replace the scheduler — let the timeout fire with the original
+		await vi.advanceTimersByTimeAsync(100);
+
+		// The identity check passes: same scheduler still in the map → it must have started
+		expect(scheduler.isRunning).toBe(true);
+		stopPolling(rt);
+	});
+});
+
+// ---------------------------------------------------------------------------
+// Additional branch coverage: pollWatch paused / terminal branches (lines 226, 229-230)
+// ---------------------------------------------------------------------------
+
+describe("pollWatch — early-exit branches", () => {
+	it("returns without polling when rt.paused is true", async () => {
+		const pi = makePi();
+		const client = makeClient(makeJobRunResponse("SUCCEEDED"));
+		const rt = makeRuntime(pi, client);
+		rt.paused = true;
+		const watch = makeJobWatch({ state: "RUNNING", errorMessage: "" });
+		rt.watches[watch.watchId] = watch;
+
+		await pollWatch(rt, watch.watchId);
+
+		expect(client.getJobRun).not.toHaveBeenCalled();
+		expect(pi.sendMessage).not.toHaveBeenCalled();
+	});
+
+	it("stops polling and returns when the watch is already terminal", async () => {
+		const pi = makePi();
+		const client = makeClient(makeJobRunResponse("SUCCEEDED"));
+		const rt = makeRuntime(pi, client);
+		const watch = makeJobWatch({ state: "RUNNING", errorMessage: "" });
+		watch.terminal = true;
+		rt.watches[watch.watchId] = watch;
+
+		// Manually register a scheduler so stopWatchPolling has something to clean up
+		startWatchPolling(rt, watch.watchId); // no-ops (terminal watch), so scheduler is not added
+		// Call pollWatch directly — the !watch || watch.terminal branch stops and returns
+		await pollWatch(rt, watch.watchId);
+
+		// The client must not have been called (returned before the poll)
+		expect(client.getJobRun).not.toHaveBeenCalled();
+	});
+
+	it("stops polling and returns when the watchId is absent from rt.watches", async () => {
+		const pi = makePi();
+		const client = makeClient(makeJobRunResponse("RUNNING"));
+		const rt = makeRuntime(pi, client);
+
+		await pollWatch(rt, "nonexistent-watch");
+
+		expect(client.getJobRun).not.toHaveBeenCalled();
+	});
+});

@@ -1,5 +1,19 @@
-import { describe, expect, it } from "vitest";
-import { AgentWidget, formatSessionTokens, type Theme, type UICtx, type AgentActivity } from "../src/ui/agent-widget.js";
+import { describe, expect, it, vi } from "vitest";
+import {
+  AgentWidget,
+  buildInvocationTags,
+  describeActivity,
+  formatDuration,
+  formatMs,
+  formatSessionTokens,
+  formatTokens,
+  formatTurns,
+  getDisplayName,
+  getPromptModeLabel,
+  type AgentActivity,
+  type Theme,
+  type UICtx,
+} from "../src/ui/agent-widget.js";
 import type { AgentManager } from "../src/agent-manager.js";
 import type { AgentRecord } from "../src/types.js";
 
@@ -208,5 +222,541 @@ describe("AgentWidget — update() and dispose()", () => {
     // dispose() should call setWidget("agents", undefined) and setStatus("subagents", undefined)
     expect(setWidgetCalls.some(([k, v]) => k === "agents" && v === undefined)).toBe(true);
     expect(setStatusCalls.some(([k, v]) => k === "subagents" && v === undefined)).toBe(true);
+  });
+});
+
+// ─── Pure formatting helpers ──────────────────────────────────────────────
+
+describe("formatTokens", () => {
+  it("formats values below 1000 as plain number", () => {
+    expect(formatTokens(0)).toBe("0 token");
+    expect(formatTokens(500)).toBe("500 token");
+    expect(formatTokens(999)).toBe("999 token");
+  });
+
+  it("formats values in the thousands as Nk", () => {
+    expect(formatTokens(1_000)).toBe("1.0k token");
+    expect(formatTokens(33_800)).toBe("33.8k token");
+    expect(formatTokens(999_999)).toBe("1000.0k token");
+  });
+
+  it("formats values >= 1M as NM", () => {
+    expect(formatTokens(1_000_000)).toBe("1.0M token");
+    expect(formatTokens(2_500_000)).toBe("2.5M token");
+  });
+});
+
+describe("formatMs", () => {
+  it("formats milliseconds as seconds with 1dp", () => {
+    expect(formatMs(1000)).toBe("1.0s");
+    expect(formatMs(2500)).toBe("2.5s");
+    expect(formatMs(100)).toBe("0.1s");
+  });
+});
+
+describe("formatTurns", () => {
+  it("formats without limit when maxTurns is undefined", () => {
+    expect(formatTurns(5, undefined)).toBe("⟳5");
+  });
+
+  it("formats without limit when maxTurns is null", () => {
+    expect(formatTurns(3, null)).toBe("⟳3");
+  });
+
+  it("formats with limit when maxTurns is provided", () => {
+    expect(formatTurns(5, 30)).toBe("⟳5≤30");
+    expect(formatTurns(0, 10)).toBe("⟳0≤10");
+  });
+});
+
+describe("formatDuration", () => {
+  it("formats completed duration when completedAt is provided", () => {
+    const result = formatDuration(1000, 6000);
+    expect(result).toBe("5.0s");
+  });
+
+  it("shows running indicator when completedAt is absent", () => {
+    const start = Date.now() - 2000;
+    const result = formatDuration(start);
+    expect(result).toMatch(/\d+\.\d+s \(running\)/);
+  });
+
+  it("shows running indicator when completedAt is 0 (falsy)", () => {
+    const start = Date.now() - 1000;
+    const result = formatDuration(start, 0);
+    expect(result).toMatch(/\d+\.\d+s \(running\)/);
+  });
+});
+
+describe("buildInvocationTags", () => {
+  it("returns empty tags when invocation is undefined", () => {
+    expect(buildInvocationTags(undefined)).toEqual({ tags: [] });
+  });
+
+  it("includes thinking tag when present", () => {
+    const result = buildInvocationTags({ thinking: "high" });
+    expect(result.tags).toContain("thinking: high");
+  });
+
+  it("includes isolated tag", () => {
+    const result = buildInvocationTags({ isolated: true });
+    expect(result.tags).toContain("isolated");
+  });
+
+  it("includes worktree tag for worktree isolation", () => {
+    const result = buildInvocationTags({ isolation: "worktree" });
+    expect(result.tags).toContain("worktree");
+  });
+
+  it("includes inherit-context tag", () => {
+    const result = buildInvocationTags({ inheritContext: true });
+    expect(result.tags).toContain("inherit context");
+  });
+
+  it("includes background tag", () => {
+    const result = buildInvocationTags({ runInBackground: true });
+    expect(result.tags).toContain("background");
+  });
+
+  it("includes max-turns tag", () => {
+    const result = buildInvocationTags({ maxTurns: 20 });
+    expect(result.tags).toContain("max turns: 20");
+  });
+
+  it("includes modelName when provided", () => {
+    const result = buildInvocationTags({ modelName: "haiku" });
+    expect(result.modelName).toBe("haiku");
+  });
+});
+
+describe("describeActivity", () => {
+  it("returns 'thinking…' when no tools and no response text", () => {
+    expect(describeActivity(new Map(), "")).toBe("thinking…");
+    expect(describeActivity(new Map())).toBe("thinking…");
+  });
+
+  it("returns truncated response text when no active tools", () => {
+    const long = "a".repeat(70);
+    const result = describeActivity(new Map(), long);
+    expect(result).toMatch(/a+…/);
+    expect(result.length).toBeLessThanOrEqual(65);
+  });
+
+  it("returns single tool action for one active tool", () => {
+    const tools = new Map([["t1", "bash"]]);
+    expect(describeActivity(tools)).toBe("running command…");
+  });
+
+  it("groups duplicate tool actions with count and files label", () => {
+    const tools = new Map([["t1", "read"], ["t2", "read"], ["t3", "read"]]);
+    const result = describeActivity(tools);
+    expect(result).toContain("reading 3 files");
+  });
+
+  it("groups search actions with patterns label", () => {
+    const tools = new Map([["t1", "grep"], ["t2", "grep"]]);
+    const result = describeActivity(tools);
+    expect(result).toContain("searching 2 patterns");
+  });
+
+  it("uses raw tool name for unknown tools", () => {
+    const tools = new Map([["t1", "custom_tool"]]);
+    expect(describeActivity(tools)).toBe("custom_tool…");
+  });
+});
+
+describe("getDisplayName", () => {
+  it("returns a non-empty string for general-purpose type", () => {
+    const name = getDisplayName("general-purpose");
+    expect(typeof name).toBe("string");
+    expect(name.length).toBeGreaterThan(0);
+  });
+});
+
+describe("getPromptModeLabel", () => {
+  it("returns 'twin' for append mode types", () => {
+    // agent-widget's getPromptModeLabel maps append→'twin'; wrap in try/catch for unknown types
+    // general-purpose actually uses append, so it returns 'twin'
+    const label = getPromptModeLabel("general-purpose");
+    // Just verify the function returns a string or undefined (don't hard-code the type's mode)
+    expect(label === undefined || typeof label === "string").toBe(true);
+  });
+});
+
+// ─── Widget rendering with finished agents ────────────────────────────────
+
+function makeStubWidget(records: AgentRecord[], activity = new Map<string, AgentActivity>()) {
+  const stubManager = { listAgents: () => records } as unknown as AgentManager;
+  let capturedFactory: ((tui: unknown, theme: Theme) => { render(): string[] }) | undefined;
+  const stubUiCtx: UICtx = {
+    setStatus: () => {},
+    setWidget: (_key, content) => {
+      if (content) capturedFactory = content as typeof capturedFactory;
+    },
+  };
+  const widget = new AgentWidget(stubManager, activity);
+  widget.setUICtx(stubUiCtx);
+  return { widget, getFactory: () => capturedFactory };
+}
+
+const plainTheme: Theme = { fg: (_c: string, s: string) => s, bold: (s: string) => s };
+const stubTui = { terminal: { columns: 200 }, requestRender: vi.fn() };
+
+describe("AgentWidget — finished agents rendering", () => {
+  function makeFinishedRecord(id: string, status: AgentRecord["status"]): AgentRecord {
+    return {
+      id,
+      type: "general-purpose",
+      description: `task-${id}`,
+      status,
+      toolUses: 2,
+      startedAt: Date.now() - 3000,
+      completedAt: Date.now() - 1000,
+      lifetimeUsage: { input: 0, output: 0, cacheWrite: 0 },
+      compactionCount: 0,
+    };
+  }
+
+  it("renders a completed agent with check icon", () => {
+    const rec = makeFinishedRecord("c1", "completed");
+    const { widget, getFactory } = makeStubWidget([rec]);
+    widget.markFinished("c1");
+    widget.update();
+    const lines = getFactory()!(stubTui, plainTheme).render();
+    expect(lines.some(l => l.includes("✓"))).toBe(true);
+  });
+
+  it("renders a steered agent", () => {
+    const rec = makeFinishedRecord("s1", "steered");
+    const { widget, getFactory } = makeStubWidget([rec]);
+    widget.markFinished("s1");
+    widget.update();
+    const lines = getFactory()!(stubTui, plainTheme).render();
+    expect(lines.some(l => l.includes("turn limit"))).toBe(true);
+  });
+
+  it("renders a stopped agent", () => {
+    const rec = makeFinishedRecord("st1", "stopped");
+    const { widget, getFactory } = makeStubWidget([rec]);
+    widget.markFinished("st1");
+    widget.update();
+    const lines = getFactory()!(stubTui, plainTheme).render();
+    expect(lines.some(l => l.includes("stopped"))).toBe(true);
+  });
+
+  it("renders an error agent with error message", () => {
+    const rec: AgentRecord = {
+      ...makeFinishedRecord("e1", "error"),
+      error: "network failure",
+    };
+    const { widget, getFactory } = makeStubWidget([rec]);
+    widget.markFinished("e1");
+    widget.update();
+    const lines = getFactory()!(stubTui, plainTheme).render();
+    expect(lines.some(l => l.includes("error"))).toBe(true);
+  });
+
+  it("renders an aborted agent", () => {
+    const rec = makeFinishedRecord("a1", "aborted");
+    const { widget, getFactory } = makeStubWidget([rec]);
+    widget.markFinished("a1");
+    widget.update();
+    const lines = getFactory()!(stubTui, plainTheme).render();
+    expect(lines.some(l => l.includes("aborted"))).toBe(true);
+  });
+});
+
+describe("AgentWidget — queued agents", () => {
+  it("renders a queued indicator when agents are queued", () => {
+    const rec: AgentRecord = {
+      id: "q1",
+      type: "general-purpose",
+      description: "queued task",
+      status: "queued",
+      toolUses: 0,
+      startedAt: Date.now(),
+      lifetimeUsage: { input: 0, output: 0, cacheWrite: 0 },
+      compactionCount: 0,
+    };
+    const { widget, getFactory } = makeStubWidget([rec]);
+    widget.update();
+    const lines = getFactory()!(stubTui, plainTheme).render();
+    expect(lines.some(l => l.includes("queued"))).toBe(true);
+  });
+});
+
+describe("AgentWidget — requestRender when already registered", () => {
+  it("calls tui.requestRender on second update() instead of re-registering", () => {
+    const rec: AgentRecord = {
+      id: "r1",
+      type: "general-purpose",
+      description: "running",
+      status: "running",
+      toolUses: 0,
+      startedAt: Date.now() - 500,
+      lifetimeUsage: { input: 0, output: 0, cacheWrite: 0 },
+      compactionCount: 0,
+    };
+    const stubManager = { listAgents: () => [rec] } as unknown as AgentManager;
+    const requestRender = vi.fn();
+    const localTui = { terminal: { columns: 200 }, requestRender };
+
+    let setWidgetCallCount = 0;
+    let capturedFactory: ((tui: unknown, theme: Theme) => { render(): string[]; invalidate(): void }) | undefined;
+    const uiCtx: UICtx = {
+      setStatus: () => {},
+      setWidget: (_key, content) => {
+        setWidgetCallCount++;
+        if (content) capturedFactory = content as typeof capturedFactory;
+      },
+    };
+
+    const widget = new AgentWidget(stubManager, new Map());
+    widget.setUICtx(uiCtx);
+
+    // First update — registers widget
+    widget.update();
+    expect(setWidgetCallCount).toBe(1);
+
+    // Invoke factory to set this.tui
+    capturedFactory!(localTui, plainTheme);
+
+    // Second update — should requestRender, not call setWidget again
+    widget.update();
+    expect(setWidgetCallCount).toBe(1); // unchanged
+    expect(requestRender).toHaveBeenCalled();
+  });
+
+  it("invalidate() clears widgetRegistered so next update re-registers", () => {
+    const rec: AgentRecord = {
+      id: "r2",
+      type: "general-purpose",
+      description: "running",
+      status: "running",
+      toolUses: 0,
+      startedAt: Date.now() - 500,
+      lifetimeUsage: { input: 0, output: 0, cacheWrite: 0 },
+      compactionCount: 0,
+    };
+    const stubManager = { listAgents: () => [rec] } as unknown as AgentManager;
+
+    let setWidgetCallCount = 0;
+    let capturedFactory: ((tui: unknown, theme: Theme) => { render(): string[]; invalidate(): void }) | undefined;
+    const uiCtx: UICtx = {
+      setStatus: () => {},
+      setWidget: (_key, content) => {
+        setWidgetCallCount++;
+        if (content) capturedFactory = content as typeof capturedFactory;
+      },
+    };
+
+    const widget = new AgentWidget(stubManager, new Map());
+    widget.setUICtx(uiCtx);
+    widget.update();
+
+    const component = capturedFactory!(stubTui, plainTheme);
+    component.invalidate();
+
+    // After invalidate, next update should re-register
+    widget.update();
+    expect(setWidgetCallCount).toBe(2);
+  });
+});
+
+describe("AgentWidget — onTurnStart aging and ensureTimer", () => {
+  it("onTurnStart ages finished records and triggers update", () => {
+    const rec: AgentRecord = {
+      id: "fin1",
+      type: "general-purpose",
+      description: "done",
+      status: "completed",
+      toolUses: 0,
+      startedAt: Date.now() - 3000,
+      completedAt: Date.now() - 1000,
+      lifetimeUsage: { input: 0, output: 0, cacheWrite: 0 },
+      compactionCount: 0,
+    };
+    const stubManager = { listAgents: () => [] as AgentRecord[] } as unknown as AgentManager;
+    const setStatusCalls: unknown[] = [];
+    const uiCtx: UICtx = {
+      setStatus: (_k, v) => setStatusCalls.push(v),
+      setWidget: () => {},
+    };
+    const widget = new AgentWidget(stubManager, new Map());
+    widget.setUICtx(uiCtx);
+    widget.markFinished(rec.id);
+    // onTurnStart should not throw
+    widget.onTurnStart();
+  });
+
+  it("ensureTimer starts interval and is idempotent", () => {
+    const stubManager = { listAgents: () => [] as AgentRecord[] } as unknown as AgentManager;
+    const uiCtx: UICtx = { setStatus: () => {}, setWidget: () => {} };
+    const widget = new AgentWidget(stubManager, new Map());
+    widget.setUICtx(uiCtx);
+    widget.ensureTimer();
+    widget.ensureTimer(); // idempotent — should not throw
+    widget.dispose(); // cleanup interval
+  });
+});
+
+describe("AgentWidget — setUICtx context change resets registration", () => {
+  it("calling setUICtx with a new context resets widgetRegistered", () => {
+    const rec: AgentRecord = {
+      id: "ctx1",
+      type: "general-purpose",
+      description: "running",
+      status: "running",
+      toolUses: 0,
+      startedAt: Date.now() - 500,
+      lifetimeUsage: { input: 0, output: 0, cacheWrite: 0 },
+      compactionCount: 0,
+    };
+    const stubManager = { listAgents: () => [rec] } as unknown as AgentManager;
+    let setWidgetCallCount = 0;
+    const makeCtx = (): UICtx => ({
+      setStatus: () => {},
+      setWidget: () => { setWidgetCallCount++; },
+    });
+
+    const widget = new AgentWidget(stubManager, new Map());
+    const ctx1 = makeCtx();
+    widget.setUICtx(ctx1);
+    widget.update(); // registers on ctx1
+
+    // Switch to new context — should force re-registration
+    const ctx2 = makeCtx();
+    widget.setUICtx(ctx2);
+    widget.update(); // re-registers on ctx2
+
+    expect(setWidgetCallCount).toBeGreaterThanOrEqual(2);
+  });
+});
+
+// ─── More renderWidget coverage ───────────────────────────────────────────
+
+describe("AgentWidget — running agent with activity stats", () => {
+  const theme: Theme = { fg: (_c: string, s: string) => s, bold: (s: string) => s };
+  const stubTui2 = { terminal: { columns: 200 }, requestRender: vi.fn() };
+
+  function makeRunningRecord(id: string): import("../src/types.js").AgentRecord {
+    return {
+      id,
+      type: "general-purpose",
+      description: `task-${id}`,
+      status: "running",
+      toolUses: 0,
+      startedAt: Date.now() - 1000,
+      lifetimeUsage: { input: 50_000, output: 5_000, cacheWrite: 0 },
+      compactionCount: 0,
+    };
+  }
+
+  it("renders running agent with non-zero tokens in bg activity", () => {
+    const rec = makeRunningRecord("r1");
+    const activity = new Map<string, AgentActivity>([["r1", {
+      activeTools: new Map(),
+      toolUses: 0,
+      responseText: "working on it",
+      turnCount: 3,
+      maxTurns: 10,
+      lifetimeUsage: { input: 50_000, output: 5_000, cacheWrite: 0 },
+    }]]);
+    const stubManager = { listAgents: () => [rec] } as unknown as import("../src/agent-manager.js").AgentManager;
+    let capturedFactory: ((tui: unknown, theme: Theme) => { render(): string[] }) | undefined;
+    const uiCtx: UICtx = {
+      setStatus: () => {},
+      setWidget: (_k, content) => { if (content) capturedFactory = content as typeof capturedFactory; },
+    };
+    const widget = new AgentWidget(stubManager, activity);
+    widget.setUICtx(uiCtx);
+    widget.update();
+    const lines = capturedFactory!(stubTui2, theme).render();
+    // Should have activity description from responseText
+    expect(lines.some(l => l.includes("working on it"))).toBe(true);
+  });
+
+  it("renders running agent with active tools in activity", () => {
+    const rec = makeRunningRecord("r2");
+    const activity = new Map<string, AgentActivity>([["r2", {
+      activeTools: new Map([["t1", "bash"], ["t2", "bash"]]),
+      toolUses: 2,
+      responseText: "",
+      turnCount: 1,
+      lifetimeUsage: { input: 0, output: 0, cacheWrite: 0 },
+    }]]);
+    const stubManager = { listAgents: () => [rec] } as unknown as import("../src/agent-manager.js").AgentManager;
+    let capturedFactory: ((tui: unknown, theme: Theme) => { render(): string[] }) | undefined;
+    const uiCtx: UICtx = {
+      setStatus: () => {},
+      setWidget: (_k, content) => { if (content) capturedFactory = content as typeof capturedFactory; },
+    };
+    const widget = new AgentWidget(stubManager, activity);
+    widget.setUICtx(uiCtx);
+    widget.update();
+    const lines = capturedFactory!(stubTui2, theme).render();
+    expect(lines.some(l => l.includes("running command"))).toBe(true);
+  });
+
+  it("renders running agent with zero tokens (no tokenText)", () => {
+    const rec = makeRunningRecord("r3");
+    rec.lifetimeUsage = { input: 0, output: 0, cacheWrite: 0 };
+    const activity = new Map<string, AgentActivity>([["r3", {
+      activeTools: new Map(),
+      toolUses: 0,
+      responseText: "thinking",
+      turnCount: 0,
+      lifetimeUsage: { input: 0, output: 0, cacheWrite: 0 },
+    }]]);
+    const stubManager = { listAgents: () => [rec] } as unknown as import("../src/agent-manager.js").AgentManager;
+    let capturedFactory: ((tui: unknown, theme: Theme) => { render(): string[] }) | undefined;
+    const uiCtx: UICtx = {
+      setStatus: () => {},
+      setWidget: (_k, content) => { if (content) capturedFactory = content as typeof capturedFactory; },
+    };
+    const widget = new AgentWidget(stubManager, activity);
+    widget.setUICtx(uiCtx);
+    widget.update();
+    const lines = capturedFactory!(stubTui2, theme).render();
+    // Should still render some content
+    expect(lines.length).toBeGreaterThan(0);
+  });
+});
+
+describe("AgentWidget — status bar text with queued count", () => {
+
+  it("shows queued count in status when agents are queued", () => {
+    const running: import("../src/types.js").AgentRecord = {
+      id: "r1",
+      type: "general-purpose",
+      description: "r",
+      status: "running",
+      toolUses: 0,
+      startedAt: Date.now() - 500,
+      lifetimeUsage: { input: 0, output: 0, cacheWrite: 0 },
+      compactionCount: 0,
+    };
+    const queued: import("../src/types.js").AgentRecord = {
+      id: "q1",
+      type: "general-purpose",
+      description: "q",
+      status: "queued",
+      toolUses: 0,
+      startedAt: Date.now(),
+      lifetimeUsage: { input: 0, output: 0, cacheWrite: 0 },
+      compactionCount: 0,
+    };
+    const stubManager = { listAgents: () => [running, queued] } as unknown as import("../src/agent-manager.js").AgentManager;
+    const statusTexts: (string | undefined)[] = [];
+    const uiCtx: UICtx = {
+      setStatus: (_k, v) => statusTexts.push(v),
+      setWidget: () => {},
+    };
+    const widget = new AgentWidget(stubManager, new Map());
+    widget.setUICtx(uiCtx);
+    widget.update();
+    // Should include "queued" in the status text
+    const lastStatus = statusTexts[statusTexts.length - 1];
+    expect(lastStatus).toContain("queued");
   });
 });

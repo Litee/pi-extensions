@@ -430,6 +430,21 @@ describe("SubagentScheduler — fire path", () => {
       expect(scheduler.list().find(j => j.id === b.id)?.lastStatus).toBe("error");
     });
   });
+
+  it("finalize calls success when getRecord returns undefined (else branch — no promise)", () => {
+    // getRecord returns undefined → record?.promise short-circuits → else branch fires finalize("success")
+    getRecordSpy.mockReturnValue(undefined);
+    const job = scheduler.addJob({
+      name: "no-record-undefined",
+      description: "x",
+      schedule: "+1s",
+      subagent_type: "general-purpose",
+      prompt: "p",
+    });
+    vi.advanceTimersByTime(2_000);
+    // finalize("success") is synchronous here
+    expect(scheduler.list().find(j => j.id === job.id)?.lastStatus).toBe("success");
+  });
 });
 
 describe("SubagentScheduler — stopped state", () => {
@@ -443,5 +458,251 @@ describe("SubagentScheduler — stopped state", () => {
   it("list() returns empty array when not started", () => {
     const scheduler = new SubagentScheduler();
     expect(scheduler.list()).toEqual([]);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Additional branch coverage
+// ---------------------------------------------------------------------------
+
+describe("SubagentScheduler — removeJob and updateJob edge cases", () => {
+  let tmp: string;
+  let store: ScheduleStore;
+  let scheduler: SubagentScheduler;
+  let manager: AgentManager;
+
+  beforeEach(() => {
+    tmp = mkdtempSync(join(tmpdir(), "schedule-branches-"));
+    store = new ScheduleStore(join(tmp, "s.json"));
+    scheduler = new SubagentScheduler();
+    manager = makeMockManager();
+    scheduler.start(makeMockPi(), makeMockCtx(), manager, store);
+  });
+
+  afterEach(() => {
+    scheduler.stop();
+    vi.restoreAllMocks();
+    rmSync(tmp, { recursive: true, force: true });
+  });
+
+  it("removeJob unschedules a cron job (covers the if-cron branch in unscheduleJob)", () => {
+    const job = scheduler.addJob({
+      name: "cron-to-remove",
+      description: "x",
+      schedule: "0 0 9 * * 1",
+      subagent_type: "general-purpose",
+      prompt: "p",
+    });
+    expect(job.scheduleType).toBe("cron");
+    expect(scheduler.removeJob(job.id)).toBe(true);
+    expect(scheduler.list()).toHaveLength(0);
+  });
+
+  it("removeJob returns false when the id does not exist", () => {
+    expect(scheduler.removeJob("no-such-id")).toBe(false);
+  });
+
+  it("updateJob returns undefined when the id does not exist", () => {
+    expect(scheduler.updateJob("no-such-id", { enabled: false })).toBeUndefined();
+  });
+
+  it("addJob with cron expression creates a cron job", () => {
+    const job = scheduler.addJob({
+      name: "cron-job",
+      description: "x",
+      schedule: "0 0 9 * * 1", // every Monday 9am (6-field cron)
+      subagent_type: "general-purpose",
+      prompt: "p",
+    });
+    expect(job.scheduleType).toBe("cron");
+  });
+
+  it("getNextRun returns schedule for a 'once' job that has no cron", () => {
+    const future = new Date(Date.now() + 60_000).toISOString();
+    const job = scheduler.addJob({
+      name: "once-job",
+      description: "x",
+      schedule: future,
+      subagent_type: "general-purpose",
+      prompt: "p",
+    });
+    const next = scheduler.getNextRun(job.id);
+    expect(next).toBe(future);
+  });
+
+  it("getNextRun returns undefined for a disabled job", () => {
+    const job = scheduler.addJob({
+      name: "disabled-job",
+      description: "x",
+      schedule: "1h",
+      subagent_type: "general-purpose",
+      prompt: "p",
+    });
+    scheduler.updateJob(job.id, { enabled: false });
+    // No cron or interval for this job anymore (disabled)
+    // getNextRun returns undefined for disabled jobs
+    expect(scheduler.getNextRun(job.id)).toBeUndefined();
+  });
+});
+
+describe("SubagentScheduler — executeJob model and spawn-catch coverage", () => {
+  let tmp: string;
+  let store: ScheduleStore;
+  let scheduler: SubagentScheduler;
+  let manager: AgentManager;
+  let pi: ExtensionAPI;
+
+  beforeEach(() => {
+    vi.useFakeTimers();
+    tmp = mkdtempSync(join(tmpdir(), "schedule-exec-"));
+    store = new ScheduleStore(join(tmp, "s.json"));
+    scheduler = new SubagentScheduler();
+    manager = makeMockManager();
+    pi = makeMockPi();
+    scheduler.start(pi, makeMockCtx(), manager, store);
+  });
+
+  afterEach(() => {
+    scheduler.stop();
+    vi.useRealTimers();
+    rmSync(tmp, { recursive: true, force: true });
+  });
+
+  it("spawn error marks lastStatus=error and emits error event", async () => {
+    const emitSpy = (pi as unknown as { events: { emit: ReturnType<typeof vi.fn> } }).events.emit;
+    const spawnSpy = vi.spyOn(manager as unknown as { spawn: () => string }, "spawn").mockImplementation(() => {
+      throw new Error("spawn failure");
+    });
+
+    scheduler.addJob({
+      name: "fail-job",
+      description: "x",
+      schedule: "+1s",
+      subagent_type: "general-purpose",
+      prompt: "p",
+    });
+
+    vi.advanceTimersByTime(2000);
+    await vi.advanceTimersByTimeAsync(0);
+
+    const emitCalls = emitSpy.mock.calls as Array<[string, { type: string; error?: string }]>;
+    const errorEvent = emitCalls.find(([ch, ev]) => ch === "subagents:scheduled" && ev.type === "error");
+    expect(errorEvent).toBeDefined();
+    expect(errorEvent?.[1].error).toContain("spawn failure");
+    spawnSpy.mockRestore();
+  });
+});
+
+describe("SubagentScheduler — getNextRun with cron schedule", () => {
+  let scheduler: SubagentScheduler;
+  let store: ScheduleStore;
+  let tmp: string;
+
+  beforeEach(() => {
+    tmp = mkdtempSync(join(tmpdir(), "schedule-cron-"));
+    store = new ScheduleStore(join(tmp, "s.json"));
+    scheduler = new SubagentScheduler();
+    scheduler.start(makeMockPi(), makeMockCtx(), makeMockManager(), store);
+  });
+
+  afterEach(() => {
+    scheduler.stop();
+    rmSync(tmp, { recursive: true, force: true });
+  });
+
+  it("getNextRun returns Date for armed cron job", () => {
+    const job = scheduler.addJob({
+      name: "cron-get",
+      description: "x",
+      schedule: "0 0 9 * * 1",
+      subagent_type: "general-purpose",
+      prompt: "p",
+    });
+    const next = scheduler.getNextRun(job.id);
+    // Should return an ISO string (Date)
+    expect(typeof next).toBe("string");
+    expect(new Date(next!).getTime()).toBeGreaterThan(Date.now());
+  });
+
+  it("getNextRun returns undefined for unknown job id", () => {
+    expect(scheduler.getNextRun("no-such-id")).toBeUndefined();
+  });
+});
+
+describe("SubagentScheduler — executeJob with model", () => {
+  let scheduler: SubagentScheduler;
+  let store: ScheduleStore;
+  let manager: AgentManager;
+  let pi: ExtensionAPI;
+  let tmp: string;
+
+  beforeEach(() => {
+    vi.useFakeTimers();
+    tmp = mkdtempSync(join(tmpdir(), "schedule-model-"));
+    store = new ScheduleStore(join(tmp, "s.json"));
+    manager = makeMockManager();
+    pi = makeMockPi();
+    scheduler = new SubagentScheduler();
+    scheduler.start(pi, makeMockCtx(), manager, store);
+  });
+
+  afterEach(() => {
+    scheduler.stop();
+    vi.useRealTimers();
+    rmSync(tmp, { recursive: true, force: true });
+  });
+
+  it("resolves model when job has a model field", async () => {
+    const spawnSpy = vi.spyOn(manager as unknown as { spawn: () => string }, "spawn");
+
+    scheduler.addJob({
+      name: "model-job",
+      description: "x",
+      schedule: "+1s",
+      subagent_type: "general-purpose",
+      prompt: "p",
+      model: "openai/gpt-4",
+    });
+
+    vi.advanceTimersByTime(2000);
+    await vi.advanceTimersByTimeAsync(0);
+
+    expect(spawnSpy).toHaveBeenCalled();
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Additional coverage: defensive branches accessed via private method cast
+// ---------------------------------------------------------------------------
+
+describe("SubagentScheduler — defensive branches (direct private access)", () => {
+  it("emit() is a no-op when this.pi is undefined (falsy-pi branch, line 349)", () => {
+    // Scheduler never started → this.pi is undefined → if (this.pi) takes the falsy branch
+    const unstarted = new SubagentScheduler();
+    type WithEmit = { emit: (e: unknown) => void };
+    expect(() => (unstarted as unknown as WithEmit).emit({ type: "removed", jobId: "x" })).not.toThrow();
+  });
+
+  it("getNextRun falls through to undefined for an enabled cron job no longer in this.jobs (line 164)", () => {
+    const tmp2 = mkdtempSync(join(tmpdir(), "schedule-fallthrough-"));
+    const store2 = new ScheduleStore(join(tmp2, "s.json"));
+    const s = new SubagentScheduler();
+    s.start(makeMockPi(), makeMockCtx(), makeMockManager(), store2);
+    // Add a cron job (goes into this.jobs)
+    const job = s.addJob({
+      name: "cron-fallthrough",
+      description: "x",
+      schedule: "0 0 9 * * 1",
+      subagent_type: "general-purpose",
+      prompt: "p",
+    });
+    // Manually remove from the internal cron map (simulates a gap between armed and store states)
+    type WithJobs = { jobs: Map<string, unknown> };
+    (s as unknown as WithJobs).jobs.delete(job.id);
+    // Job is still enabled in store, scheduleType is "cron" — no cron entry, no interval → returns undefined
+    const next = s.getNextRun(job.id);
+    expect(next).toBeUndefined();
+    s.stop();
+    rmSync(tmp2, { recursive: true, force: true });
   });
 });

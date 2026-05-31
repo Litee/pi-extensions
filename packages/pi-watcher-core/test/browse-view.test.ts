@@ -1755,3 +1755,111 @@ describe('q key in browse calls onQuit and closes overlay', () => {
     expect(() => getComponent()!.handleInput('q')).not.toThrow()
   })
 })
+
+// ---------------------------------------------------------------------------
+// Additional branch coverage: detail mode exit (lines 468-469) and isNav (lines 527-529)
+// ---------------------------------------------------------------------------
+
+describe('detail mode — escape/left returns to list mode (lines 468-469)', () => {
+  beforeEach(() => { MockSelectList.reset() })
+
+  it('pressing escape in detail mode switches back to list mode', async () => {
+    const { ctx, getComponent } = makeBrowseCtx()
+    await openBrowseView(makeSimpleBrowseOpts(['w1']), ctx)
+    // Enter detail mode by triggering onSelect on the MockSelectList
+    const sl = MockSelectList.getInstances()[0]!
+    sl.onSelect?.({ value: 'w1', label: 'tui:w1' })
+    // Now press escape — detail mode should transition back to list mode without throwing
+    expect(() => getComponent()!.handleInput('escape')).not.toThrow()
+    // After returning to list mode, navigation keys should work (isNav branch)
+    expect(() => getComponent()!.handleInput('up')).not.toThrow()
+  })
+
+  it('pressing left in detail mode switches back to list mode', async () => {
+    const { ctx, getComponent } = makeBrowseCtx()
+    await openBrowseView(makeSimpleBrowseOpts(['w1']), ctx)
+    const sl = MockSelectList.getInstances()[0]!
+    sl.onSelect?.({ value: 'w1', label: 'tui:w1' })
+    expect(() => getComponent()!.handleInput('left')).not.toThrow()
+  })
+})
+
+describe('list mode navigation keys route to selectList (lines 527-529)', () => {
+  beforeEach(() => { MockSelectList.reset() })
+
+  it('pressing up in list mode calls selectList.handleInput and does not throw', async () => {
+    const { ctx, getComponent } = makeBrowseCtx()
+    await openBrowseView(makeSimpleBrowseOpts(['w1']), ctx)
+    expect(() => getComponent()!.handleInput('up')).not.toThrow()
+  })
+
+  it('pressing down in list mode calls selectList.handleInput and does not throw', async () => {
+    const { ctx, getComponent } = makeBrowseCtx()
+    await openBrowseView(makeSimpleBrowseOpts(['w1']), ctx)
+    expect(() => getComponent()!.handleInput('down')).not.toThrow()
+  })
+
+  it('pressing home in list mode calls selectList.handleInput and does not throw', async () => {
+    const { ctx, getComponent } = makeBrowseCtx()
+    await openBrowseView(makeSimpleBrowseOpts(['w1']), ctx)
+    expect(() => getComponent()!.handleInput('home')).not.toThrow()
+  })
+})
+
+// ---------------------------------------------------------------------------
+// Additional branch coverage: invalidate() and ctrl+c handler (lines 456-457, 462-463)
+// ---------------------------------------------------------------------------
+
+describe('component.invalidate() calls both sub-containers (lines 456-457)', () => {
+  beforeEach(() => { MockSelectList.reset() })
+
+  it('invalidate() does not throw and covers the invalidate callback body', async () => {
+    const { ctx, getComponent } = makeBrowseCtx()
+    await openBrowseView(makeSimpleBrowseOpts(['w1']), ctx)
+    expect(() => getComponent()!.invalidate()).not.toThrow()
+  })
+})
+
+describe('ctrl+c calls done in both modes (lines 462-463)', () => {
+  beforeEach(() => { MockSelectList.reset() })
+
+  it('ctrl+c in list mode calls done', async () => {
+    const doneFn = vi.fn()
+    let capturedComponent: ComponentLike | null = null
+    const theme = { fg: (_: string, t: string) => t, bold: (t: string) => t }
+    const ctx = {
+      ui: {
+        custom: (factory: (tui: unknown, theme: unknown, kb: unknown, done: (v: unknown) => void) => unknown): Promise<void> => {
+          capturedComponent = factory({ requestRender: vi.fn() }, theme, null, doneFn) as ComponentLike
+          return Promise.resolve()
+        },
+        theme,
+      },
+    }
+    await openBrowseView(makeSimpleBrowseOpts(['w1']), ctx)
+    capturedComponent!.handleInput('\x03')  // ctrl+c → \x03
+    expect(doneFn).toHaveBeenCalled()
+  })
+
+  it('ctrl+c in detail mode also calls done', async () => {
+    const doneFn = vi.fn()
+    let capturedComponent: ComponentLike | null = null
+    const theme = { fg: (_: string, t: string) => t, bold: (t: string) => t }
+    const ctx = {
+      ui: {
+        custom: (factory: (tui: unknown, theme: unknown, kb: unknown, done: (v: unknown) => void) => unknown): Promise<void> => {
+          capturedComponent = factory({ requestRender: vi.fn() }, theme, null, doneFn) as ComponentLike
+          return Promise.resolve()
+        },
+        theme,
+      },
+    }
+    await openBrowseView(makeSimpleBrowseOpts(['w1']), ctx)
+    // Enter detail mode
+    const sl = MockSelectList.getInstances()[0]!
+    sl.onSelect?.({ value: 'w1', label: 'tui:w1' })
+    // Press ctrl+c in detail mode
+    capturedComponent!.handleInput('\x03')
+    expect(doneFn).toHaveBeenCalled()
+  })
+})

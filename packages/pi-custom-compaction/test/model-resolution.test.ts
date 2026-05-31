@@ -89,3 +89,81 @@ describe("resolveSummaryModel", () => {
 		assert.match(notifications[0] ?? "", /openai\/gpt-test: failed to resolve model auth \(network unavailable\)/);
 	});
 });
+
+	it("resolves successfully and returns entry with model, apiKey, and headers", async () => {
+		const mockModel = { provider: "openai", id: "gpt-4" };
+		const policy: CompactionPolicy = {
+			...DEFAULT_POLICY,
+			enabled: true,
+			trigger: { ...DEFAULT_POLICY.trigger },
+			models: [{ model: "openai/gpt-4" }],
+			ui: { ...DEFAULT_POLICY.ui },
+			summary: { ...DEFAULT_POLICY.summary },
+		};
+		const ctx = {
+			modelRegistry: {
+				find: () => mockModel,
+				getApiKeyAndHeaders: () => Promise.resolve({ ok: true, apiKey: "sk-test", headers: { Authorization: "Bearer sk-test" } }),
+			},
+		} as never;
+
+		const result = await resolveSummaryModel(ctx, policy, () => true);
+
+		assert.ok(result !== undefined);
+		assert.deepEqual(result.model, mockModel);
+		assert.equal(result.apiKey, "sk-test");
+		assert.deepEqual(result.headers, { Authorization: "Bearer sk-test" });
+	});
+
+	it("returns failure reason when auth.ok is false (getApiKeyAndHeaders returns ok:false)", async () => {
+		const notifications: string[] = [];
+		const policy: CompactionPolicy = {
+			...DEFAULT_POLICY,
+			enabled: true,
+			trigger: { ...DEFAULT_POLICY.trigger },
+			models: [{ model: "openai/gpt-4" }],
+			ui: { ...DEFAULT_POLICY.ui },
+			summary: { ...DEFAULT_POLICY.summary },
+		};
+		const ctx = {
+			modelRegistry: {
+				find: () => ({ provider: "openai", id: "gpt-4" }),
+				getApiKeyAndHeaders: () => Promise.resolve({ ok: false, error: "no API key configured" }),
+			},
+		} as never;
+
+		const result = await resolveSummaryModel(ctx, policy, (_ctx, _policy, _level, message) => {
+			notifications.push(message);
+			return true;
+		});
+
+		assert.equal(result, undefined);
+		assert.match(notifications[0] ?? "", /no API key configured/);
+	});
+
+	it("handles non-Error thrown (uses String fallback)", async () => {
+		const notifications: string[] = [];
+		const policy: CompactionPolicy = {
+			...DEFAULT_POLICY,
+			enabled: true,
+			trigger: { ...DEFAULT_POLICY.trigger },
+			models: [{ model: "openai/gpt-4" }],
+			ui: { ...DEFAULT_POLICY.ui },
+			summary: { ...DEFAULT_POLICY.summary },
+		};
+		const ctx = {
+			modelRegistry: {
+				find: () => ({ provider: "openai", id: "gpt-4" }),
+				// eslint-disable-next-line @typescript-eslint/prefer-promise-reject-errors
+				getApiKeyAndHeaders: () => Promise.reject("string-error"),
+			},
+		} as never;
+
+		const result = await resolveSummaryModel(ctx, policy, (_ctx, _policy, _level, message) => {
+			notifications.push(message);
+			return true;
+		});
+
+		assert.equal(result, undefined);
+		assert.match(notifications[0] ?? "", /string-error/);
+	});

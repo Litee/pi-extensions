@@ -1,8 +1,8 @@
-import { mkdtempSync, readFileSync, rmSync } from "node:fs";
+import { mkdtempSync, readFileSync, rmSync, existsSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
-import { encodeCwd, streamToOutputFile, writeInitialEntry } from "../src/output-file.js";
+import { createOutputFilePath, encodeCwd, streamToOutputFile, writeInitialEntry } from "../src/output-file.js";
 
 describe("encodeCwd", () => {
   it("encodes a POSIX absolute path by stripping the leading slash and replacing separators", () => {
@@ -167,5 +167,20 @@ describe("streamToOutputFile", () => {
     session.push({ role: "assistant", content: [{ type: "text", text: "ghost" }] });
     session.fire({ type: "turn_end" });
     expect(readEntries()).toHaveLength(2);
+  });
+});
+
+describe("createOutputFilePath", () => {
+  it("creates the directory structure and returns a path ending in <agentId>.output", () => {
+    const p = createOutputFilePath("/work/project", "agent-42", "sess-1");
+    expect(p).toMatch(/agent-42\.output$/);
+    expect(existsSync(p.replace(/\/[^/]+$/, ""))).toBe(true);
+  });
+
+  it("encodes the cwd in the path", () => {
+    const p = createOutputFilePath("/some/cwd", "agent-99", "sess-2");
+    expect(p).toContain("some-cwd");
+    expect(p).toContain("sess-2");
+    expect(p).toContain("agent-99.output");
   });
 });

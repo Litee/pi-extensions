@@ -1154,3 +1154,213 @@ describe('Ec2Watcher — profile validation (via BaseWatcher)', () => {
     expect(watcher['watches'].size).toBe(0)
   })
 })
+
+// ---------------------------------------------------------------------------
+// Additional coverage: normalise optional fields
+// ---------------------------------------------------------------------------
+
+describe('Ec2Watcher.normaliseWatch — absent optional fields', () => {
+  let watcher: Ec2Watcher
+
+  beforeEach(() => {
+    ;({ watcher } = makeWatcher())
+  })
+
+  it('normalises without region (leaves undefined)', () => {
+    const raw = { watchId: 'w1', instanceId: 'i-0a1b', profile: 'p', addedAt: 100, terminal: false, consecutiveErrors: 0 }
+    const result = watcher.normaliseWatch(raw)
+    expect(result).not.toBeNull()
+    expect(result?.region).toBeUndefined()
+  })
+
+  it('normalises without timeoutAt (leaves undefined)', () => {
+    const raw = { watchId: 'w1', instanceId: 'i-0a1b', profile: 'p', addedAt: 100, terminal: false, consecutiveErrors: 0 }
+    const result = watcher.normaliseWatch(raw)
+    expect(result?.timeoutAt).toBeUndefined()
+  })
+
+  it('normalises without lastPolledAt (leaves undefined)', () => {
+    const raw = { watchId: 'w1', instanceId: 'i-0a1b', profile: 'p', addedAt: 100, terminal: false, consecutiveErrors: 0 }
+    const result = watcher.normaliseWatch(raw)
+    expect(result?.lastPolledAt).toBeUndefined()
+  })
+
+  it('normalises without baseline (leaves undefined)', () => {
+    const raw = { watchId: 'w1', instanceId: 'i-0a1b', profile: 'p', addedAt: 100, terminal: false, consecutiveErrors: 0 }
+    const result = watcher.normaliseWatch(raw)
+    expect(result?.baseline).toBeUndefined()
+  })
+
+  it('defaults terminal to false when not boolean', () => {
+    const raw = { watchId: 'w1', instanceId: 'i-0a1b', profile: 'p', addedAt: 100, terminal: 'yes', consecutiveErrors: 0 }
+    const result = watcher.normaliseWatch(raw)
+    expect(result?.terminal).toBe(false)
+  })
+
+  it('defaults consecutiveErrors to 0 when not finite number', () => {
+    const raw = { watchId: 'w1', instanceId: 'i-0a1b', profile: 'p', addedAt: 100, terminal: false, consecutiveErrors: 'bad' }
+    const result = watcher.normaliseWatch(raw)
+    expect(result?.consecutiveErrors).toBe(0)
+  })
+})
+
+describe('Ec2Watcher.normaliseBaseline — launchTime field', () => {
+  let watcher: Ec2Watcher
+
+  beforeEach(() => {
+    ;({ watcher } = makeWatcher())
+  })
+
+  it('parses launchTime when present', () => {
+    const result = watcher.normaliseBaseline({ state: 'running', launchTime: '2024-01-01T00:00:00Z' })
+    expect(result?.launchTime).toBe('2024-01-01T00:00:00Z')
+  })
+
+  it('omits launchTime when absent', () => {
+    const result = watcher.normaliseBaseline({ state: 'running' })
+    expect(result?.launchTime).toBeUndefined()
+  })
+})
+
+describe('Ec2Watcher.detectChanges — timeout path', () => {
+  it('returns timeout event when timeoutAt is reached', async () => {
+    const { watcher } = makeWatcher({ state: 'running' })
+    ;(watcher as unknown as { _now: () => number })._now = () => 2000
+
+    // Add a watch with a past timeoutAt via the watches map directly
+    const watchId = 'timed-watch'
+    const watchWithTimeout = {
+      watchId,
+      instanceId: 'i-abc123',
+      profile: 'p',
+      addedAt: 0,
+      lastPolledAt: undefined,
+      baseline: undefined,
+      terminal: false,
+      consecutiveErrors: 0,
+      timeoutAt: 1000, // in the past relative to _now=2000
+    }
+    ;(watcher as unknown as { watches: Map<string, unknown> }).watches.set(watchId, watchWithTimeout)
+    ;(watcher as unknown as { baselines: Map<string, unknown> }).baselines.set(watchId, { state: 'running' })
+
+    const result = await watcher.detectChanges(watchWithTimeout as never)
+    expect(result.events.length).toBeGreaterThan(0)
+    expect(result.observedChange).toBe(true)
+  })
+})
+
+// ---------------------------------------------------------------------------
+// Additional normaliseWatch and normaliseBaselineField coverage
+// ---------------------------------------------------------------------------
+
+describe('Ec2Watcher.normaliseWatch — full baseline with all optional fields', () => {
+  let watcher: Ec2Watcher
+
+  beforeEach(() => {
+    ;({ watcher } = makeWatcher())
+  })
+
+  it('normalises a watch whose baseline has all optional fields', () => {
+    const raw = {
+      watchId: 'w1',
+      instanceId: 'i-0a1b2c3d4e5f67890',
+      profile: 'dev',
+      region: 'us-east-1',
+      addedAt: 12345,
+      terminal: false,
+      consecutiveErrors: 0,
+      baseline: {
+        state: 'running',
+        nameTag: 'my-vm',
+        stateTransitionReason: 'User initiated',
+        availabilityZone: 'us-east-1a',
+        instanceType: 't3.micro',
+        launchTime: '2024-01-01T00:00:00Z',
+      },
+    }
+    const result = watcher.normaliseWatch(raw)
+    expect(result).not.toBeNull()
+    expect(result?.baseline?.nameTag).toBe('my-vm')
+    expect(result?.baseline?.stateTransitionReason).toBe('User initiated')
+    expect(result?.baseline?.availabilityZone).toBe('us-east-1a')
+    expect(result?.baseline?.instanceType).toBe('t3.micro')
+    expect(result?.baseline?.launchTime).toBe('2024-01-01T00:00:00Z')
+  })
+
+  it('normalises when baseline is an array (returns undefined baseline)', () => {
+    const raw = {
+      watchId: 'w1',
+      instanceId: 'i-0a1b2c3d4e5f67890',
+      profile: 'dev',
+      addedAt: 12345,
+      terminal: false,
+      consecutiveErrors: 0,
+      baseline: ['invalid'],
+    }
+    const result = watcher.normaliseWatch(raw)
+    expect(result).not.toBeNull()
+    expect(result?.baseline).toBeUndefined()
+  })
+
+  it('normalises when baseline is a string (returns undefined baseline)', () => {
+    const raw = {
+      watchId: 'w1',
+      instanceId: 'i-0a1b2c3d4e5f67890',
+      profile: 'dev',
+      addedAt: 12345,
+      terminal: false,
+      consecutiveErrors: 0,
+      baseline: 'not-an-object',
+    }
+    const result = watcher.normaliseWatch(raw)
+    expect(result).not.toBeNull()
+    expect(result?.baseline).toBeUndefined()
+  })
+})
+
+// ---------------------------------------------------------------------------
+// Additional branch coverage: visible callbacks + noteSchedulerSuccess
+// ---------------------------------------------------------------------------
+
+describe('browseOptions rowAction visible callbacks (lines 490, 503, 516)', () => {
+  it('visible(active) returns true; visible(terminal) returns false for all row actions', () => {
+    const { watcher } = makeWatcher()
+    const opts = (watcher as unknown as {
+      browseOptions(): { rowActions?: Array<{ id: string; visible?(w: Ec2Watch): boolean }> }
+    }).browseOptions()
+    const actions = opts.rowActions ?? []
+    const activeWatch = {
+      watchId: 'w', instanceId: 'i-0a1b2c3d4e5f67890', profile: 'p', region: undefined,
+      timeoutAt: undefined, addedAt: 0, lastPolledAt: undefined,
+      baseline: undefined, terminal: false, consecutiveErrors: 0,
+    }
+    const terminalWatch = { ...activeWatch, terminal: true }
+    for (const action of actions) {
+      if (action.visible) {
+        expect(action.visible(activeWatch)).toBe(true)
+        expect(action.visible(terminalWatch)).toBe(false)
+      }
+    }
+    // Ensure we actually exercised at least one visible callback
+    expect(actions.some((a) => a.visible !== undefined)).toBe(true)
+  })
+})
+
+describe('Ec2Watcher.noteSchedulerSuccess (line 545)', () => {
+  it('noteSchedulerSuccess calls noteSuccess on the per-watch scheduler', async () => {
+    const { watcher, client } = makeWatcher({ state: 'running' })
+    vi.mocked(configModule.loadConfig).mockReturnValue({})
+    // Add a watch so pollOnce has something to poll
+    await watcher.executeTool({
+      action: 'add',
+      instanceId: 'i-0a1b2c3d4e5f67890',
+      profile: 'default',
+    })
+    // pollOnce triggers pollWatch on all watches → calls noteSchedulerSuccess
+    await watcher.pollOnce()
+    // Verify the per-watch scheduler exists and has been updated
+    const schedulers = (watcher as unknown as { _watchSchedulers: Map<string, { intervalMs: number }> })._watchSchedulers
+    expect(schedulers.size).toBeGreaterThan(0)
+    expect(client.describeInstance).toHaveBeenCalled()
+  })
+})

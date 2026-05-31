@@ -2,6 +2,7 @@ import { beforeEach, describe, expect, it } from "vitest";
 import {
   BUILTIN_TOOL_NAMES,
   getAgentConfig,
+  getAllTypes,
   getAvailableTypes,
   getConfig,
   getDefaultAgentNames,
@@ -289,3 +290,13 @@ describe("agent type registry", () => {
     });
   });
 });
+
+  describe("getAllTypes", () => {
+    it("returns all types including disabled ones", () => {
+      const allTypes = getAllTypes();
+      expect(Array.isArray(allTypes)).toBe(true);
+      expect(allTypes.length).toBeGreaterThan(0);
+      // getAllTypes includes disabled, getAvailableTypes excludes disabled
+      expect(allTypes.length).toBeGreaterThanOrEqual(getAvailableTypes().length);
+    });
+  });

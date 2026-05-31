@@ -676,3 +676,103 @@ describe("plan-mode persistence across session restarts", () => {
 		expect(appendCalls[2]![1]).toMatchObject({ enabled: true });
 	});
 });
+
+describe("agent_end — Execute and Refine choices", () => {
+	async function setupAgentEndHandler(select: ReturnType<typeof vi.fn>, editorResult?: string) {
+		const pi = {
+			...makeFakePi(),
+			sendUserMessage: vi.fn(),
+		};
+		const ctx = {
+			...makeFakeCtx(),
+			ui: {
+				...makeFakeCtx().ui,
+				select,
+				editor: vi.fn(() => Promise.resolve(editorResult)),
+			},
+		};
+
+		planModeExtension(pi as never);
+
+		const commandCalls = pi.registerCommand.mock.calls as Array<
+			[string, { handler: (args: unknown, ctx: unknown) => Promise<void> }]
+		>;
+		const planHandler = commandCalls.find(([name]) => name === "plan")![1].handler;
+		await planHandler({}, ctx);
+
+		const onCalls = pi.on.mock.calls as Array<[string, (...args: unknown[]) => unknown]>;
+		const agentEndHandler = onCalls.find(([e]) => e === "agent_end")![1];
+		await agentEndHandler({}, ctx);
+
+		return { pi, ctx };
+	}
+
+	it("'Execute the plan' disables plan mode and sends execute message", async () => {
+		const select = vi.fn().mockResolvedValue("Execute the plan");
+		const { pi } = await setupAgentEndHandler(select);
+
+		expect(pi.sendMessage).toHaveBeenCalledWith(
+			expect.objectContaining({ customType: "plan-mode-execute" }),
+			expect.objectContaining({ triggerTurn: true }),
+		);
+	});
+
+	it("'Refine the plan' with non-empty text sends the refinement as a user message", async () => {
+		const select = vi.fn().mockResolvedValue("Refine the plan");
+		const { pi } = await setupAgentEndHandler(select, "Please add error handling.");
+
+		expect((pi as unknown as { sendUserMessage: ReturnType<typeof vi.fn> }).sendUserMessage)
+			.toHaveBeenCalledWith("Please add error handling.");
+	});
+
+	it("'Refine the plan' with empty/null text does not send a user message", async () => {
+		const select = vi.fn().mockResolvedValue("Refine the plan");
+		const { pi } = await setupAgentEndHandler(select, "");
+
+		expect((pi as unknown as { sendUserMessage: ReturnType<typeof vi.fn> }).sendUserMessage)
+			.not.toHaveBeenCalled();
+	});
+});
+
+describe("plan-mode — applyPlanModeConfig edge cases", () => {
+	it("does not call setModel when configured model is not in registry", async () => {
+		vi.mocked(readFileSync).mockReturnValue(
+			JSON.stringify({ model: "nonexistent-model" }),
+		);
+		const pi = makeFakePi();
+		const ctx = {
+			...makeFakeCtx(),
+			modelRegistry: {
+				getAll: vi.fn(() => [
+					{ id: "claude-3", provider: "anthropic" },
+				]),
+			},
+		};
+		planModeExtension(pi as never);
+
+		const commandCalls = pi.registerCommand.mock.calls as Array<
+			[string, { handler: (args: unknown, ctx: unknown) => Promise<void> }]
+		>;
+		const handler = commandCalls.find(([name]) => name === "plan")![1].handler;
+		await handler({}, ctx);
+
+		// Model not in registry → setModel not called
+		expect(pi.setModel).not.toHaveBeenCalled();
+	});
+
+	it("does nothing when config has no model and no thinkingLevel", async () => {
+		vi.mocked(readFileSync).mockReturnValue(JSON.stringify({}));
+		const pi = makeFakePi();
+		const ctx = makeFakeCtx();
+		planModeExtension(pi as never);
+
+		const commandCalls = pi.registerCommand.mock.calls as Array<
+			[string, { handler: (args: unknown, ctx: unknown) => Promise<void> }]
+		>;
+		const handler = commandCalls.find(([name]) => name === "plan")![1].handler;
+		await handler({}, ctx);
+
+		expect(pi.setModel).not.toHaveBeenCalled();
+		expect(pi.setThinkingLevel).not.toHaveBeenCalled();
+	});
+});

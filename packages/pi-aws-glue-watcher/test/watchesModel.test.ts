@@ -300,3 +300,97 @@ describe("buildRows — pollIntervalMs (#0013)", () => {
 		expect(rows[0]?.pollIntervalMs).toBeUndefined();
 	});
 });
+
+// ---------------------------------------------------------------------------
+// Additional branch coverage
+// ---------------------------------------------------------------------------
+
+describe("buildRows — workflow nodes optional fields", () => {
+	it("carries completedOn, numberOfWorkers, workerType, timeoutMinutes for workflow nodes", () => {
+		const rows = buildRows({
+			wf: workflow({
+				watchId: "wf",
+				name: "my-workflow",
+				baseline: {
+					state: "RUNNING",
+					totalActions: 1,
+					succeededActions: 0,
+					failedActions: 0,
+					runningActions: 1,
+					reportedFailedNodes: [],
+					nodes: [{
+						name: "step-1",
+						state: "RUNNING",
+						startedOn: "2024-01-01T00:00:00Z",
+						completedOn: "2024-01-01T01:00:00Z",
+						numberOfWorkers: 3,
+						workerType: "G.2X",
+						timeoutMinutes: 30,
+					}],
+				},
+			}),
+		});
+		expect(rows[0]).toMatchObject({
+			completedOn: "2024-01-01T01:00:00Z",
+			numberOfWorkers: 3,
+			workerType: "G.2X",
+			timeoutMinutes: 30,
+		});
+	});
+});
+
+describe("buildRows — job watch optional fields", () => {
+	it("carries region from the job watch", () => {
+		const w = job({ watchId: "a", name: "j", region: "us-west-2" });
+		const rows = buildRows({ a: w });
+		expect(rows[0]?.region).toBe("us-west-2");
+	});
+
+	it("carries errorMessage from job baseline", () => {
+		const w = job({
+			watchId: "a",
+			name: "j",
+			baseline: { state: "FAILED", errorMessage: "OOM error" },
+		});
+		const rows = buildRows({ a: w });
+		expect(rows[0]?.errorMessage).toBe("OOM error");
+	});
+
+	it("carries completedOn and timeoutMinutes from job baseline", () => {
+		const w = job({
+			watchId: "a",
+			name: "j",
+			baseline: {
+				state: "SUCCEEDED",
+				errorMessage: "",
+				completedOn: "2024-01-01T01:00:00Z",
+				timeoutMinutes: 60,
+			},
+		});
+		const rows = buildRows({ a: w });
+		expect(rows[0]?.completedOn).toBe("2024-01-01T01:00:00Z");
+		expect(rows[0]?.timeoutMinutes).toBe(60);
+	});
+});
+
+describe("formatRowLine — edge cases", () => {
+	it("shows '?' when state is empty", () => {
+		const row = buildRows({
+			a: job({ watchId: "a", name: "j", baseline: { state: "", errorMessage: "" } }),
+		})[0]!;
+		const line = formatRowLine(row, false, 20, plainTheme);
+		expect(line).toContain("?");
+	});
+
+	it("shows N×? when numberOfWorkers is present but workerType is absent", () => {
+		const row = buildRows({
+			a: job({
+				watchId: "a",
+				name: "j",
+				baseline: { state: "RUNNING", errorMessage: "", numberOfWorkers: 2 },
+			}),
+		})[0]!;
+		const line = formatRowLine(row, false, 20, plainTheme);
+		expect(line).toContain("2×?");
+	});
+});

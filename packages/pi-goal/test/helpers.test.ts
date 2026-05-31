@@ -192,6 +192,62 @@ describe("buildCheckerTranscript", () => {
 	});
 });
 
+describe("formatBlockedNotify — empty summary", () => {
+	it("omits the summary suffix when summary is empty string", () => {
+		const out = formatBlockedNotify(2, 1000, "");
+		expect(out).toMatch(/blocked/i);
+		// tail should be "", so line ends without ": <summary>"
+		expect(out).not.toMatch(/: \s*$/);
+	});
+
+	it("omits the summary suffix when summary is all whitespace", () => {
+		const out = formatBlockedNotify(1, 500, "   ");
+		expect(out).toMatch(/blocked/i);
+		expect(out).not.toContain(": ");
+	});
+});
+
+describe("formatBlockedStatus — empty summary", () => {
+	it("uses default fallback text when summary is empty string", () => {
+		const out = formatBlockedStatus("run the tests", "", 3, 5000);
+		expect(out).toContain("no blocker summary provided");
+		expect(out).toContain(`"run the tests"`);
+	});
+
+	it("uses default fallback text when summary is all whitespace", () => {
+		const out = formatBlockedStatus("build the app", "   ", 1, 200);
+		expect(out).toContain("no blocker summary provided");
+	});
+});
+
+describe("buildCheckerTranscript — null/primitive in content array", () => {
+	it("skips null elements inside an assistant content array", () => {
+		const out = buildCheckerTranscript(
+			[
+				{
+					role: "assistant",
+					content: [null, { type: "text", text: "hello" }] as unknown[],
+				},
+			],
+			GOAL_CONTEXT_MARKER,
+		);
+		expect(out).toContain("hello");
+	});
+
+	it("skips primitive (number) elements inside an assistant content array", () => {
+		const out = buildCheckerTranscript(
+			[
+				{
+					role: "assistant",
+					content: [42, { type: "text", text: "world" }] as unknown[],
+				},
+			],
+			GOAL_CONTEXT_MARKER,
+		);
+		expect(out).toContain("world");
+	});
+});
+
 describe("buildCheckerTranscript — system and unknown roles", () => {
 	it("labels system messages as SYSTEM:", () => {
 		const out = buildCheckerTranscript(

@@ -6,6 +6,16 @@ vi.mock("../src/config.js", () => ({
 	configFilePath: vi.fn(() => "/fake/agent/pi-aws-glue-watcher.json"),
 }));
 
+// Capture WatchesView constructor args so we can invoke the callbacks
+let capturedWatchesViewArgs: unknown[] | null = null;
+vi.mock("../src/ui/watches-view.js", () => ({
+	WatchesView: class MockWatchesView {
+		constructor(...args: unknown[]) {
+			capturedWatchesViewArgs = args;
+		}
+	},
+}));
+
 import { loadConfig, saveConfig } from "../src/config.js";
 import type { GlueClient } from "../src/glue-client.js";
 import {
@@ -241,3 +251,119 @@ describe("runGlueWatcherCommand — TUI menu", () => {
 		).resolves.not.toThrow();
 	});
 });
+
+	it("Browse factory invokes inner callbacks when called with mock arguments", async () => {
+		capturedWatchesViewArgs = null; // reset
+		vi.mocked(loadConfig).mockReturnValue({});
+		const rt = freshRuntime();
+		// Add a job watch and a workflow watch to test stop callbacks
+		rt.watches["job1"] = {
+			watchId: "job1", type: "job", name: "my-job", runId: "jr_1",
+			profile: "p", region: undefined, addedAt: Date.now(),
+			lastPolledAt: undefined, baseline: undefined, terminal: false, consecutiveErrors: 0,
+		};
+		rt.watches["wf1"] = {
+			watchId: "wf1", type: "workflow", name: "my-wf", runId: "wr_1",
+			profile: "p", region: undefined, addedAt: Date.now(),
+			lastPolledAt: undefined, baseline: undefined, terminal: false, consecutiveErrors: 0,
+		};
+
+		let capturedFactory: ((tui: unknown, theme: unknown, kb: unknown, done: (v: unknown) => void) => unknown) | undefined;
+		const custom = vi.fn((factory: typeof capturedFactory) => {
+			capturedFactory = factory;
+		});
+		const select = vi.fn()
+			.mockResolvedValueOnce(`${ITEM_BROWSE_PREFIX} (2)`)
+			.mockResolvedValueOnce(ITEM_CLOSE);
+
+		const ctx = {
+			hasUI: true,
+			ui: { hasUI: true, select, notify: vi.fn(), custom, theme: { fg: (_c: string, t: string) => t } },
+			sessionManager: { getEntries: () => [] },
+		};
+		const pi = makeFakePi();
+
+		const commandPromise = runGlueWatcherCommand(undefined, ctx, rt, pi, rt.client);
+		await new Promise(resolve => setTimeout(resolve, 0));
+
+		// Invoke factory to exercise the lambda callbacks
+		if (capturedFactory) {
+			const mockTheme = { fg: (_c: string, t: string) => t, bold: (t: string) => t };
+			const mockTui = { terminal: { columns: 80 }, requestRender: vi.fn() };
+			const done = vi.fn();
+			capturedFactory(mockTui, mockTheme, {}, done);
+
+			// If WatchesView was constructed, call its captured callbacks
+			if (capturedWatchesViewArgs) {
+				const args = capturedWatchesViewArgs as unknown[];
+				// arg[2] = requestRender (already bound from factory)
+				// arg[3] = onClose () => done(undefined)
+				// arg[4] = onStop async (row) => {...}
+				// arg[5] = onDelete (watchId) => {...}
+				// arg[6] = getMinIntervalMs () => minIntervalMs(rt)
+				// arg[7] = toggleDisplayMode () => toggleDisplayMode(rt, ctx)
+				// arg[8] = getDisplayMode () => rt.displayMode
+				const onStop = args[4] as (row: { watchId: string }) => Promise<void>;
+				const onDelete = args[5] as (watchId: string) => void;
+				const getMinIntervalMs = args[6] as () => number;
+				const toggleDisplayModeFn = args[7] as () => void;
+				const getDisplayMode = args[8] as () => string;
+
+				// Call getMinIntervalMs and getDisplayMode
+				getMinIntervalMs();
+				getDisplayMode();
+				toggleDisplayModeFn();
+
+				// Call onStop for job (exercises job path)
+				await onStop({ watchId: "job1" });
+				// Call onStop for workflow (exercises workflow path)
+				await onStop({ watchId: "wf1" });
+				// Call onStop with missing watch (no-op path)
+				await onStop({ watchId: "no-such" });
+				// Call onDelete
+				onDelete("job1");
+			}
+
+			done(undefined);
+		}
+
+		await commandPromise;
+	});
+
+	it("Paused toggle from paused→active with active watches starts polling", async () => {
+		vi.mocked(loadConfig).mockReturnValue({});
+		const rt = freshRuntime();
+		rt.paused = true;
+		// Add an active watch
+		rt.watches["ww1"] = {
+			watchId: "ww1", type: "job", name: "my-job", runId: "jr_1",
+			profile: "p", region: undefined, addedAt: Date.now(),
+			lastPolledAt: undefined, baseline: undefined, terminal: false, consecutiveErrors: 0,
+		};
+		const select = vi.fn()
+			.mockResolvedValueOnce(`${ITEM_PAUSED_PREFIX} on`)
+			.mockResolvedValueOnce(ITEM_CLOSE);
+		const notify = vi.fn();
+		const pi = makeFakePi();
+		await runGlueWatcherCommand(undefined, makeMenuCtx(select, notify), rt, pi, rt.client);
+		// paused was true → toggled to false → should have tried to start polling
+		expect(rt.paused).toBe(false);
+		expect(notify).toHaveBeenCalledWith(expect.stringMatching(/resumed/), "info");
+	});
+
+	it("Browse warns when ctx.ui.custom is unavailable", async () => {
+		vi.mocked(loadConfig).mockReturnValue({});
+		const rt = freshRuntime();
+		const notify = vi.fn();
+		const select = vi.fn()
+			.mockResolvedValueOnce(`${ITEM_BROWSE_PREFIX} (0)`)
+			.mockResolvedValueOnce(ITEM_CLOSE);
+		const ctx = {
+			hasUI: true,
+			ui: { hasUI: true, select, notify, theme: { fg: (_c: string, t: string) => t } },
+			sessionManager: { getEntries: () => [] },
+		};
+		const pi = makeFakePi();
+		await runGlueWatcherCommand(undefined, ctx, rt, pi, rt.client);
+		expect(notify).toHaveBeenCalledWith(expect.stringMatching(/browse requires/), "warning");
+	});

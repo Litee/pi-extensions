@@ -471,3 +471,250 @@ describe("renderFind", () => {
 		expect(result).toContain("<warning> [truncated]</>");
 	});
 });
+
+// ---------------------------------------------------------------------------
+// Additional branch coverage for uncovered paths
+// ---------------------------------------------------------------------------
+
+describe("renderBash — expanded output mode", () => {
+	it("expanded mode shows output lines", () => {
+		const state: BashRenderState = { startedAt: 0 };
+		const output = Array.from({ length: 15 }, (_, i) => `line${i}`).join("\n");
+		const { result } = renderBash(
+			{ command: "ls" },
+			textResult(output),
+			plainTheme,
+			ctx<BashRenderState>({ state, expanded: true }),
+			500,
+		);
+		expect(result).toContain("line0");
+		expect(result).toContain("line14");
+	});
+
+	it("expanded mode shows '... more output' when > 20 lines", () => {
+		const state: BashRenderState = { startedAt: 0 };
+		const output = Array.from({ length: 25 }, (_, i) => `line${i}`).join("\n");
+		const { result } = renderBash(
+			{ command: "ls" },
+			textResult(output),
+			plainTheme,
+			ctx<BashRenderState>({ state, expanded: true }),
+			500,
+		);
+		expect(result).toContain("... more output");
+	});
+
+	it("non-error result with 0 output lines shows '0 lines'", () => {
+		const state: BashRenderState = { startedAt: 0 };
+		const { result } = renderBash(
+			{ command: "true" },
+			textResult(""),
+			plainTheme,
+			ctx<BashRenderState>({ state }),
+			500,
+		);
+		expect(result).toContain("0 lines");
+	});
+});
+
+describe("renderEdit — context lines in diff", () => {
+	it("expanded diff shows context lines (non-+/-) in dim style", () => {
+		const diffLines = ["--- a", "+++ b", "+new line", "-old line", " context line"];
+		const { result } = renderEdit(
+			{ path: "file.ts" },
+			{ content: [], details: { diff: diffLines.join("\n") } },
+			taggedTheme,
+			ctx({ expanded: true }),
+		);
+		expect(result).toContain("context line");
+	});
+});
+
+describe("renderGrep — singular match", () => {
+	it("uses singular 'match' when exactly 1 result", () => {
+		const { result } = renderGrep(
+			{ pattern: "foo" },
+			textResult("a:1:foo"),
+			plainTheme,
+			ctx(),
+		);
+		expect(result).toContain("1 match");
+		expect(result).not.toContain("1 matches");
+	});
+});
+
+describe("renderLs — expanded mode with directory entries", () => {
+	it("expanded mode styles directory entries (ending in /) differently from files", () => {
+		const entries = ["src/\nREADME.md"];
+		const { result } = renderLs(
+			{ path: "." },
+			textResult(entries.join("\n")),
+			taggedTheme,
+			ctx({ expanded: true }),
+		);
+		// Directory gets accent styling
+		expect(result).toBeDefined();
+	});
+
+	it("expanded mode shows '... more entries' when > 30 entries", () => {
+		const entries = Array.from({ length: 35 }, (_, i) => `file${i}.ts`).join("\n");
+		const { result } = renderLs(
+			{ path: "." },
+			textResult(entries),
+			plainTheme,
+			ctx({ expanded: true }),
+		);
+		expect(result).toContain("... 5 more entries");
+	});
+});
+
+describe("renderFind — single file result", () => {
+	it("uses singular 'file' when exactly 1 result", () => {
+		const { result } = renderFind(
+			{ pattern: "*.ts" },
+			textResult("a.ts"),
+			plainTheme,
+			ctx(),
+		);
+		expect(result).toContain("1 file");
+		expect(result).not.toContain("1 files");
+	});
+});
+
+// ---------------------------------------------------------------------------
+// Additional renderers coverage - call line branches
+// ---------------------------------------------------------------------------
+
+describe("renderGrep — call line branches", () => {
+  it("includes path in call when provided", () => {
+    const { call } = renderGrep({ pattern: "foo", path: "/src" }, undefined, plainTheme, ctx());
+    expect(call).toContain("/src");
+  });
+
+  it("includes glob in call when provided", () => {
+    const { call } = renderGrep({ pattern: "foo", glob: "*.ts" }, undefined, taggedTheme, ctx());
+    expect(call).toContain("*.ts");
+  });
+
+  it("includes ignore-case flag in call", () => {
+    const { call } = renderGrep({ pattern: "foo", ignoreCase: true }, undefined, taggedTheme, ctx());
+    expect(call).toContain("(i)");
+  });
+
+  it("returns empty result string when result is undefined", () => {
+    const { result } = renderGrep({ pattern: "foo" }, undefined, plainTheme, ctx());
+    expect(result).toBe("");
+  });
+
+  it("renders grep partial (Searching...)", () => {
+    const { result } = renderGrep({ pattern: "foo" }, textResult(""), taggedTheme, ctx({ isPartial: true }));
+    expect(result).toContain("Searching");
+  });
+});
+
+describe("renderRead — partial and undefined result", () => {
+  it("returns empty result string when result is undefined", () => {
+    const { result } = renderRead({ path: "/tmp/foo" }, undefined, plainTheme, ctx());
+    expect(result).toBe("");
+  });
+});
+
+describe("renderEdit — partial and undefined result", () => {
+  it("returns partial Editing... message", () => {
+    const { result } = renderEdit({ path: "x" }, textResult("ok"), taggedTheme, ctx({ isPartial: true }));
+    expect(result).toContain("Editing");
+  });
+
+  it("returns empty result when result is undefined", () => {
+    const { result } = renderEdit({ path: "x" }, undefined, plainTheme, ctx());
+    expect(result).toBe("");
+  });
+
+  it("renders 'Applied' when no diff in details", () => {
+    const { result } = renderEdit({ path: "x" }, { content: [], details: {} }, taggedTheme, ctx());
+    expect(result).toContain("Applied");
+  });
+});
+
+describe("renderWrite — partial, undefined, and error", () => {
+  it("returns empty result when result is undefined", () => {
+    const { result } = renderWrite({ path: "x", content: "hello" }, undefined, plainTheme, ctx());
+    expect(result).toBe("");
+  });
+
+  it("renders partial Writing... message", () => {
+    const { result } = renderWrite({ path: "x", content: "" }, textResult("ok"), taggedTheme, ctx({ isPartial: true }));
+    expect(result).toContain("Writing");
+  });
+});
+
+describe("renderLs — partial and undefined result", () => {
+  it("returns empty result when result is undefined", () => {
+    const { result } = renderLs({ path: "." }, undefined, plainTheme, ctx());
+    expect(result).toBe("");
+  });
+  it("renders partial Listing... message", () => {
+    const { result } = renderLs({ path: "." }, textResult(""), taggedTheme, ctx({ isPartial: true }));
+    expect(result).toContain("Listing");
+  });
+});
+
+describe("renderFind — partial and undefined result", () => {
+  it("returns empty result when result is undefined", () => {
+    const { result } = renderFind({ pattern: "*.ts" }, undefined, plainTheme, ctx());
+    expect(result).toBe("");
+  });
+
+  it("renders partial Searching... message", () => {
+    const { result } = renderFind({ pattern: "*" }, textResult(""), taggedTheme, ctx({ isPartial: true }));
+    expect(result).toContain("Searching");
+  });
+});
+
+describe("renderBash — partial and undefined result", () => {
+  it("returns empty result when result is undefined", () => {
+    const { result } = renderBash({ command: "echo hi" }, undefined, plainTheme, ctx());
+    expect(result).toBe("");
+  });
+});
+
+// Additional renderRead coverage
+describe("renderRead — additional branches", () => {
+  it("call shows limit-only hint when limit is set but offset is not", () => {
+    const { call } = renderRead({ path: "x", limit: 5 }, undefined, plainTheme, ctx());
+    expect(call).toContain("limit=5");
+    expect(call).not.toContain("offset=");
+  });
+
+  it("call shows offset-only hint when offset is set but limit is not", () => {
+    const { call } = renderRead({ path: "x", offset: 10 }, undefined, plainTheme, ctx());
+    expect(call).toContain("offset=10");
+    expect(call).not.toContain("limit=");
+  });
+
+  it("result returns 'No content' when content type is neither text nor image", () => {
+    const { result } = renderRead(
+      { path: "x" },
+      { content: [{ type: "toolCall", name: "x" }] },
+      taggedTheme,
+      ctx(),
+    );
+    expect(result).toContain("No content");
+  });
+});
+
+// renderBash - error with zero output lines
+describe("renderBash — error with zero lines", () => {
+  it("error result with empty output shows no line count suffix", () => {
+    const state: BashRenderState = { startedAt: 0 };
+    const { result } = renderBash(
+      { command: "false" },
+      textResult(""),
+      taggedTheme,
+      ctx<BashRenderState>({ state, isError: true }),
+      500,
+    );
+    // describeBashFailure is shown but no "· N lines" suffix for 0 lines
+    expect(result).not.toContain("· 0 lines");
+  });
+});

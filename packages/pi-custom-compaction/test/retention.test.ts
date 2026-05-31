@@ -297,3 +297,64 @@ describe("resolveSummaryRetention — edge cases", () => {
 		assert.match(result.fallbackReason ?? "", /leaves no room/);
 	});
 });
+
+// ---------------------------------------------------------------------------
+// Additional coverage for uncovered branches
+// ---------------------------------------------------------------------------
+
+describe("resolveSummaryRetention — additional coverage", () => {
+	it("returns fallback when percent mode has undefined summaryModelContextWindow (but defined sessionContextWindow)", () => {
+		const result = resolveSummaryRetention(
+			{ mode: "percent", value: 20 },
+			{ sessionContextWindow: 100000, summaryModelContextWindow: undefined, reserveTokens: 0 },
+		);
+		assert.match(result.fallbackReason ?? "", /needs both session and summary model context windows/);
+	});
+
+	it("tokens mode: resolves when value fits within budget", () => {
+		const result = resolveSummaryRetention(
+			{ mode: "tokens", value: 10000 },
+			{ sessionContextWindow: 100000, summaryModelContextWindow: 100000, reserveTokens: 5000 },
+		);
+		assert.equal(result.fallbackReason, undefined);
+		assert.equal(result.resolution?.keepRecentTokens, 10000);
+	});
+
+	it("tokens mode with no context window resolves without bounds check", () => {
+		const result = resolveSummaryRetention(
+			{ mode: "tokens", value: 50000 },
+			{ sessionContextWindow: undefined, summaryModelContextWindow: undefined, reserveTokens: 0 },
+		);
+		assert.equal(result.fallbackReason, undefined);
+		assert.equal(result.resolution?.keepRecentTokens, 50000);
+	});
+});
+
+// ---------------------------------------------------------------------------
+// Additional rebuildPreparationWithKeepRecentTokens coverage
+// ---------------------------------------------------------------------------
+
+describe("rebuildPreparationWithKeepRecentTokens — additional paths", () => {
+	it("handles previousCompaction where firstKeptEntryId is not in branch (uses prevCompactionIndex+1)", () => {
+		// Create entries with a compaction that has a firstKeptEntryId not in the branch
+		const entries = [
+			...createBranchEntries(),
+			{
+				type: "compaction" as const,
+				id: "comp-prev",
+				parentId: "e1",
+				timestamp: "2026-04-01T00:00:00.000Z",
+				summary: "old summary",
+				firstKeptEntryId: "nonexistent-entry-id", // not in branch
+				tokensBefore: 50,
+				fromHook: false,
+			},
+			...createBranchEntries().map((e) => ({ ...e, id: `new-${e.id}`, parentId: "comp-prev" })),
+		] as import("@earendil-works/pi-coding-agent").SessionEntry[];
+
+		// Use large keepRecentTokens so we get a valid cut point
+		const result = rebuildPreparationWithKeepRecentTokens(entries, createPreparation(), 100000);
+		// Should not fallback - fallbackReason should be undefined
+		assert.equal(result.fallbackReason, undefined, `Unexpected fallback: ${result.fallbackReason}`);
+	});
+});

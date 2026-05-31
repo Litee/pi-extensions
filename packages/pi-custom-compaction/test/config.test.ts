@@ -61,6 +61,4 @@ describe("readProjectPolicyPatch", () => {
 			error: `Invalid ${configPath}: Invalid enabled: expected literal true or false`,
 		});
 	});
-
-
 });

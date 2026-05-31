@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import { existsSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { homedir, tmpdir } from "node:os";
 import { join, resolve } from "node:path";
-import { afterEach, beforeEach, describe, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { DEFAULT_POLICY, type CompactionPolicy } from "../src/policy/types.js";
 import { buildSummaryPrompt, discoverTemplate, resolveSummarySettings } from "../src/summary/template.js";
 
@@ -158,5 +158,70 @@ describe("buildSummaryPrompt", () => {
 	it("includes preservation instruction in the prompt", () => {
 		const result = buildSummaryPrompt("BASE_TEMPLATE", undefined, undefined, undefined, "Preserve exact errors.");
 		assert.match(result, /Preserve exact errors\./);
+	});
+});
+
+// ---------------------------------------------------------------------------
+// Additional branch coverage
+// ---------------------------------------------------------------------------
+describe("discoverTemplate — updateTemplate error path", () => {
+	it("sets updateFallbackReason when explicit updateTemplate path does not exist", () => {
+		const t = mkdtempSync(join(tmpdir(), "template-update-err-"));
+		const templatePath = join(t, "initial.md");
+		writeFileSync(templatePath, "Initial template", "utf8");
+		const missingUpdatePath = join(t, "nonexistent-update.md");
+
+		const result = discoverTemplate(t, undefined, {
+			template: templatePath,
+			updateTemplate: missingUpdatePath,
+		});
+		assert.equal(result.template, "Initial template");
+		assert.ok(result.updateFallbackReason?.includes("not found"), `expected 'not found' in: ${result.updateFallbackReason}`);
+		assert.equal(result.updateResolvedPath, missingUpdatePath);
+	});
+});
+
+describe("buildSummaryPrompt — additional branches", () => {
+	it("uses base template when previousSummary exists but no updateTemplate", () => {
+		const result = buildSummaryPrompt("BASE_TEMPLATE", undefined, "previous summary", undefined, "");
+		// With previousSummary but no updateTemplate → uses base template
+		expect(result).toContain("BASE_TEMPLATE");
+		expect(result).toContain("previous-summary");
+	});
+
+	it("does not append preservationInstruction when it is empty string", () => {
+		const result = buildSummaryPrompt("TEMPLATE", undefined, undefined, undefined, "");
+		// Empty preservationInstruction → no extra line appended
+		expect(result).toContain("TEMPLATE");
+		expect(result).not.toContain("undefined");
+	});
+});
+
+describe("discoverTemplate — findTemplate path with error (empty update template)", () => {
+	it("sets updateFallbackReason when auto-found update template is empty", () => {
+		const t = mkdtempSync(join(tmpdir(), "template-empty-update-"));
+		// Create the main template and an EMPTY update template
+		const piDir = join(t, ".pi");
+		mkdirSync(piDir, { recursive: true });
+		writeFileSync(join(piDir, "compaction-template.md"), "Main template content", "utf8");
+		writeFileSync(join(piDir, "compaction-template-update.md"), "", "utf8"); // empty!
+
+		const result = discoverTemplate(t, undefined);
+		assert.equal(result.template, "Main template content");
+		assert.ok(result.updateFallbackReason?.includes("empty"), `Expected 'empty' in: ${result.updateFallbackReason}`);
+		assert.equal(result.updateResolvedPath, join(piDir, "compaction-template-update.md"));
+
+		rmSync(t, { recursive: true, force: true });
+	});
+});
+
+describe("discoverTemplate — tilde path expansion in explicit template", () => {
+	it("expands ~/ prefix to homedir for explicit template path", () => {
+		// We can only test this non-destructively by using a real path that doesn't exist
+		// to verify the expansion logic runs (it will return error for missing file).
+		const result = discoverTemplate("/tmp", undefined, { template: "~/nonexistent-test-path.md" });
+		// Should have resolved the path (even if file not found)
+		assert.ok(result.resolvedPath?.includes(homedir()), `Expected homedir expansion, got: ${result.resolvedPath}`);
+		assert.ok(result.fallbackReason?.includes("not found") ?? result.fallbackReason !== undefined);
 	});
 });
