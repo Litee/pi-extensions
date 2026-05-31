@@ -70,7 +70,7 @@ export default defineConfig({
 				// of strict-tsconfig patches) from the upstream pi-mono example.
 				// All pure logic (allow/deny lists, plan extraction, [DONE:n]
 				// tracking) lives in utils.ts and is covered there.
-// pi-btw/src/index.ts is a copy of dbachelder/pi-btw's extensions/btw.ts
+				// pi-btw/src/index.ts is a copy of dbachelder/pi-btw's extensions/btw.ts
 				// (MIT, © Dan Bachelder). The file is end-to-end TUI wiring:
 				// overlay rendering, slash-command dispatch, focus/keybinding
 				// handling, sub-session lifecycle orchestration, and error toasts.
@@ -169,8 +169,8 @@ export default defineConfig({
 			thresholds: {
 				lines: 90,
 				statements: 90,
-				functions: 86,
-				branches: 82,
+				functions: 90,
+				branches: 90,
 			},
 		},
 	},
