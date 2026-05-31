@@ -1,9 +1,11 @@
+
 import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { homedir } from "node:os";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 
-import { readDefaultsSnapshot, restoreDefaults } from "../src/settings-patch.js";
+import { readDefaultsSnapshot, restoreDefaults, resolveAgentDir } from "../src/settings-patch.js";
 
 let agentDir: string;
 
@@ -112,5 +114,32 @@ describe("restoreDefaults", () => {
 	it("does not throw when settings.json is malformed JSON", () => {
 		writeFileSync(join(agentDir, "settings.json"), "{broken", "utf-8");
 		expect(() => restoreDefaults(agentDir, { defaultModel: "x" })).not.toThrow();
+	});
+});
+
+describe("resolveAgentDir", () => {
+	const original = process.env["PI_CODING_AGENT_DIR"];
+
+	afterEach(() => {
+		if (original === undefined) {
+			delete process.env["PI_CODING_AGENT_DIR"];
+		} else {
+			process.env["PI_CODING_AGENT_DIR"] = original;
+		}
+	});
+
+	it("returns homedir() when PI_CODING_AGENT_DIR is '~'", () => {
+		process.env["PI_CODING_AGENT_DIR"] = "~";
+		expect(resolveAgentDir()).toBe(homedir());
+	});
+
+	it("expands ~/ prefix using homedir()", () => {
+		process.env["PI_CODING_AGENT_DIR"] = "~/custom-dir";
+		expect(resolveAgentDir()).toBe(homedir() + "/custom-dir");
+	});
+
+	it("returns the env var verbatim when it is an absolute path", () => {
+		process.env["PI_CODING_AGENT_DIR"] = "/tmp/custom-agent-dir";
+		expect(resolveAgentDir()).toBe("/tmp/custom-agent-dir");
 	});
 });

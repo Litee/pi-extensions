@@ -191,3 +191,22 @@ describe("buildCheckerTranscript", () => {
 		expect(out).toContain("real");
 	});
 });
+
+describe("buildCheckerTranscript — system and unknown roles", () => {
+	it("labels system messages as SYSTEM:", () => {
+		const out = buildCheckerTranscript(
+			[{ role: "system", content: "system instruction" }],
+			"",
+		);
+		expect(out).toContain("SYSTEM:");
+		expect(out).toContain("system instruction");
+	});
+
+	it("labels unknown roles as MESSAGE:", () => {
+		const out = buildCheckerTranscript(
+			[{ role: "tool", content: "tool output" }],
+			"",
+		);
+		expect(out).toContain("MESSAGE:");
+	});
+});

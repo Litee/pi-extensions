@@ -113,6 +113,58 @@ export default defineConfig({
 				// pi-coding-agent runtime. The pure logic (checker, helpers,
 				// prompt, state) is 100% covered by the other four test files.
 				"**/pi-goal/src/index.ts",
+				// pi-agent-introspection/src/index.ts wires two lifecycle calls:
+				// registerSessionDebugInfoTool(pi) and registerCommandsTool(pi)
+				// (both fully covered in tool.ts / commandsTool.ts), then filters
+				// the active-tool set on session_start via pi.setActiveTools. Pure
+				// lifecycle glue — no extractable logic; requires a live runtime.
+				"**/pi-agent-introspection/src/index.ts",
+				// pi-aws-ec2-watcher/src/index.ts is a thin factory + re-export barrel.
+				// createExtensionWithClient() creates an Ec2Watcher and calls .register(pi);
+				// all Ec2Watcher logic is covered in watcher.ts / poller.ts tests.
+				// The wiring itself requires a live pi runtime.
+				"**/pi-aws-ec2-watcher/src/index.ts",
+				// pi-file-system-watcher/src/fs-client.ts is a one-line factory:
+				// createFsClient() returns { snapshot: snapshotPath }. snapshotPath
+				// is fully covered in poller.ts tests via the injected FsClient.
+				"**/pi-file-system-watcher/src/fs-client.ts",
+				// pi-aws-s3-watcher/src/index.ts is a thin factory + re-export barrel.
+				// createExtensionWithClient() creates an S3Watcher and calls .register(pi);
+				// all S3Watcher logic is covered in watcher.ts / poller.ts tests.
+				// The wiring itself requires a live pi runtime.
+				"**/pi-aws-s3-watcher/src/index.ts",
+				// pi-aws-glue-watcher/src/index.ts is session lifecycle wiring:
+				// pi.on(session_start/turn_end/session_shutdown), pi.registerMessageRenderer,
+				// and pi.registerCommand. All pure logic (toolAction, command, runtime,
+				// poller, persistence, format) is covered in the sibling module tests.
+				// Exercising the lifecycle hooks requires a live pi-coding-agent runtime.
+				"**/pi-aws-glue-watcher/src/index.ts",
+				// pi-subagents/src/index.ts is the tool/command registration shell.
+				// It registers three pi tools (Agent, get_subagent_result, steer_subagent)
+				// and one /agents command; all execute() bodies orchestrate via the
+				// fully-tested sub-modules (agent-runner, agent-manager, schedule, etc.).
+				// The /agents TUI menus (showAgentsMenu, showAllAgentsList, showRunningAgents,
+				// ejectAgent, disableAgent, enableAgent, showCreateWizard, showSettings)
+				// call ctx.ui.select/notify/confirm/editor which require a live pi-tui runtime.
+				"**/pi-subagents/src/index.ts",
+				// pi-subagents/src/ui/conversation-viewer.ts is a TUI Component class
+				// that subscribes to AgentSession events and renders a scrollable
+				// conversation overlay. All rendering paths use pi-tui primitives
+				// (truncateToWidth, wrapTextWithAnsi, matchesKey) and require a live
+				// session + TUI loop to exercise.
+				"**/pi-subagents/src/ui/conversation-viewer.ts",
+				// pi-subagents/src/ui/schedule-menu.ts is a TUI command handler:
+				// showSchedulesMenu() calls ctx.ui.select/notify/confirm and requires
+				// a live pi-tui runtime. The internal helpers (relTime, statusIcon,
+				// formatJob, formatDetails) are private (not exported) and not
+				// independently testable without modifying the source.
+				"**/pi-subagents/src/ui/schedule-menu.ts",
+				// pi-watcher-core/src/watcher-widget.ts: the exported pure helpers
+				// (formatWidgetHeader, formatWidgetFooter) are 100% covered in
+				// watcher-widget.test.ts. The WatcherWidgetImpl class wires pi.events,
+				// pi.setWidget, and a 30-second refresh timer; exercising those paths
+				// requires a live pi-coding-agent runtime.
+				"**/pi-watcher-core/src/watcher-widget.ts",
 				// pi-custom-compaction/src/index.ts is the top-level wiring entry
 				// point: it creates the runtime services then calls registerCommands
 				// and registerEvents. All three callees are tested or excluded

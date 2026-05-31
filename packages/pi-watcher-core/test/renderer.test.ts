@@ -1,5 +1,9 @@
-import { describe, expect, it, vi } from "vitest";
+import { beforeAll, describe, expect, it, vi } from "vitest";
+import { initTheme } from "@earendil-works/pi-coding-agent";
 import { collapsePreview, toolText, createWatcherMessageRenderer } from "../src/renderer.js";
+
+// keyHint() requires initTheme() to have been called once before rendering.
+beforeAll(() => { initTheme(undefined); });
 
 describe("toolText", () => {
 	it("wraps string as content array", () => {
@@ -123,5 +127,42 @@ describe("createWatcherMessageRenderer — expandedTextOverride", () => {
 		const renderer = createWatcherMessageRenderer("test-watcher", { expandedTextOverride: override });
 		renderer({ content: "original content" }, { expanded: false }, fakeTheme as never);
 		expect(override).not.toHaveBeenCalled();
+	});
+});
+
+describe("createWatcherMessageRenderer — extractText + hint paths", () => {
+	it("extracts text from array content in expanded mode", () => {
+		markdownCalls.length = 0;
+		const renderer = createWatcherMessageRenderer("array-watcher");
+		const arrayContent = [
+			{ type: "text", text: "first line" },
+			{ type: "text", text: "second line" },
+			null,                  // filtered out (not object)
+			{ type: "text" },     // no text property → empty string contribution
+		];
+		renderer({ content: arrayContent }, { expanded: true }, fakeTheme as never);
+		// extractText joins the text values with "\n"
+		expect(markdownCalls.at(-1)).toBe("first line\nsecond line\n");
+	});
+
+	it("collapsed: appends keyHint when preview ends with ellipsis (>3 non-empty lines)", () => {
+		// This exercises the `hint = preview.endsWith("…") ? ... : ""` true-branch.
+		const renderer = createWatcherMessageRenderer("hint-watcher");
+		// Should not throw; the hint branch appends a keyHint via theme.fg("dim", ...)
+		expect(() => {
+			renderer(
+				{ content: "line1\nline2\nline3\nline4\nline5" },
+				{ expanded: false },
+				fakeTheme as never,
+			);
+		}).not.toThrow();
+	});
+
+	it("handles non-string non-array content gracefully (extractText returns empty)", () => {
+		markdownCalls.length = 0;
+		const renderer = createWatcherMessageRenderer("fallback-watcher");
+		// content is a plain object — extractText falls through to `return ""`
+		renderer({ content: { unexpected: true } }, { expanded: true }, fakeTheme as never);
+		expect(markdownCalls.at(-1)).toBe("");
 	});
 });

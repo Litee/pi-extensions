@@ -298,4 +298,28 @@ describe("scanIssueFiles", () => {
 		warn.mockRestore();
 		expect(snap[join(skillDir, "0011-bad.json")]).toBeUndefined();
 	});
+
+	// -- stat/read failure path (lines 80-87) --
+
+	it("swallows a throwing onError callback in the stat/read failure path", () => {
+		const skillDir = join(dbRoot, "skill-throwing-onerror");
+		mkdirSync(skillDir, { recursive: true });
+		const filePath = join(skillDir, "0021-throwing.json");
+
+		// First scan to populate previous
+		writeFileSync(filePath, JSON.stringify({ id: "0021", status: "open", title: "t", skill: "s" }), "utf8");
+		const first = scanIssueFiles(dbRoot);
+
+		// Delete file so next stat throws
+		rmSync(filePath);
+
+		// onError itself throws — scanner must swallow it and not re-throw
+		const throwingCallback = (_fp: string, _err: unknown) => {
+			throw new Error("onError intentionally threw");
+		};
+
+		expect(() => {
+			scanIssueFiles(dbRoot, first, throwingCallback);
+		}).not.toThrow();
+	});
 });

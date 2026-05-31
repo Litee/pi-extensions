@@ -140,3 +140,160 @@ describe("rebuildPreparationWithKeepRecentTokens", () => {
 		assert.deepEqual([...(result.preparation?.fileOps.read ?? [])], ["src/a.ts"]);
 	});
 });
+
+describe("rebuildPreparationWithKeepRecentTokens — guard clauses", () => {
+	it("returns fallback when keepRecentTokens is negative", () => {
+		const result = rebuildPreparationWithKeepRecentTokens(createBranchEntries(), createPreparation(), -1);
+		assert.match(result.fallbackReason ?? "", /resolved invalid keepRecentTokens/);
+		assert.equal(result.preparation, undefined);
+	});
+
+	it("returns fallback when keepRecentTokens is NaN", () => {
+		const result = rebuildPreparationWithKeepRecentTokens(createBranchEntries(), createPreparation(), NaN);
+		assert.match(result.fallbackReason ?? "", /resolved invalid keepRecentTokens/);
+	});
+
+	it("returns fallback when branchEntries is empty", () => {
+		const result = rebuildPreparationWithKeepRecentTokens([], createPreparation(), 1);
+		assert.match(result.fallbackReason ?? "", /branch is empty/);
+	});
+
+	it("returns fallback when last entry is a compaction", () => {
+		const entries = [
+			...createBranchEntries(),
+			{
+				type: "compaction" as const,
+				id: "comp-1",
+				parentId: "e4",
+				timestamp: "2026-04-04T00:00:04.000Z",
+				summary: "previous summary",
+				firstKeptEntryId: "e3",
+				tokensBefore: 100,
+				fromHook: false,
+			},
+		] as import("@earendil-works/pi-coding-agent").SessionEntry[];
+		const result = rebuildPreparationWithKeepRecentTokens(entries, createPreparation(), 1);
+		assert.match(result.fallbackReason ?? "", /already compacted/);
+	});
+});
+
+describe("rebuildPreparationWithKeepRecentTokens — with previous compaction", () => {
+	function createEntriesWithCompaction(): import("@earendil-works/pi-coding-agent").SessionEntry[] {
+		return [
+			{
+				type: "message",
+				id: "e0",
+				parentId: null,
+				timestamp: "2026-04-04T00:00:00.000Z",
+				message: { role: "user", content: "A".repeat(120), timestamp: Date.now() },
+			},
+			{
+				type: "compaction",
+				id: "comp-1",
+				parentId: "e0",
+				timestamp: "2026-04-04T00:00:01.000Z",
+				summary: "previous summary",
+				firstKeptEntryId: "e2",
+				tokensBefore: 200,
+				fromHook: false,
+			} as unknown as import("@earendil-works/pi-coding-agent").SessionEntry,
+			{
+				type: "message",
+				id: "e2",
+				parentId: "comp-1",
+				timestamp: "2026-04-04T00:00:02.000Z",
+				message: {
+					role: "assistant",
+					provider: "openai",
+					model: "gpt-test",
+					stopReason: "stop",
+					content: [
+						{ type: "text", text: "done" },
+						{ type: "toolCall", id: "tc-w", name: "write", arguments: { path: "out.ts" } },
+						{ type: "toolCall", id: "tc-e", name: "edit", arguments: { path: "main.ts" } },
+					],
+					timestamp: Date.now(),
+				},
+			},
+			{
+				type: "message",
+				id: "e3",
+				parentId: "e2",
+				timestamp: "2026-04-04T00:00:03.000Z",
+				message: { role: "user", content: "B".repeat(120), timestamp: Date.now() },
+			},
+			{
+				type: "message",
+				id: "e4",
+				parentId: "e3",
+				timestamp: "2026-04-04T00:00:04.000Z",
+				message: {
+					role: "assistant",
+					provider: "openai",
+					model: "gpt-test",
+					stopReason: "stop",
+					content: [{ type: "text", text: "result" }],
+					timestamp: Date.now(),
+				},
+			},
+		] as import("@earendil-works/pi-coding-agent").SessionEntry[];
+	}
+
+	it("uses previousSummary from previous compaction entry", () => {
+		const result = rebuildPreparationWithKeepRecentTokens(
+			createEntriesWithCompaction(),
+			createPreparation(),
+			1,
+		);
+		assert.equal(result.fallbackReason, undefined);
+		assert.equal(result.preparation?.previousSummary, "previous summary");
+	});
+
+	it("collects write and edit file ops from messages after previous compaction", () => {
+		const result = rebuildPreparationWithKeepRecentTokens(
+			createEntriesWithCompaction(),
+			createPreparation(),
+			1,
+		);
+		assert.equal(result.fallbackReason, undefined);
+		// write tool → written set
+		assert.ok(result.preparation?.fileOps.written.has("out.ts"), "expected out.ts in written");
+		// edit tool → edited set
+		assert.ok(result.preparation?.fileOps.edited.has("main.ts"), "expected main.ts in edited");
+	});
+
+	it("collects modifiedFiles from compaction details (entries with fromHook=false)", () => {
+		const entries = createEntriesWithCompaction();
+		// Patch the compaction entry to include details.modifiedFiles
+		const compEntry = entries[1] as unknown as {
+			details?: { readFiles?: string[]; modifiedFiles?: string[] };
+			fromHook: boolean;
+		};
+		compEntry.details = { readFiles: ["prev-read.ts"], modifiedFiles: ["prev-edited.ts"] };
+		compEntry.fromHook = false;
+
+		const result = rebuildPreparationWithKeepRecentTokens(entries, createPreparation(), 1);
+		assert.equal(result.fallbackReason, undefined);
+		assert.ok(result.preparation?.fileOps.read.has("prev-read.ts"), "expected prev-read.ts from compaction details");
+		assert.ok(result.preparation?.fileOps.edited.has("prev-edited.ts"), "expected prev-edited.ts from compaction details");
+	});
+});
+
+describe("resolveSummaryRetention — edge cases", () => {
+	it("resolves tokens mode without context window (no bounds check)", () => {
+		const result = resolveSummaryRetention(
+			{ mode: "tokens", value: 30000 },
+			{ sessionContextWindow: undefined, summaryModelContextWindow: undefined, reserveTokens: 0 },
+		);
+		assert.equal(result.fallbackReason, undefined);
+		assert.equal(result.resolution?.keepRecentTokens, 30000);
+	});
+
+	it("returns fallback when reserveTokens leaves no room", () => {
+		const result = resolveSummaryRetention(
+			{ mode: "tokens", value: 5000 },
+			{ sessionContextWindow: 10000, summaryModelContextWindow: undefined, reserveTokens: 10000 },
+		);
+		assert.match(result.fallbackReason ?? "", /leaves no room/);
+	});
+});

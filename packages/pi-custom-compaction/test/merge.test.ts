@@ -148,3 +148,26 @@ describe("applyProfileOverrides", () => {
 		assert.deepEqual(result, base);
 	});
 });
+
+describe("setPatchValue — default branch", () => {
+	it("returns without modifying patch for an unknown policy key", () => {
+		const patch: CompactionPolicyPatch = {};
+		// Cast to PolicyKey to reach the default branch in the switch statement
+		setPatchValue(patch, "completely.unknown.key" as import("../src/policy/types.js").PolicyKey, "value");
+		assert.deepEqual(patch, {});
+	});
+});
+
+describe("applyProfileOverrides — summaryRetention carry-through", () => {
+	it("carries base policy summaryRetention when profile does not override it", () => {
+		const base = makeBasePolicy();
+		const policyWithRetention: import("../src/policy/types.js").CompactionPolicy = {
+			...base,
+			summaryRetention: { mode: "percent", value: 25 },
+		};
+		// Profile has no summaryRetention → middle branch fires:
+		// policy.summaryRetention !== undefined → { summaryRetention: policy.summaryRetention }
+		const result = applyProfileOverrides(policyWithRetention, { match: "openai/gpt-4" });
+		assert.deepEqual(result.summaryRetention, { mode: "percent", value: 25 });
+	});
+});
