@@ -1,0 +1,19 @@
+{
+  "name": "pi-speak",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Pi extension that registers a `speak` tool synthesising text via the Supertone TTS engine in-process. Bundles the ONNX runtime; auto-downloads model assets to ~/.pi/agent/pi-speak/assets/ on first enable. Inactive by default — toggle with /speak.",
+  "type": "module",
+  "keywords": ["pi-package"],
+  "pi": {
+    "extensions": ["./src/index.ts"]
+  },
+  "peerDependencies": {
+    "@earendil-works/pi-coding-agent": "*",
+    "@earendil-works/pi-tui": "*",
+    "typebox": "*"
+  },
+  "dependencies": {
+    "onnxruntime-node": "^1.19.2"
+  }
+}

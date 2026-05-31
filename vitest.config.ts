@@ -203,6 +203,25 @@ export default defineConfig({
 				// exported from their respective modules and covered there. The
 				// lifecycle wiring itself requires a live pi-coding-agent runtime.
 				"**/pi-file-system-watcher/src/index.ts",
+				// pi-speak/src/tts.ts ports the user's own Supertone TTS code.
+				// It uses dynamic import() to load an ONNX-backed helper from a
+				// vendor path at runtime; testing it requires actual ONNX model
+				// files (~500 MB) that are not present in the source tree.
+				"**/pi-speak/src/tts.ts",
+				// pi-speak/src/downloadProgress.ts is the TUI progress bar shell
+				// that wires ctx.ui.custom() to the download handle. The pure
+				// helpers (formatProgressBar, formatStats, formatEta) are 100%
+				// covered in downloadProgress.test.ts; the TUI shell itself
+				// requires a live pi-tui runtime to exercise.
+				"**/pi-speak/src/downloadProgress.ts",
+				// pi-speak/src/index.ts is the lifecycle wiring entry point:
+				// pi.on() event subscriptions, pi.registerTool(), and
+				// pi.registerCommand() all wired through makeFakePi() stubs in
+				// index.test.ts. The /speak test command handler exercises
+				// synthesise + playAudioFile inline and requires live ONNX assets;
+				// coverage is intentionally excluded to avoid mandating real
+				// TTS model assets in CI.
+				"**/pi-speak/src/index.ts",
 			],
 			// `json-summary` makes the coverage output machine-readable so CI or
 			// review tooling (e.g. gh-action coverage comments, pi-session-recap

@@ -61,6 +61,7 @@ export default tseslint.config(
 			"tmp/**",
 			"packages/*/build/**",
 			"packages/*/dist/**",
+			"packages/*/src/vendor/**",
 		],
 	},
 
