@@ -93,8 +93,8 @@ export default function askUserQuestion(pi: ExtensionAPI, options: RegisterOptio
 		renderCall(args, theme) {
 			return renderCall(args, theme);
 		},
-		renderResult(result, _opts, theme) {
-			return renderResult(result as { content: { type: "text"; text: string }[]; details: Result | undefined }, theme);
+		renderResult(result, { expanded }, theme) {
+			return renderResult(result as { content: { type: "text"; text: string }[]; details: Result | undefined }, expanded, theme);
 		},
 	});
 }

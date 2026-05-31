@@ -34,12 +34,18 @@ export function renderCall(args: TParams | undefined, theme: RenderTheme): Text 
 
 export function renderResult(
 	result: AgentToolResult<Result | undefined>,
+	expanded: boolean,
 	theme: RenderTheme,
 ): Text {
 	const details = result.details;
 	if (!details || (details.error !== undefined && details.error !== "")) {
 		const first = result.content[0];
 		const msg = first !== undefined && first.type === "text" ? first.text : "error";
+		if (!expanded) {
+			const firstLine = msg.split("\n")[0] ?? msg;
+			const truncated = firstLine.length > 80 ? firstLine.slice(0, 77) + "..." : firstLine;
+			return new Text(theme.fg("error", truncated) + "  … ctrl-o to expand", 0, 0);
+		}
 		return new Text(theme.fg("error", msg), 0, 0);
 	}
 	if (details.cancelled) {

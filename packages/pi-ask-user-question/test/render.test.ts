@@ -79,7 +79,7 @@ describe("renderResult()", () => {
 
 	it("renders the error message in the 'error' colour when details.error is set", () => {
 		const theme = makeTheme();
-		const comp = renderResult(toolResult({ answers: [], cancelled: true, error: "boom" }, "boom"), theme);
+		const comp = renderResult(toolResult({ answers: [], cancelled: true, error: "boom" }, "boom"), true, theme);
 		expect(firstLine(comp)).toBe("<fg:error>boom</fg>");
 	});
 
@@ -87,6 +87,7 @@ describe("renderResult()", () => {
 		const theme = makeTheme();
 		const comp = renderResult(
 			{ content: [], details: { answers: [], cancelled: true, error: "x" } },
+			true,
 			theme,
 		);
 		expect(firstLine(comp)).toBe("<fg:error>error</fg>");
@@ -94,25 +95,25 @@ describe("renderResult()", () => {
 
 	it("renders 'Cancelled' in the warning colour when cancelled with no chat", () => {
 		const theme = makeTheme();
-		const comp = renderResult(toolResult({ answers: [], cancelled: true }), theme);
+		const comp = renderResult(toolResult({ answers: [], cancelled: true }), true, theme);
 		expect(firstLine(comp)).toBe("<fg:warning>Cancelled</fg>");
 	});
 
 	it("appends the chat suffix when present", () => {
 		const theme = makeTheme();
-		const comp = renderResult(toolResult({ answers: [], cancelled: true, chat: "let's talk" }), theme);
+		const comp = renderResult(toolResult({ answers: [], cancelled: true, chat: "let's talk" }), true, theme);
 		expect(firstLine(comp)).toContain("Cancelled (chat: let's talk)");
 	});
 
 	it("ignores empty-string chat value", () => {
 		const theme = makeTheme();
-		const comp = renderResult(toolResult({ answers: [], cancelled: true, chat: "" }), theme);
+		const comp = renderResult(toolResult({ answers: [], cancelled: true, chat: "" }), true, theme);
 		expect(firstLine(comp)).toBe("<fg:warning>Cancelled</fg>");
 	});
 
 	it("renders the raw content[0] text on success", () => {
 		const theme = makeTheme();
-		const comp = renderResult(toolResult({ answers: [], cancelled: false }, "hello user"), theme);
+		const comp = renderResult(toolResult({ answers: [], cancelled: false }, "hello user"), true, theme);
 		expect(firstLine(comp)).toBe("hello user");
 	});
 
@@ -122,13 +123,13 @@ describe("renderResult()", () => {
 			content: [{ type: "image" as unknown as "text", text: "ignored" }],
 			details: { answers: [], cancelled: false },
 		};
-		const comp = renderResult(weird, theme);
+		const comp = renderResult(weird, true, theme);
 		expect(firstLine(comp)).toBe("");
 	});
 
 	it("treats undefined details like an error", () => {
 		const theme = makeTheme();
-		const comp = renderResult({ content: [{ type: "text", text: "ouch" }], details: undefined }, theme);
+		const comp = renderResult({ content: [{ type: "text", text: "ouch" }], details: undefined }, true, theme);
 		expect(firstLine(comp)).toBe("<fg:error>ouch</fg>");
 	});
 
@@ -136,8 +137,80 @@ describe("renderResult()", () => {
 		const theme = makeTheme();
 		const comp = renderResult(
 			{ content: [{ type: "text", text: "x" }], details: { answers: [], cancelled: true, error: "" } },
+			true,
 			theme,
 		);
 		expect(firstLine(comp)).toBe("<fg:warning>Cancelled</fg>");
+	});
+});
+
+describe("renderResult() — collapse / expand", () => {
+	function toolResult(details: Result | undefined, text = "payload") {
+		return {
+			content: [{ type: "text" as const, text }],
+			details,
+		};
+	}
+
+	it("error collapsed (expanded=false): single line containing ctrl-o hint", () => {
+		const theme = makeTheme();
+		const comp = renderResult(
+			toolResult({ answers: [], cancelled: true, error: "Validation failed: bad input" }, "Validation failed: bad input"),
+			false,
+			theme,
+		);
+		const line = firstLine(comp);
+		expect(line.split("\n")).toHaveLength(1);
+		expect(line).toContain("ctrl-o to expand");
+	});
+
+	it("error collapsed (expanded=false): contains the start of the error message", () => {
+		const theme = makeTheme();
+		const comp = renderResult(
+			toolResult({ answers: [], cancelled: true, error: "Validation failed" }, "Validation failed"),
+			false,
+			theme,
+		);
+		expect(firstLine(comp)).toContain("Validation failed");
+	});
+
+	it("error expanded (expanded=true): shows full error text, no hint", () => {
+		const theme = makeTheme();
+		const longError = "Validation failed: questions[0].options must have at least 2 entries";
+		const comp = renderResult(
+			toolResult({ answers: [], cancelled: true, error: longError }, longError),
+			true,
+			theme,
+		);
+		const line = firstLine(comp);
+		expect(line).toContain(longError);
+		expect(line).not.toContain("ctrl-o to expand");
+	});
+
+	it("error collapsed (expanded=false): truncates very long first lines to ~80 chars", () => {
+		const theme = makeTheme();
+		const longMsg = "A".repeat(100);
+		const comp = renderResult(
+			toolResult({ answers: [], cancelled: true, error: longMsg }, longMsg),
+			false,
+			theme,
+		);
+		const line = firstLine(comp);
+		expect(line).not.toContain("A".repeat(100));
+		expect(line).toContain("ctrl-o to expand");
+	});
+
+	it("error collapsed (expanded=false): only first line shown for multi-line errors", () => {
+		const theme = makeTheme();
+		const multiLine = "Line 1\nLine 2\nLine 3";
+		const comp = renderResult(
+			toolResult({ answers: [], cancelled: true, error: multiLine }, multiLine),
+			false,
+			theme,
+		);
+		const line = firstLine(comp);
+		expect(line).toContain("Line 1");
+		expect(line).not.toContain("Line 2");
+		expect(line).not.toContain("Line 3");
 	});
 });
