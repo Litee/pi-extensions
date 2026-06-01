@@ -102,6 +102,10 @@ export default defineConfig({
 				// the runner are exercised end-to-end through the scheduler's
 				// subagent firing path in manual QA.
 				"**/pi-prompt-scheduler/src/subagent.ts",
+				// pi-browser-control/src/daemon/daemon.ts is the thin process bootstrap
+				// (stdin NM reader, net.createServer, SIGINT/SIGTERM). Excluded because it
+				// starts listening on stdin and cannot be unit-tested without a live process.
+				"**/pi-browser-control/src/daemon/daemon.ts",
 				// pi-prompt-scheduler/ui/cron-widget.ts is the live
 				// below-the-editor status widget. Rendering depends on
 				// pi-coding-agent's DynamicBorder + a running TUI loop; the
