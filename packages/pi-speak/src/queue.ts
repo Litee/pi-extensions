@@ -1,7 +1,9 @@
 /**
  * Async background speech queue.
  *
- * Items are processed sequentially: synthesise → play → next.
+ * Items are processed with a double-buffer pipeline: while item N plays,
+ * item N+1 is already being synthesised in the background, eliminating the
+ * synthesis gap between items.
  * The queue never blocks callers — enqueue returns immediately with a
  * 1-based sequence number (queue position at time of enqueue).
  */
@@ -49,6 +51,7 @@ export class SpeechQueue {
 	private processing = false;
 	private counter = 0;
 	private currentAc: AbortController | undefined;
+	private cleared = false;
 
 	get length(): number { return this.items.length; }
 	get isProcessing(): boolean { return this.processing; }
@@ -67,23 +70,13 @@ export class SpeechQueue {
 	/** Cancel the current item and clear all pending items. */
 	clear(): void {
 		this.items = [];
+		this.cleared = true;
 		this.currentAc?.abort();
 	}
 
-	private async process(): Promise<void> {
-		this.processing = true;
-		while (this.items.length > 0) {
-			const item = this.items.shift()!;
-			await this.processOne(item);
-		}
-		this.processing = false;
-	}
-
-	private async processOne(item: QueueItem): Promise<void> {
-		const ac = new AbortController();
-		this.currentAc = ac;
+	/** Synthesise item to a temp WAV file. Returns the path, or null on error. */
+	private async synthesiseToFile(item: QueueItem): Promise<string | null> {
 		const tmpPath = join(tmpdir(), `pi-speak-${item.id}-${Date.now()}.wav`);
-		const timeoutHandle = setTimeout(() => ac.abort(), executionTimeoutMs(item.text.length));
 		try {
 			const result = await synthesise(
 				item.text,
@@ -91,13 +84,84 @@ export class SpeechQueue {
 				item.assetsDir,
 			);
 			await writeWav(tmpPath, result.wav, result.sampleRate);
-			await playAudioFile(tmpPath, ac.signal);
+			return tmpPath;
 		} catch {
-			// Swallow errors — queue continues regardless
-		} finally {
-			clearTimeout(timeoutHandle);
-			this.currentAc = undefined;
+			// Synthesis failed — skip this item
 			try { unlinkSync(tmpPath); } catch { /* ignore */ }
+			return null;
 		}
+	}
+
+	private async process(): Promise<void> {
+		this.processing = true;
+		this.cleared = false;
+
+		let currentItem: QueueItem | undefined = this.items.shift();
+		if (!currentItem) { this.processing = false; return; }
+
+		let currentSynth: Promise<string | null> = this.synthesiseToFile(currentItem);
+
+		while (currentItem) {
+			const item = currentItem;
+
+			// Wait for the current item's WAV to be ready.
+			const tmpPath = await currentSynth;
+
+			// Immediately start synthesising the next item so it runs
+			// concurrently with playback of the current item — this is the
+			// key pipeline overlap: by the time current playback ends, the
+			// next WAV is already on disk.
+			const nextItem: QueueItem | undefined = this.items.shift();
+			const nextSynth: Promise<string | null> | null = nextItem
+				? this.synthesiseToFile(nextItem)
+				: null;
+
+			// Play the current item.
+			if (tmpPath) {
+				const ac = new AbortController();
+				this.currentAc = ac;
+				const timeoutHandle = setTimeout(
+					() => ac.abort(),
+					executionTimeoutMs(item.text.length),
+				);
+				try {
+					await playAudioFile(tmpPath, ac.signal);
+				} catch {
+					// Swallow — timeout, abort, or player error; queue continues.
+				} finally {
+					clearTimeout(timeoutHandle);
+					this.currentAc = undefined;
+					try { unlinkSync(tmpPath); } catch { /* ignore */ }
+				}
+			}
+
+			// If clear() was called during synthesis or playback, discard any
+			// prefetched WAV and stop the pipeline.
+			if (this.cleared) {
+				if (nextSynth) {
+					void nextSynth.then((p) => {
+						if (p) try { unlinkSync(p); } catch { /* ignore */ }
+					});
+				}
+				break;
+			}
+
+			// Advance to the pre-synthesised next item.
+			if (nextItem) {
+				currentItem = nextItem;
+				currentSynth = nextSynth!;
+			} else {
+				// No prefetch was possible — pick up any items that were
+				// enqueued while we were playing.
+				currentItem = this.items.shift();
+				if (currentItem) {
+					currentSynth = this.synthesiseToFile(currentItem);
+				} else {
+					break;
+				}
+			}
+		}
+
+		this.processing = false;
 	}
 }

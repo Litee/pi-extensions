@@ -130,6 +130,40 @@ describe("SpeechQueue — sequential processing", () => {
 });
 
 // ---------------------------------------------------------------------------
+// SpeechQueue — pipeline overlap
+// ---------------------------------------------------------------------------
+
+describe("SpeechQueue — pipeline overlap", () => {
+	it("synthesises item 2 while item 1 is still playing", async () => {
+		// Block item 1's playback so we can observe the overlap.
+		let resolvePlay!: () => void;
+		vi.mocked(playAudioFile).mockImplementationOnce(
+			() => new Promise<void>((res) => { resolvePlay = res; }),
+		);
+
+		const q = new SpeechQueue();
+		q.enqueue(baseItem);
+		q.enqueue({ ...baseItem, text: "world" });
+
+		// Let item 1's synthesis complete; item 2's synthesis should start
+		// immediately after, while playback of item 1 is still blocked.
+		await flushAsync();
+
+		expect(synthesise).toHaveBeenCalledTimes(2);
+		expect(vi.mocked(synthesise).mock.calls[0]![0]).toBe("hello");
+		expect(vi.mocked(synthesise).mock.calls[1]![0]).toBe("world");
+		// Item 1 is playing; item 2 has not started playing yet.
+		expect(vi.mocked(playAudioFile)).toHaveBeenCalledTimes(1);
+
+		// Finish item 1 → item 2 should play immediately (WAV already ready).
+		resolvePlay();
+		await flushAsync();
+
+		expect(vi.mocked(playAudioFile)).toHaveBeenCalledTimes(2);
+	});
+});
+
+// ---------------------------------------------------------------------------
 // SpeechQueue.clear
 // ---------------------------------------------------------------------------
 
@@ -147,7 +181,7 @@ describe("SpeechQueue.clear", () => {
 		q.enqueue(baseItem);
 		q.enqueue({ ...baseItem, text: "world" });
 
-		// Clear while the first item is being processed
+		// Clear while the first item is being synthesised (before playback starts)
 		q.clear();
 
 		// Resolve the first synthesise
@@ -156,6 +190,26 @@ describe("SpeechQueue.clear", () => {
 
 		// Only the first synthesise was called — second item was cleared
 		expect(synthesise).toHaveBeenCalledTimes(1);
+	});
+
+	it("clear during playback stops further items from playing", async () => {
+		// Block item 1's playback
+		let resolvePlay!: () => void;
+		vi.mocked(playAudioFile).mockImplementationOnce(
+			() => new Promise<void>((res) => { resolvePlay = res; }),
+		);
+
+		const q = new SpeechQueue();
+		q.enqueue(baseItem);
+		q.enqueue({ ...baseItem, text: "world" });
+		await flushAsync(); // item 1 now playing (blocked), item 2 synth started
+
+		q.clear();
+		resolvePlay(); // finish item 1 playback
+		await flushAsync();
+
+		// Item 2 must not have been played
+		expect(vi.mocked(playAudioFile)).toHaveBeenCalledTimes(1);
 	});
 });
 
