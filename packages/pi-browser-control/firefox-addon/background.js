@@ -93,6 +93,15 @@ async function handleMessage(msg) {
         return;
       }
 
+      // Discarded (unloaded) tabs have no content process, so executeScript
+      // would hang until the daemon deadline. Fail fast with clear guidance.
+      // Firefox unloads inactive tabs aggressively, so this is common when
+      // many tabs are open.
+      if (tab.discarded) {
+        sendReply(correlationId, false, null, { code: "TAB_DISCARDED", message: `Tab ${tabId} is unloaded (discarded). Switch to it in Firefox to load it, then retry — or choose a loaded tab.` });
+        return;
+      }
+
       // Inject content script
       let extracted;
       try {

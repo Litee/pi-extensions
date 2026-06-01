@@ -101,6 +101,10 @@ function errorResult(err: unknown): {
 		text =
 			`browser-control error: ${msg}\n\n` +
 			"The requested tab was not found. Run browser_list_tabs again to get the current list of tab IDs.";
+	} else if (code === "TAB_DISCARDED") {
+		text =
+			`browser-control error: ${msg}\n\n` +
+			"Firefox has unloaded this tab to save memory, so its content cannot be read until it is reloaded. Pick a tab that is currently loaded, or ask the user to switch to this tab in Firefox and retry.";
 	} else {
 		text = `browser-control error: ${msg}\n\nEnsure Firefox is open with the pi-browser-control add-on running.`;
 	}
