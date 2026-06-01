@@ -141,7 +141,7 @@ export class Ec2Watcher extends BaseWatcher<Ec2Watch, Ec2Baseline, Ec2Event> {
       return `${displayName}  ${state}  ${statusText}  ${timeLeft}`
     },
 
-    renderItemRowTUI(w, _ctx): RowColumn[] {
+    renderItemRowTUI(w, ctx): RowColumn[] {
       const displayName = w.baseline?.nameTag
         ? `${w.instanceId} (${w.baseline.nameTag})`
         : w.instanceId
@@ -152,8 +152,10 @@ export class Ec2Watcher extends BaseWatcher<Ec2Watch, Ec2Baseline, Ec2Event> {
           : 'accent'
       const state = w.baseline?.state ?? '?'
       const instanceType = w.baseline?.instanceType ?? '—'
-      const statusText = w.terminal ? 'DONE' : w.consecutiveErrors >= POLL_ERROR_THRESHOLD ? 'ERROR' : 'WATCHING'
-      const statusColor = w.terminal ? 'warning' : w.consecutiveErrors >= POLL_ERROR_THRESHOLD ? 'error' : 'warning'
+      const statusText = w.terminal
+        ? ctx.theme.fg('dim', ctx.theme.fg('warning', 'DONE'))
+        : w.consecutiveErrors >= POLL_ERROR_THRESHOLD ? 'ERROR' : 'WATCHING'
+      const statusColor = w.terminal ? undefined : w.consecutiveErrors >= POLL_ERROR_THRESHOLD ? 'error' : 'warning'
       const timeLeft = formatTimeLeft(w.timeoutAt, Date.now())
       const timeColor: string = w.terminal
         ? 'dim'
@@ -164,7 +166,7 @@ export class Ec2Watcher extends BaseWatcher<Ec2Watch, Ec2Baseline, Ec2Event> {
         { name: 'name',         text: displayName,  color: nameColor },
         { name: 'state',        text: state,         width: 13, color: 'dim' },
         { name: 'instanceType', text: instanceType,  width: 12, color: 'dim' },
-        { name: 'status',       text: statusText,    width: 10, color: statusColor },
+        { name: 'status',       text: statusText,    width: 10, ...(statusColor !== undefined ? { color: statusColor } : {}) },
         { name: 'timeout',      text: timeLeft,      width: 10, color: timeColor },
       ]
     },

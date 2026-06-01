@@ -129,14 +129,16 @@ export class S3Watcher extends BaseWatcher<S3Watch, S3Baseline, S3Event> {
       return `s3://${w.bucket}/${w.key}  ${statusText}  ${timeLeft}  ${displayTarget(w.target)}`
     },
 
-    renderItemRowTUI(w, _ctx): RowColumn[] {
+    renderItemRowTUI(w, ctx): RowColumn[] {
       const uriColor = w.terminal
         ? 'dim'
         : w.consecutiveErrors >= POLL_ERROR_THRESHOLD
           ? 'warning'
           : 'accent'
-      const statusText = w.terminal ? 'DONE' : w.consecutiveErrors >= POLL_ERROR_THRESHOLD ? 'ERROR' : 'WATCHING'
-      const statusColor = w.terminal ? 'warning' : w.consecutiveErrors >= POLL_ERROR_THRESHOLD ? 'error' : 'warning'
+      const statusText = w.terminal
+        ? ctx.theme.fg('dim', ctx.theme.fg('warning', 'DONE'))
+        : w.consecutiveErrors >= POLL_ERROR_THRESHOLD ? 'ERROR' : 'WATCHING'
+      const statusColor = w.terminal ? undefined : w.consecutiveErrors >= POLL_ERROR_THRESHOLD ? 'error' : 'warning'
       const timeLeft = formatTimeLeft(w.timeoutAt, Date.now())
       const timeColor: string = w.terminal
         ? 'dim'
@@ -145,7 +147,7 @@ export class S3Watcher extends BaseWatcher<S3Watch, S3Baseline, S3Event> {
           : 'dim'
       return [
         { name: 'uri',     text: `s3://${w.bucket}/${w.key}`, color: uriColor },
-        { name: 'status',  text: statusText,              width: 10, color: statusColor },
+        { name: 'status',  text: statusText,              width: 10, ...(statusColor !== undefined ? { color: statusColor } : {}) },
         { name: 'timeout', text: timeLeft,                width: 10, color: timeColor },
         { name: 'target',  text: displayTarget(w.target), width: 10, color: 'dim' },
       ]

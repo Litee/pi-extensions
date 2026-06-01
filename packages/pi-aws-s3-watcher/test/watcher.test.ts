@@ -12,6 +12,8 @@ import type { HeadObjectResult, S3Client } from '../src/s3-client.js'
 import { formatTimeLeft, S3Watcher } from '../src/watcher.js'
 import { POLL_ERROR_THRESHOLD } from 'pi-watcher-core/base-watcher'
 
+const stubTheme = { fg: (_: string, t: string) => t }
+
 // ---------------------------------------------------------------------------
 // Helpers
 // ---------------------------------------------------------------------------
@@ -507,7 +509,7 @@ describe('S3Watcher view', () => {
   it('renderItemRowTUI uses dim color for terminal watches (uri column)', () => {
     const cols = watcher.view.renderItemRowTUI(
       { ...mockWatch, terminal: true },
-      { theme: {} as never, width: 80 },
+      { theme: stubTheme as never, width: 80 },
     )
     expect(cols[0]?.color).toBe('dim')
   })
@@ -591,10 +593,10 @@ describe('S3Watcher view', () => {
       expect(cols.find(c => c.name === 'status')!.color).toBe('warning')
     })
 
-    it('terminal watch status uses warning color', () => {
+    it('terminal watch status uses dim color', () => {
       const w = { ...base, terminal: true, consecutiveErrors: 0 }
       const cols = watcher.view.renderItemRowTUI(w, { theme: stubTheme as never, width: 80 })
-      expect(cols.find(c => c.name === 'status')!.color).toBe('warning')
+      expect(cols.find(c => c.name === 'status')!.color).toBeUndefined()
     })
 
     it('error watch status uses error color', () => {
@@ -1083,7 +1085,7 @@ describe('timeout column in renderItemRowTUI', () => {
 
   it('uses dim color for terminal watches regardless of timeout', () => {
     const w = { ...base, timeoutAt: Date.now() + 10_000, terminal: true, consecutiveErrors: 0 }
-    const cols = watcher.view.renderItemRowTUI(w, { theme: {} as never, width: 100 })
+    const cols = watcher.view.renderItemRowTUI(w, { theme: stubTheme as never, width: 100 })
     expect(cols.find(c => c.name === 'timeout')!.color).toBe('dim')
   })
 
