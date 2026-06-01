@@ -26,8 +26,7 @@ import type { ExtensionAPI, ExtensionContext } from "@earendil-works/pi-coding-a
 
 import { isInsideHerdr, renameWorkspace, resolveWorkspaceId } from "./herdr.js";
 import type { ExecFn } from "./herdr.js";
-import { STATE_CUSTOM_TYPE, pickLatestState } from "./state.js";
-import type { StateCandidateEntry } from "./state.js";
+import { STATE_CUSTOM_TYPE } from "./state.js";
 
 /**
  * Subagent sessions get auto-generated names in the form `<agent>#<hex>`,
@@ -100,19 +99,12 @@ export default function createExtension(pi: ExtensionAPI): void {
 	// ---- session_start -------------------------------------------------------
 
 	pi.on("session_start", async (event, ctx) => {
-		// Always reset the backoff guard so reloads, resumes, and forks get a
-		// clean retry slate regardless of previous failure state.
+			// Reset both guards: every session_start is a new herdr context where
+		// the workspace may not be labeled yet (startup, resume, fork, reload).
+		// Never restore lastAppliedName from state — we cannot know whether the
+		// current herdr workspace already carries the correct label.
 		lastAttemptedName = undefined;
-
-		// Restore lastAppliedName from session history (survives /reload).
-		// Skip restoration on fork: the child inherits the parent's entries but
-		// lives in a new workspace that hasn't been renamed yet.
-		const sessionEvent = event as { reason?: string };
-		const rawEntries = ctx.sessionManager.getEntries() as StateCandidateEntry[];
-		const saved = pickLatestState(rawEntries);
-		if (saved !== undefined && sessionEvent.reason !== "fork") {
-			lastAppliedName = saved.lastAppliedName;
-		}
+		lastAppliedName = undefined;
 
 		const name = pi.getSessionName();
 		if (!name) return;
