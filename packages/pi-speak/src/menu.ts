@@ -166,11 +166,21 @@ async function pickVoice(
 		const currentIdx = VOICES.indexOf(current as VoiceId);
 		if (currentIdx >= 0) sl.setSelectedIndex(currentIdx);
 
-		sl.onSelect = (item) => done(item.value);
-		sl.onCancel = () => done(null);
+		sl.onSelect = (item) => {
+			clearTimeout(debounceTimer);
+			done(item.value);
+		};
+		sl.onCancel = () => {
+			clearTimeout(debounceTimer);
+			done(null);
+		};
+
+		let debounceTimer: ReturnType<typeof setTimeout> | undefined;
 		sl.onSelectionChange = (item) => {
-			// Fire-and-forget preview — don't block the UI
-			void onPreview(item.value).catch(() => {});
+			clearTimeout(debounceTimer);
+			debounceTimer = setTimeout(() => {
+				void onPreview(item.value).catch(() => {});
+			}, 400);
 			tui.requestRender();
 		};
 
@@ -281,7 +291,7 @@ export async function runSpeakMenu(
 			if (v) {
 				sessionVoice = v;
 				options.onSetSessionVoice(v);
-				await options.onSpeakHello(v);
+				void options.onSpeakHello(v).catch(() => {});
 			}
 			continue;
 		}
@@ -291,7 +301,7 @@ export async function runSpeakMenu(
 			if (v) {
 				sessionLang = v;
 				options.onSetSessionLang(v);
-				await options.onSpeakHello(effectiveValue(sessionVoice, config.defaultVoice, "M1"));
+				void options.onSpeakHello(effectiveValue(sessionVoice, config.defaultVoice, "M1")).catch(() => {});
 			}
 			continue;
 		}
@@ -301,7 +311,7 @@ export async function runSpeakMenu(
 			if (v !== null) {
 				sessionSpeed = v;
 				options.onSetSessionSpeed(v);
-				await options.onSpeakHello(effectiveValue(sessionVoice, config.defaultVoice, "M1"));
+				void options.onSpeakHello(effectiveValue(sessionVoice, config.defaultVoice, "M1")).catch(() => {});
 			}
 			continue;
 		}
@@ -311,7 +321,7 @@ export async function runSpeakMenu(
 			if (v !== null) {
 				sessionSteps = v;
 				options.onSetSessionSteps(v);
-				await options.onSpeakHello(effectiveValue(sessionVoice, config.defaultVoice, "M1"));
+				void options.onSpeakHello(effectiveValue(sessionVoice, config.defaultVoice, "M1")).catch(() => {});
 			}
 			continue;
 		}
