@@ -131,15 +131,15 @@ export class S3Watcher extends BaseWatcher<S3Watch, S3Baseline, S3Event> {
 
     renderItemRowTUI(w, _ctx): RowColumn[] {
       const uriColor = w.terminal
-        ? 'muted'
+        ? 'dim'
         : w.consecutiveErrors >= POLL_ERROR_THRESHOLD
           ? 'warning'
           : 'accent'
       const statusText = w.terminal ? 'DONE' : w.consecutiveErrors >= POLL_ERROR_THRESHOLD ? 'ERROR' : 'WATCHING'
-      const statusColor = w.terminal ? 'muted' : w.consecutiveErrors >= POLL_ERROR_THRESHOLD ? 'error' : 'warning'
+      const statusColor = w.terminal ? 'warning' : w.consecutiveErrors >= POLL_ERROR_THRESHOLD ? 'error' : 'warning'
       const timeLeft = formatTimeLeft(w.timeoutAt, Date.now())
       const timeColor: string = w.terminal
-        ? 'muted'
+        ? 'dim'
         : w.timeoutAt !== undefined && w.timeoutAt - Date.now() < 5 * 60 * 1000
           ? 'warning'
           : 'dim'

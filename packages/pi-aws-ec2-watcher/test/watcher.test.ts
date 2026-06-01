@@ -520,12 +520,12 @@ describe('Ec2Watcher view', () => {
     expect(cols[0]?.color).toBe('accent')
   })
 
-  it('renderItemRowTUI uses muted color for terminal watches', () => {
+  it('renderItemRowTUI uses dim color for terminal watches (name column)', () => {
     const cols = watcher.view.renderItemRowTUI(
       { ...mockWatch, terminal: true },
       { theme: {} as never, width: 80 },
     )
-    expect(cols[0]?.color).toBe('muted')
+    expect(cols[0]?.color).toBe('dim')
   })
 
   it('renderItemRowTUI uses warning color for error threshold', () => {
@@ -603,6 +603,12 @@ describe('Ec2Watcher view', () => {
       expect(cols.find((c) => c.name === 'status')!.text).toBe('ERROR')
     })
 
+    it('terminal watch status uses warning color', () => {
+      const w = { ...base, terminal: true, consecutiveErrors: 0 }
+      const cols = watcher.view.renderItemRowTUI(w, { theme: {} as never, width: 80 })
+      expect(cols.find((c) => c.name === 'status')!.color).toBe('warning')
+    })
+
     it('columns are ordered: name, state, instanceType, status, timeout', () => {
       const w = { ...base, terminal: false, consecutiveErrors: 0 }
       const cols = watcher.view.renderItemRowTUI(w, { theme: {} as never, width: 80 })
@@ -667,10 +673,10 @@ describe('timeout column in renderItemRowTUI', () => {
     expect(cols.find((c) => c.name === 'timeout')!.color).toBe('warning')
   })
 
-  it('uses muted color for terminal watches', () => {
+  it('uses dim color for terminal watches (timeout column)', () => {
     const w = { ...base, timeoutAt: Date.now() + 10_000, terminal: true, consecutiveErrors: 0 }
     const cols = watcher.view.renderItemRowTUI(w, { theme: {} as never, width: 100 })
-    expect(cols.find((c) => c.name === 'timeout')!.color).toBe('muted')
+    expect(cols.find((c) => c.name === 'timeout')!.color).toBe('dim')
   })
 })
 

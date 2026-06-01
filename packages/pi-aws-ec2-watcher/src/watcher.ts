@@ -146,17 +146,17 @@ export class Ec2Watcher extends BaseWatcher<Ec2Watch, Ec2Baseline, Ec2Event> {
         ? `${w.instanceId} (${w.baseline.nameTag})`
         : w.instanceId
       const nameColor = w.terminal
-        ? 'muted'
+        ? 'dim'
         : w.consecutiveErrors >= POLL_ERROR_THRESHOLD
           ? 'warning'
           : 'accent'
       const state = w.baseline?.state ?? '?'
       const instanceType = w.baseline?.instanceType ?? '—'
       const statusText = w.terminal ? 'DONE' : w.consecutiveErrors >= POLL_ERROR_THRESHOLD ? 'ERROR' : 'WATCHING'
-      const statusColor = w.terminal ? 'muted' : w.consecutiveErrors >= POLL_ERROR_THRESHOLD ? 'error' : 'warning'
+      const statusColor = w.terminal ? 'warning' : w.consecutiveErrors >= POLL_ERROR_THRESHOLD ? 'error' : 'warning'
       const timeLeft = formatTimeLeft(w.timeoutAt, Date.now())
       const timeColor: string = w.terminal
-        ? 'muted'
+        ? 'dim'
         : w.timeoutAt !== undefined && w.timeoutAt - Date.now() < 5 * 60 * 1000
           ? 'warning'
           : 'dim'
