@@ -227,6 +227,18 @@ describe("error paths", () => {
 		expect(text).toMatch(/tab|not found/i);
 	});
 
+	it("TAB_DISCARDED → message about the tab being unloaded", async () => {
+		const err = Object.assign(new Error("tab discarded"), { code: "TAB_DISCARDED" });
+		const stub = makeStub({ getTabContent: vi.fn().mockRejectedValue(err) });
+		const pi = makeFakePi();
+		createExtension(pi.api, { socketClient: stub });
+		const result = await pi.tool("browser_get_tab_content").execute(
+			"tc-disc", { tabId: 99, offset: 0 }, undefined, undefined, {} as never,
+		);
+		const text = (result.content[0] as { text: string }).text;
+		expect(text).toMatch(/unload|reload|loaded/i);
+	});
+
 	it("generic error returns a non-empty message", async () => {
 		const stub = makeStub({ listTabs: vi.fn().mockRejectedValue(new Error("something weird")) });
 		const pi = makeFakePi();
