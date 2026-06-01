@@ -1,0 +1,15 @@
+{
+  "name": "pi-browser-control",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Pi extension that registers browser_list_tabs and browser_get_tab_content read-only tools — talks to a local Firefox add-on via native messaging + a shared daemon.",
+  "type": "module",
+  "keywords": ["pi-package"],
+  "pi": {
+    "extensions": ["./src/index.ts"]
+  },
+  "peerDependencies": {
+    "@earendil-works/pi-coding-agent": "*",
+    "typebox": "*"
+  }
+}

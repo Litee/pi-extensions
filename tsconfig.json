@@ -6,8 +6,9 @@
   "compilerOptions": {
     "types": ["node", "vitest/globals"],
     "resolveJsonModule": true,
-    "noEmit": true
+    "noEmit": true,
+    "allowImportingTsExtensions": true
   },
-  "include": ["packages/*/src/**/*", "packages/*/test/**/*"],
+  "include": ["packages/*/src/**/*", "packages/*/test/**/*", "packages/*/scripts/**/*"],
   "exclude": ["node_modules", "**/node_modules", "**/dist"]
 }
