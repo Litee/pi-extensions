@@ -56,6 +56,7 @@ function makeDefaultOptions(overrides: Partial<MenuOptions> = {}): MenuOptions {
 		onSetSessionSpeed: vi.fn(),
 		onSetSessionSteps: vi.fn(),
 		onSpeakHello: vi.fn(() => Promise.resolve()),
+		getQueueLength: () => 0,
 		...overrides,
 	};
 }
@@ -195,6 +196,35 @@ describe("runSpeakMenu", () => {
 		const saveConfig = vi.fn(() => true);
 		await runSpeakMenu(ctx, makeDefaultOptions({ saveConfig }));
 		expect(saveConfig).toHaveBeenCalledWith({ defaultSpeed: 0.8 });
+	});
+
+	// 16. Queue display item appears when getQueueLength > 0, is non-selectable
+	it("shows 'Queue: N items pending' when queue has items", async () => {
+		const { ctx, selectCalls } = makeCtxSelect(["Close"]);
+		await runSpeakMenu(ctx, makeDefaultOptions({ getQueueLength: () => 2 }));
+		const items = selectCalls[0] ?? [];
+		expect(items).toContain("Queue: 2 items pending");
+	});
+
+	it("shows 'Queue: 1 item pending' (singular) when queue has 1 item", async () => {
+		const { ctx, selectCalls } = makeCtxSelect(["Close"]);
+		await runSpeakMenu(ctx, makeDefaultOptions({ getQueueLength: () => 1 }));
+		const items = selectCalls[0] ?? [];
+		expect(items).toContain("Queue: 1 item pending");
+	});
+
+	it("does not show queue item when queue is empty", async () => {
+		const { ctx, selectCalls } = makeCtxSelect(["Close"]);
+		await runSpeakMenu(ctx, makeDefaultOptions({ getQueueLength: () => 0 }));
+		const items = selectCalls[0] ?? [];
+		expect(items.some((i) => i.startsWith("Queue:"))).toBe(false);
+	});
+
+	it("selecting the Queue display item is a no-op (loop continues)", async () => {
+		// Sequence: queue item (no-op), then Close
+		const { ctx, selectCalls } = makeCtxSelect(["Queue: 2 items pending", "Close"]);
+		await runSpeakMenu(ctx, makeDefaultOptions({ getQueueLength: () => 2 }));
+		expect(selectCalls).toHaveLength(2);
 	});
 });
 

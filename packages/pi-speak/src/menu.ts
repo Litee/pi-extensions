@@ -70,6 +70,8 @@ export interface MenuOptions {
 	onSetSessionSteps: (steps: number) => void;
 	/** Speaks a hello phrase with the given voice. Used after any session setting change. */
 	onSpeakHello: (voice: string) => Promise<void>;
+	/** Returns the current number of items waiting in the speech queue. */
+	getQueueLength: () => number;
 }
 
 // ---------------------------------------------------------------------------
@@ -166,14 +168,8 @@ async function pickVoice(
 		const currentIdx = VOICES.indexOf(current as VoiceId);
 		if (currentIdx >= 0) sl.setSelectedIndex(currentIdx);
 
-		sl.onSelect = (item) => {
-			clearTimeout(debounceTimer);
-			done(item.value);
-		};
-		sl.onCancel = () => {
-			clearTimeout(debounceTimer);
-			done(null);
-		};
+		sl.onSelect = (item) => done(item.value);
+		sl.onCancel = () => done(null);
 
 		let debounceTimer: ReturnType<typeof setTimeout> | undefined;
 		sl.onSelectionChange = (item) => {
@@ -249,9 +245,12 @@ export async function runSpeakMenu(
 
 		const assetsDir = options.getAssetsDir();
 
+		const queueLen = options.getQueueLength();
+
 		const items: string[] = [
 			`speak: ${enabled ? "enabled" : "disabled"}`,
 			"Test speech",
+			...(queueLen > 0 ? [`Queue: ${queueLen} item${queueLen === 1 ? "" : "s"} pending`] : []),
 			"───────────────────────────────────",
 			`Voice: ${effVoice}`,
 			`Language: ${effLang}`,
@@ -271,8 +270,9 @@ export async function runSpeakMenu(
 		const choice = await ctx.ui.select("speak", items);
 		if (!choice || choice === "Close") return;
 
-		// Separator lines are non-selectable; guard in case the UI returns one.
+		// Separator lines and read-only display items are non-selectable.
 		if (choice.startsWith("─")) continue;
+		if (choice.startsWith("Queue:")) continue;
 
 		if (choice.startsWith("speak:")) {
 			enabled = await options.onToggle();

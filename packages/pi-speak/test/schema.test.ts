@@ -17,7 +17,6 @@ describe("SpeakParams schema", () => {
 					lang: "ko",
 					speed: 1.5,
 					steps: 16,
-					wait: false,
 				}),
 			).toBe(true);
 		});

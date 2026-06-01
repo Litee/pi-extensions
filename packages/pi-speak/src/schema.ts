@@ -25,6 +25,5 @@ export const SpeakParams = Type.Object({
 	)),
 	speed: Type.Optional(Type.Number({ minimum: 0.5, maximum: 2.0, description: "Rate multiplier. Default 1.05." })),
 	steps: Type.Optional(Type.Integer({ minimum: 1, maximum: 32, description: "Diffusion steps. Default 8." })),
-	wait: Type.Optional(Type.Boolean({ description: "Block until playback finishes (default true)." })),
 });
 export type SpeakParamsT = Static<typeof SpeakParams>;

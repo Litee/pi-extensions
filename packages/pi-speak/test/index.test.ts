@@ -364,93 +364,46 @@ describe("tool execute — text too long", () => {
 });
 
 // ---------------------------------------------------------------------------
-// 11. execute — happy path (wait: true)
+// 11. execute — happy path: enqueues and returns immediately
 // ---------------------------------------------------------------------------
 describe("tool execute — happy path", () => {
-	it("calls synthesise → writeWav → playAudioFile in order, details include required fields", async () => {
+	it("returns ok: true with queuePosition: 1 and queued content", async () => {
 		vi.mocked(assetsReady).mockReturnValue(true);
-		const callOrder: string[] = [];
-		vi.mocked(synthesise).mockImplementation(() => {
-			callOrder.push("synthesise");
-			return Promise.resolve({ wav: [0], sampleRate: 44100, duration: [0.5] });
-		});
-		vi.mocked(writeWav).mockImplementation(() => { callOrder.push("writeWav"); return Promise.resolve(); });
-		vi.mocked(playAudioFile).mockImplementation(() => { callOrder.push("playAudioFile"); return Promise.resolve(); });
 
 		const pi = makeFakePi({ active: [] });
 		speakExtension(pi.api);
 
 		const result = await pi.speakTool.execute(
 			"tc",
-			{ text: "Hello world", wait: true },
+			{ text: "Hello world" },
 			undefined,
 			undefined,
 			makeCtx(),
 		);
 
-		expect(callOrder).toEqual(["synthesise", "writeWav", "playAudioFile"]);
-		const r = result as { content: { text: string }[]; details: { ok: boolean; ms: number; voice: string; lang: string; text: string } };
+		const r = result as {
+			content: { text: string }[];
+			details: { ok: boolean; queuePosition: number; voice: string; lang: string; text: string };
+		};
 		expect(r.details.ok).toBe(true);
+		expect(r.details.queuePosition).toBe(1);
 		expect(r.details.voice).toBe("M1");
 		expect(r.details.lang).toBe("en");
 		expect(r.details.text).toBe("Hello world");
-		expect(typeof r.details.ms).toBe("number");
-		expect(r.content[0]!.text).toContain("Hello world");
+		expect(r.content[0]!.text).toContain("Queued (#1)");
 	});
 
-	it("does not await playAudioFile when wait: false", async () => {
+	it("second call returns queuePosition: 2", async () => {
 		vi.mocked(assetsReady).mockReturnValue(true);
 
 		const pi = makeFakePi({ active: [] });
 		speakExtension(pi.api);
 
-		const result = await pi.speakTool.execute(
-			"tc",
-			{ text: "async playback", wait: false },
-			undefined,
-			undefined,
-			makeCtx(),
-		);
+		await pi.speakTool.execute("tc", { text: "First" }, undefined, undefined, makeCtx());
+		const result = await pi.speakTool.execute("tc", { text: "Second" }, undefined, undefined, makeCtx());
 
-		const r = result as { details: { ok: boolean } };
-		expect(r.details.ok).toBe(true);
-		// playAudioFile was called (fire-and-forget)
-		expect(playAudioFile).toHaveBeenCalled();
-	});
-
-	it("calls onUpdate with increasing elapsed values", async () => {
-		vi.useFakeTimers();
-		vi.mocked(assetsReady).mockReturnValue(true);
-		vi.mocked(synthesise).mockImplementation(async () => {
-			await new Promise((r) => setTimeout(r, 3500));
-			return { wav: [0], sampleRate: 44100, duration: [0.5] };
-		});
-		vi.mocked(writeWav).mockResolvedValue(undefined);
-		vi.mocked(playAudioFile).mockResolvedValue(undefined);
-
-		const onUpdate = vi.fn();
-		const pi = makeFakePi({ active: [] });
-		speakExtension(pi.api);
-
-		const execPromise = pi.speakTool.execute(
-			"tc",
-			{ text: "tick tock", wait: true },
-			undefined,
-			onUpdate,
-			makeCtx(),
-		);
-
-		await vi.advanceTimersByTimeAsync(3500);
-		await execPromise;
-		vi.useRealTimers();
-
-		expect(onUpdate).toHaveBeenCalled();
-		const firstCall = onUpdate.mock.calls[0]![0] as { details: { elapsed: number } };
-		expect(firstCall.details.elapsed).toBe(1);
-		if (onUpdate.mock.calls.length > 1) {
-			const secondCall = onUpdate.mock.calls[1]![0] as { details: { elapsed: number } };
-			expect(secondCall.details.elapsed).toBeGreaterThan(firstCall.details.elapsed);
-		}
+		const r = result as { details: { queuePosition: number } };
+		expect(r.details.queuePosition).toBe(2);
 	});
 });
 
@@ -512,35 +465,6 @@ describe("tool execute — session param priority", () => {
 			expect.objectContaining({ speed: 1.3 }),
 			expect.any(String),
 		);
-	});
-});
-
-describe("tool execute — timeout", () => {
-	it("returns error when synthesis never resolves within 60s", async () => {
-		vi.useFakeTimers();
-		vi.mocked(assetsReady).mockReturnValue(true);
-		// synthesise never resolves
-		vi.mocked(synthesise).mockImplementation(() => new Promise(() => {}));
-
-		const pi = makeFakePi({ active: [] });
-		speakExtension(pi.api);
-
-		const execPromise = pi.speakTool.execute(
-			"tc",
-			{ text: "never done" },
-			undefined,
-			undefined,
-			makeCtx(),
-		);
-
-		// Advance past the ~30-second timeout for short text (executionTimeoutMs(10) = 30 s)
-		await vi.advanceTimersByTimeAsync(31_000);
-		const result = await execPromise;
-		vi.useRealTimers();
-
-		const d = (result as { details: { ok: boolean; message: string } }).details;
-		expect(d.ok).toBe(false);
-		expect(d.message).toContain("timed out");
 	});
 });
 

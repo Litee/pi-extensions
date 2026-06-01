@@ -66,38 +66,27 @@ describe("renderCall", () => {
 	});
 });
 
-describe("renderResult — partial (isPartial: true)", () => {
-	const baseDetails = { ok: true, voice: "M1", lang: "en", text: "hello" };
-
-	it("shows ⏱ and elapsed, not the text or 'speaking'", () => {
-		const text = renderRes({ details: { ...baseDetails, elapsed: 5 } }, true);
-		expect(text).toContain("⏱");
-		expect(text).toContain("5s");
-		expect(text).not.toContain("/ ");
-		expect(text).not.toContain("speaking");
-		expect(text).not.toContain('"hello"');
+describe("renderResult — ok (queued)", () => {
+	it("shows 🔊 with voice/lang tag", () => {
+		const text = renderRes({ details: { ok: true, voice: "M2", lang: "ja", text: "hi" } });
+		expect(text).toContain("🔊");
+		expect(text).toContain("[M2/ja]");
 	});
 
-	it("shows 0s when elapsed is missing", () => {
-		const text = renderRes({ details: baseDetails }, true);
-		expect(text).toContain("⏱");
-		expect(text).toContain("0s");
-		expect(text).not.toContain("/ ");
-	});
-});
-
-describe("renderResult — final ok", () => {
-	it("shows ✓ and time in seconds, not the text", () => {
-		const text = renderRes({ details: { ok: true, voice: "M2", lang: "ja", text: "hi", ms: 3200 } });
-		expect(text).toContain("✓");
-		expect(text).toContain("3.2s");
-		expect(text).not.toContain('"hi"');
+	it("shows queue position when queuePosition is provided", () => {
+		const text = renderRes({ details: { ok: true, voice: "M1", lang: "en", text: "hi", queuePosition: 1 } });
+		expect(text).toContain("(#1)");
 	});
 
-	it("shows ✓ done when ms is missing", () => {
+	it("does not show '#' when queuePosition is absent", () => {
 		const text = renderRes({ details: { ok: true, voice: "M1", lang: "en", text: "hi" } });
-		expect(text).toContain("✓");
-		expect(text).toContain("done");
+		expect(text).not.toContain("#");
+	});
+
+	it("does not include elapsed or time", () => {
+		const text = renderRes({ details: { ok: true, voice: "M1", lang: "en", text: "hi", queuePosition: 2 } });
+		expect(text).not.toContain("s");
+		expect(text).not.toContain("done");
 	});
 });
 

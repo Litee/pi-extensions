@@ -4,9 +4,13 @@
  * Registers a `speak` tool that synthesises text via the Supertone TTS engine
  * (ONNX, in-process) and plays audio through the OS device.
  *
- * The tool is **inactive by default** every session. The `/speak` slash command
- * opens an interactive TUI menu to toggle it on/off, pick a voice, and test
- * speech.  If model assets are missing the menu shows a download hint.
+ * The tool **returns immediately** with a queue position.  A single background
+ * worker processes items sequentially: synthesise → play → next item.  The LLM
+ * can call `speak` multiple times; all calls enqueue and the tool never blocks.
+ *
+ * The `/speak` slash command opens an interactive TUI menu to toggle it on/off,
+ * pick a voice, and test speech.  If model assets are missing the menu shows a
+ * download hint.
  *
  * Security notes
  * --------------
@@ -30,14 +34,7 @@ import { MAX_TEXT_CHARS, SpeakParams, VOICES, type LangCode, type SpeakParamsT, 
 import { SPEAK_STATE_CUSTOM_TYPE, type SpeakState, pickSavedState } from "./state.js";
 import { playAudioFile } from "./audio.js";
 import { synthesise, writeWav } from "./tts.js";
-
-/**
- * Safety-net execution timeout derived from text length.
- * 2× the expected speech duration, minimum 30 s.
- */
-function executionTimeoutMs(charCount: number): number {
-	return Math.max(30_000, Math.ceil((charCount / 700) * 120_000));
-}
+import { SpeechQueue } from "./queue.js";
 
 /** Minimal ambient type for the command context's ui surface. */
 type CmdUi = {
@@ -54,6 +51,8 @@ export default function speakExtension(pi: ExtensionAPI): void {
 	// ---------------------------------------------------------------------------
 	// State
 	// ---------------------------------------------------------------------------
+
+	const queue = new SpeechQueue();
 
 	let enabled = false;
 	let sessionVoice: string | undefined;
@@ -97,6 +96,7 @@ export default function speakExtension(pi: ExtensionAPI): void {
 
 	/** Restores persisted state — enabled flag and session overrides survive session resume. */
 	pi.on("session_start", (_event, ctx) => {
+		queue.clear();
 		const saved = pickSavedState(ctx.sessionManager.getBranch());
 		enabled        = saved?.enabled        ?? false;
 		sessionVoice   = saved?.sessionVoice;
@@ -135,96 +135,49 @@ export default function speakExtension(pi: ExtensionAPI): void {
 		name: "speak",
 		label: "Speak",
 		description:
-			"Synthesise text via the Supertone TTS engine and play it through the system audio. Only usable after /speak enables it.",
+			"Synthesise text via the Supertone TTS engine and play it through the system audio. Only usable after /speak enables it. Returns immediately — speech plays in the background queue.",
 		parameters: SpeakParams,
 		renderCall(args, theme) {
 			return renderCall(args, theme);
 		},
 		renderResult,
-		async execute(_id, params: SpeakParamsT, _signal, onUpdate) {
-			const assetsDir = getAssetsDir();
+		// eslint-disable-next-line @typescript-eslint/require-await
+		async execute(_id, params: SpeakParamsT) {
+			const text = params.text;
+			const shortText = text.slice(0, 80);
+
+			if (text.length > MAX_TEXT_CHARS) {
+				return {
+					content: [{ type: "text" as const, text: `speak: text too long (${text.length} chars). Maximum is ${MAX_TEXT_CHARS} chars (~60 s of speech).` }],
+					details: { ok: false, voice: "M1", lang: "en", text: shortText, message: `text too long: ${text.length} > ${MAX_TEXT_CHARS} chars` },
+				};
+			}
+
 			const cfg = loadConfig();
+			const assetsDir = getAssetsDir();
+
+			if (!assetsReady(assetsDir)) {
+				return {
+					content: [{ type: "text" as const, text: "speak: assets not downloaded. Run /speak to install." }],
+					details: { ok: false, voice: "M1", lang: "en", text: shortText, message: "assets not downloaded" },
+				};
+			}
 
 			// Priority: session override → tool param → config default → fallback
 			const rawVoice = sessionVoice ?? params.voice ?? cfg.defaultVoice ?? "M1";
 			const voice = (VOICES as readonly string[]).includes(rawVoice)
 				? rawVoice as VoiceId
 				: "M1" as const;
-			const lang    = (sessionLang  ?? params.lang   ?? cfg.defaultLang    ?? "en")  as LangCode;
-			const speed   = sessionSpeed  ?? params.speed  ?? cfg.defaultSpeed   ?? 1.05;
-			const steps   = sessionSteps  ?? params.steps  ?? cfg.defaultSteps   ?? 8;
-			const silence = 0.3;
+			const lang  = (sessionLang  ?? params.lang   ?? cfg.defaultLang    ?? "en")  as LangCode;
+			const speed = sessionSpeed  ?? params.speed  ?? cfg.defaultSpeed   ?? 1.05;
+			const steps = sessionSteps  ?? params.steps  ?? cfg.defaultSteps   ?? 8;
 
-			const text = params.text;
-			const shortText = text.length > 80 ? text.slice(0, 80) : text;
+			const pos = queue.enqueue({ text, voice, lang, speed, steps, assetsDir });
 
-			if (text.length > MAX_TEXT_CHARS) {
-				return {
-					content: [{ type: "text" as const, text: `speak: text too long (${text.length} chars). Maximum is ${MAX_TEXT_CHARS} chars (~60 s of speech).` }],
-					details: { ok: false, voice, lang, text: shortText, message: `text too long: ${text.length} > ${MAX_TEXT_CHARS} chars` },
-				};
-			}
-
-			if (!assetsReady(assetsDir)) {
-				return {
-					content: [{ type: "text" as const, text: "speak: assets not downloaded. Run /speak enable to install." }],
-					details: { ok: false, voice, lang, text: shortText, message: "assets not downloaded" },
-				};
-			}
-
-			const t0 = Date.now();
-			const tmpPath = join(tmpdir(), `pi-speak-${Date.now()}.wav`);
-
-			// Push elapsed-time updates every second
-			let elapsed = 0;
-			const ticker = setInterval(() => {
-				elapsed++;
-				onUpdate?.({
-					content: [{ type: "text" as const, text: `speaking… ${elapsed}s` }],
-					details: { ok: true, voice, lang, text: shortText, elapsed },
-				});
-			}, 1000);
-
-			// Abort controller — used to kill the audio player on timeout.
-			const ac = new AbortController();
-
-			// Hard timeout: abort playback then reject.
-			const timeoutMs = executionTimeoutMs(text.length);
-			const timeoutPromise = new Promise<never>((_, reject) =>
-				setTimeout(() => {
-					ac.abort();
-					reject(new Error(`timed out after ${Math.round(timeoutMs / 1000)}s`));
-				}, timeoutMs),
-			);
-
-			try {
-				await Promise.race([
-					(async () => {
-						const result = await synthesise(text, { voice, lang, speed, steps, silenceDuration: silence }, assetsDir);
-						await writeWav(tmpPath, result.wav, result.sampleRate);
-						if (params.wait !== false) {
-							await playAudioFile(tmpPath, ac.signal);
-						} else {
-							void playAudioFile(tmpPath).catch(() => {});
-						}
-					})(),
-					timeoutPromise,
-				]);
-
-				const ms = Date.now() - t0;
-				return {
-					content: [{ type: "text" as const, text: `Spoke: "${text.slice(0, 60)}${text.length > 60 ? "…" : ""}"` }],
-					details: { ok: true, voice, lang, text: shortText, ms },
-				};
-			} catch (err) {
-				return {
-					content: [{ type: "text" as const, text: `speak failed: ${(err as Error).message}` }],
-					details: { ok: false, voice, lang, text: shortText, message: (err as Error).message },
-				};
-			} finally {
-				clearInterval(ticker);
-				try { unlinkSync(tmpPath); } catch {}
-			}
+			return {
+				content: [{ type: "text" as const, text: `Queued (#${pos}): ${shortText}${text.length > 80 ? "…" : ""}` }],
+				details: { ok: true, voice, lang, text: shortText, queuePosition: pos },
+			};
 		},
 	});
 
@@ -259,6 +212,7 @@ export default function speakExtension(pi: ExtensionAPI): void {
 				assetsReady,
 				loadConfig,
 				saveConfig,
+				getQueueLength: () => queue.length,
 				onToggle: (): Promise<boolean> => {
 					if (enabled) {
 						enabled = false;

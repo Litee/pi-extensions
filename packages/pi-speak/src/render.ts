@@ -9,8 +9,7 @@ export interface SpeakResultDetails {
   voice: string;
   lang: string;
   text: string;
-  ms?: number;
-  elapsed?: number;
+  queuePosition?: number;  // position in queue (1 = next to play)
   message?: string;
 }
 
@@ -25,25 +24,11 @@ export function renderCall(args: Partial<SpeakParamsT> | undefined, theme: Theme
   );
 }
 
-export const renderResult: NonNullable<ToolDefinition["renderResult"]> = (result, { isPartial }, theme) => {
+export const renderResult: NonNullable<ToolDefinition["renderResult"]> = (result, _opts, theme) => {
   const d = (result as { details?: SpeakResultDetails }).details;
-
-  // Before first onUpdate — show a minimal placeholder
   if (!d) return new Text(theme.fg("muted", "🔊 …"), 0, 0);
-
-  if (!d.ok) {
-    return new Text(theme.fg("error", `✗ ${d.message ?? "failed"}`), 0, 0);
-  }
-
-  if (isPartial) {
-    const elapsed = d.elapsed ?? 0;
-    return new Text(
-      `${theme.fg("accent", "⏱")} ${theme.fg("accent", `${elapsed}s`)}`,
-      0, 0,
-    );
-  }
-
-  // Final
-  const time = d.ms !== undefined ? `${(d.ms / 1000).toFixed(1)}s` : "done";
-  return new Text(theme.fg("success", `✓ ${time}`), 0, 0);
+  if (!d.ok) return new Text(theme.fg("error", `✗ ${d.message ?? "failed"}`), 0, 0);
+  const pos = d.queuePosition !== undefined ? theme.fg("dim", ` (#${d.queuePosition})`) : "";
+  const tag = theme.fg("dim", `[${d.voice}/${d.lang}]`);
+  return new Text(`${theme.fg("success", "🔊")} ${tag}${pos}`, 0, 0);
 };
