@@ -121,6 +121,50 @@ async function importHelper(): Promise<typeof import("./vendor/supertonic-helper
 }
 
 // ---------------------------------------------------------------------------
+// Engine + voice-style caches
+// ---------------------------------------------------------------------------
+
+/**
+ * Cached TTS engine promise, keyed by onnxDir.
+ * Loading four InferenceSession objects from disk costs 0.3–3 s — cache it
+ * for the lifetime of the process so every subsequent call is free.
+ */
+let cachedEngineDir: string | null = null;
+let cachedEnginePromise: Promise<Awaited<ReturnType<typeof import("./vendor/supertonic-helper.js")["loadTextToSpeech"]>>> | null = null;
+
+async function getEngine(onnxDir: string): Promise<Awaited<ReturnType<typeof import("./vendor/supertonic-helper.js")["loadTextToSpeech"]>>> {
+	if (cachedEngineDir !== onnxDir) {
+		// Assets directory changed (e.g. config update) — invalidate.
+		cachedEngineDir = null;
+		cachedEnginePromise = null;
+	}
+	if (!cachedEnginePromise) {
+		const { loadTextToSpeech } = await importHelper();
+		cachedEnginePromise = loadTextToSpeech(onnxDir);
+		cachedEngineDir = onnxDir;
+	}
+	return cachedEnginePromise;
+}
+
+/**
+ * Cached voice-style objects, keyed by the voice-style file path.
+ * Re-reading and parsing the JSON on every call wastes 5–30 ms.
+ */
+const voiceStyleCache = new Map<string, ReturnType<typeof import("./vendor/supertonic-helper.js")["loadVoiceStyle"]>>();
+
+async function getVoiceStyle(
+	voiceStylePaths: string[],
+): Promise<ReturnType<typeof import("./vendor/supertonic-helper.js")["loadVoiceStyle"]>> {
+	const key = voiceStylePaths.join("|");
+	const cached = voiceStyleCache.get(key);
+	if (cached) return cached;
+	const { loadVoiceStyle } = await importHelper();
+	const style = loadVoiceStyle(voiceStylePaths);
+	voiceStyleCache.set(key, style);
+	return style;
+}
+
+// ---------------------------------------------------------------------------
 // Public API
 // ---------------------------------------------------------------------------
 
@@ -148,13 +192,11 @@ export async function synthesise(
 	assertLang(lang);
 	assertAssetsExist(assetsDir);
 
-	const { loadTextToSpeech, loadVoiceStyle } = await importHelper();
-
 	const onnxDir = join(assetsDir, "onnx");
 	const voiceStylePaths = resolveVoiceStylePaths(assetsDir, voice);
 
-	const tts = await loadTextToSpeech(onnxDir);
-	const style = loadVoiceStyle(voiceStylePaths);
+	const tts = await getEngine(onnxDir);
+	const style = await getVoiceStyle(voiceStylePaths);
 
 	const result = await tts.call(text, lang, style, steps, speed, silenceDuration);
 
