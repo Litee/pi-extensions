@@ -653,6 +653,24 @@ describe("SubagentScheduler — executeJob with model", () => {
   });
 
   it("resolves model when job has a model field", async () => {
+    // Restart the scheduler with a registry that can actually resolve "openai/gpt-4".
+    // The default makeMockCtx() returns an empty getAvailable(), so model resolution
+    // silently falls back to undefined — this ctx makes the resolution succeed.
+    scheduler.stop();
+    const fakeModel = { id: "gpt-4", provider: "openai" };
+    const ctxWithModel = {
+      cwd: "/tmp",
+      modelRegistry: {
+        find: vi.fn((provider: string, id: string) =>
+          provider === "openai" && id === "gpt-4" ? fakeModel : undefined,
+        ),
+        getAll: () => [],
+        getAvailable: () => [{ provider: "openai", id: "gpt-4", name: "GPT-4" }],
+      },
+      sessionManager: { getSessionId: () => "sess-1" },
+    } as unknown as ExtensionContext;
+    scheduler.start(pi, ctxWithModel, manager, store);
+
     const spawnSpy = vi.spyOn(manager as unknown as { spawn: () => string }, "spawn");
 
     scheduler.addJob({
@@ -668,6 +686,8 @@ describe("SubagentScheduler — executeJob with model", () => {
     await vi.advanceTimersByTimeAsync(0);
 
     expect(spawnSpy).toHaveBeenCalled();
+    // spawn(pi, ctx, type, prompt, options) — options.model must be the resolved model
+    expect((spawnSpy.mock.calls[0] as unknown[])[4]).toMatchObject({ model: fakeModel });
   });
 });
 

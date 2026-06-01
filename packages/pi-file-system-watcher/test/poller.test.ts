@@ -244,7 +244,6 @@ describe("detectChanges — target='changed' (modify)", () => {
 		const snap = await snapshotPath(dirPath);
 		const watch = makeWatch(dirPath, "changed", snap);
 		// Add a file inside → directory mtime changes
-		await new Promise<void>((res) => setTimeout(res, 10)); // ensure mtime delta
 		fs.writeFileSync(path.join(dirPath, "entry.txt"), "new");
 		// Force an mtime update by touching the directory
 		const now = new Date();

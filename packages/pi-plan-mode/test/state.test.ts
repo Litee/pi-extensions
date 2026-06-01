@@ -214,7 +214,9 @@ describe("loadPlanModeConfig — HOME/USERPROFILE fallback", () => {
 			delete process.env["HOME"];
 			process.env["USERPROFILE"] = "/test/userprofile";
 			// readFileSync is mocked to throw ENOENT — config falls back to {}
+			vi.mocked(readFileSync).mockClear();
 			expect(loadPlanModeConfig()).toEqual({});
+			expect(vi.mocked(readFileSync).mock.calls[0]![0]).toBe("/test/userprofile/.pi/agent/pi-plan-mode.json");
 		} finally {
 			if (savedHome !== undefined) process.env["HOME"] = savedHome;
 			else delete process.env["HOME"];
@@ -229,7 +231,9 @@ describe("loadPlanModeConfig — HOME/USERPROFILE fallback", () => {
 		try {
 			delete process.env["HOME"];
 			delete process.env["USERPROFILE"];
+			vi.mocked(readFileSync).mockClear();
 			expect(loadPlanModeConfig()).toEqual({});
+			expect(vi.mocked(readFileSync).mock.calls[0]![0]).toBe(".pi/agent/pi-plan-mode.json");
 		} finally {
 			if (savedHome !== undefined) process.env["HOME"] = savedHome;
 			else delete process.env["HOME"];

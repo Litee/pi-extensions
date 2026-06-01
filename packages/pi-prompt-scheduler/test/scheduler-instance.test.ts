@@ -510,7 +510,10 @@ describe("CronScheduler.executeJob — interval job (getNextRun returns null)", 
 
 		const stored = storage.getJob("interval-job")!;
 		expect(stored.lastStatus).toBe("success");
-		// nextRun should not be set since getNextRun returns null for intervals
+		// executeJob calls getNextRun(job.id); the interval job was never registered
+		// via scheduleJob so it is absent from this.jobs — getNextRun returns null
+		// and the updateJob spread omits nextRun entirely.
+		expect(storage.getJob("interval-job")?.nextRun).toBeUndefined();
 	});
 });
 

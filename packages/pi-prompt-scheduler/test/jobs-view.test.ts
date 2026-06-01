@@ -359,7 +359,8 @@ describe("JobsView input — cleanup (c)", () => {
 
 describe("JobsView — render without bgFn (return lines path)", () => {
 	it("returns unpadded lines when bgFn is not provided", () => {
-		const view = new JobsView(
+		storage.addJob(mkJob({ id: "j1", name: "test-job" }));
+		const viewWithout = new JobsView(
 			storage,
 			scheduler as unknown as CronScheduler,
 			"sess-A",
@@ -368,10 +369,23 @@ describe("JobsView — render without bgFn (return lines path)", () => {
 			done,
 			// No bgFn — should return raw lines
 		);
-		storage.addJob(mkJob({ id: "j1", name: "test-job" }));
-		const lines = view.render(80);
-		// Lines should be returned without bgFn padding
-		expect(Array.isArray(lines)).toBe(true);
+		const viewWith = new JobsView(
+			storage,
+			scheduler as unknown as CronScheduler,
+			"sess-A",
+			theme,
+			requestRender,
+			done,
+			(s: string) => s, // identity bgFn: pads each line to width before wrapping
+		);
+		const linesWith = viewWith.render(80).map(stripAnsi);
+		const linesWithout = viewWithout.render(80).map(stripAnsi);
+		// bgFn path: each line is padded to visibleWidth ≥ width before being
+		// passed to the wrapper — so at least one bgFn line must be strictly
+		// longer than its unpadded counterpart.
+		expect(linesWith.some((l, i) => l.length > (linesWithout[i]?.length ?? 0))).toBe(true);
+		// Conversely, no no-bgFn line should exceed its bgFn counterpart.
+		expect(linesWithout.some((l, i) => l.length > (linesWith[i]?.length ?? 0))).toBe(false);
 	});
 });
 
@@ -380,14 +394,17 @@ describe("JobsView — lastStatus icon variants", () => {
 		storage.addJob(mkJob({ id: "j1", name: "running-job", lastStatus: "running" }));
 		const view = makeView();
 		const lines = renderLines(view);
-		// The running job should appear (icon ⟳ or similar)
-		expect(lines.some(l => l.includes("running-job"))).toBe(true);
+		// The stub theme passes the glyph verbatim; jobs-view.ts uses ⟳ for running.
+		// Tie the glyph to the job's own row so a stray ⟳ elsewhere can't pass it.
+		expect(lines.some(l => l.includes("running-job") && l.includes("⟳"))).toBe(true);
 	});
 
 	it("shows error icon when lastStatus=error", () => {
 		storage.addJob(mkJob({ id: "j2", name: "error-job", lastStatus: "error" }));
 		const view = makeView();
 		const lines = renderLines(view);
-		expect(lines.some(l => l.includes("error-job"))).toBe(true);
+		// jobs-view.ts uses "!" as the error glyph; stub theme passes it through verbatim.
+		// Tie the glyph to the job's own row so an unrelated "!" can't pass it.
+		expect(lines.some(l => l.includes("error-job") && l.includes("!"))).toBe(true);
 	});
 });

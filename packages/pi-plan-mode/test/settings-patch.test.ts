@@ -1,5 +1,5 @@
 
-import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { homedir } from "node:os";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -107,13 +107,16 @@ describe("restoreDefaults", () => {
 		expect(readSettings()).toEqual({ defaultModel: "claude-sonnet-4-5" });
 	});
 
-	it("does not throw when settings.json is missing (no-op)", () => {
-		expect(() => restoreDefaults(agentDir, { defaultModel: "x" })).not.toThrow();
+	it("does not create settings.json when it is missing (no-op)", () => {
+		restoreDefaults(agentDir, { defaultModel: "x" });
+		expect(existsSync(join(agentDir, "settings.json"))).toBe(false);
 	});
 
-	it("does not throw when settings.json is malformed JSON", () => {
-		writeFileSync(join(agentDir, "settings.json"), "{broken", "utf-8");
-		expect(() => restoreDefaults(agentDir, { defaultModel: "x" })).not.toThrow();
+	it("does not clobber settings.json when it contains malformed JSON", () => {
+		const malformed = "{broken";
+		writeFileSync(join(agentDir, "settings.json"), malformed, "utf-8");
+		restoreDefaults(agentDir, { defaultModel: "x" });
+		expect(readFileSync(join(agentDir, "settings.json"), "utf-8")).toBe(malformed);
 	});
 });
 

@@ -110,8 +110,11 @@ describe("resolveModel", () => {
   });
 
   describe("fuzzy match — prefers tighter matches", () => {
-    it("prefers exact id over substring", () => {
-      const result = resolveModel("gpt-4o", makeRegistry());
+    it("prefers exact id over substring when another model contains the id as substring", () => {
+      // "gpt-4o" exactly matches MODELS[3] (score 100) but is also a substring of
+      // "gpt-4o-mini" (score ~77) — exact-id precedence must win
+      const gpt4oMini = { id: "gpt-4o-mini", name: "GPT-4o Mini", provider: "openai" };
+      const result = resolveModel("gpt-4o", makeRegistry([...MODELS, gpt4oMini]));
       expect(result).toEqual(MODELS[3]);
     });
 

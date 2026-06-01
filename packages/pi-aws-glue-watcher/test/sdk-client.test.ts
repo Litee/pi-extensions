@@ -9,7 +9,7 @@
  * network access are required.
  */
 
-import { GlueClient as AwsGlueClient } from "@aws-sdk/client-glue";
+import { BatchStopJobRunCommand, GlueClient as AwsGlueClient, StopWorkflowRunCommand } from "@aws-sdk/client-glue";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import { GlueCliError, createGlueClient } from "../src/glue-client.js";
@@ -24,6 +24,8 @@ describe("createGlueClient", () => {
 
 	beforeEach(() => {
 		vi.mocked(AwsGlueClient).mockClear();
+		vi.mocked(BatchStopJobRunCommand).mockClear();
+		vi.mocked(StopWorkflowRunCommand).mockClear();
 		mockSend = vi.fn();
 		vi.mocked(AwsGlueClient).mockImplementation(function (this: { send: unknown }) {
 			this.send = mockSend;
@@ -238,6 +240,9 @@ describe("createGlueClient", () => {
 		const client = createGlueClient();
 		await expect(client.stopJobRun("my-job", "jr_123", "prof", "us-east-1")).resolves.toBeUndefined();
 		expect(mockSend).toHaveBeenCalledOnce();
+		const cmd = vi.mocked(mockSend).mock.calls[0]![0] as unknown as BatchStopJobRunCommand;
+		expect(cmd).toBeInstanceOf(BatchStopJobRunCommand);
+		expect(vi.mocked(BatchStopJobRunCommand).mock.calls[0]![0]).toEqual({ JobName: "my-job", JobRunIds: ["jr_123"] });
 	});
 
 	it("stopJobRun works with undefined region", async () => {
@@ -245,6 +250,9 @@ describe("createGlueClient", () => {
 		const client = createGlueClient();
 		await expect(client.stopJobRun("my-job", "jr_123", "prof", undefined)).resolves.toBeUndefined();
 		expect(mockSend).toHaveBeenCalledOnce();
+		const cmd = vi.mocked(mockSend).mock.calls[0]![0] as unknown as BatchStopJobRunCommand;
+		expect(cmd).toBeInstanceOf(BatchStopJobRunCommand);
+		expect(vi.mocked(BatchStopJobRunCommand).mock.calls[0]![0]).toEqual({ JobName: "my-job", JobRunIds: ["jr_123"] });
 	});
 
 	it("stopWorkflowRun sends StopWorkflowRunCommand", async () => {
@@ -252,6 +260,9 @@ describe("createGlueClient", () => {
 		const client = createGlueClient();
 		await expect(client.stopWorkflowRun("my-wf", "wr_123", "prof", "us-east-1")).resolves.toBeUndefined();
 		expect(mockSend).toHaveBeenCalledOnce();
+		const cmd = vi.mocked(mockSend).mock.calls[0]![0] as unknown as StopWorkflowRunCommand;
+		expect(cmd).toBeInstanceOf(StopWorkflowRunCommand);
+		expect(vi.mocked(StopWorkflowRunCommand).mock.calls[0]![0]).toEqual({ Name: "my-wf", RunId: "wr_123" });
 	});
 
 	it("stopWorkflowRun works with undefined region", async () => {
@@ -259,6 +270,9 @@ describe("createGlueClient", () => {
 		const client = createGlueClient();
 		await expect(client.stopWorkflowRun("my-wf", "wr_123", "prof", undefined)).resolves.toBeUndefined();
 		expect(mockSend).toHaveBeenCalledOnce();
+		const cmd = vi.mocked(mockSend).mock.calls[0]![0] as unknown as StopWorkflowRunCommand;
+		expect(cmd).toBeInstanceOf(StopWorkflowRunCommand);
+		expect(vi.mocked(StopWorkflowRunCommand).mock.calls[0]![0]).toEqual({ Name: "my-wf", RunId: "wr_123" });
 	});
 
 	it("getJobRun with partial optional fields (only some defined)", async () => {

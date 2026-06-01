@@ -933,8 +933,14 @@ describe("agent-runner — config.model resolution", () => {
 
     await runAgent(ctx, "Explore", "go", { pi });
 
-    // Should succeed and fall back to parent model (undefined in this ctx)
-    expect(createAgentSession).toHaveBeenCalled();
+    // "gpt-4-no-slash" has no "/" so resolveDefaultModel's slash-split branch is
+    // skipped entirely and it returns parentModel (ctx.model = undefined).
+    // Because model === undefined, the spread `...(model !== undefined ? { model } : {})`
+    // emits no `model` key — assert the session was created without one.
+    expect(createAgentSession).toHaveBeenCalledWith(
+      // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment
+      expect.not.objectContaining({ model: expect.anything() }),
+    );
   });
 });
 

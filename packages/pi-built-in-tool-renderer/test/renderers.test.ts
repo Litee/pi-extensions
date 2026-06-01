@@ -552,8 +552,11 @@ describe("renderLs — expanded mode with directory entries", () => {
 			taggedTheme,
 			ctx({ expanded: true }),
 		);
-		// Directory gets accent styling
-		expect(result).toBeDefined();
+		// Directory entries (ending in /) get accent styling; files get toolOutput styling
+		expect(result).toContain("<accent>src/</>");
+		expect(result).toContain("<toolOutput>README.md</>");
+		expect(result).not.toContain("<toolOutput>src/</>");
+		expect(result).not.toContain("<accent>README.md</>");
 	});
 
 	it("expanded mode shows '... more entries' when > 30 entries", () => {

@@ -249,6 +249,9 @@ describe("runGlueWatcherCommand — TUI menu", () => {
 		await expect(
 			runGlueWatcherCommand(undefined, headlessCtx, rt, pi, rt.client),
 		).resolves.not.toThrow();
+		// The function returns early without opening any menu or modifying runtime state.
+		expect(rt.paused).toBe(false);
+		expect(rt.displayMode).toBe("widget");
 	});
 });
 

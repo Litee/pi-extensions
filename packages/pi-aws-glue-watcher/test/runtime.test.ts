@@ -450,9 +450,11 @@ describe("refreshStatus", () => {
 	});
 
 	it("is a no-op when rt.ui is null", () => {
-		const rt = makeRuntime({} as never, {} as never);
+		const { rt, setStatusSpy } = makeRtWithUi();
+		rt.ui = null;
 		rt.displayMode = "statusline";
 		expect(() => refreshStatus(rt)).not.toThrow();
+		expect(setStatusSpy).not.toHaveBeenCalled();
 	});
 });
 
