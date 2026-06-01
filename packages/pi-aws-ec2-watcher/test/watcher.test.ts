@@ -12,8 +12,6 @@ import type { Ec2Client, InstanceStateResult } from '../src/ec2-client.js'
 import type { Ec2Event, Ec2Watch } from '../src/types.js'
 import { Ec2Watcher, formatTimeLeft, formatUptime } from '../src/watcher.js'
 
-const stubTheme = { fg: (_: string, t: string) => t }
-
 // ---------------------------------------------------------------------------
 // Helpers
 // ---------------------------------------------------------------------------
@@ -537,7 +535,7 @@ describe('Ec2Watcher view', () => {
   it('renderItemRowTUI uses dim color for terminal watches (name column)', () => {
     const cols = watcher.view.renderItemRowTUI(
       { ...mockWatch, terminal: true },
-      { theme: stubTheme as never, width: 80 },
+      { theme: {} as never, width: 80 },
     )
     expect(cols[0]?.color).toBe('dim')
   })
@@ -607,7 +605,7 @@ describe('Ec2Watcher view', () => {
 
     it('terminal watch shows DONE', () => {
       const w = { ...base, terminal: true, consecutiveErrors: 0 }
-      const cols = watcher.view.renderItemRowTUI(w, { theme: stubTheme as never, width: 80 })
+      const cols = watcher.view.renderItemRowTUI(w, { theme: {} as never, width: 80 })
       expect(cols.find((c) => c.name === 'status')!.text).toBe('DONE')
     })
 
@@ -629,10 +627,10 @@ describe('Ec2Watcher view', () => {
       expect(cols.find((c) => c.name === 'status')!.text).toBe('ERROR')
     })
 
-    it('terminal watch status uses dim color', () => {
+    it('terminal watch status uses warning color', () => {
       const w = { ...base, terminal: true, consecutiveErrors: 0 }
-      const cols = watcher.view.renderItemRowTUI(w, { theme: stubTheme as never, width: 80 })
-      expect(cols.find((c) => c.name === 'status')!.color).toBeUndefined()
+      const cols = watcher.view.renderItemRowTUI(w, { theme: {} as never, width: 80 })
+      expect(cols.find((c) => c.name === 'status')!.color).toBe('warning')
     })
 
     it('columns are ordered: name, state, instanceType, status, timeout', () => {
@@ -701,7 +699,7 @@ describe('timeout column in renderItemRowTUI', () => {
 
   it('uses dim color for terminal watches (timeout column)', () => {
     const w = { ...base, timeoutAt: Date.now() + 10_000, terminal: true, consecutiveErrors: 0 }
-    const cols = watcher.view.renderItemRowTUI(w, { theme: stubTheme as never, width: 100 })
+    const cols = watcher.view.renderItemRowTUI(w, { theme: {} as never, width: 100 })
     expect(cols.find((c) => c.name === 'timeout')!.color).toBe('dim')
   })
 })

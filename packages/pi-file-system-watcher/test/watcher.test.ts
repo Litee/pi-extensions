@@ -13,8 +13,6 @@ import { compressPath, FsWatcher, formatTimeLeft } from "../src/watcher.js";
 import type { FsClient } from "../src/fs-client.js";
 import type { FsBaseline } from "../src/types.js";
 
-const stubTheme = { fg: (_: string, t: string) => t };
-
 // ---------------------------------------------------------------------------
 // Module mocks
 // ---------------------------------------------------------------------------
@@ -587,23 +585,23 @@ describe("FsWatcher view", () => {
   it("renderItemRowTUI uses dim color for terminal watch path column", () => {
     const cols = watcher.view.renderItemRowTUI(
       { ...mockWatch, terminal: true },
-      { theme: stubTheme as never, width: 80 },
+      { theme: {} as never, width: 80 },
     );
     expect(cols[0]?.color).toBe("dim");
   });
 
-  it("renderItemRowTUI uses dim color for terminal watch status column", () => {
+  it("renderItemRowTUI uses warning color for terminal watch status column", () => {
     const cols = watcher.view.renderItemRowTUI(
       { ...mockWatch, terminal: true },
-      { theme: stubTheme as never, width: 80 },
+      { theme: {} as never, width: 80 },
     );
-    expect(cols[1]?.color).toBeUndefined();
+    expect(cols[1]?.color).toBe("warning");
   });
 
   it("renderItemRowTUI uses dim color for terminal watch timeout column", () => {
     const cols = watcher.view.renderItemRowTUI(
       { ...mockWatch, terminal: true },
-      { theme: stubTheme as never, width: 80 },
+      { theme: {} as never, width: 80 },
     );
     expect(cols[2]?.color).toBe("dim");
   });
@@ -726,7 +724,7 @@ describe("FsWatcher view status column", () => {
   it("terminal watch shows DONE", () => {
     const w = { ...baseW, terminal: true, consecutiveErrors: 0 };
     const cols = watcher.view.renderItemRowTUI(w, {
-      theme: stubTheme as never,
+      theme: {} as never,
       width: 80,
     });
     expect(cols.find((c) => c.name === "status")!.text).toBe("DONE");
@@ -815,7 +813,7 @@ describe("FsWatcher view timeout column", () => {
 
   it("uses dim color for terminal watch", () => {
     const w = { ...baseW, timeoutAt: Date.now() + 10_000, terminal: true, consecutiveErrors: 0 };
-    const cols = watcher.view.renderItemRowTUI(w, { theme: stubTheme as never, width: 100 });
+    const cols = watcher.view.renderItemRowTUI(w, { theme: {} as never, width: 100 });
     expect(cols.find((c) => c.name === "timeout")!.color).toBe("dim");
   });
 

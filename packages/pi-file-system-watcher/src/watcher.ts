@@ -104,7 +104,7 @@ export class FsWatcher extends BaseWatcher<FsWatch, FsBaseline, FsEvent> {
       return `${w.path}  ${statusText}  ${timeLeft}  ${w.target}`;
     },
 
-    renderItemRowTUI(w, ctx): RowColumn[] {
+    renderItemRowTUI(w, _ctx): RowColumn[] {
       const pathColor = w.terminal
         ? "dim"
         : w.consecutiveErrors >= POLL_ERROR_THRESHOLD
@@ -114,13 +114,13 @@ export class FsWatcher extends BaseWatcher<FsWatch, FsBaseline, FsEvent> {
       const statusText = timedOut
         ? "EXPIRED"
         : w.terminal
-          ? ctx.theme.fg("dim", ctx.theme.fg("warning", "DONE"))
+          ? "DONE"
           : w.consecutiveErrors >= POLL_ERROR_THRESHOLD
             ? "ERROR"
             : "WATCHING";
       const statusColor =
         w.terminal
-          ? undefined
+          ? "warning"
           : w.consecutiveErrors >= POLL_ERROR_THRESHOLD
             ? "error"
             : "warning";
@@ -132,7 +132,7 @@ export class FsWatcher extends BaseWatcher<FsWatch, FsBaseline, FsEvent> {
           : "dim";
       return [
         { name: "path",    text: w.path,      color: pathColor },
-        { name: "status",  text: statusText,  width: 10, ...(statusColor !== undefined ? { color: statusColor } : {}) },
+        { name: "status",  text: statusText,  width: 10, color: statusColor },
         { name: "timeout", text: timeLeft,    width: 10, color: timeColor },
         { name: "target",  text: w.target,    width: 10, color: "dim" },
       ];
