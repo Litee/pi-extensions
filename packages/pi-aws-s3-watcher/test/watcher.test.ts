@@ -67,7 +67,7 @@ describe('S3Watcher.addWatch', () => {
     const result = await watcher.executeTool({
       action: 'add',
       uri: 's3://my-bucket/my/key',
-      target: 'exists',
+      target: 'creation',
       profile: 'default',
     })
     expect(result.details['ok']).toBe(true)
@@ -82,7 +82,7 @@ describe('S3Watcher.addWatch', () => {
     const { watcher } = makeWatcher()
     const result = await watcher.executeTool({
       action: 'add',
-      target: 'exists',
+      target: 'creation',
       profile: 'p',
     })
     expect(result.details['ok']).toBe(false)
@@ -94,7 +94,7 @@ describe('S3Watcher.addWatch', () => {
     const result = await watcher.executeTool({
       action: 'add',
       uri: 'https://example.com/x',
-      target: 'exists',
+      target: 'creation',
       profile: 'p',
     })
     expect(result.details['ok']).toBe(false)
@@ -117,7 +117,7 @@ describe('S3Watcher.addWatch', () => {
     const result = await watcher.executeTool({
       action: 'add',
       uri: 's3://b/k',
-      target: 'exists',
+      target: 'creation',
     })
     expect(result.details['ok']).toBe(false)
     expect((result.content[0] as { text: string }).text).toMatch(/requires a profile/)
@@ -131,7 +131,7 @@ describe('S3Watcher.addWatch', () => {
     const result = await watcher.executeTool({
       action: 'add',
       uri: 's3://b/k',
-      target: 'exists',
+      target: 'creation',
       profile: 'bad-profile',
     })
     expect(result.details['ok']).toBe(false)
@@ -144,7 +144,7 @@ describe('S3Watcher.addWatch', () => {
     const result = await watcher.executeTool({
       action: 'add',
       uri: 's3://b/k',
-      target: 'updated',
+      target: 'modification',
       profile: 'p',
     })
     expect(result.details['ok']).toBe(false)
@@ -157,12 +157,12 @@ describe('S3Watcher.addWatch', () => {
     const result = await watcher.executeTool({
       action: 'add',
       uri: 's3://b/k',
-      target: 'updated',
+      target: 'modification',
       profile: 'p',
     })
     expect(result.details['ok']).toBe(true)
     const watchId = result.details['watchId'] as string
-    expect(watcher['watches'].get(watchId)?.target).toBe('updated')
+    expect(watcher['watches'].get(watchId)?.target).toBe('modification')
   })
 
   it('soft-fails on seed error — watch still added with undefined baseline', async () => {
@@ -171,7 +171,7 @@ describe('S3Watcher.addWatch', () => {
     const result = await watcher.executeTool({
       action: 'add',
       uri: 's3://b/k',
-      target: 'exists',
+      target: 'creation',
       profile: 'p',
     })
     expect(result.details['ok']).toBe(true)
@@ -185,7 +185,7 @@ describe('S3Watcher.addWatch', () => {
     const result = await watcher.executeTool({
       action: 'add',
       uri: 's3://b/k',
-      target: 'exists',
+      target: 'creation',
       profile: 'p',
       timeoutSeconds: 60,
     })
@@ -200,7 +200,7 @@ describe('S3Watcher.addWatch', () => {
     const result = await watcher.executeTool({
       action: 'add',
       uri: 's3://b/k',
-      target: 'exists',
+      target: 'creation',
       profile: 'p',
       timeoutSeconds: MAX + 3600,
     })
@@ -215,7 +215,7 @@ describe('S3Watcher.addWatch', () => {
     const result = await watcher.executeTool({
       action: 'add',
       uri: 's3://b/k',
-      target: 'exists',
+      target: 'creation',
       profile: 'p',
       timeoutSeconds: -5,
     })
@@ -235,13 +235,13 @@ describe('S3Watcher.removeWatch', () => {
     const r1 = await watcher.executeTool({
       action: 'add',
       uri: 's3://b/k1',
-      target: 'exists',
+      target: 'creation',
       profile: 'p',
     })
     await watcher.executeTool({
       action: 'add',
       uri: 's3://b/k2',
-      target: 'exists',
+      target: 'creation',
       profile: 'p',
     })
     const watchId = r1.details['watchId'] as string
@@ -267,7 +267,7 @@ describe('S3Watcher.detectChanges', () => {
     const addResult = await watcher.executeTool({
       action: 'add',
       uri: 's3://b/k',
-      target: 'exists',
+      target: 'creation',
       profile: 'p',
       timeoutSeconds: 1,
     })
@@ -286,7 +286,7 @@ describe('S3Watcher.detectChanges', () => {
     const addResult = await watcher.executeTool({
       action: 'add',
       uri: 's3://b/k',
-      target: 'exists',
+      target: 'creation',
       profile: 'p',
     })
     const watchId = addResult.details['watchId'] as string
@@ -318,7 +318,7 @@ describe('S3Watcher.containsTerminalStateEvent', () => {
     const events = [
       {
         watchId: 'w1', bucket: 'b', key: 'k',
-        eventType: 'exists' as const, isTerminal: true as const,
+        eventType: 'creation' as const, isTerminal: true as const,
         summary: 's', formatted: '• s',
       },
     ]
@@ -353,8 +353,8 @@ describe('S3Watcher.normaliseWatch', () => {
   })
 
   it('returns null when required string fields are missing', () => {
-    expect(watcher.normaliseWatch({ bucket: 'b', key: 'k', profile: 'p', target: 'exists' })).toBeNull()
-    expect(watcher.normaliseWatch({ watchId: 'w1', key: 'k', profile: 'p', target: 'exists' })).toBeNull()
+    expect(watcher.normaliseWatch({ bucket: 'b', key: 'k', profile: 'p', target: 'creation' })).toBeNull()
+    expect(watcher.normaliseWatch({ watchId: 'w1', key: 'k', profile: 'p', target: 'creation' })).toBeNull()
   })
 
   it('returns null for invalid target', () => {
@@ -370,7 +370,7 @@ describe('S3Watcher.normaliseWatch', () => {
       key: 'path/to/file',
       profile: 'dev',
       region: 'us-east-1',
-      target: 'exists',
+      target: 'creation',
       timeoutAt: 99999,
       addedAt: 12345,
       lastPolledAt: 12400,
@@ -478,7 +478,7 @@ describe('S3Watcher view', () => {
     key: 'some/key.txt',
     profile: 'dev',
     region: 'us-east-1',
-    target: 'exists' as const,
+    target: 'creation' as const,
     timeoutAt: undefined,
     addedAt: new Date('2024-01-01').getTime(),
     lastPolledAt: undefined,
@@ -564,7 +564,7 @@ describe('S3Watcher view', () => {
       watchId: 'w1',
       bucket: 'b',
       key: 'k',
-      eventType: 'exists' as const,
+      eventType: 'creation' as const,
       isTerminal: true as const,
       summary: 's3://b/k now exists',
       formatted: '• s3://b/k now exists ✓',
@@ -576,7 +576,7 @@ describe('S3Watcher view', () => {
     const stubTheme = { fg: (_: string, t: string) => t, bold: (t: string) => t }
     const base = {
       watchId: 'w1', bucket: 'b', key: 'k', profile: 'p', region: undefined,
-      target: 'exists' as const, timeoutAt: undefined, addedAt: 0,
+      target: 'creation' as const, timeoutAt: undefined, addedAt: 0,
       lastPolledAt: undefined, baseline: undefined,
     }
 
@@ -650,33 +650,33 @@ describe('S3Watcher view', () => {
     }
 
     it('maps exists → creation in renderItemRowText', () => {
-      const w = { ...baseW, target: 'exists' as const, terminal: false, consecutiveErrors: 0 }
+      const w = { ...baseW, target: 'creation' as const, terminal: false, consecutiveErrors: 0 }
       expect(watcher.view.renderItemRowText(w)).toContain('creation')
       expect(watcher.view.renderItemRowText(w)).not.toContain('exists')
     })
     it('maps removed → deletion in renderItemRowText', () => {
-      const w = { ...baseW, target: 'removed' as const, terminal: false, consecutiveErrors: 0 }
+      const w = { ...baseW, target: 'deletion' as const, terminal: false, consecutiveErrors: 0 }
       expect(watcher.view.renderItemRowText(w)).toContain('deletion')
     })
-    it('keeps updated unchanged in renderItemRowText', () => {
-      const w = { ...baseW, target: 'updated' as const, terminal: false, consecutiveErrors: 0 }
-      expect(watcher.view.renderItemRowText(w)).toContain('updated')
+    it('shows modification in renderItemRowText for updated', () => {
+      const w = { ...baseW, target: 'modification' as const, terminal: false, consecutiveErrors: 0 }
+      expect(watcher.view.renderItemRowText(w)).toContain('modification')
     })
     it('renderItemDetail target field shows creation not exists', () => {
-      const w = { ...baseW, target: 'exists' as const, terminal: false, consecutiveErrors: 0 }
+      const w = { ...baseW, target: 'creation' as const, terminal: false, consecutiveErrors: 0 }
       const fields = watcher.view.renderItemDetail(w, { theme: {} as never, width: 80 })
       const targetField = fields.find(f => f.label === 'target')!
       expect(targetField.value).toBe('creation')
     })
     it('renderItemDetail target field shows deletion for removed', () => {
-      const w = { ...baseW, target: 'removed' as const, terminal: false, consecutiveErrors: 0 }
+      const w = { ...baseW, target: 'deletion' as const, terminal: false, consecutiveErrors: 0 }
       const fields = watcher.view.renderItemDetail(w, { theme: {} as never, width: 80 })
       expect(fields.find(f => f.label === 'target')!.value).toBe('deletion')
     })
-    it('renderItemDetail target field shows updated unchanged', () => {
-      const w = { ...baseW, target: 'updated' as const, terminal: false, consecutiveErrors: 0 }
+    it('renderItemDetail target field shows modification for updated', () => {
+      const w = { ...baseW, target: 'modification' as const, terminal: false, consecutiveErrors: 0 }
       const fields = watcher.view.renderItemDetail(w, { theme: {} as never, width: 80 })
-      expect(fields.find(f => f.label === 'target')!.value).toBe('updated')
+      expect(fields.find(f => f.label === 'target')!.value).toBe('modification')
     })
   })
 
@@ -685,7 +685,7 @@ describe('S3Watcher view', () => {
   describe('poll interval in detail pane', () => {
     const baseW = {
       watchId: 'w1', bucket: 'b', key: 'k', profile: 'p', region: undefined as string | undefined,
-      target: 'exists' as const, timeoutAt: undefined as number | undefined, addedAt: 0,
+      target: 'creation' as const, timeoutAt: undefined as number | undefined, addedAt: 0,
       lastPolledAt: undefined as number | undefined, baseline: undefined as import('../src/types.js').S3Baseline | undefined,
       terminal: false, consecutiveErrors: 0,
     }
@@ -806,7 +806,7 @@ describe('S3Watcher per-watch schedulers', () => {
     const result = await watcher.executeTool({
       action: 'add',
       uri: 's3://b/k',
-      target: 'exists',
+      target: 'creation',
       profile: 'p',
     })
     const watchId = result.details['watchId'] as string
@@ -819,8 +819,8 @@ describe('S3Watcher per-watch schedulers', () => {
   it('stopPolling stops all per-watch schedulers', async () => {
     vi.useFakeTimers()
     const { watcher } = makeWatcher({ exists: false })
-    await watcher.executeTool({ action: 'add', uri: 's3://b/k1', target: 'exists', profile: 'p' })
-    await watcher.executeTool({ action: 'add', uri: 's3://b/k2', target: 'exists', profile: 'p' })
+    await watcher.executeTool({ action: 'add', uri: 's3://b/k1', target: 'creation', profile: 'p' })
+    await watcher.executeTool({ action: 'add', uri: 's3://b/k2', target: 'creation', profile: 'p' })
     watcher.stopPolling()
     const schedulers = (watcher as unknown as { _watchSchedulers: Map<string, { isRunning: boolean }> })._watchSchedulers
     for (const s of schedulers.values()) {
@@ -836,12 +836,12 @@ describe('S3Watcher per-watch schedulers', () => {
     ;(watcher as unknown as { paused: boolean }).paused = true
     watcher['watches'].set('w1', {
       watchId: 'w1', bucket: 'b', key: 'k1', profile: 'p', region: undefined, timeoutAt: undefined,
-      target: 'exists' as const, addedAt: 0, lastPolledAt: undefined,
+      target: 'creation' as const, addedAt: 0, lastPolledAt: undefined,
       baseline: undefined, terminal: false, consecutiveErrors: 0,
     })
     watcher['watches'].set('w2', {
       watchId: 'w2', bucket: 'b', key: 'k2', profile: 'p', region: undefined, timeoutAt: undefined,
-      target: 'exists' as const, addedAt: 0, lastPolledAt: undefined,
+      target: 'creation' as const, addedAt: 0, lastPolledAt: undefined,
       baseline: undefined, terminal: true, consecutiveErrors: 0,
     })
     ;(watcher as unknown as { paused: boolean }).paused = false
@@ -1011,7 +1011,7 @@ describe('S3Watcher.browseOptions', () => {
     const addResult = await watcher.executeTool({
       action: 'add',
       uri: 's3://b/k',
-      target: 'exists',
+      target: 'creation',
       profile: 'p',
     })
     const watchId = addResult.details['watchId'] as string
@@ -1067,7 +1067,7 @@ describe('timeout column in renderItemRowTUI', () => {
 
   const base = {
     watchId: 'w1', bucket: 'b', key: 'k', profile: 'p', region: undefined,
-    target: 'exists' as const, addedAt: 0,
+    target: 'creation' as const, addedAt: 0,
     lastPolledAt: undefined, baseline: undefined,
   }
 
@@ -1131,7 +1131,7 @@ describe('view.isRowDimmed', () => {
 
   const base = {
     watchId: 'w1', bucket: 'b', key: 'k', profile: 'p', region: undefined as string | undefined,
-    target: 'exists' as const, timeoutAt: undefined as number | undefined, addedAt: 0,
+    target: 'creation' as const, timeoutAt: undefined as number | undefined, addedAt: 0,
     lastPolledAt: undefined as number | undefined, baseline: undefined as import('../src/types.js').S3Baseline | undefined,
     consecutiveErrors: 0,
   }

@@ -3,7 +3,7 @@
  */
 
 /** What the user is waiting for on a given filesystem path. */
-export type TargetCondition = "exists" | "changed" | "removed";
+export type TargetCondition = "creation" | "modification" | "deletion";
 
 /**
  * Point-in-time observation of a filesystem path.
@@ -60,10 +60,10 @@ export interface FsEvent {
   watchId: string;
   path: string;
   /**
-   * `exists` / `changed` / `removed` mean the target condition fired.
+   * `creation` / `modification` / `deletion` mean the target condition fired.
    * `timeout` means `timeoutAt` elapsed before the target was met.
    */
-  eventType: "exists" | "changed" | "removed" | "timeout";
+  eventType: "creation" | "modification" | "deletion" | "timeout";
   /** Human-readable one-liner. */
   summary: string;
   /** Bullet-list line for chat messages (includes `"• "` prefix). */

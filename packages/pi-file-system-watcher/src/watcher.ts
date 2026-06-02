@@ -62,10 +62,11 @@ export function compressPath(path: string, maxWidth: number): string {
   return ellipsis + path.slice(-keep);
 }
 
+
 const TARGETS: ReadonlySet<TargetCondition> = new Set<TargetCondition>([
-  "exists",
-  "changed",
-  "removed",
+  "creation",
+  "modification",
+  "deletion",
 ]);
 
 // ---------------------------------------------------------------------------
@@ -115,7 +116,7 @@ export class FsWatcher extends BaseWatcher<FsWatch, FsBaseline, FsEvent> {
         { name: "path",    text: w.path,      color: pathColor },
         { name: "status",  text: statusText,  width: 10, color: statusColor },
         { name: "timeout", text: timeLeft,    width: 10, color: timeColor },
-        { name: "target",  text: w.target,    width: 10, color: "dim" },
+        { name: "target",  text: w.target, width: 10, color: "dim" },
       ];
     },
 
@@ -279,7 +280,15 @@ export class FsWatcher extends BaseWatcher<FsWatch, FsBaseline, FsEvent> {
     if (typeof r["watchId"] !== "string" || typeof r["path"] !== "string")
       return null;
 
-    const target = r["target"];
+    const rawTarget = r["target"];
+    // Migration shim: remap old TargetCondition values that were persisted before the
+    // "creation/modification/deletion" rename so that saved sessions from before the
+    // rename continue to load correctly.
+    const target =
+      rawTarget === "exists" ? "creation" :
+      rawTarget === "changed" ? "modification" :
+      rawTarget === "removed" ? "deletion" :
+      rawTarget;
     if (
       typeof target !== "string" ||
       !(TARGETS as ReadonlySet<string>).has(target)
@@ -379,7 +388,7 @@ export class FsWatcher extends BaseWatcher<FsWatch, FsBaseline, FsEvent> {
     ).trim();
     if (!(TARGETS as ReadonlySet<string>).has(target)) {
       return this._toolError(
-        "'add' requires target to be 'exists', 'changed', or 'removed'.",
+        "'add' requires target to be 'creation', 'modification', or 'deletion'.",
       );
     }
 
@@ -424,15 +433,15 @@ export class FsWatcher extends BaseWatcher<FsWatch, FsBaseline, FsEvent> {
       seedError = (err as Error).message;
     }
 
-    // target='changed' requires the path to exist at add time — there is no
+    // target='modification' requires the path to exist at add time — there is no
     // mtime to diff against otherwise.
     if (
-      target === "changed" &&
+      target === "modification" &&
       watch.baseline !== undefined &&
       !watch.baseline.exists
     ) {
       return this._toolError(
-        `target='changed' requires the path to exist at add time, ` +
+        `target='modification' requires the path to exist at add time, ` +
           `but ${watchPath} is currently absent.`,
       );
     }

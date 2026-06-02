@@ -15,9 +15,9 @@ describe('MAX_TIMEOUT_SECONDS', () => {
 
 describe('TARGETS', () => {
   it('contains the three valid conditions', () => {
-    expect(TARGETS.has('exists')).toBe(true)
-    expect(TARGETS.has('updated')).toBe(true)
-    expect(TARGETS.has('removed')).toBe(true)
+    expect(TARGETS.has('creation')).toBe(true)
+    expect(TARGETS.has('modification')).toBe(true)
+    expect(TARGETS.has('deletion')).toBe(true)
   })
 
   it('does not contain invalid conditions', () => {

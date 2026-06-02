@@ -51,11 +51,11 @@ export interface DetectChangesResult {
 /**
  * Check whether `target` condition fired by comparing `prev` to `now`.
  *
- * - `exists`:  fires the first time `exists` flips false → true.
- * - `removed`: fires the first time `exists` flips true → false.
- * - `changed`: fires when both snapshots exist AND mtimeNs or size differs.
- *              When the file disappears `changed` does NOT fire (that's
- *              `removed`, not a change).
+ * - `creation`:    fires the first time `exists` flips false → true.
+ * - `deletion`:    fires the first time `exists` flips true → false.
+ * - `modification`: fires when both snapshots exist AND mtimeNs or size differs.
+ *                   When the file disappears `modification` does NOT fire (that's
+ *                   `deletion`, not a modification).
  *
  * `prev === undefined` means no baseline yet (seed failed); no target can
  * fire until the baseline is installed on the next poll.
@@ -67,11 +67,11 @@ function targetFired(
 ): boolean {
 	if (prev === undefined) return false;
 	switch (target) {
-		case "exists":
+		case "creation":
 			return !prev.exists && now.exists;
-		case "removed":
+		case "deletion":
 			return prev.exists && !now.exists;
-		case "changed": {
+		case "modification": {
 			if (!prev.exists || !now.exists) return false;
 			if (prev.mtimeNs !== undefined && now.mtimeNs !== undefined && prev.mtimeNs !== now.mtimeNs) {
 				return true;
@@ -96,17 +96,17 @@ function anyChange(prev: FsBaseline | undefined, now: FsBaseline): boolean {
 function buildTargetEvent(watch: FsWatch, _prev: FsBaseline | undefined, _now: FsBaseline): FsEvent {
 	const { path, watchId } = watch;
 	switch (watch.target) {
-		case "exists": {
+		case "creation": {
 			const summary = `${path} now exists`;
-			return { watchId, path, eventType: "exists", summary, formatted: `• ${path}: absent → present` };
+			return { watchId, path, eventType: "creation", summary, formatted: `• ${path}: absent → present` };
 		}
-		case "removed": {
+		case "deletion": {
 			const summary = `${path} was removed`;
-			return { watchId, path, eventType: "removed", summary, formatted: `• ${path}: present → absent` };
+			return { watchId, path, eventType: "deletion", summary, formatted: `• ${path}: present → absent` };
 		}
-		case "changed": {
+		case "modification": {
 			const summary = `${path} changed`;
-			return { watchId, path, eventType: "changed", summary, formatted: `• ${path}: unchanged → changed` };
+			return { watchId, path, eventType: "modification", summary, formatted: `• ${path}: unchanged → changed` };
 		}
 	}
 }

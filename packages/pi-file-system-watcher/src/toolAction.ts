@@ -34,16 +34,16 @@ export const FsWatcherParams = Type.Object({
   target: Type.Optional(
     Type.Union(
       [
-        Type.Literal("exists"),
-        Type.Literal("changed"),
-        Type.Literal("removed"),
+        Type.Literal("creation"),
+        Type.Literal("modification"),
+        Type.Literal("deletion"),
       ],
       {
         description:
           "Condition to wait for (required for 'add'). " +
-          "'exists': fire when the path appears. " +
-          "'changed': fire when mtime or size changes from baseline (path must exist at add time). " +
-          "'removed': fire when the path is deleted.",
+          "'creation': fire when the path appears. " +
+          "'modification': fire when mtime or size changes from baseline (path must exist at add time). " +
+          "'deletion': fire when the path is deleted.",
       },
     ),
   ),

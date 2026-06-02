@@ -3,7 +3,7 @@
  */
 
 /** What the user is waiting for on a given S3 object. */
-export type TargetCondition = "exists" | "updated" | "removed";
+export type TargetCondition = "creation" | "modification" | "deletion";
 
 /**
  * Point-in-time observation of an S3 object.
@@ -58,10 +58,10 @@ export interface S3Event {
 	bucket: string;
 	key: string;
 	/**
-	 * `exists` / `updated` / `removed` mean the target condition fired.
+	 * `creation` / `modification` / `deletion` mean the target condition fired.
 	 * `timeout` means `timeoutAt` elapsed before the target was met.
 	 */
-	eventType: "exists" | "updated" | "removed" | "timeout";
+	eventType: "creation" | "modification" | "deletion" | "timeout";
 	/**
 	 * All S3 events are terminal — when any event fires the watch is done.
 	 * Always `true`; present so `isTerminalBatch` can inspect the event

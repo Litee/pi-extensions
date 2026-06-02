@@ -35,8 +35,6 @@ import { compressS3Uri, parseS3Uri, S3UriError } from './uri.js'
 // Display helpers
 // ---------------------------------------------------------------------------
 
-import type { TargetCondition } from './types.js'
-
 /**
  * Format the time remaining until a timeout, or special labels for
  * undefined / expired timeouts.
@@ -52,12 +50,6 @@ export function formatTimeLeft(timeoutAt: number | undefined, now: number): stri
   if (h >= 1) return `${h}h left`
   if (m >= 1) return `${m}m left`
   return `${rem}s left`
-}
-
-function displayTarget(target: TargetCondition): string {
-  if (target === 'exists') return 'creation'
-  if (target === 'removed') return 'deletion'
-  return target  // 'updated' unchanged
 }
 
 // ---------------------------------------------------------------------------
@@ -126,7 +118,7 @@ export class S3Watcher extends BaseWatcher<S3Watch, S3Baseline, S3Event> {
     renderItemRowText(w) {
       const statusText = w.terminal ? 'DONE' : w.consecutiveErrors >= POLL_ERROR_THRESHOLD ? 'ERROR' : 'WATCHING'
       const timeLeft = formatTimeLeft(w.timeoutAt, Date.now())
-      return `s3://${w.bucket}/${w.key}  ${statusText}  ${timeLeft}  ${displayTarget(w.target)}`
+      return `s3://${w.bucket}/${w.key}  ${statusText}  ${timeLeft}  ${w.target}`
     },
 
     renderItemRowTUI(w, _ctx): RowColumn[] {
@@ -143,7 +135,7 @@ export class S3Watcher extends BaseWatcher<S3Watch, S3Baseline, S3Event> {
         { name: 'uri',     text: `s3://${w.bucket}/${w.key}`, color: uriColor },
         { name: 'status',  text: statusText,              width: 10, color: statusColor },
         { name: 'timeout', text: timeLeft,                width: 10, color: timeColor },
-        { name: 'target',  text: displayTarget(w.target), width: 10, color: 'dim' },
+        { name: 'target',  text: w.target, width: 10, color: 'dim' },
       ]
     },
 
@@ -152,7 +144,7 @@ export class S3Watcher extends BaseWatcher<S3Watch, S3Baseline, S3Event> {
         w.baseline === undefined ? 'unknown' : w.baseline.exists ? 'present' : 'absent'
       return [
         { label: 'uri',      value: `s3://${w.bucket}/${w.key}` },
-        { label: 'target',   value: displayTarget(w.target) },
+        { label: 'target',   value: w.target },
         { label: 'profile',  value: w.profile },
         { label: 'region',   value: w.region ?? 'default' },
         { label: 'state',    value: state },
@@ -272,7 +264,15 @@ export class S3Watcher extends BaseWatcher<S3Watch, S3Baseline, S3Event> {
     ) {
       return null
     }
-    const target = r['target']
+    const rawTarget = r['target']
+    // Migration shim: remap old TargetCondition values that were persisted before the
+    // "creation/modification/deletion" rename so that saved sessions from before the
+    // rename continue to load correctly.
+    const target =
+      rawTarget === 'exists' ? 'creation' :
+      rawTarget === 'updated' ? 'modification' :
+      rawTarget === 'removed' ? 'deletion' :
+      rawTarget
     if (typeof target !== 'string' || !(TARGETS as ReadonlySet<string>).has(target)) {
       return null
     }
@@ -361,7 +361,7 @@ export class S3Watcher extends BaseWatcher<S3Watch, S3Baseline, S3Event> {
 
     const target = (typeof params['target'] === 'string' ? params['target'] : '').trim()
     if (!(TARGETS as ReadonlySet<string>).has(target)) {
-      return this._toolError("'add' requires target to be 'exists', 'updated', or 'removed'.")
+      return this._toolError("'add' requires target to be 'creation', 'modification', or 'deletion'.")
     }
 
     const profile = (typeof params['profile'] === 'string' ? params['profile'] : '').trim()
@@ -415,10 +415,10 @@ export class S3Watcher extends BaseWatcher<S3Watch, S3Baseline, S3Event> {
       seedError = (err as Error).message
     }
 
-    // target='updated' requires an existing baseline to diff against
-    if (target === 'updated' && watch.baseline !== undefined && !watch.baseline.exists) {
+    // target='modification' requires an existing baseline to diff against
+    if (target === 'modification' && watch.baseline !== undefined && !watch.baseline.exists) {
       return this._toolError(
-        `target='updated' requires the object to exist at add-time, ` +
+        `target='modification' requires the object to exist at add-time, ` +
           `but s3://${parsed.bucket}/${parsed.key} is currently absent.`,
       )
     }

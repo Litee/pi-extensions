@@ -45,13 +45,13 @@ export interface DetectChangesResult {
 /**
  * Compare `now` against `prev` and return whether the observation matches
  * `target`. Semantics:
- *   - `exists`:  fires the first time `exists` flips false → true.
- *   - `removed`: fires the first time `exists` flips true → false.
- *   - `updated`: fires when both snapshots exist AND (etag or contentLength)
- *                differs. A missing ETag on either side is treated as
- *                "unknown, no change" — updated will not fire. If the object
- *                disappears, `updated` does NOT fire (that's a `removed`
- *                condition, not an update).
+ *   - `creation`:     fires the first time `exists` flips false → true.
+ *   - `deletion`:     fires the first time `exists` flips true → false.
+ *   - `modification`: fires when both snapshots exist AND (etag or contentLength)
+ *                     differs. A missing ETag on either side is treated as
+ *                     "unknown, no change" — modification will not fire. If the object
+ *                     disappears, `modification` does NOT fire (that's a `deletion`
+ *                     condition, not a modification).
  *
  * `prev === undefined` means we never had a baseline (seed failed), so no
  * target can fire yet — the caller will install `now` as the baseline and
@@ -64,11 +64,11 @@ function targetFired(
 ): boolean {
 	if (prev === undefined) return false;
 	switch (target) {
-		case "exists":
+		case "creation":
 			return !prev.exists && now.exists;
-		case "removed":
+		case "deletion":
 			return prev.exists && !now.exists;
-		case "updated": {
+		case "modification": {
 			if (!prev.exists || !now.exists) return false;
 			if (prev.etag !== undefined && now.etag !== undefined && prev.etag !== now.etag) {
 				return true;
@@ -105,32 +105,32 @@ function buildTargetEvent(
 ): S3Event {
 	const loc = uri(watch);
 	switch (watch.target) {
-		case "exists": {
+		case "creation": {
 			const size = now.contentLength !== undefined ? ` (${now.contentLength} bytes)` : "";
 			const summary = `${loc} now exists${size}`;
 			return {
 				watchId: watch.watchId,
 				bucket: watch.bucket,
 				key: watch.key,
-				eventType: "exists",
+				eventType: "creation",
 				isTerminal: true,
 				summary,
 				formatted: `• ${summary} ✓`,
 			};
 		}
-		case "removed": {
+		case "deletion": {
 			const summary = `${loc} was removed`;
 			return {
 				watchId: watch.watchId,
 				bucket: watch.bucket,
 				key: watch.key,
-				eventType: "removed",
+				eventType: "deletion",
 				isTerminal: true,
 				summary,
 				formatted: `• ${summary} ✓`,
 			};
 		}
-		case "updated": {
+		case "modification": {
 			const prevEtag = prev?.etag ?? "?";
 			const nextEtag = now.etag ?? "?";
 			const summary = `${loc} updated (etag ${prevEtag} → ${nextEtag})`;
@@ -138,7 +138,7 @@ function buildTargetEvent(
 				watchId: watch.watchId,
 				bucket: watch.bucket,
 				key: watch.key,
-				eventType: "updated",
+				eventType: "modification",
 				isTerminal: true,
 				summary,
 				formatted: `• ${summary} ✓`,

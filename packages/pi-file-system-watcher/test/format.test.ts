@@ -17,7 +17,7 @@ describe("buildChangeChatMessage", () => {
       {
         watchId: "w1",
         path: "/tmp/x.txt",
-        eventType: "exists",
+        eventType: "creation",
         summary: "/tmp/x.txt now exists",
         formatted: "• /tmp/x.txt: absent → present",
       },
@@ -37,14 +37,14 @@ describe("buildChangeChatMessage", () => {
       {
         watchId: "w1",
         path: "/a",
-        eventType: "exists",
+        eventType: "creation",
         summary: "appeared",
         formatted: "• /a: absent → present",
       },
       {
         watchId: "w2",
         path: "/b",
-        eventType: "removed",
+        eventType: "deletion",
         summary: "removed",
         formatted: "• /b: present → absent",
       },

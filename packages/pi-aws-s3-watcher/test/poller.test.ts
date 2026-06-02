@@ -27,19 +27,19 @@ function makeWatch(target: TargetCondition, baseline?: S3Baseline): S3Watch {
 
 describe("snapshotObject", () => {
 	it("returns {exists:false} when the object is absent", async () => {
-		await expect(snapshotObject(makeClient({ exists: false }), makeWatch("exists")))
+		await expect(snapshotObject(makeClient({ exists: false }), makeWatch("creation")))
 			.resolves.toEqual({ exists: false });
 	});
 
 	it("returns {exists:true, etag, contentLength} when the object is present", async () => {
 		const client = makeClient({ exists: true, etag: '"abc"', contentLength: 42 });
-		await expect(snapshotObject(client, makeWatch("updated")))
+		await expect(snapshotObject(client, makeWatch("modification")))
 			.resolves.toEqual({ exists: true, etag: '"abc"', contentLength: 42 });
 	});
 
 	it("omits etag/contentLength when the SDK did not return them", async () => {
 		const client = makeClient({ exists: true });
-		await expect(snapshotObject(client, makeWatch("exists")))
+		await expect(snapshotObject(client, makeWatch("creation")))
 			.resolves.toEqual({ exists: true });
 	});
 });
@@ -47,10 +47,10 @@ describe("snapshotObject", () => {
 describe("detectChanges — target='exists'", () => {
 	it("fires once when the object appears", async () => {
 		const client = makeClient({ exists: true, etag: '"a"', contentLength: 1 });
-		const watch = makeWatch("exists", { exists: false });
+		const watch = makeWatch("creation", { exists: false });
 		const res = await detectChanges(client, watch);
 		expect(res.events).toHaveLength(1);
-		expect(res.events[0]!.eventType).toBe("exists");
+		expect(res.events[0]!.eventType).toBe("creation");
 		expect(res.events[0]!.isTerminal).toBe(true);
 		expect(res.observedChange).toBe(true);
 		expect(res.newBaseline).toEqual({ exists: true, etag: '"a"', contentLength: 1 });
@@ -58,14 +58,14 @@ describe("detectChanges — target='exists'", () => {
 
 	it("does not fire while object remains absent", async () => {
 		const client = makeClient({ exists: false });
-		const res = await detectChanges(client, makeWatch("exists", { exists: false }));
+		const res = await detectChanges(client, makeWatch("creation", { exists: false }));
 		expect(res.events).toHaveLength(0);
 		expect(res.observedChange).toBe(false);
 	});
 
 	it("does not fire on first poll when baseline is undefined", async () => {
 		const client = makeClient({ exists: true, etag: '"a"', contentLength: 1 });
-		const res = await detectChanges(client, makeWatch("exists", undefined));
+		const res = await detectChanges(client, makeWatch("creation", undefined));
 		expect(res.events).toHaveLength(0);
 		expect(res.observedChange).toBe(false);
 		expect(res.newBaseline.exists).toBe(true);
@@ -75,10 +75,10 @@ describe("detectChanges — target='exists'", () => {
 describe("detectChanges — target='removed'", () => {
 	it("fires once when the object disappears", async () => {
 		const client = makeClient({ exists: false });
-		const watch = makeWatch("removed", { exists: true, etag: '"a"', contentLength: 1 });
+		const watch = makeWatch("deletion", { exists: true, etag: '"a"', contentLength: 1 });
 		const res = await detectChanges(client, watch);
 		expect(res.events).toHaveLength(1);
-		expect(res.events[0]!.eventType).toBe("removed");
+		expect(res.events[0]!.eventType).toBe("deletion");
 		expect(res.events[0]!.isTerminal).toBe(true);
 		expect(res.observedChange).toBe(true);
 	});
@@ -86,7 +86,7 @@ describe("detectChanges — target='removed'", () => {
 	it("does not fire while object remains present", async () => {
 		const client = makeClient({ exists: true, etag: '"a"', contentLength: 1 });
 		const res = await detectChanges(client, makeWatch(
-			"removed",
+			"deletion",
 			{ exists: true, etag: '"a"', contentLength: 1 },
 		));
 		expect(res.events).toHaveLength(0);
@@ -98,11 +98,11 @@ describe("detectChanges — target='updated'", () => {
 	it("fires when ETag changes", async () => {
 		const client = makeClient({ exists: true, etag: '"b"', contentLength: 1 });
 		const res = await detectChanges(client, makeWatch(
-			"updated",
+			"modification",
 			{ exists: true, etag: '"a"', contentLength: 1 },
 		));
 		expect(res.events).toHaveLength(1);
-		expect(res.events[0]!.eventType).toBe("updated");
+		expect(res.events[0]!.eventType).toBe("modification");
 		expect(res.events[0]!.isTerminal).toBe(true);
 		expect(res.observedChange).toBe(true);
 	});
@@ -110,17 +110,17 @@ describe("detectChanges — target='updated'", () => {
 	it("fires when size changes (even with missing ETag)", async () => {
 		const client = makeClient({ exists: true, contentLength: 2 });
 		const res = await detectChanges(client, makeWatch(
-			"updated",
+			"modification",
 			{ exists: true, contentLength: 1 },
 		));
 		expect(res.events).toHaveLength(1);
-		expect(res.events[0]!.eventType).toBe("updated");
+		expect(res.events[0]!.eventType).toBe("modification");
 	});
 
 	it("does not fire when ETag and size are unchanged", async () => {
 		const client = makeClient({ exists: true, etag: '"a"', contentLength: 1 });
 		const res = await detectChanges(client, makeWatch(
-			"updated",
+			"modification",
 			{ exists: true, etag: '"a"', contentLength: 1 },
 		));
 		expect(res.events).toHaveLength(0);
@@ -130,7 +130,7 @@ describe("detectChanges — target='updated'", () => {
 	it("does not fire when the object disappears (that's 'removed', not 'updated')", async () => {
 		const client = makeClient({ exists: false });
 		const res = await detectChanges(client, makeWatch(
-			"updated",
+			"modification",
 			{ exists: true, etag: '"a"', contentLength: 1 },
 		));
 		expect(res.events).toHaveLength(0);
@@ -141,10 +141,10 @@ describe("detectChanges — target='updated'", () => {
 
 describe("buildTimeoutEvent", () => {
 	it("produces a well-formed timeout event", () => {
-		const ev = buildTimeoutEvent(makeWatch("exists"));
+		const ev = buildTimeoutEvent(makeWatch("creation"));
 		expect(ev.eventType).toBe("timeout");
 		expect(ev.isTerminal).toBe(true);
-		expect(ev.summary).toMatch(/timed out waiting for 'exists'/);
+		expect(ev.summary).toMatch(/timed out waiting for 'creation'/);
 		expect(ev.formatted.startsWith("• ")).toBe(true);
 	});
 });

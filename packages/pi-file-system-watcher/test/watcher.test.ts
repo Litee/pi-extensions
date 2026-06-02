@@ -72,7 +72,7 @@ describe("FsWatcher.addWatch", () => {
     const result = await watcher.executeTool({
       action: "add",
       path: "/tmp/output.json",
-      target: "exists",
+      target: "creation",
     });
     expect(result.details["ok"]).toBe(true);
     const watchId = result.details["watchId"] as string;
@@ -86,7 +86,7 @@ describe("FsWatcher.addWatch", () => {
     const { watcher } = makeWatcher();
     const result = await watcher.executeTool({
       action: "add",
-      target: "exists",
+      target: "creation",
     });
     expect(result.details["ok"]).toBe(false);
     expect((result.content[0] as { text: string }).text).toMatch(
@@ -119,12 +119,12 @@ describe("FsWatcher.addWatch", () => {
     );
   });
 
-  it("returns error for target='changed' when path is absent at add time", async () => {
+  it("returns error for target='modification' when path is absent at add time", async () => {
     const { watcher } = makeWatcher({ exists: false });
     const result = await watcher.executeTool({
       action: "add",
       path: "/tmp/foo",
-      target: "changed",
+      target: "modification",
     });
     expect(result.details["ok"]).toBe(false);
     expect((result.content[0] as { text: string }).text).toMatch(
@@ -133,7 +133,7 @@ describe("FsWatcher.addWatch", () => {
     expect(watcher["watches"].size).toBe(0);
   });
 
-  it("accepts target='changed' when path is present", async () => {
+  it("accepts target='modification' when path is present", async () => {
     const { watcher } = makeWatcher({
       exists: true,
       mtimeNs: 1000n,
@@ -142,11 +142,11 @@ describe("FsWatcher.addWatch", () => {
     const result = await watcher.executeTool({
       action: "add",
       path: "/tmp/foo",
-      target: "changed",
+      target: "modification",
     });
     expect(result.details["ok"]).toBe(true);
     const watchId = result.details["watchId"] as string;
-    expect(watcher["watches"].get(watchId)?.target).toBe("changed");
+    expect(watcher["watches"].get(watchId)?.target).toBe("modification");
   });
 
   it("soft-fails on seed error — watch still added with undefined baseline", async () => {
@@ -155,7 +155,7 @@ describe("FsWatcher.addWatch", () => {
     const result = await watcher.executeTool({
       action: "add",
       path: "/root/secret",
-      target: "exists",
+      target: "creation",
     });
     expect(result.details["ok"]).toBe(true);
     const watchId = result.details["watchId"] as string;
@@ -170,7 +170,7 @@ describe("FsWatcher.addWatch", () => {
     const result = await watcher.executeTool({
       action: "add",
       path: "/tmp/foo",
-      target: "exists",
+      target: "creation",
       timeoutSeconds: 60,
     });
     expect(result.details["ok"]).toBe(true);
@@ -184,7 +184,7 @@ describe("FsWatcher.addWatch", () => {
     const result = await watcher.executeTool({
       action: "add",
       path: "/tmp/foo",
-      target: "exists",
+      target: "creation",
       timeoutSeconds: MAX + 3600,
     });
     expect(result.details["ok"]).toBe(true);
@@ -200,7 +200,7 @@ describe("FsWatcher.addWatch", () => {
     const result = await watcher.executeTool({
       action: "add",
       path: "/tmp/foo",
-      target: "exists",
+      target: "creation",
       timeoutSeconds: -5,
     });
     expect(result.details["ok"]).toBe(false);
@@ -220,12 +220,12 @@ describe("FsWatcher.removeWatch", () => {
     const r1 = await watcher.executeTool({
       action: "add",
       path: "/tmp/a",
-      target: "exists",
+      target: "creation",
     });
     await watcher.executeTool({
       action: "add",
       path: "/tmp/b",
-      target: "exists",
+      target: "creation",
     });
     const watchId = r1.details["watchId"] as string;
     const result = await watcher.executeTool({ action: "remove", watchId });
@@ -253,7 +253,7 @@ describe("FsWatcher.removeWatch", () => {
     const r = await watcher.executeTool({
       action: "add",
       path: "/tmp/c",
-      target: "exists",
+      target: "creation",
     });
     const watchId = r.details["watchId"] as string;
     expect(watcher["watches"].has(watchId)).toBe(true);
@@ -274,7 +274,7 @@ describe("FsWatcher.detectChanges", () => {
     const addResult = await watcher.executeTool({
       action: "add",
       path: "/tmp/foo",
-      target: "exists",
+      target: "creation",
       timeoutSeconds: 1,
     });
     const watchId = addResult.details["watchId"] as string;
@@ -292,7 +292,7 @@ describe("FsWatcher.detectChanges", () => {
     const addResult = await watcher.executeTool({
       action: "add",
       path: "/tmp/foo",
-      target: "exists",
+      target: "creation",
     });
     const watchId = addResult.details["watchId"] as string;
     const watch = watcher["watches"].get(watchId)!;
@@ -328,7 +328,7 @@ describe("FsWatcher.containsTerminalStateEvent", () => {
       {
         watchId: "w1",
         path: "/tmp/foo",
-        eventType: "exists" as const,
+        eventType: "creation" as const,
         summary: "foo now exists",
         formatted: "• foo now exists ✓",
       },
@@ -392,7 +392,7 @@ describe("FsWatcher.normaliseWatch", () => {
     const raw = {
       watchId: "abc",
       path: "/tmp/output.json",
-      target: "exists",
+      target: "creation",
       timeoutAt: 99999,
       addedAt: 12345,
       lastPolledAt: 12400,
@@ -404,7 +404,7 @@ describe("FsWatcher.normaliseWatch", () => {
     expect(result).not.toBeNull();
     expect(result?.watchId).toBe("abc");
     expect(result?.path).toBe("/tmp/output.json");
-    expect(result?.target).toBe("exists");
+    expect(result?.target).toBe("creation");
     expect(result?.baseline?.mtimeNs).toBe(1234567890n);
     expect(result?.baseline?.size).toBe(42);
   });
@@ -413,7 +413,7 @@ describe("FsWatcher.normaliseWatch", () => {
     const raw = {
       watchId: "w1",
       path: "/tmp/foo",
-      target: "removed",
+      target: "deletion",
       mode: "event", // legacy field — should be ignored
       terminal: false,
       consecutiveErrors: 0,
@@ -535,7 +535,7 @@ describe("FsWatcher view", () => {
   const mockWatch = {
     watchId: "w1",
     path: "/tmp/output.json",
-    target: "exists" as const,
+    target: "creation" as const,
     timeoutAt: undefined,
     addedAt: new Date("2024-01-01").getTime(),
     lastPolledAt: undefined,
@@ -548,7 +548,7 @@ describe("FsWatcher view", () => {
     const text = watcher.view.renderItemRowText(mockWatch);
     expect(text).toContain("/tmp/output.json");
     expect(text).toContain("WATCHING");
-    expect(text).toContain("exists");
+    expect(text).toContain("creation");
   });
 
   it("renderItemRowText shows DONE for terminal watches", () => {
@@ -634,7 +634,7 @@ describe("FsWatcher view", () => {
     expect(fields.find((f) => f.label === "path")?.value).toBe(
       "/tmp/output.json",
     );
-    expect(fields.find((f) => f.label === "target")?.value).toBe("exists");
+    expect(fields.find((f) => f.label === "target")?.value).toBe("creation");
     expect(fields.find((f) => f.label === "state")?.value).toBe("absent");
     expect(fields.find((f) => f.label === "polled")?.value).toBe("never");
     expect(fields.find((f) => f.label === "timeout")?.value).toBe("none");
@@ -679,7 +679,7 @@ describe("FsWatcher view", () => {
     const event = {
       watchId: "w1",
       path: "/tmp/foo",
-      eventType: "exists" as const,
+      eventType: "creation" as const,
       summary: "/tmp/foo now exists",
       formatted: "• /tmp/foo now exists ✓",
     };
@@ -702,7 +702,7 @@ describe("FsWatcher view status column", () => {
   const baseW = {
     watchId: "w1",
     path: "/tmp/foo",
-    target: "exists" as const,
+    target: "creation" as const,
     timeoutAt: undefined as number | undefined,
     addedAt: 0,
     lastPolledAt: undefined as number | undefined,
@@ -774,7 +774,7 @@ describe("FsWatcher view timeout column", () => {
   const baseW = {
     watchId: "w1",
     path: "/tmp/foo",
-    target: "exists" as const,
+    target: "creation" as const,
     addedAt: 0,
     lastPolledAt: undefined as number | undefined,
     baseline: undefined as FsBaseline | undefined,
@@ -835,7 +835,7 @@ describe("FsWatcher view.isRowDimmed", () => {
   const baseW = {
     watchId: "w1",
     path: "/tmp/foo",
-    target: "exists" as const,
+    target: "creation" as const,
     timeoutAt: undefined as number | undefined,
     addedAt: 0,
     lastPolledAt: undefined as number | undefined,
@@ -872,7 +872,7 @@ describe("FsWatcher view.compressColumns", () => {
       { name: "path", text: longPath },
       { name: "status", text: "WATCHING", width: 10 },
       { name: "timeout", text: "-", width: 10 },
-      { name: "target", text: "exists", width: 10 },
+      { name: "target", text: "creation", width: 10 },
     ];
     const totalWidth = 60;
     const result = watcher.view.compressColumns!(cols, totalWidth);
@@ -899,10 +899,10 @@ describe("FsWatcher view.compressColumns", () => {
     const { watcher } = makeWatcher();
     const cols: RowColumn[] = [
       { name: "path", text: "/tmp/x" },
-      { name: "target", text: "exists", width: 8 },
+      { name: "target", text: "creation", width: 8 },
     ];
     const result = watcher.view.compressColumns!(cols, 80);
-    expect(result.find((c) => c.name === "target")!.text).toBe("exists");
+    expect(result.find((c) => c.name === "target")!.text).toBe("creation");
   });
 });
 
@@ -928,7 +928,7 @@ describe("FsWatcher per-watch schedulers", () => {
     const result = await watcher.executeTool({
       action: "add",
       path: "/tmp/foo",
-      target: "exists",
+      target: "creation",
     });
     const watchId = result.details["watchId"] as string;
     const schedulers = (
@@ -947,12 +947,12 @@ describe("FsWatcher per-watch schedulers", () => {
     await watcher.executeTool({
       action: "add",
       path: "/tmp/a",
-      target: "exists",
+      target: "creation",
     });
     await watcher.executeTool({
       action: "add",
       path: "/tmp/b",
-      target: "exists",
+      target: "creation",
     });
     watcher.stopPolling();
     const schedulers = (
@@ -974,7 +974,7 @@ describe("FsWatcher per-watch schedulers", () => {
     watcher["watches"].set("w1", {
       watchId: "w1",
       path: "/tmp/active",
-      target: "exists" as const,
+      target: "creation" as const,
       timeoutAt: undefined,
       addedAt: 0,
       lastPolledAt: undefined,
@@ -985,7 +985,7 @@ describe("FsWatcher per-watch schedulers", () => {
     watcher["watches"].set("w2", {
       watchId: "w2",
       path: "/tmp/done",
-      target: "exists" as const,
+      target: "creation" as const,
       timeoutAt: undefined,
       addedAt: 0,
       lastPolledAt: undefined,
@@ -1245,7 +1245,7 @@ describe("FsWatcher.browseOptions", () => {
     const result = opts.getPollIntervalMs?.({
       watchId: "test-id",
       path: "/tmp/foo",
-      target: "exists" as const,
+      target: "creation" as const,
       timeoutAt: undefined,
       addedAt: 0,
       lastPolledAt: undefined,
@@ -1318,7 +1318,7 @@ describe("FsWatcher.addWatch sets enabled=true [#0002]", () => {
     await watcher.executeTool({
       action: "add",
       path: "/tmp/watch-me.txt",
-      target: "exists",
+      target: "creation",
     });
 
     // After addWatch the watcher should consider itself enabled so that
@@ -1342,7 +1342,7 @@ describe("FsWatcher.addWatch sets enabled=true [#0002]", () => {
     await watcher.executeTool({
       action: "add",
       path: "/tmp/hint-test.txt",
-      target: "exists",
+      target: "creation",
     });
 
     // Advance timer past first poll interval so the poll fires and detects the change

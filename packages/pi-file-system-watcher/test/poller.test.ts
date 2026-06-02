@@ -81,12 +81,12 @@ describe("snapshotPath", () => {
 describe("detectChanges — target='exists' (appear)", () => {
 	it("fires exists event when file appears", async () => {
 		const filePath = path.join(tmpDir, "new.txt");
-		const watch = makeWatch(filePath, "exists", { exists: false });
+		const watch = makeWatch(filePath, "creation", { exists: false });
 		// Create file
 		fs.writeFileSync(filePath, "hi");
 		const res = await detectChanges(watch);
 		expect(res.events).toHaveLength(1);
-		expect(res.events[0]!.eventType).toBe("exists");
+		expect(res.events[0]!.eventType).toBe("creation");
 		expect(res.events[0]!.path).toBe(filePath);
 		expect(res.observedChange).toBe(true);
 		expect(res.newBaseline.exists).toBe(true);
@@ -94,7 +94,7 @@ describe("detectChanges — target='exists' (appear)", () => {
 
 	it("exists event formatted as 'absent → present' [#0001]", async () => {
 		const filePath = path.join(tmpDir, "appear.txt");
-		const watch = makeWatch(filePath, "exists", { exists: false });
+		const watch = makeWatch(filePath, "creation", { exists: false });
 		fs.writeFileSync(filePath, "hi");
 		const res = await detectChanges(watch);
 		expect(res.events).toHaveLength(1);
@@ -103,7 +103,7 @@ describe("detectChanges — target='exists' (appear)", () => {
 
 	it("does not fire while path remains absent", async () => {
 		const filePath = path.join(tmpDir, "still-missing.txt");
-		const watch = makeWatch(filePath, "exists", { exists: false });
+		const watch = makeWatch(filePath, "creation", { exists: false });
 		const res = await detectChanges(watch);
 		expect(res.events).toHaveLength(0);
 		expect(res.observedChange).toBe(false);
@@ -112,7 +112,7 @@ describe("detectChanges — target='exists' (appear)", () => {
 	it("does not fire on first poll when baseline is undefined (seed install)", async () => {
 		const filePath = path.join(tmpDir, "file.txt");
 		fs.writeFileSync(filePath, "hello");
-		const watch = makeWatch(filePath, "exists", undefined);
+		const watch = makeWatch(filePath, "creation", undefined);
 		const res = await detectChanges(watch);
 		expect(res.events).toHaveLength(0);
 		// newBaseline installed for next poll
@@ -123,7 +123,7 @@ describe("detectChanges — target='exists' (appear)", () => {
 		const filePath = path.join(tmpDir, "file.txt");
 		fs.writeFileSync(filePath, "hello");
 		const snap = await snapshotPath(filePath);
-		const watch = makeWatch(filePath, "exists", snap); // already exists
+		const watch = makeWatch(filePath, "creation", snap); // already exists
 		const res = await detectChanges(watch);
 		expect(res.events).toHaveLength(0);
 	});
@@ -138,12 +138,12 @@ describe("detectChanges — target='removed' (disappear)", () => {
 		const filePath = path.join(tmpDir, "file.txt");
 		fs.writeFileSync(filePath, "hello");
 		const snap = await snapshotPath(filePath);
-		const watch = makeWatch(filePath, "removed", snap);
+		const watch = makeWatch(filePath, "deletion", snap);
 		// Delete file
 		fs.unlinkSync(filePath);
 		const res = await detectChanges(watch);
 		expect(res.events).toHaveLength(1);
-		expect(res.events[0]!.eventType).toBe("removed");
+		expect(res.events[0]!.eventType).toBe("deletion");
 		expect(res.observedChange).toBe(true);
 	});
 
@@ -151,7 +151,7 @@ describe("detectChanges — target='removed' (disappear)", () => {
 		const filePath = path.join(tmpDir, "gone.txt");
 		fs.writeFileSync(filePath, "hello");
 		const snap = await snapshotPath(filePath);
-		const watch = makeWatch(filePath, "removed", snap);
+		const watch = makeWatch(filePath, "deletion", snap);
 		fs.unlinkSync(filePath);
 		const res = await detectChanges(watch);
 		expect(res.events).toHaveLength(1);
@@ -162,7 +162,7 @@ describe("detectChanges — target='removed' (disappear)", () => {
 		const filePath = path.join(tmpDir, "file.txt");
 		fs.writeFileSync(filePath, "hello");
 		const snap = await snapshotPath(filePath);
-		const watch = makeWatch(filePath, "removed", snap);
+		const watch = makeWatch(filePath, "deletion", snap);
 		const res = await detectChanges(watch);
 		expect(res.events).toHaveLength(0);
 		expect(res.observedChange).toBe(false);
@@ -170,7 +170,7 @@ describe("detectChanges — target='removed' (disappear)", () => {
 
 	it("does not fire when file was never there (absent baseline → absent now)", async () => {
 		const filePath = path.join(tmpDir, "never.txt");
-		const watch = makeWatch(filePath, "removed", { exists: false });
+		const watch = makeWatch(filePath, "deletion", { exists: false });
 		const res = await detectChanges(watch);
 		expect(res.events).toHaveLength(0);
 	});
@@ -185,12 +185,12 @@ describe("detectChanges — target='changed' (modify)", () => {
 		const filePath = path.join(tmpDir, "file.txt");
 		fs.writeFileSync(filePath, "hello");
 		const snap = await snapshotPath(filePath);
-		const watch = makeWatch(filePath, "changed", snap);
+		const watch = makeWatch(filePath, "modification", snap);
 		// Write more content → size change
 		fs.writeFileSync(filePath, "hello world extended content");
 		const res = await detectChanges(watch);
 		expect(res.events).toHaveLength(1);
-		expect(res.events[0]!.eventType).toBe("changed");
+		expect(res.events[0]!.eventType).toBe("modification");
 		expect(res.observedChange).toBe(true);
 	});
 
@@ -198,7 +198,7 @@ describe("detectChanges — target='changed' (modify)", () => {
 		const filePath = path.join(tmpDir, "modified.txt");
 		fs.writeFileSync(filePath, "hello");
 		const snap = await snapshotPath(filePath);
-		const watch = makeWatch(filePath, "changed", snap);
+		const watch = makeWatch(filePath, "modification", snap);
 		fs.writeFileSync(filePath, "hello world extended content");
 		const res = await detectChanges(watch);
 		expect(res.events).toHaveLength(1);
@@ -209,18 +209,18 @@ describe("detectChanges — target='changed' (modify)", () => {
 		const filePath = path.join(tmpDir, "file.txt");
 		fs.writeFileSync(filePath, "hello world extended");
 		const snap = await snapshotPath(filePath);
-		const watch = makeWatch(filePath, "changed", snap);
+		const watch = makeWatch(filePath, "modification", snap);
 		fs.writeFileSync(filePath, "x"); // shrink
 		const res = await detectChanges(watch);
 		expect(res.events).toHaveLength(1);
-		expect(res.events[0]!.eventType).toBe("changed");
+		expect(res.events[0]!.eventType).toBe("modification");
 	});
 
 	it("does not fire when file is completely unchanged", async () => {
 		const filePath = path.join(tmpDir, "file.txt");
 		fs.writeFileSync(filePath, "hello");
 		const snap = await snapshotPath(filePath);
-		const watch = makeWatch(filePath, "changed", snap);
+		const watch = makeWatch(filePath, "modification", snap);
 		const res = await detectChanges(watch);
 		expect(res.events).toHaveLength(0);
 		expect(res.observedChange).toBe(false);
@@ -230,7 +230,7 @@ describe("detectChanges — target='changed' (modify)", () => {
 		const filePath = path.join(tmpDir, "file.txt");
 		fs.writeFileSync(filePath, "hello");
 		const snap = await snapshotPath(filePath);
-		const watch = makeWatch(filePath, "changed", snap);
+		const watch = makeWatch(filePath, "modification", snap);
 		fs.unlinkSync(filePath);
 		const res = await detectChanges(watch);
 		expect(res.events).toHaveLength(0);
@@ -242,7 +242,7 @@ describe("detectChanges — target='changed' (modify)", () => {
 		const dirPath = path.join(tmpDir, "subdir");
 		fs.mkdirSync(dirPath);
 		const snap = await snapshotPath(dirPath);
-		const watch = makeWatch(dirPath, "changed", snap);
+		const watch = makeWatch(dirPath, "modification", snap);
 		// Add a file inside → directory mtime changes
 		fs.writeFileSync(path.join(dirPath, "entry.txt"), "new");
 		// Force an mtime update by touching the directory
@@ -250,7 +250,7 @@ describe("detectChanges — target='changed' (modify)", () => {
 		fs.utimesSync(dirPath, now, now);
 		const res = await detectChanges(watch);
 		expect(res.events).toHaveLength(1);
-		expect(res.events[0]!.eventType).toBe("changed");
+		expect(res.events[0]!.eventType).toBe("modification");
 	});
 });
 
@@ -264,21 +264,21 @@ describe("detectChanges — target='changed' with undefined mtimeNs", () => {
 		// when mtimeNs is undefined on both sides the mtime check is skipped;
 		// the size check then fires because sizes differ.
 		const prevBaseline: FsBaseline = { exists: true, size: 100 };
-		const watch = makeWatch("/synthetic/file", "changed", prevBaseline);
+		const watch = makeWatch("/synthetic/file", "modification", prevBaseline);
 		const mockSnapshot = (_p: string): Promise<FsBaseline> => Promise.resolve({
 			exists: true,
 			size: 200,
 		});
 		const res = await detectChanges(watch, mockSnapshot);
 		expect(res.events).toHaveLength(1);
-		expect(res.events[0]!.eventType).toBe("changed");
+		expect(res.events[0]!.eventType).toBe("modification");
 		expect(res.observedChange).toBe(true);
 	});
 
 	it("does not fire changed when both size and mtime are undefined", async () => {
 		// Both undefined → no change can be detected → no event.
 		const prevBaseline: FsBaseline = { exists: true };
-		const watch = makeWatch("/synthetic/file", "changed", prevBaseline);
+		const watch = makeWatch("/synthetic/file", "modification", prevBaseline);
 		const mockSnapshot = (_p: string): Promise<FsBaseline> => Promise.resolve({
 			exists: true,
 		});
@@ -293,18 +293,18 @@ describe("detectChanges — target='changed' with undefined mtimeNs", () => {
 
 describe("buildTimeoutEvent", () => {
 	it("produces a well-formed timeout event", () => {
-		const watch = makeWatch("/some/path/file.txt", "exists");
+		const watch = makeWatch("/some/path/file.txt", "creation");
 		const ev = buildTimeoutEvent(watch);
 		expect(ev.eventType).toBe("timeout");
 		expect(ev.watchId).toBe("w1");
 		expect(ev.path).toBe("/some/path/file.txt");
-		expect(ev.summary).toMatch(/timed out waiting for 'exists'/);
+		expect(ev.summary).toMatch(/timed out waiting for 'creation'/);
 		expect(ev.formatted).toMatch(/^• /);
 		expect(ev.formatted).toMatch(/✗/);
 	});
 
 	it("timeout event formatted as '<path>: timed out ✗' [#0001]", () => {
-		const watch = makeWatch("/some/path/file.txt", "exists");
+		const watch = makeWatch("/some/path/file.txt", "creation");
 		const ev = buildTimeoutEvent(watch);
 		expect(ev.formatted).toBe("• /some/path/file.txt: timed out ✗");
 	});

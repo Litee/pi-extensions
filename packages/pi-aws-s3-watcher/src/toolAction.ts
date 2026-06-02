@@ -19,9 +19,9 @@ export const MAX_TIMEOUT_SECONDS = 72 * 60 * 60 // 259_200 s
 
 /** Valid target conditions. */
 export const TARGETS: ReadonlySet<TargetCondition> = new Set<TargetCondition>([
-  'exists',
-  'updated',
-  'removed',
+  'creation',
+  'modification',
+  'deletion',
 ])
 
 // ---------------------------------------------------------------------------
@@ -54,10 +54,10 @@ export const S3WatcherParams = Type.Object({
   ),
   target: Type.Optional(
     Type.Union(
-      [Type.Literal('exists'), Type.Literal('updated'), Type.Literal('removed')],
+      [Type.Literal('creation'), Type.Literal('modification'), Type.Literal('deletion')],
       {
         description:
-          "Condition to wait for (required for 'add'). 'exists': fire when the object appears. 'updated': fire when ETag/size changes from baseline (object must exist at add time). 'removed': fire when the object is deleted.",
+          "Condition to wait for (required for 'add'). 'creation': fire when the object appears. 'modification': fire when ETag/size changes from baseline (object must exist at add time). 'deletion': fire when the object is deleted.",
       },
     ),
   ),
