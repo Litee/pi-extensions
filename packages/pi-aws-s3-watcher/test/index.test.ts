@@ -555,6 +555,7 @@ describe('/aws-s3-watcher TUI menu', () => {
     const items = getItems()
     expect(items.map((i) => i.label)).toEqual([
       'Browse S3 objects (0/0)',
+      'Purge completed (0)',
       'Paused: off',
       'Display mode: widget',
       'Default display mode: unset',
