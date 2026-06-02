@@ -154,6 +154,42 @@ const LANG_NAMES: Readonly<Record<string, string>> = {
 	tr: "Turkish",   uk: "Ukrainian",  vi: "Vietnamese",na: "Neutral",
 };
 
+/** Native-language preview phrases for the language picker. Exported for use in index.ts. */
+export const LANG_PHRASES: Readonly<Record<string, string>> = {
+	en: "Hello, I speak English.",
+	ko: "안녕하세요, 저는 한국어를 말합니다.",
+	ja: "こんにちは、私は日本語を話します。",
+	ar: "مرحباً، أنا أتحدث العربية.",
+	bg: "Здравейте, говоря български.",
+	cs: "Dobrý den, mluvím česky.",
+	da: "Hej, jeg taler dansk.",
+	de: "Hallo, ich spreche Deutsch.",
+	el: "Γεια σας, μιλάω ελληνικά.",
+	es: "Hola, hablo español.",
+	et: "Tere, ma räägin eesti keelt.",
+	fi: "Hei, puhun suomea.",
+	fr: "Bonjour, je parle français.",
+	hi: "नमस्ते, मैं हिंदी बोलता हूँ।",
+	hr: "Bok, govorim hrvatski.",
+	hu: "Helló, magyarul beszélek.",
+	id: "Halo, saya berbicara bahasa Indonesia.",
+	it: "Ciao, parlo italiano.",
+	lt: "Labas, aš kalbu lietuviškai.",
+	lv: "Sveiki, es runāju latviski.",
+	nl: "Hallo, ik spreek Nederlands.",
+	pl: "Cześć, mówię po polsku.",
+	pt: "Olá, eu falo português.",
+	ro: "Bună ziua, vorbesc română.",
+	ru: "Привет, я говорю по-русски.",
+	sk: "Ahoj, hovorím po slovensky.",
+	sl: "Zdravo, govorim slovensko.",
+	sv: "Hej, jag talar svenska.",
+	tr: "Merhaba, Türkçe konuşuyorum.",
+	uk: "Привіт, я розмовляю українською.",
+	vi: "Xin chào, tôi nói tiếng Việt.",
+	na: "Hello, I speak neutral.",
+};
+
 // ---------------------------------------------------------------------------
 // Sub-menu pickers
 // ---------------------------------------------------------------------------
@@ -308,7 +344,7 @@ async function pickLang(
 				previewAc = ac;
 				isPlaying = true;
 				tui.requestRender();
-				const text = `Hello, I'm ${LANG_NAMES[item.value] ?? item.value}.`;
+				const text = LANG_PHRASES[item.value] ?? `Hello, I'm ${LANG_NAMES[item.value] ?? item.value}.`;
 				void options.onPreview(text, effVoice, item.value, ac.signal)
 					.catch(() => {})
 					.finally(() => {

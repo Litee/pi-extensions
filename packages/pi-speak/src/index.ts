@@ -27,7 +27,7 @@ import { join } from "node:path";
 import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
 
 import { assetsReady, discoverAssetsDir, loadConfig, saveConfig } from "./config.js";
-import { runSpeakMenu } from "./menu.js";
+import { runSpeakMenu, LANG_PHRASES } from "./menu.js";
 import type { MenuCtx } from "./menu.js";
 import { renderCall, renderResult } from "./render.js";
 import { MAX_TEXT_CHARS, SpeakParams, VOICES, type LangCode, type SpeakParamsT, type VoiceId } from "./schema.js";
@@ -247,11 +247,13 @@ export default function speakExtension(pi: ExtensionAPI): void {
 						return;
 					}
 					const voice = sessionVoice ?? loadConfig().defaultVoice ?? "M1";
+					const lang  = sessionLang  ?? loadConfig().defaultLang  ?? "en";
 					cmdUi.ui.notify(`speak: testing with voice ${voice}…`, "info");
 					const assetsDir = getAssetsDir();
 					const tmpPath = join(tmpdir(), `pi-speak-test-${Date.now()}.wav`);
+					const text = LANG_PHRASES[lang] ?? "Hello from pi-speak.";
 					try {
-						const result = await synthesise("Hello from pi-speak.", { voice: voice as VoiceId }, assetsDir);
+						const result = await synthesise(text, { voice: voice as VoiceId, lang: lang as LangCode }, assetsDir);
 						await writeWav(tmpPath, result.wav, result.sampleRate);
 						await playAudioFile(tmpPath);
 						cmdUi.ui.notify("speak: test complete", "info");
