@@ -98,7 +98,7 @@ export default function createExtension(pi: ExtensionAPI): void {
 
 	// ---- session_start -------------------------------------------------------
 
-	pi.on("session_start", async (event, ctx) => {
+	pi.on("session_start", async (_event, ctx) => {
 			// Reset both guards: every session_start is a new herdr context where
 		// the workspace may not be labeled yet (startup, resume, fork, reload).
 		// Never restore lastAppliedName from state — we cannot know whether the
