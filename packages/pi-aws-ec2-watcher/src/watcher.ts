@@ -132,7 +132,7 @@ export class Ec2Watcher extends BaseWatcher<Ec2Watch, Ec2Baseline, Ec2Event> {
     itemGroup: (w) => w.profile,
 
     renderItemRowText(w) {
-      const state = w.baseline?.state ?? '?'
+      const state = (w.baseline?.state ?? '?').toUpperCase()
       const displayName = w.baseline?.nameTag
         ? `${w.instanceId} (${w.baseline.nameTag})`
         : w.instanceId
@@ -148,7 +148,7 @@ export class Ec2Watcher extends BaseWatcher<Ec2Watch, Ec2Baseline, Ec2Event> {
       const nameColor = w.consecutiveErrors >= POLL_ERROR_THRESHOLD
         ? 'warning'
         : 'accent'
-      const state = w.baseline?.state ?? '?'
+      const state = (w.baseline?.state ?? '?').toUpperCase()
       const instanceType = w.baseline?.instanceType ?? '—'
       const statusText = w.terminal ? 'DONE' : w.consecutiveErrors >= POLL_ERROR_THRESHOLD ? 'ERROR' : 'WATCHING'
       const statusColor = w.consecutiveErrors >= POLL_ERROR_THRESHOLD ? 'error' : 'warning'

@@ -504,8 +504,20 @@ describe('Ec2Watcher view', () => {
   it('renderItemRowText formats correctly', () => {
     const text = watcher.view.renderItemRowText(mockWatch)
     expect(text).toContain('i-0a1b2c3d4e5f67890')
-    expect(text).toContain('running')
+    expect(text).toContain('RUNNING')
     expect(text).toContain('WATCHING')
+  })
+
+  it('renderItemRowText renders state in UPPERCASE', () => {
+    const text = watcher.view.renderItemRowText(mockWatch)
+    expect(text).toContain('RUNNING')
+    expect(text).not.toContain('running')
+  })
+
+  it('renderItemRowText renders stopped state in UPPERCASE', () => {
+    const text = watcher.view.renderItemRowText({ ...mockWatch, baseline: { state: 'stopped' as never } })
+    expect(text).toContain('STOPPED')
+    expect(text).not.toContain('stopped')
   })
 
   it('renderItemRowText shows DONE for terminal watches', () => {
@@ -531,6 +543,21 @@ describe('Ec2Watcher view', () => {
     expect(cols.length).toBeGreaterThan(0)
     expect(cols[0]?.text).toContain('i-0a1b2c3d4e5f67890')
     expect(cols[0]?.color).toBe('accent')
+  })
+
+  it('renderItemRowTUI renders state column in UPPERCASE', () => {
+    const cols = watcher.view.renderItemRowTUI(mockWatch, { theme: {} as never, width: 80 })
+    const stateCol = cols.find((c) => c.name === 'state')
+    expect(stateCol?.text).toBe('RUNNING')
+  })
+
+  it('renderItemRowTUI renders stopped state in UPPERCASE', () => {
+    const cols = watcher.view.renderItemRowTUI(
+      { ...mockWatch, baseline: { state: 'stopped' as never } },
+      { theme: {} as never, width: 80 },
+    )
+    const stateCol = cols.find((c) => c.name === 'state')
+    expect(stateCol?.text).toBe('STOPPED')
   })
 
   it('renderItemRowTUI uses accent color for terminal watches (name column)', () => {
