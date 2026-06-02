@@ -60,19 +60,21 @@ function makeStub(overrides?: Partial<SocketClientLike>): SocketClientLike {
 // ---------------------------------------------------------------------------
 
 describe("registration", () => {
-	it("registers only browser_list_tabs by default (get_tab_content disabled)", () => {
+	it("registers browser_list_tabs and browser_export_tabs by default (get_tab_content disabled)", () => {
 		const pi = makeFakePi();
 		createExtension(pi.api, { socketClient: makeStub() });
-		expect(pi.registerTool).toHaveBeenCalledTimes(1);
+		expect(pi.registerTool).toHaveBeenCalledTimes(2);
 		expect(pi.tools.has("browser_list_tabs")).toBe(true);
+		expect(pi.tools.has("browser_export_tabs")).toBe(true);
 		expect(pi.tools.has("browser_get_tab_content")).toBe(false);
 	});
 
 	it("registers browser_get_tab_content when enableGetTabContent is set", () => {
 		const pi = makeFakePi();
 		createExtension(pi.api, { socketClient: makeStub(), enableGetTabContent: true });
-		expect(pi.registerTool).toHaveBeenCalledTimes(2);
+		expect(pi.registerTool).toHaveBeenCalledTimes(3);
 		expect(pi.tools.has("browser_list_tabs")).toBe(true);
+		expect(pi.tools.has("browser_export_tabs")).toBe(true);
 		expect(pi.tools.has("browser_get_tab_content")).toBe(true);
 	});
 
@@ -89,7 +91,7 @@ describe("registration", () => {
 	it("each tool has description, promptSnippet, promptGuidelines, parameters, execute", () => {
 		const pi = makeFakePi();
 		createExtension(pi.api, { socketClient: makeStub(), enableGetTabContent: true });
-		for (const name of ["browser_list_tabs", "browser_get_tab_content"]) {
+		for (const name of ["browser_list_tabs", "browser_export_tabs", "browser_get_tab_content"]) {
 			const t = pi.tool(name);
 			expect(typeof t.description).toBe("string");
 			expect(t.description.length).toBeGreaterThan(0);
@@ -111,8 +113,8 @@ describe("browser_list_tabs — happy path", () => {
 		const stub = makeStub({
 			listTabs: vi.fn().mockResolvedValue({
 				tabs: [
-					{ id: 1, url: "https://a.com", title: "A", lastAccessed: Date.now() - 5000 },
-					{ id: 2, url: "https://b.com", title: "B" },
+					{ id: 1, url: "https://a.com", title: "A", lastAccessed: Date.now() - 5000, normalizedUrl: "https://a.com/" },
+					{ id: 2, url: "https://b.com", title: "B", normalizedUrl: "https://b.com/" },
 				],
 			}),
 		});
@@ -131,9 +133,9 @@ describe("browser_list_tabs — happy path", () => {
 		const stub = makeStub({
 			listTabs: vi.fn().mockResolvedValue({
 				tabs: [
-					{ id: 1, url: "https://a.com", title: "A" },
-					{ id: 2, url: "https://b.com", title: "B" },
-					{ id: 3, url: "https://c.com", title: "C" },
+					{ id: 1, url: "https://a.com", title: "A", normalizedUrl: "https://a.com/" },
+					{ id: 2, url: "https://b.com", title: "B", normalizedUrl: "https://b.com/" },
+					{ id: 3, url: "https://c.com", title: "C", normalizedUrl: "https://c.com/" },
 				],
 			}),
 		});
@@ -145,6 +147,163 @@ describe("browser_list_tabs — happy path", () => {
 		const texts = result.content.map((c) => (c as { text: string }).text);
 		expect(texts[0]).toMatch(/Showing tabs 2-2 of 3/);
 		expect(result.content).toHaveLength(2);
+	});
+});
+
+// ---------------------------------------------------------------------------
+// browser_export_tabs
+// ---------------------------------------------------------------------------
+
+describe("browser_export_tabs — happy path", () => {
+	it("writes JSONL with one line per tab", async () => {
+		const fsNode = await import("node:fs");
+		const osNode = await import("node:os");
+		const pathNode = await import("node:path");
+		const cryptoNode = await import("node:crypto");
+		const outPath = pathNode.join(osNode.tmpdir(), `pi-bc-export-${cryptoNode.randomUUID()}.jsonl`);
+		try {
+			const tabs = [
+				{ id: 1, windowId: 1, index: 0, url: "https://a.com", normalizedUrl: "https://a.com/", title: "A", favIconUrl: null, status: "complete", active: true, pinned: false, hidden: false, discarded: false, incognito: false, audible: false, mutedInfo: { muted: false, reason: null }, isArticle: false, isInReaderMode: false, lastAccessed: 1000, cookieStoreId: null },
+				{ id: 2, windowId: 1, index: 1, url: "https://b.com", normalizedUrl: "https://b.com/", title: "B", favIconUrl: null, status: "complete", active: false, pinned: false, hidden: false, discarded: false, incognito: false, audible: false, mutedInfo: { muted: false, reason: null }, isArticle: false, isInReaderMode: false, lastAccessed: 2000, cookieStoreId: null },
+			];
+			const stub = makeStub({
+				listTabs: vi.fn().mockResolvedValue({ tabs }),
+			});
+			const pi = makeFakePi();
+			createExtension(pi.api, { socketClient: stub });
+			const result = await pi.tool("browser_export_tabs").execute(
+				"tc-exp1", { path: outPath }, undefined, undefined, {} as never,
+			);
+			const text = (result.content[0] as { text: string }).text;
+			expect(text).toMatch(/Exported 2 tabs to/);
+			expect(text).toContain(outPath);
+			// Verify file contents
+			const lines = fsNode.readFileSync(outPath, "utf-8").split("\n").filter((l) => l.length > 0);
+			expect(lines).toHaveLength(2);
+			const parsed0 = JSON.parse(lines[0]!) as Record<string, unknown>;
+			expect(parsed0["id"]).toBe(1);
+			expect(parsed0["url"]).toBe("https://a.com");
+			expect(parsed0["normalizedUrl"]).toBe("https://a.com/");
+			expect(parsed0["hidden"]).toBe(false);
+			expect((parsed0["mutedInfo"] as { muted: boolean }).muted).toBe(false);
+			const parsed1 = JSON.parse(lines[1]!) as Record<string, unknown>;
+			expect(parsed1["id"]).toBe(2);
+		} finally {
+			if (fsNode.existsSync(outPath)) fsNode.unlinkSync(outPath);
+		}
+	});
+
+	it("empty tab list → empty file", async () => {
+		const fsNode = await import("node:fs");
+		const osNode = await import("node:os");
+		const pathNode = await import("node:path");
+		const cryptoNode = await import("node:crypto");
+		const outPath = pathNode.join(osNode.tmpdir(), `pi-bc-export-empty-${cryptoNode.randomUUID()}.jsonl`);
+		try {
+			const stub = makeStub({
+				listTabs: vi.fn().mockResolvedValue({ tabs: [] }),
+			});
+			const pi = makeFakePi();
+			createExtension(pi.api, { socketClient: stub });
+			const result = await pi.tool("browser_export_tabs").execute(
+				"tc-exp2", { path: outPath }, undefined, undefined, {} as never,
+			);
+			const text = (result.content[0] as { text: string }).text;
+			expect(text).toMatch(/Exported 0 tabs to/);
+			const content = fsNode.readFileSync(outPath, "utf-8");
+			expect(content).toBe("");
+		} finally {
+			if (fsNode.existsSync(outPath)) fsNode.unlinkSync(outPath);
+		}
+	});
+});
+
+describe("browser_export_tabs — error paths", () => {
+	it("DAEMON_NOT_RUNNING → returns error message, does not write file", async () => {
+		const fsNode = await import("node:fs");
+		const osNode = await import("node:os");
+		const pathNode = await import("node:path");
+		const cryptoNode = await import("node:crypto");
+		const outPath = pathNode.join(osNode.tmpdir(), `pi-bc-export-dnr-${cryptoNode.randomUUID()}.jsonl`);
+		const err = Object.assign(new Error("daemon not running"), { code: "DAEMON_NOT_RUNNING" });
+		const stub = makeStub({ listTabs: vi.fn().mockRejectedValue(err) });
+		const pi = makeFakePi();
+		createExtension(pi.api, { socketClient: stub });
+		const result = await pi.tool("browser_export_tabs").execute(
+			"tc-exp3", { path: outPath }, undefined, undefined, {} as never,
+		);
+		const text = (result.content[0] as { text: string }).text;
+		expect(text).toMatch(/daemon|not running|install/i);
+		expect(fsNode.existsSync(outPath)).toBe(false);
+	});
+
+	it("write error (unwritable path) → returns error message", async () => {
+		const tabs = [
+			{ id: 1, url: "https://a.com", normalizedUrl: "https://a.com/", title: "A" },
+		];
+		const stub = makeStub({
+			listTabs: vi.fn().mockResolvedValue({ tabs }),
+		});
+		const pi = makeFakePi();
+		createExtension(pi.api, { socketClient: stub });
+		// Use a path that cannot be written (directory as target)
+		const fsNode = await import("node:fs");
+		const osNode = await import("node:os");
+		const pathNode = await import("node:path");
+		const cryptoNode = await import("node:crypto");
+		const badDir = pathNode.join(osNode.tmpdir(), `pi-bc-export-baddir-${cryptoNode.randomUUID()}`);
+		fsNode.mkdirSync(badDir);
+		try {
+			const result = await pi.tool("browser_export_tabs").execute(
+				"tc-exp4", { path: badDir }, undefined, undefined, {} as never,
+			);
+			const text = (result.content[0] as { text: string }).text;
+			expect(text).toMatch(/error|fail/i);
+			expect(result.details).toMatchObject({ ok: false });
+		} finally {
+			fsNode.rmSync(badDir, { recursive: true, force: true });
+		}
+	});
+
+	it("relative path → returns error without writing", async () => {
+		const stub = makeStub({ listTabs: vi.fn() });
+		const pi = makeFakePi();
+		createExtension(pi.api, { socketClient: stub });
+		const result = await pi.tool("browser_export_tabs").execute(
+			"tc-exp5", { path: "relative/path.jsonl" }, undefined, undefined, {} as never,
+		);
+		const text = (result.content[0] as { text: string }).text;
+		expect(text).toMatch(/absolute/i);
+		// listTabs should never have been called
+		expect(stub.listTabs).not.toHaveBeenCalled();
+	});
+
+	it("incognito tabs excluded from export", async () => {
+		const osNode = await import("node:os");
+		const pathNode = await import("node:path");
+		const cryptoNode = await import("node:crypto");
+		const fsNode = await import("node:fs");
+		const outPath = pathNode.join(osNode.tmpdir(), `pi-bc-export-incognito-${cryptoNode.randomUUID()}.jsonl`);
+		const tabs = [
+			{ id: 1, url: "https://public.com", normalizedUrl: "https://public.com/", title: "Public", incognito: false },
+			{ id: 2, url: "https://private.com", normalizedUrl: "https://private.com/", title: "Private", incognito: true },
+		];
+		const stub = makeStub({ listTabs: vi.fn().mockResolvedValue({ tabs }) });
+		const pi = makeFakePi();
+		createExtension(pi.api, { socketClient: stub });
+		try {
+			const result = await pi.tool("browser_export_tabs").execute(
+				"tc-exp6", { path: outPath }, undefined, undefined, {} as never,
+			);
+			const text = (result.content[0] as { text: string }).text;
+			expect(text).toMatch(/Exported 1 tab/);
+			expect(text).toMatch(/1 private/);
+			const lines = fsNode.readFileSync(outPath, "utf-8").split("\n").filter(Boolean);
+			expect(lines).toHaveLength(1);
+			expect((JSON.parse(lines[0]!) as { id: number }).id).toBe(1);
+		} finally {
+			fsNode.rmSync(outPath, { force: true });
+		}
 	});
 });
 

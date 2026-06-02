@@ -11,9 +11,24 @@
 
 export interface BrowserTab {
 	id?: number;
+	windowId?: number;
+	index?: number;
 	url?: string;
+	normalizedUrl: string | null;
 	title?: string;
+	favIconUrl?: string | null;
+	status?: string;
+	active?: boolean;
+	pinned?: boolean;
+	hidden?: boolean;
+	discarded?: boolean;
+	incognito?: boolean;
+	audible?: boolean;
+	mutedInfo?: { muted: boolean; reason: string | null } | null;
+	isArticle?: boolean;
+	isInReaderMode?: boolean;
 	lastAccessed?: number;
+	cookieStoreId?: string | null;
 }
 
 export interface TabLink {
@@ -66,7 +81,8 @@ export function formatTabLine(tab: BrowserTab): string {
 	if (tab.lastAccessed !== undefined) {
 		lastAccessed = fromNow(tab.lastAccessed);
 	}
-	return `tab id=${tab.id ?? "?"}, tab url=${tab.url ?? ""}, tab title=${tab.title ?? ""}, last accessed=${lastAccessed}`;
+	const normalizedUrl = tab.normalizedUrl ?? null;
+	return `tab id=${tab.id ?? "?"}, tab url=${tab.url ?? ""}, tab title=${tab.title ?? ""}, last accessed=${lastAccessed}, normalized url=${normalizedUrl ?? "null"}`;
 }
 
 // ---------------------------------------------------------------------------
