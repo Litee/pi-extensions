@@ -25,5 +25,6 @@ export const SpeakParams = Type.Object({
 	)),
 	speed: Type.Optional(Type.Number({ minimum: 0.5, maximum: 2.0, description: "Rate multiplier. Default 1.05." })),
 	steps: Type.Optional(Type.Integer({ minimum: 1, maximum: 32, description: "Diffusion steps. Default 8." })),
+	trigger_turn: Type.Optional(Type.Boolean({ description: "If true, trigger a new LLM turn after the text is enqueued. Default false." })),
 });
 export type SpeakParamsT = Static<typeof SpeakParams>;
