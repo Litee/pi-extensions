@@ -401,7 +401,28 @@ export default function manageToolsExtension(pi: ExtensionAPI): void {
 				theme.fg("success", `${activeCount} active`) +
 				theme.fg("dim", ` / ${total} total`);
 
-			if (!expanded) {
+			// Pre-compute the diff text so we can decide whether to collapse based
+			// on its length before committing to the ctrl+o hint. (#0001)
+			const activated = d?.changed?.activated ?? [];
+			const deactivated = d?.changed?.deactivated ?? [];
+			let diffText = "";
+			if (activated.length === 0 && deactivated.length === 0) {
+				diffText = `\n  ${theme.fg("dim", "No changes.")}`;
+			} else {
+				if (activated.length > 0)
+					diffText += `\n  ${theme.fg("success", "✓ Activated:")} ${theme.bold(activated.join(", "))}`;
+				if (deactivated.length > 0)
+					diffText += `\n  ${theme.fg("warning", "✗ Deactivated:")} ${theme.bold(deactivated.join(", "))}`;
+			}
+
+			// Collapse only when the user hasn't expanded AND it's a list/unknown
+			// action (full roster is always large) or the diff text itself is large.
+			// Small activate/deactivate/reset diffs render immediately. (#0001)
+			const isSmall = diffText.length < 400 && diffText.split("\n").length <= 10;
+			const shouldCollapse =
+				!expanded && (d?.action === undefined || d?.action === "list" || !isSmall);
+
+			if (shouldCollapse) {
 				text += theme.fg("dim", " — … ctrl+o to expand");
 			} else if (d?.action === undefined || d?.action === "list") {
 				// Full roster on `list`, and as a back-compat fallback for results
@@ -420,18 +441,7 @@ export default function manageToolsExtension(pi: ExtensionAPI): void {
 				}
 			} else {
 				// activate / deactivate / reset — show only the diff. (#0003)
-				const activated = d?.changed?.activated ?? [];
-				const deactivated = d?.changed?.deactivated ?? [];
-				if (activated.length === 0 && deactivated.length === 0) {
-					text += `\n  ${theme.fg("dim", "No changes.")}`;
-				} else {
-					if (activated.length > 0) {
-						text += `\n  ${theme.fg("success", `✓ Activated:`)} ${theme.bold(activated.join(", "))}`;
-					}
-					if (deactivated.length > 0) {
-						text += `\n  ${theme.fg("warning", `✗ Deactivated:`)} ${theme.bold(deactivated.join(", "))}`;
-					}
-				}
+				text += diffText;
 			}
 
 			if (d?.ignoredUnknown?.length) {

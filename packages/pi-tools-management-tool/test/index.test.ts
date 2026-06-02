@@ -896,6 +896,54 @@ describe("auto-continue — counter cap", () => {
 	});
 });
 
+// ===========================================================================
+// renderResult collapse threshold (#0001)
+// ===========================================================================
+
+describe("renderResult — collapse threshold (#0001)", () => {
+	it("activate 1 tool: expanded=false renders 'Activated:' immediately (no ctrl+o)", async () => {
+		const pi = makeFakePi({ all: [...BASE_TOOLS], active: ["read"] });
+		createExtension(pi.api);
+		await pi.fireSessionStart();
+		const res = await exec(pi.tool, { action: "activate", tools: ["edit"] });
+		const out = renderText(pi.tool, res, { expanded: false });
+		expect(out).toContain("Activated:");
+		expect(out).not.toContain("ctrl+o");
+	});
+
+	it("activate 2 tools: expanded=false renders 'Activated:' immediately (no ctrl+o)", async () => {
+		const pi = makeFakePi({ all: [...BASE_TOOLS], active: ["read"] });
+		createExtension(pi.api);
+		await pi.fireSessionStart();
+		const res = await exec(pi.tool, { action: "activate", tools: ["edit", "write"] });
+		const out = renderText(pi.tool, res, { expanded: false });
+		expect(out).toContain("Activated:");
+		expect(out).not.toContain("ctrl+o");
+	});
+
+	it("list: expanded=false still shows ctrl+o hint", async () => {
+		const pi = makeFakePi({ all: [...BASE_TOOLS], active: ["read", "bash"] });
+		createExtension(pi.api);
+		await pi.fireSessionStart();
+		const res = await exec(pi.tool, { action: "list" });
+		const out = renderText(pi.tool, res, { expanded: false });
+		expect(out).toContain("ctrl+o");
+	});
+
+	it("activate many tools (large output): expanded=false shows ctrl+o hint", async () => {
+		// 20 tools with long names → diffText will exceed 400 chars.
+		const manyTools: ToolInfo[] = Array.from({ length: 20 }, (_, i) =>
+			({ name: `very_long_tool_name_${String(i).padStart(2, "0")}`, description: "desc" }) as ToolInfo,
+		);
+		const pi = makeFakePi({ all: [...BASE_TOOLS, ...manyTools], active: ["read"] });
+		createExtension(pi.api);
+		await pi.fireSessionStart();
+		const res = await exec(pi.tool, { action: "activate", tools: manyTools.map((t) => t.name) });
+		const out = renderText(pi.tool, res, { expanded: false });
+		expect(out).toContain("ctrl+o");
+	});
+});
+
 describe("auto-continue — session_start resets state", () => {
 	it("clears pendingRefresh on a fresh session_start", async () => {
 		const pi = makeFakePi({ all: [...BASE_TOOLS], active: ["read"] });
