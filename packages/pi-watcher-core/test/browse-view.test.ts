@@ -9,7 +9,7 @@
 
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
-import { filterWatches, groupWatches, openBrowseView, openMenuView, renderDetailFields, renderRowColumns, sortWatches } from '../src/browse-view.js'
+import { filterWatches, faintRow, FAINT_OPEN, FAINT_CLOSE, groupWatches, openBrowseView, openMenuView, renderDetailFields, renderDimmedRow, renderRowColumns, sortWatches } from '../src/browse-view.js'
 import type { MenuViewItem } from '../src/browse-view.js'
 import type { BrowseViewOptions, RowColumn, WatcherView } from '../src/base-watcher-types.js'
 
@@ -1196,6 +1196,64 @@ describe('renderRowColumns — no theme strips colors', () => {
 })
 
 // ---------------------------------------------------------------------------
+// renderRowColumns — ANSI-aware truncation and padding
+// ---------------------------------------------------------------------------
+
+describe('renderRowColumns — ANSI-aware truncation and padding', () => {
+  it('truncates at visible chars, not raw length, when col.text contains ANSI codes', () => {
+    // \x1b[33m = yellow fg (5 bytes), \x1b[39m = reset fg (4 bytes)
+    // visible text: 'abcde' (5 chars), raw length = 5 + 5 + 4 = 14
+    const ansiText = '\x1b[33mabcde\x1b[39m'
+    const cols: RowColumn[] = [{ name: 'col', text: ansiText, width: 4 }]
+    const result = renderRowColumns(cols, 4)
+    // visible length > 4, so truncate: keep 3 visible chars + '…'
+    // The ANSI escape for yellow wraps the first 3 chars, then truncation inserts '…'
+    // Strip ANSI from result and check visible length is 4
+    const visible = result.replace(/\x1b\[[0-9;]*m/g, '')
+    expect(visible.length).toBe(4)
+    expect(visible).toContain('\u2026')
+  })
+
+  it('pads to correct visible width when col.text contains ANSI codes', () => {
+    // 'hi' wrapped in ANSI — visible length 2, raw length 2+5+4=11
+    const ansiText = '\x1b[33mhi\x1b[39m'
+    const cols: RowColumn[] = [{ name: 'col', text: ansiText, width: 6 }]
+    const result = renderRowColumns(cols, 6)
+    // No truncation needed (visible 2 < 6); padEnd should add 4 spaces
+    const visible = result.replace(/\x1b\[[0-9;]*m/g, '')
+    expect(visible).toBe('hi    ')  // 2 chars + 4 spaces = 6
+    expect(visible.length).toBe(6)
+  })
+
+  it('right-aligned column with ANSI text pads correctly', () => {
+    const ansiText = '\x1b[33mhi\x1b[39m'
+    const cols: RowColumn[] = [{ name: 'col', text: ansiText, width: 5, align: 'right' }]
+    const result = renderRowColumns(cols, 5)
+    const visible = result.replace(/\x1b\[[0-9;]*m/g, '')
+    expect(visible).toBe('   hi')  // 3 leading spaces + 'hi'
+  })
+
+  it('color field wraps already-ANSI text without corrupting escape sequences', () => {
+    // pre-rendered ANSI in col.text, plus a col.color that theme.fg will wrap around the padded value
+    const ansiText = '\x1b[33mOK\x1b[39m'
+    const cols: RowColumn[] = [{ name: 'col', text: ansiText, width: 6, color: 'accent' }]
+    const theme = { fg: (alias: string, t: string) => `[${alias}]${t}` }
+    const result = renderRowColumns(cols, 6, theme)
+    // The outer [accent] wrapper should be present
+    expect(result).toContain('[accent]')
+    // The visible (non-ANSI, non-bracket-tag) portion should be 'OK    '
+    const stripped = result.replace(/\x1b\[[0-9;]*m/g, '').replace(/\[\w+\]/g, '')
+    expect(stripped).toBe('OK    ')  // 2 chars padded to 6
+  })
+
+  it('plain text (no ANSI) still truncates and pads as before', () => {
+    const cols: RowColumn[] = [{ name: 'col', text: 'abcdefgh', width: 5 }]
+    const result = renderRowColumns(cols, 5)
+    expect(result).toBe('abcd\u2026')
+    expect(result.length).toBe(5)
+  })
+})
+
 // renderItem — selection-aware colour handling (tests the slInternal patch)
 // ---------------------------------------------------------------------------
 
@@ -1881,5 +1939,139 @@ describe('ctrl+c calls done in both modes (lines 462-463)', () => {
     // Press ctrl+c in detail mode
     capturedComponent!.handleInput('\x03')
     expect(doneFn).toHaveBeenCalled()
+  })
+})
+
+// ---------------------------------------------------------------------------
+// faintRow / FAINT_OPEN / FAINT_CLOSE
+// ---------------------------------------------------------------------------
+
+describe('faintRow', () => {
+  it('FAINT_OPEN is \\x1b[2m', () => {
+    expect(FAINT_OPEN).toBe('\x1b[2m')
+  })
+
+  it('FAINT_CLOSE is \\x1b[22m', () => {
+    expect(FAINT_CLOSE).toBe('\x1b[22m')
+  })
+
+  it('wraps string with FAINT_OPEN prefix and FAINT_CLOSE suffix', () => {
+    expect(faintRow('hello')).toBe('\x1b[2mhello\x1b[22m')
+  })
+
+  it('wraps empty string', () => {
+    expect(faintRow('')).toBe('\x1b[2m\x1b[22m')
+  })
+
+  it('wraps string that already contains ANSI codes', () => {
+    const inner = '\x1b[33mtext\x1b[39m'
+    const result = faintRow(inner)
+    expect(result.startsWith('\x1b[2m')).toBe(true)
+    expect(result.endsWith('\x1b[22m')).toBe(true)
+    expect(result).toContain(inner)
+  })
+})
+
+// ---------------------------------------------------------------------------
+// isRowDimmed — faint wrapping in slInternal.renderItem
+// ---------------------------------------------------------------------------
+
+describe('isRowDimmed — faint wrapping in renderItem', () => {
+  beforeEach(() => { MockSelectList.reset() })
+
+  async function buildWithDimmedView(isDimmed: boolean) {
+    const theme = { fg: (alias: string, t: string) => `[${alias}]${t}`, bold: (t: string) => t }
+    const ctx = {
+      ui: {
+        custom: (factory: (tui: unknown, theme: unknown, kb: unknown, done: (v: void) => void) => unknown): Promise<void> => {
+          factory({ requestRender: vi.fn() }, theme, null, vi.fn()) as ComponentLike
+          return Promise.resolve()
+        },
+        theme,
+      },
+    }
+    const view = makeSimpleView({
+      renderItemRowTUI: (_s: string) => [{ name: 'col', text: `tui:${_s}`, color: 'dim' as const }],
+      isRowDimmed: () => isDimmed,
+    })
+    await openBrowseView(makeSimpleBrowseOpts(['w1'], { view }), ctx)
+    type _SlInternal = { renderItem: (item: { value: string; label: string }, isSelected: boolean, width: number) => string }
+    return MockSelectList.getInstances()[0]! as unknown as _SlInternal
+  }
+
+  it('non-selected dimmed row contains \\x1b[2m and \\x1b[22m', async () => {
+    const sl = await buildWithDimmedView(true)
+    const result = sl.renderItem({ value: 'w1', label: 'tui:w1' }, false, 80)
+    expect(result).toContain('\x1b[2m')
+    expect(result).toContain('\x1b[22m')
+  })
+
+  it('non-selected dimmed row still has leading two-space padding', async () => {
+    const sl = await buildWithDimmedView(true)
+    const result = sl.renderItem({ value: 'w1', label: 'tui:w1' }, false, 80)
+    expect(result.startsWith('  ')).toBe(true)
+  })
+
+  it('non-selected non-dimmed row does NOT contain \\x1b[2m', async () => {
+    const sl = await buildWithDimmedView(false)
+    const result = sl.renderItem({ value: 'w1', label: 'tui:w1' }, false, 80)
+    expect(result).not.toContain('\x1b[2m')
+  })
+
+  it('selected dimmed row contains \\x1b[2m after the arrow', async () => {
+    const sl = await buildWithDimmedView(true)
+    const result = sl.renderItem({ value: 'w1', label: 'tui:w1' }, true, 80)
+    expect(result).toContain('\x1b[2m')
+    expect(result).toContain('\x1b[22m')
+    // Arrow must come before the faint wrap
+    const arrowIdx = result.indexOf('→')
+    const faintIdx = result.indexOf('\x1b[2m')
+    expect(arrowIdx).toBeLessThan(faintIdx)
+  })
+
+  it('selected non-dimmed row does NOT contain \\x1b[2m', async () => {
+    const sl = await buildWithDimmedView(false)
+    const result = sl.renderItem({ value: 'w1', label: 'tui:w1' }, true, 80)
+    expect(result).not.toContain('\x1b[2m')
+  })
+})
+
+// ---------------------------------------------------------------------------
+// renderDimmedRow
+// ---------------------------------------------------------------------------
+
+describe('renderDimmedRow', () => {
+  const theme = { fg: (alias: string, t: string) => `[${alias}]${t}` }
+
+  it("strips 'dim' color from columns and faint-wraps the whole row", () => {
+    const cols: RowColumn[] = [
+      { name: 'a', text: 'AA', width: 4, color: 'dim' },
+      { name: 'b', text: 'BB', width: 4, color: 'warning' },
+    ]
+    const result = renderDimmedRow(cols, 12, theme)
+    expect(result).not.toContain('[dim]')
+    expect(result).toContain('[warning]')
+    expect(result.startsWith('\x1b[2m')).toBe(true)
+    expect(result.endsWith('\x1b[22m')).toBe(true)
+  })
+
+  it('column with no color AND a dim column both render without [dim] tag; row is faint-wrapped', () => {
+    const cols: RowColumn[] = [
+      { name: 'x', text: 'XX', width: 4 },
+      { name: 'y', text: 'YY', width: 4, color: 'dim' },
+    ]
+    const result = renderDimmedRow(cols, 12, theme)
+    expect(result).not.toContain('[dim]')
+    expect(result.startsWith('\x1b[2m')).toBe(true)
+    expect(result.endsWith('\x1b[22m')).toBe(true)
+  })
+
+  it("sanity: renderRowColumns with a dim column DOES contain [dim] (proving the contrast)", () => {
+    const cols: RowColumn[] = [
+      { name: 'a', text: 'AA', width: 4, color: 'dim' },
+      { name: 'b', text: 'BB', width: 4, color: 'warning' },
+    ]
+    const result = renderRowColumns(cols, 12, theme)
+    expect(result).toContain('[dim]')
   })
 })

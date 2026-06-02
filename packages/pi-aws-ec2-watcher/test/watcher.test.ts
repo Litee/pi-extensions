@@ -513,10 +513,11 @@ describe('Ec2Watcher view', () => {
     expect(text).toContain('DONE')
   })
 
-  it('renderItemRowText shows EXPIRED for timed-out watches', () => {
+  it('renderItemRowText: timed-out watch shows DONE in status and expired in timeout', () => {
     const text = watcher.view.renderItemRowText({ ...mockWatch, terminal: true, timeoutAt: Date.now() - 1000 })
-    expect(text).toContain('EXPIRED')
-    expect(text).not.toContain('DONE')
+    expect(text).toContain('DONE')
+    expect(text).toContain('expired')
+    expect(text).not.toContain('EXPIRED')
   })
 
   it('renderItemRowText shows DONE for target-met-early (future timeoutAt)', () => {
@@ -532,12 +533,12 @@ describe('Ec2Watcher view', () => {
     expect(cols[0]?.color).toBe('accent')
   })
 
-  it('renderItemRowTUI uses dim color for terminal watches (name column)', () => {
+  it('renderItemRowTUI uses accent color for terminal watches (name column)', () => {
     const cols = watcher.view.renderItemRowTUI(
       { ...mockWatch, terminal: true },
       { theme: {} as never, width: 80 },
     )
-    expect(cols[0]?.color).toBe('dim')
+    expect(cols[0]?.color).toBe('accent')
   })
 
   it('renderItemRowTUI uses warning color for error threshold', () => {
@@ -609,15 +610,17 @@ describe('Ec2Watcher view', () => {
       expect(cols.find((c) => c.name === 'status')!.text).toBe('DONE')
     })
 
-    it('timed-out watch shows EXPIRED (timeoutAt in the past)', () => {
+    it('timed-out watch shows DONE in status and expired in timeout', () => {
       const w = { ...base, terminal: true, consecutiveErrors: 0, timeoutAt: Date.now() - 1000 }
-      const cols = watcher.view.renderItemRowTUI(w, { theme: stubTheme as never, width: 80 })
-      expect(cols.find((c) => c.name === 'status')!.text).toBe('EXPIRED')
+      const cols = watcher.view.renderItemRowTUI(w, { theme: {} as never, width: 80 })
+      expect(cols.find((c) => c.name === 'status')!.text).toBe('DONE')
+      expect(cols.find((c) => c.name === 'timeout')!.text).toBe('expired')
+      expect(cols.find((c) => c.name === 'status')!.text).not.toBe('EXPIRED')
     })
 
     it('terminal watch with future timeoutAt (target met early) shows DONE', () => {
       const w = { ...base, terminal: true, consecutiveErrors: 0, timeoutAt: Date.now() + 60_000 }
-      const cols = watcher.view.renderItemRowTUI(w, { theme: stubTheme as never, width: 80 })
+      const cols = watcher.view.renderItemRowTUI(w, { theme: {} as never, width: 80 })
       expect(cols.find((c) => c.name === 'status')!.text).toBe('DONE')
     })
 
@@ -697,10 +700,34 @@ describe('timeout column in renderItemRowTUI', () => {
     expect(cols.find((c) => c.name === 'timeout')!.color).toBe('warning')
   })
 
-  it('uses dim color for terminal watches (timeout column)', () => {
+  it('uses warning color for terminal watches with < 5 min remaining (timeout column)', () => {
     const w = { ...base, timeoutAt: Date.now() + 10_000, terminal: true, consecutiveErrors: 0 }
     const cols = watcher.view.renderItemRowTUI(w, { theme: {} as never, width: 100 })
-    expect(cols.find((c) => c.name === 'timeout')!.color).toBe('dim')
+    expect(cols.find((c) => c.name === 'timeout')!.color).toBe('warning')
+  })
+})
+
+// ---------------------------------------------------------------------------
+// view.isRowDimmed
+// ---------------------------------------------------------------------------
+
+describe('view.isRowDimmed', () => {
+  let watcher: Ec2Watcher
+  beforeEach(() => { ;({ watcher } = makeWatcher()) })
+
+  const base = {
+    watchId: 'w1', instanceId: 'i-0a1b2c3d4e5f67890', profile: 'p', region: undefined as string | undefined,
+    timeoutAt: undefined as number | undefined, addedAt: 0,
+    lastPolledAt: undefined as number | undefined, baseline: { state: 'running' as const },
+    consecutiveErrors: 0,
+  }
+
+  it('returns true for terminal watches', () => {
+    expect(watcher.view.isRowDimmed!({ ...base, terminal: true })).toBe(true)
+  })
+
+  it('returns false for active watches', () => {
+    expect(watcher.view.isRowDimmed!({ ...base, terminal: false })).toBe(false)
   })
 })
 

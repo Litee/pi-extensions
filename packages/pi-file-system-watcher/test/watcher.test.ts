@@ -559,10 +559,11 @@ describe("FsWatcher view", () => {
     expect(text).toContain("DONE");
   });
 
-  it("renderItemRowText shows EXPIRED for timed-out watches", () => {
+  it("renderItemRowText: timed-out watch shows DONE in status and expired in timeout", () => {
     const text = watcher.view.renderItemRowText({ ...mockWatch, terminal: true, timeoutAt: Date.now() - 1000 });
-    expect(text).toContain("EXPIRED");
-    expect(text).not.toContain("DONE");
+    expect(text).toContain("DONE");
+    expect(text).toContain("expired");
+    expect(text).not.toContain("EXPIRED");
   });
 
   it("renderItemRowText shows DONE for target-met-early (future timeoutAt)", () => {
@@ -582,12 +583,12 @@ describe("FsWatcher view", () => {
     expect(cols[0]?.color).toBe("accent");
   });
 
-  it("renderItemRowTUI uses dim color for terminal watch path column", () => {
+  it("renderItemRowTUI uses accent color for terminal watch path column", () => {
     const cols = watcher.view.renderItemRowTUI(
       { ...mockWatch, terminal: true },
       { theme: {} as never, width: 80 },
     );
-    expect(cols[0]?.color).toBe("dim");
+    expect(cols[0]?.color).toBe("accent");
   });
 
   it("renderItemRowTUI uses warning color for terminal watch status column", () => {
@@ -598,7 +599,7 @@ describe("FsWatcher view", () => {
     expect(cols[1]?.color).toBe("warning");
   });
 
-  it("renderItemRowTUI uses dim color for terminal watch timeout column", () => {
+  it("renderItemRowTUI uses dim color for terminal watch timeout column (timeoutAt undefined)", () => {
     const cols = watcher.view.renderItemRowTUI(
       { ...mockWatch, terminal: true },
       { theme: {} as never, width: 80 },
@@ -730,19 +731,21 @@ describe("FsWatcher view status column", () => {
     expect(cols.find((c) => c.name === "status")!.text).toBe("DONE");
   });
 
-  it("timed-out watch shows EXPIRED (timeoutAt in the past)", () => {
+  it("timed-out watch shows DONE in status and expired in timeout", () => {
     const w = { ...baseW, terminal: true, consecutiveErrors: 0, timeoutAt: Date.now() - 1000 };
     const cols = watcher.view.renderItemRowTUI(w, {
-      theme: stubTheme as never,
+      theme: {} as never,
       width: 80,
     });
-    expect(cols.find((c) => c.name === "status")!.text).toBe("EXPIRED");
+    expect(cols.find((c) => c.name === "status")!.text).toBe("DONE");
+    expect(cols.find((c) => c.name === "timeout")!.text).toBe("expired");
+    expect(cols.find((c) => c.name === "status")!.text).not.toBe("EXPIRED");
   });
 
   it("terminal watch with future timeoutAt (target met early) shows DONE", () => {
     const w = { ...baseW, terminal: true, consecutiveErrors: 0, timeoutAt: Date.now() + 60_000 };
     const cols = watcher.view.renderItemRowTUI(w, {
-      theme: stubTheme as never,
+      theme: {} as never,
       width: 80,
     });
     expect(cols.find((c) => c.name === "status")!.text).toBe("DONE");
@@ -811,16 +814,43 @@ describe("FsWatcher view timeout column", () => {
     expect(cols.find((c) => c.name === "timeout")!.color).toBe("dim");
   });
 
-  it("uses dim color for terminal watch", () => {
+  it("uses warning color for terminal watch with < 5 min remaining", () => {
     const w = { ...baseW, timeoutAt: Date.now() + 10_000, terminal: true, consecutiveErrors: 0 };
     const cols = watcher.view.renderItemRowTUI(w, { theme: {} as never, width: 100 });
-    expect(cols.find((c) => c.name === "timeout")!.color).toBe("dim");
+    expect(cols.find((c) => c.name === "timeout")!.color).toBe("warning");
   });
 
   it("timeout column width is 10", () => {
     const w = { ...baseW, timeoutAt: undefined, terminal: false, consecutiveErrors: 0 };
     const cols = watcher.view.renderItemRowTUI(w, { theme: {} as never, width: 100 });
     expect(cols.find((c) => c.name === "timeout")!.width).toBe(10);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// view.isRowDimmed
+// ---------------------------------------------------------------------------
+
+describe("FsWatcher view.isRowDimmed", () => {
+  const baseW = {
+    watchId: "w1",
+    path: "/tmp/foo",
+    target: "exists" as const,
+    timeoutAt: undefined as number | undefined,
+    addedAt: 0,
+    lastPolledAt: undefined as number | undefined,
+    baseline: undefined as import("../src/types.js").FsBaseline | undefined,
+    consecutiveErrors: 0,
+  };
+
+  it("returns true for terminal watches", () => {
+    const { watcher } = makeWatcher();
+    expect(watcher.view.isRowDimmed!({ ...baseW, terminal: true })).toBe(true);
+  });
+
+  it("returns false for active watches", () => {
+    const { watcher } = makeWatcher();
+    expect(watcher.view.isRowDimmed!({ ...baseW, terminal: false })).toBe(false);
   });
 });
 

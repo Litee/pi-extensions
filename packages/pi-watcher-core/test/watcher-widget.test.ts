@@ -11,8 +11,7 @@
 import { describe, expect, it, vi } from 'vitest'
 
 import { createWatcherWidget, formatWidgetFooter, formatWidgetHeader } from '../src/watcher-widget.js'
-import type { WatcherWidgetOptions } from '../src/base-watcher-types.js'
-import type { WatchLike } from '../src/base-watcher-types.js'
+import type { WatcherWidgetOptions, WatchLike } from '../src/base-watcher-types.js'
 
 // ---------------------------------------------------------------------------
 // formatWidgetHeader
@@ -150,5 +149,101 @@ describe('WatcherWidgetImpl — setWidget guard (#0002)', () => {
     const { widget, ctx, setWidget } = makeWidget([])
     widget.show(ctx)
     expect(setWidget).not.toHaveBeenCalledWith('test-watcher', expect.any(Function), expect.anything())
+  })
+})
+
+// ---------------------------------------------------------------------------
+// _renderWidget faint dimming
+// ---------------------------------------------------------------------------
+
+/**
+ * Minimal theme stub for _renderWidget: passes text through unchanged so the
+ * raw ANSI escapes (faint markers) are visible in the rendered output.
+ */
+const stubTheme = {
+  fg: (_alias: string, text: string) => text,
+  bold: (text: string) => text,
+}
+
+type RenderWatch = WatchLike & { id: string }
+
+function makeWidgetForRender(watches: RenderWatch[]) {
+  const setWidget = vi.fn()
+  const ctx = { ui: { setWidget } }
+
+  const opts: WatcherWidgetOptions<RenderWatch> = {
+    extensionName: 'test-render-watcher',
+    getWatches: () => watches,
+    getPaused: () => false,
+  }
+
+  // Richer view stub: provides renderItemRowTUI and isRowDimmed so
+  // _renderWidget can complete without a live pi-tui session.
+  const view = {
+    renderItemRowText: (w: RenderWatch) => w.id,
+    renderItemRowTUI: (w: RenderWatch, _ctx: unknown) => [
+      { name: 'id', text: w.id },
+      { name: 'status', text: w.terminal ? 'DONE' : 'WATCHING', width: 10, color: 'warning' },
+    ],
+    isRowDimmed: (w: RenderWatch) => w.terminal,
+  } as unknown as Parameters<typeof createWatcherWidget>[1]
+
+  const piEvents = {
+    on: (_channel: string, _cb: (...args: unknown[]) => void) => () => {},
+    emit: vi.fn(),
+  } as unknown as Parameters<typeof createWatcherWidget>[0]
+
+  const widget = createWatcherWidget(piEvents, view, opts)
+  widget.show(ctx)
+
+  // show() calls ctx.ui.setWidget(id, factory, opts). The factory is at index 1.
+  // Call factory(null, stubTheme) → { render(width): string[] }
+  // then call render(width) to exercise the real _renderWidget code path.
+  type WidgetFactory = (tui: unknown, theme: unknown) => { render(w: number): string[] }
+  const factory = setWidget.mock.calls[0]?.[1] as WidgetFactory | undefined
+
+  const renderWidget = (width = 80): string => {
+    if (!factory) throw new Error('setWidget was not called — no watches?')
+    return factory(null, stubTheme).render(width).join('\n')
+  }
+
+  return { renderWidget }
+}
+
+describe('_renderWidget faint dimming', () => {
+  it('terminal watch row is wrapped with SGR-2 faint (\\x1b[2m … \\x1b[22m)', () => {
+    const { renderWidget } = makeWidgetForRender([
+      { id: 'done-job', terminal: true, consecutiveErrors: 0 },
+    ])
+    const output = renderWidget()
+    expect(output).toContain('\x1b[2m')
+    expect(output).toContain('\x1b[22m')
+  })
+
+  it('active watch row contains no faint escapes', () => {
+    const { renderWidget } = makeWidgetForRender([
+      { id: 'live-job', terminal: false, consecutiveErrors: 0 },
+    ])
+    const output = renderWidget()
+    expect(output).not.toContain('\x1b[2m')
+  })
+
+  it('mixed list: terminal row is faint-wrapped, active row is not', () => {
+    const { renderWidget } = makeWidgetForRender([
+      { id: 'active-job', terminal: false, consecutiveErrors: 0 },
+      { id: 'done-job', terminal: true, consecutiveErrors: 0 },
+    ])
+    const output = renderWidget()
+    const lines = output.split('\n')
+
+    const terminalLine = lines.find((l) => l.includes('done-job'))
+    const activeLine = lines.find((l) => l.includes('active-job'))
+
+    expect(terminalLine, 'terminal watch line should be found').toBeDefined()
+    expect(activeLine, 'active watch line should be found').toBeDefined()
+
+    expect(terminalLine).toContain('\x1b[2m')
+    expect(terminalLine).toContain('\x1b[22m')
+    expect(activeLine).not.toContain('\x1b[2m')
   })
 })

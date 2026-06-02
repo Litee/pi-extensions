@@ -497,10 +497,11 @@ describe('S3Watcher view', () => {
     expect(text).toContain('DONE')
   })
 
-  it('renderItemRowText shows EXPIRED for timed-out watches', () => {
+  it('renderItemRowText: timed-out watch shows DONE in status and expired in timeout', () => {
     const text = watcher.view.renderItemRowText({ ...mockWatch, terminal: true, timeoutAt: Date.now() - 1000 })
-    expect(text).toContain('EXPIRED')
-    expect(text).not.toContain('DONE')
+    expect(text).toContain('DONE')
+    expect(text).toContain('expired')
+    expect(text).not.toContain('EXPIRED')
   })
 
   it('renderItemRowText shows DONE for target-met-early (future timeoutAt)', () => {
@@ -516,12 +517,12 @@ describe('S3Watcher view', () => {
     expect(cols[0]?.color).toBe('accent')
   })
 
-  it('renderItemRowTUI uses dim color for terminal watches (uri column)', () => {
+  it('renderItemRowTUI uses accent color for terminal watches (uri column)', () => {
     const cols = watcher.view.renderItemRowTUI(
       { ...mockWatch, terminal: true },
       { theme: {} as never, width: 80 },
     )
-    expect(cols[0]?.color).toBe('dim')
+    expect(cols[0]?.color).toBe('accent')
   })
 
   it('renderItemRowTUI uses warning color for error threshold', () => {
@@ -591,10 +592,12 @@ describe('S3Watcher view', () => {
       expect(cols.find(c => c.name === 'status')!.text).toBe('DONE')
     })
 
-    it('timed-out watch shows EXPIRED (timeoutAt in the past)', () => {
+    it('timed-out watch shows DONE in status and expired in timeout', () => {
       const w = { ...base, terminal: true, consecutiveErrors: 0, timeoutAt: Date.now() - 1000 }
       const cols = watcher.view.renderItemRowTUI(w, { theme: stubTheme as never, width: 80 })
-      expect(cols.find(c => c.name === 'status')!.text).toBe('EXPIRED')
+      expect(cols.find(c => c.name === 'status')!.text).toBe('DONE')
+      expect(cols.find(c => c.name === 'timeout')!.text).toBe('expired')
+      expect(cols.find(c => c.name === 'status')!.text).not.toBe('EXPIRED')
     })
 
     it('terminal watch with future timeoutAt (target met early) shows DONE', () => {
@@ -1105,16 +1108,40 @@ describe('timeout column in renderItemRowTUI', () => {
     expect(cols.find(c => c.name === 'timeout')!.color).toBe('dim')
   })
 
-  it('uses dim color for terminal watches regardless of timeout', () => {
+  it('uses warning color for terminal watches with < 5 min remaining', () => {
     const w = { ...base, timeoutAt: Date.now() + 10_000, terminal: true, consecutiveErrors: 0 }
     const cols = watcher.view.renderItemRowTUI(w, { theme: {} as never, width: 100 })
-    expect(cols.find(c => c.name === 'timeout')!.color).toBe('dim')
+    expect(cols.find(c => c.name === 'timeout')!.color).toBe('warning')
   })
 
   it('timeout column width is 10', () => {
     const w = { ...base, timeoutAt: undefined, terminal: false, consecutiveErrors: 0 }
     const cols = watcher.view.renderItemRowTUI(w, { theme: {} as never, width: 100 })
     expect(cols.find(c => c.name === 'timeout')!.width).toBe(10)
+  })
+})
+
+// ---------------------------------------------------------------------------
+// view.isRowDimmed
+// ---------------------------------------------------------------------------
+
+describe('view.isRowDimmed', () => {
+  let watcher: S3Watcher
+  beforeEach(() => { ;({ watcher } = makeWatcher()) })
+
+  const base = {
+    watchId: 'w1', bucket: 'b', key: 'k', profile: 'p', region: undefined as string | undefined,
+    target: 'exists' as const, timeoutAt: undefined as number | undefined, addedAt: 0,
+    lastPolledAt: undefined as number | undefined, baseline: undefined as import('../src/types.js').S3Baseline | undefined,
+    consecutiveErrors: 0,
+  }
+
+  it('returns true for terminal watches', () => {
+    expect(watcher.view.isRowDimmed!({ ...base, terminal: true })).toBe(true)
+  })
+
+  it('returns false for active watches', () => {
+    expect(watcher.view.isRowDimmed!({ ...base, terminal: false })).toBe(false)
   })
 })
 

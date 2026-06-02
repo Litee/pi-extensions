@@ -92,42 +92,23 @@ export class FsWatcher extends BaseWatcher<FsWatch, FsBaseline, FsEvent> {
     itemSortKey: (w) => w.path,
 
     renderItemRowText(w) {
-      const timedOut = w.terminal && w.timeoutAt !== undefined && w.timeoutAt <= Date.now()
-      const statusText = timedOut
-        ? "EXPIRED"
-        : w.terminal
-          ? "DONE"
-          : w.consecutiveErrors >= POLL_ERROR_THRESHOLD
-            ? "ERROR"
-            : "WATCHING";
+      const statusText = w.terminal ? "DONE" : w.consecutiveErrors >= POLL_ERROR_THRESHOLD ? "ERROR" : "WATCHING";
       const timeLeft = formatTimeLeft(w.timeoutAt, Date.now());
       return `${w.path}  ${statusText}  ${timeLeft}  ${w.target}`;
     },
 
     renderItemRowTUI(w, _ctx): RowColumn[] {
-      const pathColor = w.terminal
-        ? "dim"
-        : w.consecutiveErrors >= POLL_ERROR_THRESHOLD
-          ? "warning"
-          : "accent";
-      const timedOut = w.terminal && w.timeoutAt !== undefined && w.timeoutAt <= Date.now()
-      const statusText = timedOut
-        ? "EXPIRED"
-        : w.terminal
-          ? "DONE"
-          : w.consecutiveErrors >= POLL_ERROR_THRESHOLD
-            ? "ERROR"
-            : "WATCHING";
+      const pathColor = w.consecutiveErrors >= POLL_ERROR_THRESHOLD
+        ? "warning"
+        : "accent";
+      const statusText = w.terminal ? "DONE" : w.consecutiveErrors >= POLL_ERROR_THRESHOLD ? "ERROR" : "WATCHING";
       const statusColor =
-        w.terminal
-          ? "warning"
-          : w.consecutiveErrors >= POLL_ERROR_THRESHOLD
-            ? "error"
-            : "warning";
+        w.consecutiveErrors >= POLL_ERROR_THRESHOLD
+          ? "error"
+          : "warning";
       const timeLeft = formatTimeLeft(w.timeoutAt, Date.now());
-      const timeColor: string = w.terminal
-        ? "dim"
-        : w.timeoutAt !== undefined && w.timeoutAt - Date.now() < 5 * 60 * 1000
+      const timeColor: string =
+        w.timeoutAt !== undefined && w.timeoutAt - Date.now() < 5 * 60 * 1000
           ? "warning"
           : "dim";
       return [
@@ -187,6 +168,8 @@ export class FsWatcher extends BaseWatcher<FsWatch, FsBaseline, FsEvent> {
     renderEventRow(e) {
       return e.formatted;
     },
+
+    isRowDimmed: (w: FsWatch) => w.terminal,
 
     compressColumns(cols: RowColumn[], totalWidth: number): RowColumn[] {
       const SEP = 2;

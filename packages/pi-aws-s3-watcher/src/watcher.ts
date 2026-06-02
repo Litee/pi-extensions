@@ -124,31 +124,21 @@ export class S3Watcher extends BaseWatcher<S3Watch, S3Baseline, S3Event> {
     itemGroup: (w) => w.bucket,
 
     renderItemRowText(w) {
-      const timedOut = w.terminal && w.timeoutAt !== undefined && w.timeoutAt <= Date.now()
-      const statusText = timedOut ? 'EXPIRED' : w.terminal ? 'DONE' : w.consecutiveErrors >= POLL_ERROR_THRESHOLD ? 'ERROR' : 'WATCHING'
+      const statusText = w.terminal ? 'DONE' : w.consecutiveErrors >= POLL_ERROR_THRESHOLD ? 'ERROR' : 'WATCHING'
       const timeLeft = formatTimeLeft(w.timeoutAt, Date.now())
       return `s3://${w.bucket}/${w.key}  ${statusText}  ${timeLeft}  ${displayTarget(w.target)}`
     },
 
     renderItemRowTUI(w, _ctx): RowColumn[] {
-      const uriColor = w.terminal
-        ? 'dim'
-        : w.consecutiveErrors >= POLL_ERROR_THRESHOLD
-          ? 'warning'
-          : 'accent'
-      const timedOut = w.terminal && w.timeoutAt !== undefined && w.timeoutAt <= Date.now()
-      const statusText = timedOut
-        ? 'EXPIRED'
-        : w.terminal
-          ? 'DONE'
-          : w.consecutiveErrors >= POLL_ERROR_THRESHOLD ? 'ERROR' : 'WATCHING'
-      const statusColor = w.terminal ? 'warning' : w.consecutiveErrors >= POLL_ERROR_THRESHOLD ? 'error' : 'warning'
+      const uriColor = w.consecutiveErrors >= POLL_ERROR_THRESHOLD
+        ? 'warning'
+        : 'accent'
+      const statusText = w.terminal ? 'DONE' : w.consecutiveErrors >= POLL_ERROR_THRESHOLD ? 'ERROR' : 'WATCHING'
+      const statusColor = w.consecutiveErrors >= POLL_ERROR_THRESHOLD ? 'error' : 'warning'
       const timeLeft = formatTimeLeft(w.timeoutAt, Date.now())
-      const timeColor: string = w.terminal
-        ? 'dim'
-        : w.timeoutAt !== undefined && w.timeoutAt - Date.now() < 5 * 60 * 1000
-          ? 'warning'
-          : 'dim'
+      const timeColor: string = w.timeoutAt !== undefined && w.timeoutAt - Date.now() < 5 * 60 * 1000
+        ? 'warning'
+        : 'dim'
       return [
         { name: 'uri',     text: `s3://${w.bucket}/${w.key}`, color: uriColor },
         { name: 'status',  text: statusText,              width: 10, color: statusColor },
@@ -178,6 +168,8 @@ export class S3Watcher extends BaseWatcher<S3Watch, S3Baseline, S3Event> {
     renderEventRow(e) {
       return e.formatted
     },
+
+    isRowDimmed: (w: S3Watch) => w.terminal,
 
     compressColumns(cols: RowColumn[], totalWidth: number): RowColumn[] {
       const SEP = 2

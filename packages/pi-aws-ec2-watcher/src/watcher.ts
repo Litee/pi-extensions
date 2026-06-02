@@ -136,8 +136,7 @@ export class Ec2Watcher extends BaseWatcher<Ec2Watch, Ec2Baseline, Ec2Event> {
       const displayName = w.baseline?.nameTag
         ? `${w.instanceId} (${w.baseline.nameTag})`
         : w.instanceId
-      const timedOut = w.terminal && w.timeoutAt !== undefined && w.timeoutAt <= Date.now()
-      const statusText = timedOut ? 'EXPIRED' : w.terminal ? 'DONE' : w.consecutiveErrors >= POLL_ERROR_THRESHOLD ? 'ERROR' : 'WATCHING'
+      const statusText = w.terminal ? 'DONE' : w.consecutiveErrors >= POLL_ERROR_THRESHOLD ? 'ERROR' : 'WATCHING'
       const timeLeft = formatTimeLeft(w.timeoutAt, Date.now())
       return `${displayName}  ${state}  ${statusText}  ${timeLeft}`
     },
@@ -146,26 +145,17 @@ export class Ec2Watcher extends BaseWatcher<Ec2Watch, Ec2Baseline, Ec2Event> {
       const displayName = w.baseline?.nameTag
         ? `${w.instanceId} (${w.baseline.nameTag})`
         : w.instanceId
-      const nameColor = w.terminal
-        ? 'dim'
-        : w.consecutiveErrors >= POLL_ERROR_THRESHOLD
-          ? 'warning'
-          : 'accent'
+      const nameColor = w.consecutiveErrors >= POLL_ERROR_THRESHOLD
+        ? 'warning'
+        : 'accent'
       const state = w.baseline?.state ?? '?'
       const instanceType = w.baseline?.instanceType ?? '—'
-      const timedOut = w.terminal && w.timeoutAt !== undefined && w.timeoutAt <= Date.now()
-      const statusText = timedOut
-        ? 'EXPIRED'
-        : w.terminal
-          ? 'DONE'
-          : w.consecutiveErrors >= POLL_ERROR_THRESHOLD ? 'ERROR' : 'WATCHING'
-      const statusColor = w.terminal ? 'warning' : w.consecutiveErrors >= POLL_ERROR_THRESHOLD ? 'error' : 'warning'
+      const statusText = w.terminal ? 'DONE' : w.consecutiveErrors >= POLL_ERROR_THRESHOLD ? 'ERROR' : 'WATCHING'
+      const statusColor = w.consecutiveErrors >= POLL_ERROR_THRESHOLD ? 'error' : 'warning'
       const timeLeft = formatTimeLeft(w.timeoutAt, Date.now())
-      const timeColor: string = w.terminal
-        ? 'dim'
-        : w.timeoutAt !== undefined && w.timeoutAt - Date.now() < 5 * 60 * 1000
-          ? 'warning'
-          : 'dim'
+      const timeColor: string = w.timeoutAt !== undefined && w.timeoutAt - Date.now() < 5 * 60 * 1000
+        ? 'warning'
+        : 'dim'
       return [
         { name: 'name',         text: displayName,  color: nameColor },
         { name: 'state',        text: state,         width: 13, color: 'dim' },
@@ -200,6 +190,8 @@ export class Ec2Watcher extends BaseWatcher<Ec2Watch, Ec2Baseline, Ec2Event> {
     renderEventRow(e) {
       return e.formatted
     },
+
+    isRowDimmed: (w: Ec2Watch) => w.terminal,
   }
 
   // ── Tool metadata ──────────────────────────────────────────────────────────

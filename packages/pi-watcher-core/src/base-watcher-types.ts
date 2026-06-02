@@ -181,6 +181,13 @@ export interface WatcherView<TWatch, TEvent> {
   compressColumns?(columns: RowColumn[], totalWidth: number): RowColumn[]
 
   /**
+   * Optional: return true when this watch's row should render dimmed. The row
+   * keeps each column's natural color but is wrapped in ANSI faint (SGR 2), so
+   * hues are preserved at reduced intensity. Typically `(w) => w.terminal`.
+   */
+  isRowDimmed?(watch: TWatch): boolean
+
+  /**
    * Sort key for the browse list. Rows are sorted ascending by this key.
    * String keys sort lexicographically; number keys sort numerically.
    */

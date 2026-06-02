@@ -23,6 +23,14 @@ import { getSelectListTheme, DynamicBorder } from '@earendil-works/pi-coding-age
 import type { BrowseViewOptions, DetailField, MenuResult, RowColumn } from './base-watcher-types.js'
 
 // ---------------------------------------------------------------------------
+// ANSI helpers — used by renderRowColumns to measure visible (non-escape) width
+// ---------------------------------------------------------------------------
+const ANSI_RE = /\x1b\[[0-9;]*m/g
+function visibleLength(s: string): number {
+  return s.replace(ANSI_RE, '').length
+}
+
+// ---------------------------------------------------------------------------
 // openBrowseView — TUI entry point
 // ---------------------------------------------------------------------------
 
@@ -246,7 +254,9 @@ function computeRowLabel<TWatch>(
 ): string {
   const rawCols = view.renderItemRowTUI(watch, { theme: theme as never, width })
   const cols = view.compressColumns ? view.compressColumns(rawCols, width) : rawCols
-  return renderRowColumns(cols, width, theme)
+  return view.isRowDimmed?.(watch)
+    ? renderDimmedRow(cols, width, theme)
+    : renderRowColumns(cols, width, theme)
 }
 
 function _buildBrowseComponent<TWatch>(
@@ -366,6 +376,8 @@ function _buildBrowseComponent<TWatch>(
       ? opts.view.compressColumns(rawCols, contentWidth)
       : rawCols
 
+    const dimmed = opts.view.isRowDimmed?.(watch) ?? false
+
     if (!isSelected) {
       // First column: no color (plain). Remaining columns: keep natural colors.
       const plainCols = cols.map((c, i) => {
@@ -373,14 +385,18 @@ function _buildBrowseComponent<TWatch>(
         const { color: _drop, ...rest } = c
         return rest
       })
-      return '  ' + renderRowColumns(plainCols, contentWidth, theme)
+      return '  ' + (dimmed
+        ? renderDimmedRow(plainCols, contentWidth, theme)
+        : renderRowColumns(plainCols, contentWidth, theme))
     }
 
     // Selected: accent arrow + accent first column + natural colors on the rest
     const accentedCols = cols.map((c, i) =>
       i === 0 ? { ...c, color: 'accent' as const } : c,
     )
-    return theme.fg('accent', '→') + ' ' + renderRowColumns(accentedCols, contentWidth, theme)
+    return theme.fg('accent', '→') + ' ' + (dimmed
+      ? renderDimmedRow(accentedCols, contentWidth, theme)
+      : renderRowColumns(accentedCols, contentWidth, theme))
   }
 
   listContainer.addChild(selectList)
@@ -582,6 +598,39 @@ function _buildBrowseComponent<TWatch>(
 // Pure render helpers — exported for unit testing and watcher-widget
 // ---------------------------------------------------------------------------
 
+// ---------------------------------------------------------------------------
+// SGR-2 faint helpers — exported for watcher-widget and unit tests
+// ---------------------------------------------------------------------------
+
+// SGR-2 faint dims the whole row while each column keeps its own hue. The
+// per-column `\x1b[39m` foreground resets do NOT clear SGR-2, so faint persists
+// across the entire row until `\x1b[22m`. (theme.fg('dim',…) cannot do this —
+// 'dim' is a grey fg color, and inner fg-resets cancel it.)
+export const FAINT_OPEN = '\x1b[2m'
+export const FAINT_CLOSE = '\x1b[22m'
+export function faintRow(s: string): string {
+  return `${FAINT_OPEN}${s}${FAINT_CLOSE}`
+}
+
+/**
+ * Render a dimmed (terminal) row. Columns colored `'dim'` are stripped to the
+ * default foreground first, because the row-level SGR-2 faint wrap would
+ * otherwise double-dim already-grey columns and hurt readability. Non-'dim'
+ * column colors are preserved (they read fine under faint).
+ */
+export function renderDimmedRow(
+  columns: RowColumn[],
+  totalWidth: number,
+  theme?: { fg(alias: string, text: string): string },
+): string {
+  const undimmed: RowColumn[] = columns.map((c) => {
+    if (c.color !== 'dim') return c
+    const { color: _drop, ...rest } = c
+    return rest
+  })
+  return faintRow(renderRowColumns(undimmed, totalWidth, theme))
+}
+
 /**
  * Render an array of `DetailField` objects into aligned `label:  value` lines.
  *
@@ -627,10 +676,26 @@ export function renderRowColumns(
     .map((col) => {
       const w = col.width ?? flexWidth
       let text = col.text
-      if (text.length > w) {
-        text = text.slice(0, Math.max(0, w - 1)) + '\u2026'
+      if (visibleLength(text) > w) {
+        // Truncate by visible chars, skipping over ANSI escape sequences
+        let vis = 0
+        let i = 0
+        while (i < text.length && vis < w - 1) {
+          if (text[i] === '\x1b') {
+            const end = text.indexOf('m', i)
+            i = end === -1 ? text.length : end + 1
+          } else {
+            vis++
+            i++
+          }
+        }
+        text = text.slice(0, i) + '\u2026'
       }
-      const padded = col.align === 'right' ? text.padStart(w) : text.padEnd(w)
+      // Compensate padStart/padEnd for invisible ANSI bytes so padding reaches the correct visible width
+      const ansiBytes = text.length - visibleLength(text)
+      const padded = col.align === 'right'
+        ? text.padStart(w + ansiBytes)
+        : text.padEnd(w + ansiBytes)
       return col.color && theme ? theme.fg(col.color, padded) : padded
     })
     .join(SEP)

@@ -34,7 +34,7 @@ import type {
   WatchLike,
   WatcherView,
 } from './base-watcher-types.js'
-import { renderRowColumns } from './browse-view.js'
+import { renderRowColumns, renderDimmedRow } from './browse-view.js'
 
 // ---------------------------------------------------------------------------
 // Pure helpers (exported for unit tests)
@@ -183,8 +183,9 @@ class WatcherWidgetImpl<TWatch extends WatchLike, TEvent> implements WatcherWidg
         : rawCols
       const { color: _drop, ...firstRest } = baseCols[0] ?? { name: '', text: '' }
       const cols = [{ ...firstRest } as typeof baseCols[0], ...baseCols.slice(1)]
-      const rendered = renderRowColumns(cols, width - 2, t)
-      rowLines.push(rendered)
+      rowLines.push(this.view.isRowDimmed?.(w)
+        ? renderDimmedRow(cols, width - 2, t)
+        : renderRowColumns(cols, width - 2, t))
     }
 
     if (rowLines.length > 0) {
