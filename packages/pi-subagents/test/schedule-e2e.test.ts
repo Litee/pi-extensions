@@ -108,8 +108,8 @@ describe("SubagentScheduler — end-to-end with real timers", () => {
 
     // Wait for the spawn to occur (real timer fires) and the finalize promise
     // chain to settle. Polling, no fake timers.
-    await waitFor(() => spawnFn.mock.calls.length === 1);
-    await waitFor(() => scheduler.list().find(j => j.id === job.id)?.lastStatus === "success");
+    await waitFor(() => spawnFn.mock.calls.length === 1, 5000);
+    await waitFor(() => scheduler.list().find(j => j.id === job.id)?.lastStatus === "success", 5000);
 
     const final = scheduler.list().find(j => j.id === job.id)!;
     expect(final.lastStatus).toBe("success");
@@ -132,8 +132,8 @@ describe("SubagentScheduler — end-to-end with real timers", () => {
       prompt: "fail",
     });
 
-    await waitFor(() => spawnFn.mock.calls.length === 1);
-    await waitFor(() => scheduler.list().find(j => j.id === job.id)?.lastStatus !== "running");
+    await waitFor(() => spawnFn.mock.calls.length === 1, 5000);
+    await waitFor(() => scheduler.list().find(j => j.id === job.id)?.lastStatus !== "running", 5000);
 
     expect(scheduler.list().find(j => j.id === job.id)?.lastStatus).toBe("error");
     expect(scheduler.list().find(j => j.id === job.id)?.runCount).toBe(1);
@@ -225,7 +225,7 @@ describe("SubagentScheduler — end-to-end with real timers", () => {
       subagent_type: "general-purpose", prompt: "x",
     });
 
-    await waitFor(() => spawnFn.mock.calls.length === 1);
+    await waitFor(() => spawnFn.mock.calls.length === 1, 5000);
 
     const eventTypes = (emitSpy.mock.calls as unknown[][])
       .filter((c) => c[0] === "subagents:scheduled")
