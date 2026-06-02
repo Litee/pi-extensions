@@ -74,6 +74,13 @@ export interface BrowserControlOptions {
 	socketClient?: SocketClientLike;
 	/** Override agent directory for path helpers (for tests). */
 	agentDir?: string;
+	/**
+	 * Override the native-messaging manifest output path (for tests ONLY).
+	 * In production this is undefined and the manifest is written to the
+	 * fixed Firefox location; tests MUST set this to a temp path so the suite
+	 * never writes to the real ~/Library/.../NativeMessagingHosts location.
+	 */
+	manifestPath?: string;
 }
 
 // ---------------------------------------------------------------------------
@@ -190,7 +197,9 @@ export default function browserControl(
 					if (!launcherResult.ok) {
 						return Promise.resolve(launcherResult);
 					}
-					return Promise.resolve(installManifest({ launcherPath: lp }));
+					return Promise.resolve(
+						installManifest({ launcherPath: lp, overrideManifestPath: options.manifestPath }),
+					);
 				},
 			}),
 	});
