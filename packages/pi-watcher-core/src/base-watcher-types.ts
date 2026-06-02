@@ -216,6 +216,12 @@ export interface CommandCtx {
   setDisplayMode(mode: 'widget' | 'statusline'): void
   /** Persist the user-default display mode preference. Pass `undefined` to clear. */
   setUserDefault(mode: 'widget' | 'statusline' | undefined): void
+  /**
+   * Open a nested Yes/No confirmation overlay.
+   * Resolves `true` if the user selected the confirm action, `false` if cancelled.
+   * `confirmLabel` defaults to `'Confirm'`.
+   */
+  confirm(message: string, confirmLabel?: string): Promise<boolean>
 }
 
 /**

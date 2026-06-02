@@ -267,7 +267,7 @@ function makeStub(opts: StubOpts = {}) {
   return new DynStub({ pi, now: () => 0 })
 }
 
-function makeCommandCtx(stub: StubWatcher): CommandCtx {
+function makeCommandCtx(stub: StubWatcher, overrides: Partial<CommandCtx> = {}): CommandCtx {
   return {
     ui: {} as ReturnType<typeof makePi> as never,
     state: (stub as unknown as { _currentState(): WatcherState })._currentState(),
@@ -276,6 +276,8 @@ function makeCommandCtx(stub: StubWatcher): CommandCtx {
     toggle: () => {},
     setDisplayMode: () => {},
     setUserDefault: () => {},
+    confirm: () => Promise.resolve(true),
+    ...overrides,
   }
 }
 
@@ -2055,6 +2057,7 @@ describe('buildMenu — userDefaultDisplayMode save fails', () => {
       toggle: () => {},
       setDisplayMode: () => {},
       setUserDefault: () => {},
+      confirm: () => Promise.resolve(true),
     }
     await item.run(ctx)
     // Should have notified with warning
@@ -2321,5 +2324,99 @@ describe('commandHandler — browse callback', () => {
 
     await cmdCtx.browse()
     expect(browseActionSpy).toHaveBeenCalled()
+  })
+})
+
+// ---------------------------------------------------------------------------
+// purge menu item
+// ---------------------------------------------------------------------------
+
+describe('purge menu item', () => {
+  it('is present for user-tool watchers', () => {
+    const stub = makeStub({ itemSource: 'user-tool' })
+    expect(stub.buildMenu().find(i => i.id === 'purge')).toBeDefined()
+  })
+
+  it('is absent for scan watchers', () => {
+    const stub = makeStub({ itemSource: 'scan' })
+    expect(stub.buildMenu().find(i => i.id === 'purge')).toBeUndefined()
+  })
+
+  it('appears before close', () => {
+    const stub = makeStub({ itemSource: 'user-tool' })
+    const items = stub.buildMenu()
+    const purgeIdx = items.findIndex(i => i.id === 'purge')
+    const closeIdx = items.findIndex(i => i.id === 'close')
+    expect(purgeIdx).toBeGreaterThanOrEqual(0)
+    expect(purgeIdx).toBeLessThan(closeIdx)
+  })
+
+  it('label shows terminal count', () => {
+    const stub = makeStub()
+    stub.testWatches.set('a', makeWatch({ id: 'a', terminal: false }))
+    stub.testWatches.set('b', makeWatch({ id: 'b', terminal: true }))
+    stub.testWatches.set('c', makeWatch({ id: 'c', terminal: true }))
+    const item = stub.buildMenu().find(i => i.id === 'purge')!
+    expect(item.label(stub._currentState())).toBe('Purge completed (2)')
+  })
+
+  it('disabled when no terminal watches', () => {
+    const stub = makeStub()
+    stub.testWatches.set('a', makeWatch({ id: 'a', terminal: false }))
+    const item = stub.buildMenu().find(i => i.id === 'purge')!
+    expect(item.disabled?.(stub._currentState())).toBe(true)
+  })
+
+  it('enabled when there are terminal watches', () => {
+    const stub = makeStub()
+    stub.testWatches.set('a', makeWatch({ id: 'a', terminal: true }))
+    const item = stub.buildMenu().find(i => i.id === 'purge')!
+    expect(item.disabled?.(stub._currentState())).toBe(false)
+  })
+
+  it('run: confirm=true invokes executePurge and returns rerender', async () => {
+    const stub = makeStub()
+    stub.testWatches.set('a', makeWatch({ id: 'a', terminal: true }))
+    const spy = vi.spyOn(stub as unknown as { executePurge(): StubWatch[] }, 'executePurge')
+    const ctx = makeCommandCtx(stub, { confirm: () => Promise.resolve(true) })
+    const item = stub.buildMenu().find(i => i.id === 'purge')!
+    const result = await item.run(ctx)
+    expect(spy).toHaveBeenCalled()
+    expect(result).toBe('rerender')
+  })
+
+  it('run: confirm=false does NOT invoke executePurge and returns stay', async () => {
+    const stub = makeStub()
+    stub.testWatches.set('a', makeWatch({ id: 'a', terminal: true }))
+    const spy = vi.spyOn(stub as unknown as { executePurge(): StubWatch[] }, 'executePurge')
+    const ctx = makeCommandCtx(stub, { confirm: () => Promise.resolve(false) })
+    const item = stub.buildMenu().find(i => i.id === 'purge')!
+    const result = await item.run(ctx)
+    expect(spy).not.toHaveBeenCalled()
+    expect(result).toBe('stay')
+  })
+
+  it('run: returns stay when no terminal watches (even without confirm)', async () => {
+    const stub = makeStub()
+    stub.testWatches.set('a', makeWatch({ id: 'a', terminal: false }))
+    const confirm = vi.fn().mockResolvedValue(true)
+    const ctx = makeCommandCtx(stub, { confirm })
+    const item = stub.buildMenu().find(i => i.id === 'purge')!
+    const result = await item.run(ctx)
+    expect(confirm).not.toHaveBeenCalled()
+    expect(result).toBe('stay')
+  })
+
+  it('run: notifies after successful purge', async () => {
+    const stub = makeStub()
+    stub.testWatches.set('a', makeWatch({ id: 'a', terminal: true }))
+    const notify = vi.fn()
+    const ctx = makeCommandCtx(stub, {
+      confirm: () => Promise.resolve(true),
+      ui: { notify },
+    })
+    const item = stub.buildMenu().find(i => i.id === 'purge')!
+    await item.run(ctx)
+    expect(notify).toHaveBeenCalledWith(expect.stringContaining('purged 1 completed watch'), 'info')
   })
 })

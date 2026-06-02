@@ -1104,6 +1104,30 @@ export abstract class BaseWatcher<
       run: (ctx) => ctx.browse(),
     })
 
+    // Purge completed watches (user-tool watchers only)
+    if (this.itemSource === 'user-tool') {
+      items.push({
+        id: 'purge',
+        label: (state) => `Purge completed (${state.watchCount - state.activeCount})`,
+        disabled: (state) => (state.watchCount - state.activeCount) === 0,
+        run: async (ctx): Promise<MenuResult> => {
+          const count = ctx.state.watchCount - ctx.state.activeCount
+          if (count === 0) return 'stay'
+          const ok = await ctx.confirm(
+            `Purge ${count} completed watch${count === 1 ? '' : 'es'}?`,
+            `Yes, purge ${count}`,
+          )
+          if (!ok) return 'stay'
+          const removed = this.executePurge()
+          ctx.ui.notify?.(
+            `${this.statusLabel}: purged ${removed.length} completed watch${removed.length === 1 ? '' : 'es'}.`,
+            'info',
+          )
+          return 'rerender'
+        },
+      })
+    }
+
     // Refresh (scan watchers only)
     if (this.itemSource === 'scan') {
       items.push({
@@ -1240,6 +1264,23 @@ export abstract class BaseWatcher<
       setUserDefault: () => {
         // Default no-op. Subclasses that support persisted user defaults
         // should override this method via customizeMenu + RowAction.
+      },
+      confirm: async (message, confirmLabel) => {
+        const { openMenuView } = await import('./browse-view.js')
+        let confirmed = false
+        await openMenuView(message, () => [
+          {
+            id: 'yes',
+            label: confirmLabel ?? 'Confirm',
+            run: () => { confirmed = true; return Promise.resolve<MenuResult>('close') },
+          },
+          {
+            id: 'no',
+            label: 'Cancel',
+            run: () => Promise.resolve<MenuResult>('close'),
+          },
+        ], ctx)
+        return confirmed
       },
     }
   }
