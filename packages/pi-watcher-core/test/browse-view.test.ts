@@ -1606,6 +1606,26 @@ describe('openMenuView — disabled items', () => {
     }
   })
 
+  it('disabled not-selected item has 2-column indent (same as enabled not-selected)', async () => {
+    const items: MenuViewItem[] = [
+      { id: 'a', label: 'Item A', disabled: true, run: () => Promise.resolve('close' as const) },
+    ]
+    let capturedSl: unknown = null
+    const customSpy = vi.fn().mockImplementation((factory: _FactoryFn) => {
+      const theme = { fg: (_alias: string, t: string) => t, bold: (t: string) => t }
+      factory({ requestRender: vi.fn() }, theme, null, (r: unknown) => r)
+      capturedSl = MockSelectList.getInstances().at(-1)
+      return null
+    })
+    const ctx = { ui: { custom: customSpy, theme: { fg: (_alias: string, t: string) => t, bold: (t: string) => t } } }
+    await openMenuView('Test', () => items, ctx)
+    type _SlLike = { renderItem?: (item: { value: string; label: string }, isSelected: boolean, width: number) => string }
+    const sl = capturedSl as _SlLike
+    if (!sl?.renderItem) return
+    const result = sl.renderItem({ value: 'a', label: 'Item A' }, false, 40)
+    expect(result).toBe('  Item A')
+  })
+
   it('selected enabled item has accent on arrow AND label', async () => {
     const items: MenuViewItem[] = [
       { id: 'a', label: 'Item A', run: () => Promise.resolve('close' as const) },

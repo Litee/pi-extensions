@@ -172,9 +172,12 @@ export async function openMenuView(
           const isDisabled = menuItem?.disabled === true
 
           if (isDisabled) {
-            const prefix = isSelected ? theme?.fg('dim', '→') ?? '→' : '  '
-            const text = theme?.fg('dim', item.label.slice(0, contentWidth)) ?? item.label.slice(0, contentWidth)
-            return `${prefix} ${text}`
+            const dimText = theme?.fg('dim', item.label.slice(0, contentWidth)) ?? item.label.slice(0, contentWidth)
+            if (!isSelected) {
+              return '  ' + dimText
+            }
+            const dimArrow = theme?.fg('dim', '→') ?? '→'
+            return `${dimArrow} ${dimText}`
           }
 
           if (!isSelected) {
