@@ -41,9 +41,10 @@ Per-issue sequence; do not skip or reorder:
 3. Present changes to the user for review. Do not commit yet.
 4. Commit only after the user reviews the worktree diff and explicitly confirms. No speculative or "save progress" commits.
 5. Rebase onto `main` from inside the worktree: `git fetch origin main && git rebase origin/main`.
-6. Ask for explicit confirmation before merging the worktree branch into `main`.
-7. Merge fast-forward only from the main repo: `git merge --ff-only <branch-name>`. Never create merge commits.
-8. Remove the worktree after a successful merge: `git worktree remove .worktrees/<branch-name>`.
+6. **Re-run all health checks after the rebase, every time.** A rebase changes the merge base, so checks that passed before it can fail after it. Run the full suite — `npm run check` (lint + TypeScript typecheck + tests with coverage). Coverage thresholds are global, so run the whole suite, not just the rebased packages. **If lint, typecheck, tests, or coverage fail, STOP — do not fast-forward merge.** Report the failure and wait. Never proceed to the merge step on a red checkout.
+7. Ask for explicit confirmation before merging the worktree branch into `main`.
+8. Merge fast-forward only from the main repo: `git merge --ff-only <branch-name>`. Never create merge commits.
+9. Remove the worktree after a successful merge: `git worktree remove .worktrees/<branch-name>`.
 
 ### Standing rules (apply at all times)
 
@@ -51,4 +52,4 @@ Per-issue sequence; do not skip or reorder:
 - **Never switch repository configuration without explicit human confirmation.** Do not change git settings that alter the repository's identity or layout — including `core.bare`, `core.worktree`, `core.repositoryformatversion`, remotes (`git remote add/remove/set-url`), `git config` writes at `--local`/`--global`/`--system` scope, `extensions.*`, hooks path (`core.hooksPath`), or converting between bare and non-bare. Read-only inspection (`git config --get ...`, `git config --list`) is always fine. If a task seems to require a config change, surface the exact command and why, and wait for explicit approval before running it.
 - **Do not announce "main is N commits ahead of origin/main"** in status summaries, post-merge reports, or anywhere else. The user already knows. It is not actionable information for them.
 - **No transient `.md` files in worktrees or the main repo.** Sub-agent output files, result summaries, and any other scratch files must go in `/tmp`, not inside a worktree or the repo root. Files written to the repo are candidates for accidental commits and create noise in `git status`.
-- **Never merge when checks are failing.** Before any FF-merge into `main`, all of the following must pass: lint, TypeScript typecheck, and tests for the affected packages. If any check fails, stop and report the failure to the user — do not merge. The only exception is if the user explicitly instructs you to ignore specific failures (e.g. "pre-existing failures are fine" or "ignore the lint errors"). Pre-existing failures on `main` that are unrelated to the branch being merged are acceptable only if confirmed by stashing the branch changes and reproducing the same failures on the base commit.
+- **Never merge when checks are failing.** Before any FF-merge into `main`, all of the following must pass: lint, TypeScript typecheck, and tests for the affected packages. The run that gates the merge must be the one **after** the final rebase (step 6) — a clean check from before the rebase does not count. If any check fails, stop and report the failure to the user — do not merge. The only exception is if the user explicitly instructs you to ignore specific failures (e.g. "pre-existing failures are fine" or "ignore the lint errors"). Pre-existing failures on `main` that are unrelated to the branch being merged are acceptable only if confirmed by stashing the branch changes and reproducing the same failures on the base commit.
