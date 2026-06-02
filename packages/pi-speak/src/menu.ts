@@ -217,6 +217,53 @@ async function pickSteps(ctx: MenuCtx, current: number): Promise<number | null> 
 }
 
 // ---------------------------------------------------------------------------
+// ---------------------------------------------------------------------------
+// selectAt — ctx.ui.select with remembered cursor position
+// ---------------------------------------------------------------------------
+
+/**
+ * Like `ctx.ui.select` but restores the cursor to `initialIndex` when the
+ * menu opens. Returns `{ choice, index }` so the caller can persist the
+ * position for the next iteration.
+ *
+ * Falls back to plain `ctx.ui.select` (cursor always resets to 0) when
+ * `ctx.ui.custom` is unavailable.
+ */
+async function selectAt(
+	ctx: MenuCtx,
+	title: string,
+	items: string[],
+	initialIndex: number,
+): Promise<{ choice: string; index: number } | null> {
+	if (!ctx.ui.custom) {
+		const choice = await ctx.ui.select(title, items);
+		if (!choice) return null;
+		return { choice, index: items.indexOf(choice) };
+	}
+
+	type TuiLike = { requestRender: () => void };
+	type ComponentLike = { render: (w: number) => string[]; invalidate: () => void; handleInput: (d: string) => void };
+
+	const result = await ctx.ui.custom<{ value: string; index: number } | null>(
+		(tui: TuiLike, _theme: unknown, _kb: unknown, done: (v: { value: string; index: number } | null) => void) => {
+			const selectItems: SelectItem[] = items.map((label) => ({ value: label, label }));
+			const sl = new SelectList(selectItems, Math.min(items.length, 18), getSelectListTheme());
+			sl.setSelectedIndex(Math.max(0, Math.min(initialIndex, items.length - 1)));
+			sl.onSelect = (item) => done({ value: item.value, index: selectItems.indexOf(item) });
+			sl.onCancel = () => done(null);
+			return {
+				render: (w: number) => sl.render(w),
+				invalidate: () => sl.invalidate(),
+				handleInput: (data: string) => { sl.handleInput(data); tui.requestRender(); },
+			} as ComponentLike;
+		},
+	);
+
+	if (!result) return null;
+	return { choice: result.value, index: result.index };
+}
+
+// ---------------------------------------------------------------------------
 // Main menu loop
 // ---------------------------------------------------------------------------
 
@@ -230,6 +277,7 @@ export async function runSpeakMenu(
 	let sessionLang = options.sessionLang;
 	let sessionSpeed = options.sessionSpeed;
 	let sessionSteps = options.sessionSteps;
+	let lastIndex = 0;
 
 	while (true) {
 		const config = options.loadConfig();
@@ -267,8 +315,10 @@ export async function runSpeakMenu(
 			"Close",
 		];
 
-		const choice = await ctx.ui.select("speak", items);
-		if (!choice || choice === "Close") return;
+		const result = await selectAt(ctx, "speak", items, lastIndex);
+		if (!result || result.choice === "Close") return;
+		const { choice, index } = result;
+		lastIndex = index;
 
 		// Separator lines and read-only display items are non-selectable.
 		if (choice.startsWith("─")) continue;
