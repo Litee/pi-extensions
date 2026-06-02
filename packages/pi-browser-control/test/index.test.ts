@@ -247,6 +247,18 @@ describe("error paths", () => {
 		expect(text).toMatch(/unload|reload|loaded/i);
 	});
 
+	it("EXTRACTION_TIMEOUT → message about the page not returning in time", async () => {
+		const err = Object.assign(new Error("timed out"), { code: "EXTRACTION_TIMEOUT" });
+		const stub = makeStub({ getTabContent: vi.fn().mockRejectedValue(err) });
+		const pi = makeFakePi();
+		createExtension(pi.api, { socketClient: stub, enableGetTabContent: true });
+		const result = await pi.tool("browser_get_tab_content").execute(
+			"tc-to", { tabId: 99, offset: 0 }, undefined, undefined, {} as never,
+		);
+		const text = (result.content[0] as { text: string }).text;
+		expect(text).toMatch(/time|streaming|loading|settle/i);
+	});
+
 	it("generic error returns a non-empty message", async () => {
 		const stub = makeStub({ listTabs: vi.fn().mockRejectedValue(new Error("something weird")) });
 		const pi = makeFakePi();

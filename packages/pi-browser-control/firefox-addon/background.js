@@ -22,6 +22,7 @@
 const NM_HOST_NAME = "pi_browser_control";
 const ADDON_VERSION = "0.1.0";
 const CONTENT_CHUNK_MAX = 900 * 1024; // ~900 KB per response
+const EXTRACT_TIMEOUT_MS = 5000; // fail fast if executeScript stalls (e.g. streaming SPA)
 
 let port = null;
 
@@ -102,13 +103,30 @@ async function handleMessage(msg) {
         return;
       }
 
-      // Inject content script
+      // Inject content script. Two changes vs the naive call:
+      //  - runAt: "document_end" so we don't wait for the load event + idle
+      //    network period (streaming/SPA tabs may never reach idle).
+      //  - race against a timeout: executeScript can still hang (frozen tab,
+      //    huge DOM, blocked main thread). Fail fast instead of letting the
+      //    daemon deadline (~60s) expire. The tab's status/discarded state is
+      //    included to make the failure diagnosable.
       let extracted;
       try {
-        const results = await browser.tabs.executeScript(tabId, {
+        const exec = browser.tabs.executeScript(tabId, {
           file: "content-extract.js",
+          runAt: "document_end",
         });
-        extracted = results?.[0];
+        const TIMEOUT = Symbol("timeout");
+        const timer = new Promise((resolve) => setTimeout(() => resolve(TIMEOUT), EXTRACT_TIMEOUT_MS));
+        const raced = await Promise.race([exec, timer]);
+        if (raced === TIMEOUT) {
+          sendReply(correlationId, false, null, {
+            code: "EXTRACTION_TIMEOUT",
+            message: `Tab ${tabId} did not return content within ${EXTRACT_TIMEOUT_MS / 1000}s (status=${tab.status ?? "?"}, discarded=${String(tab.discarded)}). The page may be still loading or unresponsive; switch to it in Firefox and retry, or choose another tab.`,
+          });
+          return;
+        }
+        extracted = raced?.[0];
       } catch (e) {
         sendReply(correlationId, false, null, { code: "EXTRACTION_FAILED", message: String(e) });
         return;
