@@ -21,12 +21,27 @@ function initGitRepo(): string {
 
 describe("worktree", () => {
   let repoDir: string;
+  let savedGitDir: string | undefined;
+  let savedGitWorkTree: string | undefined;
+  let savedGitIndexFile: string | undefined;
 
   beforeEach(() => {
+    // Unset git env vars that husky injects into the pre-commit hook environment.
+    // Without this, git subprocesses in these tests target the real repo instead
+    // of the temp dir, corrupting the worktree on commit.
+    savedGitDir = process.env['GIT_DIR'];
+    savedGitWorkTree = process.env['GIT_WORK_TREE'];
+    savedGitIndexFile = process.env['GIT_INDEX_FILE'];
+    delete process.env['GIT_DIR'];
+    delete process.env['GIT_WORK_TREE'];
+    delete process.env['GIT_INDEX_FILE'];
     repoDir = initGitRepo();
   });
 
   afterEach(() => {
+    if (savedGitDir !== undefined) process.env['GIT_DIR'] = savedGitDir;
+    if (savedGitWorkTree !== undefined) process.env['GIT_WORK_TREE'] = savedGitWorkTree;
+    if (savedGitIndexFile !== undefined) process.env['GIT_INDEX_FILE'] = savedGitIndexFile;
     // Clean up any lingering worktrees first, then remove repo
     try { pruneWorktrees(repoDir); } catch { /* ignore */ }
     rmSync(repoDir, { recursive: true, force: true });

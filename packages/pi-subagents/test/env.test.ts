@@ -3,7 +3,7 @@ import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
-import { describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { detectEnv } from "../src/env.js";
 
 /** Minimal mock of pi.exec() that shells out via child_process. */
@@ -27,6 +27,25 @@ function mockPi(): ExtensionAPI {
 }
 
 describe("detectEnv", () => {
+  let savedGitDir: string | undefined;
+  let savedGitWorkTree: string | undefined;
+  let savedGitIndexFile: string | undefined;
+
+  beforeEach(() => {
+    savedGitDir = process.env['GIT_DIR'];
+    savedGitWorkTree = process.env['GIT_WORK_TREE'];
+    savedGitIndexFile = process.env['GIT_INDEX_FILE'];
+    delete process.env['GIT_DIR'];
+    delete process.env['GIT_WORK_TREE'];
+    delete process.env['GIT_INDEX_FILE'];
+  });
+
+  afterEach(() => {
+    if (savedGitDir !== undefined) process.env['GIT_DIR'] = savedGitDir;
+    if (savedGitWorkTree !== undefined) process.env['GIT_WORK_TREE'] = savedGitWorkTree;
+    if (savedGitIndexFile !== undefined) process.env['GIT_INDEX_FILE'] = savedGitIndexFile;
+  });
+
   it("detects git repo in current project", async () => {
     const env = await detectEnv(mockPi(), import.meta.dirname);
     expect(env.isGitRepo).toBe(true);
