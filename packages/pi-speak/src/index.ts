@@ -288,6 +288,22 @@ export default function speakExtension(pi: ExtensionAPI): void {
 						try { unlinkSync(tmpPath); } catch { /* ignore */ }
 					}
 				},
+				onPreview: async (text: string, voice: string, lang: string, signal: AbortSignal) => {
+					if (signal.aborted) return;
+					const assetsDir = getAssetsDir();
+					const tmpPath = join(tmpdir(), `pi-speak-preview-${Date.now()}.wav`);
+					try {
+						const result = await synthesise(text, { voice: voice as VoiceId, lang: lang as LangCode }, assetsDir);
+						if (signal.aborted) return;   // synthesis done but user moved on
+						await writeWav(tmpPath, result.wav, result.sampleRate);
+						if (signal.aborted) return;
+						await playAudioFile(tmpPath, signal);
+					} catch {
+						// swallow — aborts and synthesis errors are both expected
+					} finally {
+						try { unlinkSync(tmpPath); } catch { /* ignore */ }
+					}
+				},
 			});
 		},
 	});

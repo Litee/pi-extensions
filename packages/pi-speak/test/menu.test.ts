@@ -56,6 +56,7 @@ function makeDefaultOptions(overrides: Partial<MenuOptions> = {}): MenuOptions {
 		onSetSessionSpeed: vi.fn(),
 		onSetSessionSteps: vi.fn(),
 		onSpeakHello: vi.fn(() => Promise.resolve()),
+		onPreview: vi.fn().mockResolvedValue(undefined),
 		getQueueLength: () => 0,
 		...overrides,
 	};
@@ -284,5 +285,130 @@ describe("modelInfo", () => {
 		writeFileSync(join(tmpDir, "a.bin"), Buffer.alloc(100));
 		writeFileSync(join(sub, "b.bin"), Buffer.alloc(200));
 		expect(dirSize(tmpDir)).toBe(300);
+	});
+});
+
+// ---------------------------------------------------------------------------
+// 18-19. pickVoice SelectList: abort-on-navigate and preview text
+// ---------------------------------------------------------------------------
+
+describe("pickVoice SelectList preview", () => {
+	afterEach(() => {
+		vi.useRealTimers();
+	});
+
+	/**
+	 * Builds a ctx where:
+	 *   custom call 1  = main menu  → immediately resolves with "Voice: M1"
+	 *   custom call 2  = voice picker → exposes component + done for test control
+	 *   custom call 3  = main menu  → immediately resolves with "Close"
+	 */
+	function makeCtxWithCustom() {
+		let customCallCount = 0;
+		let voicePickerComponent: { handleInput: (data: string) => void } | undefined;
+		let voicePickerDone: ((v: string | null) => void) | undefined;
+
+		const ctx: MenuCtx = {
+			ui: {
+				select: vi.fn(),
+				notify: vi.fn(),
+				custom: vi.fn(<T>(
+					factory: (tui: { requestRender: () => void }, theme: unknown, kb: unknown, done: (v: T) => void) => unknown,
+				): Promise<T> => {
+					customCallCount++;
+					const call = customCallCount;
+					return new Promise<T>((resolve) => {
+						// eslint-disable-next-line @typescript-eslint/no-unsafe-assignment, @typescript-eslint/no-unsafe-call, @typescript-eslint/no-explicit-any
+						const component = (factory as any)(
+							{ requestRender: vi.fn() },
+							{ fg: (_r: string, s: string) => s, bold: (s: string) => s },
+							{},
+							(v: T) => resolve(v),
+						);
+						if (call === 1) {
+							// main menu: select the "Voice: M1" item
+							resolve({ value: "Voice: M1", index: 4 } as T);
+						} else if (call === 2) {
+							// voice picker: hand control to the test
+							voicePickerComponent = component as typeof voicePickerComponent;
+							voicePickerDone = (v: string | null) => resolve(v as T);
+						} else {
+							// main menu (after picker returns): close the menu
+							resolve({ value: "Close", index: 0 } as T);
+						}
+					});
+				}) as NonNullable<MenuCtx["ui"]["custom"]>,
+			},
+		};
+
+		return {
+			ctx,
+			getComponent: () => voicePickerComponent,
+			closeVoicePicker: (v: string | null = null) => voicePickerDone?.(v),
+		};
+	}
+
+	/** Flush enough microtasks for the voice picker to be set up after main-menu resolution. */
+	async function flushMicrotasks(n = 10): Promise<void> {
+		for (let i = 0; i < n; i++) await Promise.resolve();
+	}
+
+	it("rapid navigation (< 400 ms) does not call onPreview; settling after 400 ms calls it exactly once", async () => {
+		vi.useFakeTimers();
+		const onPreview = vi.fn().mockResolvedValue(undefined);
+		const { ctx, getComponent, closeVoicePicker } = makeCtxWithCustom();
+
+		const menuPromise = runSpeakMenu(ctx, makeDefaultOptions({ onPreview }));
+
+		// Let the main-menu resolve and the voice-picker factory be called
+		await flushMicrotasks();
+
+		const component = getComponent();
+		expect(component).toBeDefined();
+
+		// Navigate down twice before the 400 ms debounce can fire:
+		//   first  ↓  → selects M2, sets debounce timer #1
+		//   second ↓  → selects M3, clears timer #1, sets debounce timer #2
+		component!.handleInput("\x1b[B");
+		component!.handleInput("\x1b[B");
+
+		// Nothing yet — both timers haven't fired
+		expect(onPreview).not.toHaveBeenCalled();
+
+		// Advance 400 ms — only timer #2 fires
+		await vi.advanceTimersByTimeAsync(400);
+
+		expect(onPreview).toHaveBeenCalledOnce();
+
+		// Close the picker then wait for the menu to finish
+		closeVoicePicker(null);
+		await menuPromise;
+	});
+
+	it("preview text passed to onPreview contains the voice name", async () => {
+		vi.useFakeTimers();
+		const onPreview = vi.fn().mockResolvedValue(undefined);
+		const { ctx, getComponent, closeVoicePicker } = makeCtxWithCustom();
+
+		const menuPromise = runSpeakMenu(ctx, makeDefaultOptions({ onPreview }));
+		await flushMicrotasks();
+
+		const component = getComponent();
+		expect(component).toBeDefined();
+
+		// Navigate down once — M1 → M2
+		component!.handleInput("\x1b[B");
+		await vi.advanceTimersByTimeAsync(400);
+
+		expect(onPreview).toHaveBeenCalledOnce();
+		const [text, voice, lang] = onPreview.mock.calls[0] as [string, string, string, AbortSignal];
+
+		// Text should mention the voice id
+		expect(text).toContain(voice);
+		// Language should be the effective language ("en" by default)
+		expect(lang).toBe("en");
+
+		closeVoicePicker(null);
+		await menuPromise;
 	});
 });

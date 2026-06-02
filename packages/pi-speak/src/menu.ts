@@ -13,7 +13,7 @@ import { getSelectListTheme } from "@earendil-works/pi-coding-agent";
 import { SelectList, type SelectItem } from "@earendil-works/pi-tui";
 
 import type { SpeakConfig } from "./config.js";
-import { LANGS, VOICES, type VoiceId } from "./schema.js";
+import { LANGS, VOICES, type LangCode, type VoiceId } from "./schema.js";
 
 // ---------------------------------------------------------------------------
 // Types
@@ -70,6 +70,12 @@ export interface MenuOptions {
 	onSetSessionSteps: (steps: number) => void;
 	/** Speaks a hello phrase with the given voice. Used after any session setting change. */
 	onSpeakHello: (voice: string) => Promise<void>;
+	/**
+	 * Synthesise `text` with the given `voice` + `lang` and play it.
+	 * Honour `signal` — check it before starting playback; pass it to
+	 * the player so it can be aborted mid-stream.
+	 */
+	onPreview: (text: string, voice: string, lang: string, signal: AbortSignal) => Promise<void>;
 	/** Returns the current number of items waiting in the speech queue. */
 	getQueueLength: () => number;
 }
@@ -134,13 +140,29 @@ export function modelInfo(assetsDir: string): string {
 }
 
 // ---------------------------------------------------------------------------
+// Language name map
+// ---------------------------------------------------------------------------
+
+const LANG_NAMES: Readonly<Record<string, string>> = {
+	en: "English",   ko: "Korean",     ja: "Japanese",  ar: "Arabic",
+	bg: "Bulgarian", cs: "Czech",      da: "Danish",    de: "German",
+	el: "Greek",     es: "Spanish",    et: "Estonian",  fi: "Finnish",
+	fr: "French",    hi: "Hindi",      hr: "Croatian",  hu: "Hungarian",
+	id: "Indonesian",it: "Italian",    lt: "Lithuanian",lv: "Latvian",
+	nl: "Dutch",     pl: "Polish",     pt: "Portuguese",ro: "Romanian",
+	ru: "Russian",   sk: "Slovak",     sl: "Slovenian", sv: "Swedish",
+	tr: "Turkish",   uk: "Ukrainian",  vi: "Vietnamese",na: "Neutral",
+};
+
+// ---------------------------------------------------------------------------
 // Sub-menu pickers
 // ---------------------------------------------------------------------------
 
 async function pickVoice(
 	ctx: MenuCtx,
 	current: string,
-	onPreview: (voice: string) => Promise<void>,
+	effLang: string,
+	options: Pick<MenuOptions, "onPreview" | "onSpeakHello">,
 ): Promise<string | null> {
 	type TuiLike = { requestRender: () => void };
 	type ThemeLike = { fg: (r: string, s: string) => string; bold: (s: string) => string };
@@ -168,14 +190,33 @@ async function pickVoice(
 		const currentIdx = VOICES.indexOf(current as VoiceId);
 		if (currentIdx >= 0) sl.setSelectedIndex(currentIdx);
 
-		sl.onSelect = (item) => done(item.value);
-		sl.onCancel = () => done(null);
+		let previewAc: AbortController | undefined;
+
+		const abortPreview = () => {
+			previewAc?.abort();
+			previewAc = undefined;
+		};
+
+		sl.onSelect = (item) => {
+			clearTimeout(debounceTimer);
+			abortPreview();
+			done(item.value);
+		};
+		sl.onCancel = () => {
+			clearTimeout(debounceTimer);
+			abortPreview();
+			done(null);
+		};
 
 		let debounceTimer: ReturnType<typeof setTimeout> | undefined;
 		sl.onSelectionChange = (item) => {
 			clearTimeout(debounceTimer);
+			abortPreview();   // stop any in-flight synthesis/playback immediately
 			debounceTimer = setTimeout(() => {
-				void onPreview(item.value).catch(() => {});
+				const ac = new AbortController();
+				previewAc = ac;
+				const text = `Hello, I'm voice ${item.value}.`;
+				void options.onPreview(text, item.value, effLang, ac.signal).catch(() => {});
 			}, 400);
 			tui.requestRender();
 		};
@@ -195,11 +236,82 @@ async function pickVoice(
 	})) ?? null;
 }
 
-async function pickLang(ctx: MenuCtx, current: string): Promise<string | null> {
-	const items: string[] = [...LANGS, "─────", "Cancel"];
-	const choice = await ctx.ui.select(`Select language  (current: ${current})`, items);
-	if (!choice || choice === "Cancel" || choice.startsWith("─")) return null;
-	return choice;
+async function pickLang(
+	ctx: MenuCtx,
+	current: string,
+	effVoice: string,
+	options: Pick<MenuOptions, "onPreview">,
+): Promise<string | null> {
+	type TuiLike = { requestRender: () => void };
+	type ThemeLike = { fg: (r: string, s: string) => string; bold: (s: string) => string };
+	type ComponentLike = { render: (w: number) => string[]; invalidate: () => void; handleInput: (d: string) => void };
+
+	const ctxWithCustom = ctx as {
+		ui: {
+			custom?: <T>(
+				factory: (tui: TuiLike, theme: ThemeLike, kb: unknown, done: (v: T) => void) => ComponentLike,
+			) => Promise<T>;
+		};
+	};
+
+	if (!ctxWithCustom.ui.custom) {
+		const items: string[] = [...LANGS, "─────", "Cancel"];
+		const choice = await ctx.ui.select(`Select language  (current: ${current})`, items);
+		if (!choice || choice === "Cancel" || choice.startsWith("─")) return null;
+		return choice;
+	}
+
+	return (ctxWithCustom.ui.custom<string | null>((tui, theme, _kb, done) => {
+		const items: SelectItem[] = LANGS.map((l) => ({ value: l, label: l === current ? `${l} ◀` : l }));
+		const sl = new SelectList(items, Math.min(items.length + 2, 15), getSelectListTheme());
+
+		const currentIdx = LANGS.indexOf(current as LangCode);
+		if (currentIdx >= 0) sl.setSelectedIndex(currentIdx);
+
+		let previewAc: AbortController | undefined;
+
+		const abortPreview = () => {
+			previewAc?.abort();
+			previewAc = undefined;
+		};
+
+		sl.onSelect = (item) => {
+			clearTimeout(debounceTimer);
+			abortPreview();
+			done(item.value);
+		};
+		sl.onCancel = () => {
+			clearTimeout(debounceTimer);
+			abortPreview();
+			done(null);
+		};
+
+		let debounceTimer: ReturnType<typeof setTimeout> | undefined;
+		sl.onSelectionChange = (item) => {
+			clearTimeout(debounceTimer);
+			abortPreview();   // stop any in-flight synthesis/playback immediately
+			debounceTimer = setTimeout(() => {
+				const ac = new AbortController();
+				previewAc = ac;
+				const text = `Hello, I'm ${LANG_NAMES[item.value] ?? item.value}.`;
+				void options.onPreview(text, effVoice, item.value, ac.signal).catch(() => {});
+			}, 400);
+			tui.requestRender();
+		};
+
+		return {
+			render: (w: number) => [
+				theme.bold(`Select language  (current: ${current})`),
+				theme.fg("dim", "↑↓ navigate to preview · Enter to select · Esc to cancel"),
+				...sl.render(w),
+			],
+			invalidate: () => sl.invalidate(),
+			handleInput: (data: string) => {
+				sl.handleInput(data);
+				tui.requestRender();
+			},
+		};
+	})) ?? null;
 }
 
 async function pickSpeed(ctx: MenuCtx, current: number): Promise<number | null> {
@@ -364,7 +476,7 @@ export async function runSpeakMenu(
 		// ── Session settings ────────────────────────────────────────────────
 
 		if (choice.startsWith("Voice: ")) {
-			const v = await pickVoice(ctx, effVoice, options.onSpeakHello);
+			const v = await pickVoice(ctx, effVoice, effLang, options);
 			if (v) {
 				sessionVoice = v;
 				options.onSetSessionVoice(v);
@@ -374,10 +486,10 @@ export async function runSpeakMenu(
 		}
 
 		if (choice.startsWith("Language: ")) {
-			const v = await pickLang(ctx, effLang);
-			if (v) {
-				sessionLang = v;
-				options.onSetSessionLang(v);
+			const l = await pickLang(ctx, effLang, effVoice, options);
+			if (l) {
+				sessionLang = l;
+				options.onSetSessionLang(l);
 				void options.onSpeakHello(effectiveValue(sessionVoice, config.defaultVoice, "M1")).catch(() => {});
 			}
 			continue;
@@ -406,7 +518,7 @@ export async function runSpeakMenu(
 		// ── Default settings (no hello playback) ───────────────────────────
 
 		if (choice.startsWith("Default voice: ")) {
-			const v = await pickVoice(ctx, defaultVoice, options.onSpeakHello);
+			const v = await pickVoice(ctx, defaultVoice, effLang, options);
 			if (v) {
 				options.saveConfig({ defaultVoice: v });
 			}
@@ -414,9 +526,9 @@ export async function runSpeakMenu(
 		}
 
 		if (choice.startsWith("Default language: ")) {
-			const v = await pickLang(ctx, defaultLang);
-			if (v) {
-				options.saveConfig({ defaultLang: v });
+			const l = await pickLang(ctx, defaultLang, effVoice, options);
+			if (l) {
+				options.saveConfig({ defaultLang: l });
 			}
 			continue;
 		}
