@@ -19,6 +19,32 @@
 
 /* global browser */
 
+// ---------------------------------------------------------------------------
+// URL normalization helper
+// ---------------------------------------------------------------------------
+
+/**
+ * Normalize a URL per the pi-browser-control spec:
+ *  1. Remove fragment.
+ *  2. Sort query parameters alphabetically by name (stable).
+ *  3. Return null for null/empty, unparseable, or non-http/https URLs.
+ *  4. Values are re-encoded via URLSearchParams form-encoding (`%20`→`+`, etc.), so output is canonicalized rather than byte-preserved.
+ */
+function normalizeUrl(url) {
+  if (!url) return null;
+  let parsed;
+  try { parsed = new URL(url); } catch { return null; }
+  if (parsed.protocol !== "http:" && parsed.protocol !== "https:") return null;
+  // Remove fragment
+  parsed.hash = "";
+  // Sort query params by name (stable: preserve relative order of same-named params)
+  const entries = [...parsed.searchParams.entries()];
+  entries.sort((a, b) => (a[0] < b[0] ? -1 : a[0] > b[0] ? 1 : 0));
+  parsed.search = "";
+  entries.forEach(([k, v]) => parsed.searchParams.append(k, v));
+  return parsed.toString();
+}
+
 const NM_HOST_NAME = "pi_browser_control";
 const ADDON_VERSION = "0.1.0";
 const CONTENT_CHUNK_MAX = 900 * 1024; // ~900 KB per response
@@ -63,9 +89,24 @@ async function handleMessage(msg) {
       result = {
         tabs: tabs.map((t) => ({
           id: t.id,
+          windowId: t.windowId,
+          index: t.index,
           url: t.url,
+          normalizedUrl: normalizeUrl(t.url),
           title: t.title,
+          favIconUrl: t.favIconUrl ?? null,
+          status: t.status,
+          active: t.active,
+          pinned: t.pinned,
+          hidden: t.hidden,
+          discarded: t.discarded,
+          incognito: t.incognito,
+          audible: t.audible,
+          mutedInfo: t.mutedInfo ? { muted: t.mutedInfo.muted, reason: t.mutedInfo.reason ?? null } : null,
+          isArticle: t.isArticle,
+          isInReaderMode: t.isInReaderMode,
           lastAccessed: t.lastAccessed,
+          cookieStoreId: t.cookieStoreId ?? null,
         })),
       };
 

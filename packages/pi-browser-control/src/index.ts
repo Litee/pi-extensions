@@ -30,8 +30,9 @@ import {
 	type BrowserTab,
 	type TabContentData,
 } from "./tool-format.js";
-import { resolve, dirname } from "node:path";
+import { resolve, dirname, isAbsolute } from "node:path";
 import { fileURLToPath } from "node:url";
+import fs from "node:fs";
 
 // Re-export SocketClientLike so tests can import it from index.js
 export type { SocketClientLike };
@@ -64,6 +65,13 @@ const GetTabContentParamsSchema = Type.Object({
 	}),
 });
 type TGetTabContentParams = Static<typeof GetTabContentParamsSchema>;
+
+const ExportTabsParamsSchema = Type.Object({
+	path: Type.String({
+		description: "Absolute file path to write the JSONL output to (creates or overwrites).",
+	}),
+});
+type TExportTabsParams = Static<typeof ExportTabsParamsSchema>;
 
 // ---------------------------------------------------------------------------
 // Dependency-injection interface for tests
@@ -244,6 +252,59 @@ export default function browserControl(
 				const { tabs } = result as { tabs: BrowserTab[] };
 				return {
 					...buildListTabsResult(tabs, params.offset, params.limit),
+					details: { ok: true },
+				};
+			} catch (err: unknown) {
+				return errorResult(err);
+			}
+		},
+	});
+
+	// -------------------------------------------------------------------------
+	// browser_export_tabs
+	// -------------------------------------------------------------------------
+
+	pi.registerTool({
+		name: "browser_export_tabs",
+		label: "Export Browser Tabs",
+		description:
+			"Export metadata for all open Firefox tabs to a JSON Lines file. Each line is a JSON object with id, windowId, index, url, normalizedUrl, title, favIconUrl, status, active, pinned, hidden, discarded, incognito, audible, mutedInfo, isArticle, isInReaderMode, lastAccessed, cookieStoreId. Does not export page content. Requires the pi-browser-control Firefox add-on.",
+		promptSnippet: "Export all open Firefox tab metadata to a JSONL file (requires pi-browser-control add-on)",
+		promptGuidelines: [
+			"Use browser_export_tabs to dump full tab metadata for all open Firefox tabs to a file.",
+			"The output is JSON Lines format — one tab object per line.",
+			"Requires Firefox with the pi-browser-control add-on running.",
+		],
+		parameters: ExportTabsParamsSchema,
+
+		async execute(_toolCallId, params: TExportTabsParams, _signal, _onUpdate, _ctx) {
+			try {
+				// Require an absolute path to avoid ambiguous cwd-relative writes.
+				if (!isAbsolute(params.path)) {
+					return {
+						content: [{ type: "text" as const, text: `browser_export_tabs error: path must be absolute (got "${params.path}")` }],
+						details: { ok: false },
+					};
+				}
+				const result = await client.listTabs();
+				const { tabs } = result as { tabs: BrowserTab[] };
+				// Exclude private-browsing tabs — their URLs/titles must not be
+				// written to persistent storage without the user's explicit intent.
+				const publicTabs = tabs.filter((t) => !t.incognito);
+				const skipped = tabs.length - publicTabs.length;
+				const jsonl = publicTabs.map((tab) => JSON.stringify(tab)).join("\n");
+				try {
+					fs.writeFileSync(params.path, jsonl, "utf-8");
+				} catch (writeErr: unknown) {
+					const msg = writeErr instanceof Error ? writeErr.message : String(writeErr);
+					return {
+						content: [{ type: "text" as const, text: `browser_export_tabs error: failed to write file: ${msg}` }],
+						details: { ok: false, error: msg },
+					};
+				}
+				const note = skipped > 0 ? ` (${skipped} private-browsing tab${skipped === 1 ? "" : "s"} excluded)` : "";
+				return {
+					content: [{ type: "text" as const, text: `Exported ${publicTabs.length} tabs to ${params.path}${note}` }],
 					details: { ok: true },
 				};
 			} catch (err: unknown) {

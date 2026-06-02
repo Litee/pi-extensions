@@ -67,16 +67,18 @@ describe("formatTabLine", () => {
 			url: "https://example.com",
 			title: "Example",
 			lastAccessed: Date.now() - 5_000,
+			normalizedUrl: "https://example.com/",
 		};
 		const line = formatTabLine(tab);
 		expect(line).toContain("tab id=5");
 		expect(line).toContain("tab url=https://example.com");
 		expect(line).toContain("tab title=Example");
 		expect(line).toContain("last accessed=");
+		expect(line).toContain("normalized url=https://example.com/");
 	});
 
 	it("shows 'unknown' when lastAccessed is absent", () => {
-		const tab: BrowserTab = { id: 1, url: "https://x.com", title: "X" };
+		const tab: BrowserTab = { id: 1, url: "https://x.com", title: "X", normalizedUrl: "https://x.com/" };
 		expect(formatTabLine(tab)).toContain("last accessed=unknown");
 	});
 });
@@ -86,9 +88,9 @@ describe("formatTabLine", () => {
 // ---------------------------------------------------------------------------
 
 const SAMPLE_TABS: BrowserTab[] = [
-	{ id: 1, url: "https://a.com", title: "A", lastAccessed: Date.now() - 60_000 },
-	{ id: 2, url: "https://b.com", title: "B", lastAccessed: Date.now() - 3_600_000 },
-	{ id: 3, url: "https://c.com", title: "C" },
+	{ id: 1, url: "https://a.com", title: "A", lastAccessed: Date.now() - 60_000, normalizedUrl: "https://a.com/" },
+	{ id: 2, url: "https://b.com", title: "B", lastAccessed: Date.now() - 3_600_000, normalizedUrl: "https://b.com/" },
+	{ id: 3, url: "https://c.com", title: "C", normalizedUrl: "https://c.com/" },
 ];
 
 describe("buildListTabsResult", () => {
@@ -115,6 +117,7 @@ describe("buildListTabsResult", () => {
 			id: i,
 			url: `https://t${i}.com`,
 			title: `T${i}`,
+			normalizedUrl: `https://t${i}.com/`,
 		}));
 		const { content } = buildListTabsResult(many, 0, 9999);
 		expect(content).toHaveLength(501); // header + 500 tabs
