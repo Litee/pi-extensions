@@ -348,7 +348,11 @@ describe("/browser-control command — installManifest lambda", () => {
 		try {
 			const stub = makeStub();
 			const pi = makeFakePi();
-			createExtension(pi.api, { socketClient: stub, agentDir: tmpAgent });
+			createExtension(pi.api, {
+				socketClient: stub,
+				agentDir: tmpAgent,
+				manifestPath: pathNode.join(tmpAgent, "nm.json"),
+			});
 			const { ctx, notifications } = makeCommandCtx(["Install Firefox native-messaging manifest", "Close"]);
 			const cmd = pi.commands.get("browser-control");
 			await cmd?.handler("", ctx as never);
@@ -386,7 +390,11 @@ describe("/browser-control command — installManifest failure path", () => {
 		try {
 			const stub = makeStub();
 			const pi = makeFakePi();
-			createExtension(pi.api, { socketClient: stub, agentDir: tmpAgent });
+			createExtension(pi.api, {
+				socketClient: stub,
+				agentDir: tmpAgent,
+				manifestPath: pathNode.join(tmpAgent, "nm.json"),
+			});
 			const { ctx, notifications } = makeCommandCtx(["Install Firefox native-messaging manifest", "Close"]);
 			const cmd = pi.commands.get("browser-control");
 			await cmd?.handler("", ctx as never);
