@@ -6,7 +6,6 @@ import { getAgentDir } from "@earendil-works/pi-coding-agent";
 
 export interface SpeakConfig {
 	assetsDir?: string;
-	timeoutMs?: number;
 	defaultVoice?: string;
 	defaultLang?: string;
 	defaultSpeed?: number;
@@ -36,7 +35,6 @@ export function loadConfig(): SpeakConfig {
 	const out: SpeakConfig = {};
 
 	if (typeof r["assetsDir"] === "string") out.assetsDir = r["assetsDir"];
-	if (typeof r["timeoutMs"] === "number") out.timeoutMs = r["timeoutMs"];
 	if (typeof r["defaultVoice"] === "string") out.defaultVoice = r["defaultVoice"];
 	if (typeof r["defaultLang"] === "string") out.defaultLang = r["defaultLang"];
 	if (typeof r["defaultSpeed"] === "number") out.defaultSpeed = r["defaultSpeed"];

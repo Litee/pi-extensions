@@ -163,5 +163,11 @@ export class SpeechQueue {
 		}
 
 		this.processing = false;
+		// An enqueue() that arrived while cleared was true (and processing was
+		// still true) would have pushed to this.items without kicking a worker.
+		// Restart if anything is waiting.
+		if (this.items.length > 0) {
+			void this.process();
+		}
 	}
 }

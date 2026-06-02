@@ -5,20 +5,7 @@ import { fileURLToPath, pathToFileURL } from "node:url";
 import { getAgentDir } from "@earendil-works/pi-coding-agent";
 
 import { assetsReady } from "./config.js";
-
-// ---------------------------------------------------------------------------
-// Re-export types / constants so callers only need one import
-// ---------------------------------------------------------------------------
-
-export const VOICES = ["M1", "M2", "M3", "M4", "M5", "F1", "F2", "F3", "F4", "F5"] as const;
-export type VoiceId = (typeof VOICES)[number];
-
-export const LANGS = [
-	"en", "ko", "ja", "ar", "bg", "cs", "da", "de", "el", "es",
-	"et", "fi", "fr", "hi", "hr", "hu", "id", "it", "lt", "lv",
-	"nl", "pl", "pt", "ro", "ru", "sk", "sl", "sv", "tr", "uk", "vi", "na",
-] as const;
-export type LangCode = (typeof LANGS)[number];
+import { LANGS, VOICES, type LangCode, type VoiceId } from "./schema.js";
 
 export interface SynthesisOptions {
 	/** Voice ID, e.g. "M1" or "F3" (default: "M1") */
@@ -139,9 +126,16 @@ async function getEngine(onnxDir: string): Promise<Awaited<ReturnType<typeof imp
 		cachedEnginePromise = null;
 	}
 	if (!cachedEnginePromise) {
-		const { loadTextToSpeech } = await importHelper();
-		cachedEnginePromise = loadTextToSpeech(onnxDir);
+		// Assign synchronously before any await so concurrent callers see the
+		// in-flight promise and do not start a second load.
+		const helperPromise = importHelper();
+		cachedEnginePromise = helperPromise.then(({ loadTextToSpeech }) => loadTextToSpeech(onnxDir));
 		cachedEngineDir = onnxDir;
+		// If loading fails, clear the cache so the next call retries.
+		cachedEnginePromise.catch(() => {
+			cachedEngineDir = null;
+			cachedEnginePromise = null;
+		});
 	}
 	return cachedEnginePromise;
 }

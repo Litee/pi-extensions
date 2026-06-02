@@ -63,18 +63,8 @@ describe("loadConfig", () => {
 		expect(loadConfig()).toEqual({ assetsDir: "/my/assets" });
 	});
 
-	it("picks up timeoutMs when valid number", () => {
-		mockReadFileSync.mockReturnValue(JSON.stringify({ timeoutMs: 5000 }));
-		expect(loadConfig()).toEqual({ timeoutMs: 5000 });
-	});
-
 	it("drops assetsDir when wrong type", () => {
 		mockReadFileSync.mockReturnValue(JSON.stringify({ assetsDir: 42 }));
-		expect(loadConfig()).toEqual({});
-	});
-
-	it("drops timeoutMs when wrong type", () => {
-		mockReadFileSync.mockReturnValue(JSON.stringify({ timeoutMs: "fast" }));
 		expect(loadConfig()).toEqual({});
 	});
 });

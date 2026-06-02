@@ -242,7 +242,6 @@ async function selectAt(
 	}
 
 	type TuiLike = { requestRender: () => void };
-	type ComponentLike = { render: (w: number) => string[]; invalidate: () => void; handleInput: (d: string) => void };
 
 	const result = await ctx.ui.custom<{ value: string; index: number } | null>(
 		(tui: TuiLike, _theme: unknown, _kb: unknown, done: (v: { value: string; index: number } | null) => void) => {
@@ -255,12 +254,39 @@ async function selectAt(
 				render: (w: number) => sl.render(w),
 				invalidate: () => sl.invalidate(),
 				handleInput: (data: string) => { sl.handleInput(data); tui.requestRender(); },
-			} as ComponentLike;
+			};
 		},
 	);
 
 	if (!result) return null;
 	return { choice: result.value, index: result.index };
+}
+
+// ---------------------------------------------------------------------------
+// Cursor persistence helper
+// ---------------------------------------------------------------------------
+
+/**
+ * Find the best index to restore the cursor to after the menu items array
+ * has been rebuilt (queue row may have appeared/disappeared).
+ *
+ * Strategy:
+ * 1. Exact match — the label is unchanged.
+ * 2. Prefix match up to the first colon — handles dynamic labels such as
+ *    "speak: enabled" ↔ "speak: disabled", "Voice: M1" ↔ "Voice: M2", etc.
+ * 3. Fallback to 0.
+ */
+function findMenuIndex(items: string[], lastChoice: string): number {
+	if (!lastChoice) return 0;
+	const exact = items.indexOf(lastChoice);
+	if (exact >= 0) return exact;
+	const colon = lastChoice.indexOf(":");
+	if (colon >= 0) {
+		const prefix = lastChoice.slice(0, colon + 1);
+		const prefixMatch = items.findIndex((item) => item.startsWith(prefix));
+		if (prefixMatch >= 0) return prefixMatch;
+	}
+	return 0;
 }
 
 // ---------------------------------------------------------------------------
@@ -277,7 +303,7 @@ export async function runSpeakMenu(
 	let sessionLang = options.sessionLang;
 	let sessionSpeed = options.sessionSpeed;
 	let sessionSteps = options.sessionSteps;
-	let lastIndex = 0;
+	let lastChoice = "";
 
 	while (true) {
 		const config = options.loadConfig();
@@ -315,10 +341,11 @@ export async function runSpeakMenu(
 			"Close",
 		];
 
+		const lastIndex = findMenuIndex(items, lastChoice);
 		const result = await selectAt(ctx, "speak", items, lastIndex);
 		if (!result || result.choice === "Close") return;
-		const { choice, index } = result;
-		lastIndex = index;
+		const { choice } = result;
+		lastChoice = choice;
 
 		// Separator lines and read-only display items are non-selectable.
 		if (choice.startsWith("─")) continue;
