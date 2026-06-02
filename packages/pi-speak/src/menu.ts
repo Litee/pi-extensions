@@ -191,6 +191,7 @@ async function pickVoice(
 		if (currentIdx >= 0) sl.setSelectedIndex(currentIdx);
 
 		let previewAc: AbortController | undefined;
+		let isPlaying = false;
 
 		const abortPreview = () => {
 			previewAc?.abort();
@@ -211,19 +212,29 @@ async function pickVoice(
 		let debounceTimer: ReturnType<typeof setTimeout> | undefined;
 		sl.onSelectionChange = (item) => {
 			clearTimeout(debounceTimer);
-			abortPreview();   // stop any in-flight synthesis/playback immediately
+			abortPreview();
+			isPlaying = false;
 			debounceTimer = setTimeout(() => {
 				const ac = new AbortController();
 				previewAc = ac;
+				isPlaying = true;
+				tui.requestRender();
 				const text = `Hello, I'm voice ${item.value}.`;
-				void options.onPreview(text, item.value, effLang, ac.signal).catch(() => {});
+				void options.onPreview(text, item.value, effLang, ac.signal)
+					.catch(() => {})
+					.finally(() => {
+						if (previewAc === ac) {
+							isPlaying = false;
+							tui.requestRender();
+						}
+					});
 			}, 400);
 			tui.requestRender();
 		};
 
 		return {
 			render: (w: number) => [
-				theme.bold(`Select voice  (current: ${current})`),
+				theme.bold(`Select voice  (current: ${current})${isPlaying ? "  🔊" : ""}`),
 				theme.fg("dim", "↑↓ navigate to preview · Enter to select · Esc to cancel"),
 				...sl.render(w),
 			],
@@ -269,6 +280,7 @@ async function pickLang(
 		if (currentIdx >= 0) sl.setSelectedIndex(currentIdx);
 
 		let previewAc: AbortController | undefined;
+		let isPlaying = false;
 
 		const abortPreview = () => {
 			previewAc?.abort();
@@ -289,19 +301,29 @@ async function pickLang(
 		let debounceTimer: ReturnType<typeof setTimeout> | undefined;
 		sl.onSelectionChange = (item) => {
 			clearTimeout(debounceTimer);
-			abortPreview();   // stop any in-flight synthesis/playback immediately
+			abortPreview();
+			isPlaying = false;
 			debounceTimer = setTimeout(() => {
 				const ac = new AbortController();
 				previewAc = ac;
+				isPlaying = true;
+				tui.requestRender();
 				const text = `Hello, I'm ${LANG_NAMES[item.value] ?? item.value}.`;
-				void options.onPreview(text, effVoice, item.value, ac.signal).catch(() => {});
+				void options.onPreview(text, effVoice, item.value, ac.signal)
+					.catch(() => {})
+					.finally(() => {
+						if (previewAc === ac) {
+							isPlaying = false;
+							tui.requestRender();
+						}
+					});
 			}, 400);
 			tui.requestRender();
 		};
 
 		return {
 			render: (w: number) => [
-				theme.bold(`Select language  (current: ${current})`),
+				theme.bold(`Select language  (current: ${current})${isPlaying ? "  🔊" : ""}`),
 				theme.fg("dim", "↑↓ navigate to preview · Enter to select · Esc to cancel"),
 				...sl.render(w),
 			],
