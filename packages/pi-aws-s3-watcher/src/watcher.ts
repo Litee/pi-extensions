@@ -124,7 +124,8 @@ export class S3Watcher extends BaseWatcher<S3Watch, S3Baseline, S3Event> {
     itemGroup: (w) => w.bucket,
 
     renderItemRowText(w) {
-      const statusText = w.terminal ? 'DONE' : w.consecutiveErrors >= POLL_ERROR_THRESHOLD ? 'ERROR' : 'WATCHING'
+      const timedOut = w.terminal && w.timeoutAt !== undefined && w.timeoutAt <= Date.now()
+      const statusText = timedOut ? 'EXPIRED' : w.terminal ? 'DONE' : w.consecutiveErrors >= POLL_ERROR_THRESHOLD ? 'ERROR' : 'WATCHING'
       const timeLeft = formatTimeLeft(w.timeoutAt, Date.now())
       return `s3://${w.bucket}/${w.key}  ${statusText}  ${timeLeft}  ${displayTarget(w.target)}`
     },
@@ -135,9 +136,12 @@ export class S3Watcher extends BaseWatcher<S3Watch, S3Baseline, S3Event> {
         : w.consecutiveErrors >= POLL_ERROR_THRESHOLD
           ? 'warning'
           : 'accent'
-      const statusText = w.terminal
-        ? ctx.theme.fg('dim', ctx.theme.fg('warning', 'DONE'))
-        : w.consecutiveErrors >= POLL_ERROR_THRESHOLD ? 'ERROR' : 'WATCHING'
+      const timedOut = w.terminal && w.timeoutAt !== undefined && w.timeoutAt <= Date.now()
+      const statusText = timedOut
+        ? 'EXPIRED'
+        : w.terminal
+          ? ctx.theme.fg('dim', ctx.theme.fg('warning', 'DONE'))
+          : w.consecutiveErrors >= POLL_ERROR_THRESHOLD ? 'ERROR' : 'WATCHING'
       const statusColor = w.terminal ? undefined : w.consecutiveErrors >= POLL_ERROR_THRESHOLD ? 'error' : 'warning'
       const timeLeft = formatTimeLeft(w.timeoutAt, Date.now())
       const timeColor: string = w.terminal

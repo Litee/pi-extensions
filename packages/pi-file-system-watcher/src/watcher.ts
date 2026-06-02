@@ -92,8 +92,10 @@ export class FsWatcher extends BaseWatcher<FsWatch, FsBaseline, FsEvent> {
     itemSortKey: (w) => w.path,
 
     renderItemRowText(w) {
-      const statusText =
-        w.terminal
+      const timedOut = w.terminal && w.timeoutAt !== undefined && w.timeoutAt <= Date.now()
+      const statusText = timedOut
+        ? "EXPIRED"
+        : w.terminal
           ? "DONE"
           : w.consecutiveErrors >= POLL_ERROR_THRESHOLD
             ? "ERROR"
@@ -108,8 +110,10 @@ export class FsWatcher extends BaseWatcher<FsWatch, FsBaseline, FsEvent> {
         : w.consecutiveErrors >= POLL_ERROR_THRESHOLD
           ? "warning"
           : "accent";
-      const statusText =
-        w.terminal
+      const timedOut = w.terminal && w.timeoutAt !== undefined && w.timeoutAt <= Date.now()
+      const statusText = timedOut
+        ? "EXPIRED"
+        : w.terminal
           ? ctx.theme.fg("dim", ctx.theme.fg("warning", "DONE"))
           : w.consecutiveErrors >= POLL_ERROR_THRESHOLD
             ? "ERROR"

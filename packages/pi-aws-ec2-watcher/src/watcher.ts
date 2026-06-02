@@ -136,7 +136,8 @@ export class Ec2Watcher extends BaseWatcher<Ec2Watch, Ec2Baseline, Ec2Event> {
       const displayName = w.baseline?.nameTag
         ? `${w.instanceId} (${w.baseline.nameTag})`
         : w.instanceId
-      const statusText = w.terminal ? 'DONE' : w.consecutiveErrors >= POLL_ERROR_THRESHOLD ? 'ERROR' : 'WATCHING'
+      const timedOut = w.terminal && w.timeoutAt !== undefined && w.timeoutAt <= Date.now()
+      const statusText = timedOut ? 'EXPIRED' : w.terminal ? 'DONE' : w.consecutiveErrors >= POLL_ERROR_THRESHOLD ? 'ERROR' : 'WATCHING'
       const timeLeft = formatTimeLeft(w.timeoutAt, Date.now())
       return `${displayName}  ${state}  ${statusText}  ${timeLeft}`
     },
@@ -152,9 +153,12 @@ export class Ec2Watcher extends BaseWatcher<Ec2Watch, Ec2Baseline, Ec2Event> {
           : 'accent'
       const state = w.baseline?.state ?? '?'
       const instanceType = w.baseline?.instanceType ?? '—'
-      const statusText = w.terminal
-        ? ctx.theme.fg('dim', ctx.theme.fg('warning', 'DONE'))
-        : w.consecutiveErrors >= POLL_ERROR_THRESHOLD ? 'ERROR' : 'WATCHING'
+      const timedOut = w.terminal && w.timeoutAt !== undefined && w.timeoutAt <= Date.now()
+      const statusText = timedOut
+        ? 'EXPIRED'
+        : w.terminal
+          ? ctx.theme.fg('dim', ctx.theme.fg('warning', 'DONE'))
+          : w.consecutiveErrors >= POLL_ERROR_THRESHOLD ? 'ERROR' : 'WATCHING'
       const statusColor = w.terminal ? undefined : w.consecutiveErrors >= POLL_ERROR_THRESHOLD ? 'error' : 'warning'
       const timeLeft = formatTimeLeft(w.timeoutAt, Date.now())
       const timeColor: string = w.terminal

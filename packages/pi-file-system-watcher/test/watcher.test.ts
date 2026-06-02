@@ -561,6 +561,18 @@ describe("FsWatcher view", () => {
     expect(text).toContain("DONE");
   });
 
+  it("renderItemRowText shows EXPIRED for timed-out watches", () => {
+    const text = watcher.view.renderItemRowText({ ...mockWatch, terminal: true, timeoutAt: Date.now() - 1000 });
+    expect(text).toContain("EXPIRED");
+    expect(text).not.toContain("DONE");
+  });
+
+  it("renderItemRowText shows DONE for target-met-early (future timeoutAt)", () => {
+    const text = watcher.view.renderItemRowText({ ...mockWatch, terminal: true, timeoutAt: Date.now() + 60_000 });
+    expect(text).toContain("DONE");
+    expect(text).not.toContain("EXPIRED");
+  });
+
   it("renderItemRowTUI returns columns with path first", () => {
     const cols = watcher.view.renderItemRowTUI(mockWatch, {
       theme: {} as never,
@@ -713,6 +725,24 @@ describe("FsWatcher view status column", () => {
 
   it("terminal watch shows DONE", () => {
     const w = { ...baseW, terminal: true, consecutiveErrors: 0 };
+    const cols = watcher.view.renderItemRowTUI(w, {
+      theme: stubTheme as never,
+      width: 80,
+    });
+    expect(cols.find((c) => c.name === "status")!.text).toBe("DONE");
+  });
+
+  it("timed-out watch shows EXPIRED (timeoutAt in the past)", () => {
+    const w = { ...baseW, terminal: true, consecutiveErrors: 0, timeoutAt: Date.now() - 1000 };
+    const cols = watcher.view.renderItemRowTUI(w, {
+      theme: stubTheme as never,
+      width: 80,
+    });
+    expect(cols.find((c) => c.name === "status")!.text).toBe("EXPIRED");
+  });
+
+  it("terminal watch with future timeoutAt (target met early) shows DONE", () => {
+    const w = { ...baseW, terminal: true, consecutiveErrors: 0, timeoutAt: Date.now() + 60_000 };
     const cols = watcher.view.renderItemRowTUI(w, {
       theme: stubTheme as never,
       width: 80,
