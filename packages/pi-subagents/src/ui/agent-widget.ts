@@ -122,8 +122,8 @@ export function formatSessionTokens(
   if (compactions > 0) {
     annot.push(theme.fg("dim", `↻${compactions}`));
   }
-  if (annot.length === 0) return tokenStr;
-  return `${tokenStr} (${annot.join(" · ")})`;
+  if (annot.length === 0) return theme.fg("dim", tokenStr);
+  return `${theme.fg("dim", tokenStr)} (${annot.join(" · ")})`;
 }
 
 /** Format turn count with optional max limit: "⟳5≤30" or "⟳5". */
