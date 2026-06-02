@@ -119,6 +119,10 @@ function errorResult(err: unknown): {
 		text =
 			`browser-control error: ${msg}\n\n` +
 			"Firefox has unloaded this tab to save memory, so its content cannot be read until it is reloaded. Pick a tab that is currently loaded, or ask the user to switch to this tab in Firefox and retry.";
+	} else if (code === "EXTRACTION_TIMEOUT") {
+		text =
+			`browser-control error: ${msg}\n\n` +
+			"The page did not return its content in time (often a streaming or single-page app that never finishes loading). Try another tab, or ask the user to switch to this tab and let it settle before retrying.";
 	} else {
 		text = `browser-control error: ${msg}\n\nEnsure Firefox is open with the pi-browser-control add-on running.`;
 	}
