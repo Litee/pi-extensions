@@ -81,6 +81,13 @@ export interface BrowserControlOptions {
 	 * never writes to the real ~/Library/.../NativeMessagingHosts location.
 	 */
 	manifestPath?: string;
+	/**
+	 * Register the browser_get_tab_content tool. Disabled by default: content
+	 * extraction via executeScript can hang indefinitely on streaming/SPA tabs
+	 * (e.g. perplexity.ai, feedly.com) that never reach an idle load state, so
+	 * the tool is withheld from the agent until that is fixed. Tests opt in.
+	 */
+	enableGetTabContent?: boolean;
 }
 
 // ---------------------------------------------------------------------------
@@ -198,7 +205,12 @@ export default function browserControl(
 						return Promise.resolve(launcherResult);
 					}
 					return Promise.resolve(
-						installManifest({ launcherPath: lp, overrideManifestPath: options.manifestPath }),
+						installManifest({
+							launcherPath: lp,
+							...(options.manifestPath !== undefined
+								? { overrideManifestPath: options.manifestPath }
+								: {}),
+						}),
 					);
 				},
 			}),
@@ -239,35 +251,39 @@ export default function browserControl(
 	// -------------------------------------------------------------------------
 	// browser_get_tab_content
 	// -------------------------------------------------------------------------
+	// Temporarily disabled by default (hangs on streaming/SPA tabs). Opt in via
+	// options.enableGetTabContent once executeScript is made timeout-safe.
 
-	pi.registerTool({
-		name: "browser_get_tab_content",
-		label: "Get Browser Tab Content",
-		description:
-			"Get the full text content and links of a Firefox browser tab by tab ID. Use offset only for large documents when the first call was truncated. Requires the pi-browser-control Firefox add-on to be installed and the daemon running.",
-		promptSnippet:
-			"Get full text + links of a Firefox tab by ID (requires pi-browser-control add-on)",
-		promptGuidelines: [
-			"Call browser_list_tabs first to get a valid tabId before calling browser_get_tab_content.",
-			"Use offset only when the previous call returned a truncation hint and you need more content.",
-			"Links are only included in the first call (offset=0); subsequent paginated calls omit them.",
-			"Requires Firefox with the pi-browser-control add-on running.",
-		],
-		parameters: GetTabContentParamsSchema,
+	if (options.enableGetTabContent) {
+		pi.registerTool({
+			name: "browser_get_tab_content",
+			label: "Get Browser Tab Content",
+			description:
+				"Get the full text content and links of a Firefox browser tab by tab ID. Use offset only for large documents when the first call was truncated. Requires the pi-browser-control Firefox add-on to be installed and the daemon running.",
+			promptSnippet:
+				"Get full text + links of a Firefox tab by ID (requires pi-browser-control add-on)",
+			promptGuidelines: [
+				"Call browser_list_tabs first to get a valid tabId before calling browser_get_tab_content.",
+				"Use offset only when the previous call returned a truncation hint and you need more content.",
+				"Links are only included in the first call (offset=0); subsequent paginated calls omit them.",
+				"Requires Firefox with the pi-browser-control add-on running.",
+			],
+			parameters: GetTabContentParamsSchema,
 
-		async execute(_toolCallId, params: TGetTabContentParams, _signal, _onUpdate, _ctx) {
-			try {
-				const result = await client.getTabContent(params.tabId, params.offset);
-				return {
-					...buildTabContentResult(result as TabContentData, params.offset),
-					details: { ok: true },
-				};
-			} catch (err: unknown) {
-				if (err instanceof SocketClientError) {
+			async execute(_toolCallId, params: TGetTabContentParams, _signal, _onUpdate, _ctx) {
+				try {
+					const result = await client.getTabContent(params.tabId, params.offset);
+					return {
+						...buildTabContentResult(result as TabContentData, params.offset),
+						details: { ok: true },
+					};
+				} catch (err: unknown) {
+					if (err instanceof SocketClientError) {
+						return errorResult(err);
+					}
 					return errorResult(err);
 				}
-				return errorResult(err);
-			}
-		},
-	});
+			},
+		});
+	}
 }

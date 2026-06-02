@@ -60,9 +60,17 @@ function makeStub(overrides?: Partial<SocketClientLike>): SocketClientLike {
 // ---------------------------------------------------------------------------
 
 describe("registration", () => {
-	it("registers exactly two tools", () => {
+	it("registers only browser_list_tabs by default (get_tab_content disabled)", () => {
 		const pi = makeFakePi();
 		createExtension(pi.api, { socketClient: makeStub() });
+		expect(pi.registerTool).toHaveBeenCalledTimes(1);
+		expect(pi.tools.has("browser_list_tabs")).toBe(true);
+		expect(pi.tools.has("browser_get_tab_content")).toBe(false);
+	});
+
+	it("registers browser_get_tab_content when enableGetTabContent is set", () => {
+		const pi = makeFakePi();
+		createExtension(pi.api, { socketClient: makeStub(), enableGetTabContent: true });
 		expect(pi.registerTool).toHaveBeenCalledTimes(2);
 		expect(pi.tools.has("browser_list_tabs")).toBe(true);
 		expect(pi.tools.has("browser_get_tab_content")).toBe(true);
@@ -80,7 +88,7 @@ describe("registration", () => {
 
 	it("each tool has description, promptSnippet, promptGuidelines, parameters, execute", () => {
 		const pi = makeFakePi();
-		createExtension(pi.api, { socketClient: makeStub() });
+		createExtension(pi.api, { socketClient: makeStub(), enableGetTabContent: true });
 		for (const name of ["browser_list_tabs", "browser_get_tab_content"]) {
 			const t = pi.tool(name);
 			expect(typeof t.description).toBe("string");
@@ -156,7 +164,7 @@ describe("browser_get_tab_content — happy path", () => {
 			}),
 		});
 		const pi = makeFakePi();
-		createExtension(pi.api, { socketClient: stub });
+		createExtension(pi.api, { socketClient: stub, enableGetTabContent: true });
 		const result = await pi.tool("browser_get_tab_content").execute(
 			"tc3", { tabId: 5, offset: 0 }, undefined, undefined, {} as never,
 		);
@@ -177,7 +185,7 @@ describe("browser_get_tab_content — happy path", () => {
 			}),
 		});
 		const pi = makeFakePi();
-		createExtension(pi.api, { socketClient: stub });
+		createExtension(pi.api, { socketClient: stub, enableGetTabContent: true });
 		const result = await pi.tool("browser_get_tab_content").execute(
 			"tc4", { tabId: 5, offset: 100 }, undefined, undefined, {} as never,
 		);
@@ -219,7 +227,7 @@ describe("error paths", () => {
 		const err = Object.assign(new Error("tab not found"), { code: "TAB_NOT_FOUND" });
 		const stub = makeStub({ getTabContent: vi.fn().mockRejectedValue(err) });
 		const pi = makeFakePi();
-		createExtension(pi.api, { socketClient: stub });
+		createExtension(pi.api, { socketClient: stub, enableGetTabContent: true });
 		const result = await pi.tool("browser_get_tab_content").execute(
 			"tc-err3", { tabId: 99, offset: 0 }, undefined, undefined, {} as never,
 		);
@@ -231,7 +239,7 @@ describe("error paths", () => {
 		const err = Object.assign(new Error("tab discarded"), { code: "TAB_DISCARDED" });
 		const stub = makeStub({ getTabContent: vi.fn().mockRejectedValue(err) });
 		const pi = makeFakePi();
-		createExtension(pi.api, { socketClient: stub });
+		createExtension(pi.api, { socketClient: stub, enableGetTabContent: true });
 		const result = await pi.tool("browser_get_tab_content").execute(
 			"tc-disc", { tabId: 99, offset: 0 }, undefined, undefined, {} as never,
 		);
@@ -369,7 +377,7 @@ describe("browser_get_tab_content — SocketClientError vs generic error path", 
 		const err = new (await import("../src/socket-client.js")).SocketClientError("no tab", "TAB_NOT_FOUND");
 		const stub = makeStub({ getTabContent: vi.fn().mockRejectedValue(err) });
 		const pi = makeFakePi();
-		createExtension(pi.api, { socketClient: stub });
+		createExtension(pi.api, { socketClient: stub, enableGetTabContent: true });
 		const result = await pi.tool("browser_get_tab_content").execute(
 			"tc-sce", { tabId: 9, offset: 0 }, undefined, undefined, {} as never,
 		);
