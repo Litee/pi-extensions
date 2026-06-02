@@ -119,6 +119,14 @@ describe("runSpeakMenu", () => {
 		expect(onTest).toHaveBeenCalledOnce();
 	});
 
+	// 6b. "Test speech" isTestPlaying indicator
+	it("Test speech sets isTestPlaying indicator: onTest is called", async () => {
+		const { ctx } = makeCtxSelect(["Test speech", "Close"]);
+		const onTest = vi.fn(() => Promise.resolve());
+		await runSpeakMenu(ctx, makeDefaultOptions({ onTest }));
+		expect(onTest).toHaveBeenCalledOnce();
+	});
+
 	// 7. "Voice: M1" → voice picker → pick "F2" → onSetSessionVoice("F2")
 	it("session voice picker: selecting F2 calls onSetSessionVoice('F2')", async () => {
 		// Sequence: main menu → "Voice: M1", voice picker → "F2", main menu → "Close"

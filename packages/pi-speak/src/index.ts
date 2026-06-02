@@ -290,12 +290,17 @@ export default function speakExtension(pi: ExtensionAPI): void {
 						try { unlinkSync(tmpPath); } catch { /* ignore */ }
 					}
 				},
-				onPreview: async (text: string, voice: string, lang: string, signal: AbortSignal) => {
+				onPreview: async (text: string, voice: string, lang: string, signal: AbortSignal, synthOpts?: { speed?: number; steps?: number }) => {
 					if (signal.aborted) return;
 					const assetsDir = getAssetsDir();
 					const tmpPath = join(tmpdir(), `pi-speak-preview-${Date.now()}.wav`);
 					try {
-						const result = await synthesise(text, { voice: voice as VoiceId, lang: lang as LangCode }, assetsDir);
+						const result = await synthesise(text, {
+							voice: voice as VoiceId,
+							lang:  lang  as LangCode,
+							...(synthOpts?.speed !== undefined ? { speed: synthOpts.speed } : {}),
+							...(synthOpts?.steps !== undefined ? { steps: synthOpts.steps } : {}),
+						}, assetsDir);
 						if (signal.aborted) return;   // synthesis done but user moved on
 						await writeWav(tmpPath, result.wav, result.sampleRate);
 						if (signal.aborted) return;
