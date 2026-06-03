@@ -221,13 +221,17 @@ async function pickVoice(
 
 	return (ctxWithCustom.ui.custom<string | null>((tui, theme, _kb, done) => {
 		const items: SelectItem[] = VOICES.map((v) => ({ value: v, label: v === current ? `${v} ◀` : v }));
-		const sl = new SelectList(items, Math.min(items.length + 2, 15), getSelectListTheme());
+		let isPlaying = false;
+		const baseTheme = getSelectListTheme();
+		const sl = new SelectList(items, Math.min(items.length + 2, 15), {
+			...baseTheme,
+			selectedText: (text: string) => baseTheme.selectedText(isPlaying ? `${text}  🔊` : text),
+		});
 
 		const currentIdx = VOICES.indexOf(current as VoiceId);
 		if (currentIdx >= 0) sl.setSelectedIndex(currentIdx);
 
 		let previewAc: AbortController | undefined;
-		let isPlaying = false;
 
 		const abortPreview = () => {
 			previewAc?.abort();
@@ -254,6 +258,7 @@ async function pickVoice(
 				const ac = new AbortController();
 				previewAc = ac;
 				isPlaying = true;
+				sl.invalidate();
 				tui.requestRender();
 				const text = `Hello, I'm voice ${item.value}.`;
 				void options.onPreview(text, item.value, effLang, ac.signal)
@@ -261,6 +266,7 @@ async function pickVoice(
 					.finally(() => {
 						if (previewAc === ac) {
 							isPlaying = false;
+							sl.invalidate();
 							tui.requestRender();
 						}
 					});
@@ -270,7 +276,7 @@ async function pickVoice(
 
 		return {
 			render: (w: number) => [
-				theme.bold(`Select voice  (current: ${current})${isPlaying ? "  🔊" : ""}`),
+				theme.bold(`Select voice  (current: ${current})`),
 				theme.fg("dim", "↑↓ navigate to preview · Enter to select · Esc to cancel"),
 				...sl.render(w),
 			],
@@ -310,13 +316,17 @@ async function pickLang(
 
 	return (ctxWithCustom.ui.custom<string | null>((tui, theme, _kb, done) => {
 		const items: SelectItem[] = LANGS.map((l) => ({ value: l, label: l === current ? `${l} ◀` : l }));
-		const sl = new SelectList(items, Math.min(items.length + 2, 15), getSelectListTheme());
+		let isPlaying = false;
+		const baseTheme = getSelectListTheme();
+		const sl = new SelectList(items, Math.min(items.length + 2, 15), {
+			...baseTheme,
+			selectedText: (text: string) => baseTheme.selectedText(isPlaying ? `${text}  🔊` : text),
+		});
 
 		const currentIdx = LANGS.indexOf(current as LangCode);
 		if (currentIdx >= 0) sl.setSelectedIndex(currentIdx);
 
 		let previewAc: AbortController | undefined;
-		let isPlaying = false;
 
 		const abortPreview = () => {
 			previewAc?.abort();
@@ -343,6 +353,7 @@ async function pickLang(
 				const ac = new AbortController();
 				previewAc = ac;
 				isPlaying = true;
+				sl.invalidate();
 				tui.requestRender();
 				const text = LANG_PHRASES[item.value] ?? `Hello, I'm ${LANG_NAMES[item.value] ?? item.value}.`;
 				void options.onPreview(text, effVoice, item.value, ac.signal)
@@ -350,6 +361,7 @@ async function pickLang(
 					.finally(() => {
 						if (previewAc === ac) {
 							isPlaying = false;
+							sl.invalidate();
 							tui.requestRender();
 						}
 					});
@@ -359,7 +371,7 @@ async function pickLang(
 
 		return {
 			render: (w: number) => [
-				theme.bold(`Select language  (current: ${current})${isPlaying ? "  🔊" : ""}`),
+				theme.bold(`Select language  (current: ${current})`),
 				theme.fg("dim", "↑↓ navigate to preview · Enter to select · Esc to cancel"),
 				...sl.render(w),
 			],
@@ -400,13 +412,17 @@ async function pickSpeed(
 
 	const result = await ctxWithCustom.ui.custom<string | null>((tui, theme, _kb, done) => {
 		const items: SelectItem[] = SPEED_PRESETS.map((p) => ({ value: String(p.value), label: p.label }));
-		const sl = new SelectList(items, Math.min(items.length + 2, 15), getSelectListTheme());
+		let isPlaying = false;
+		const baseTheme = getSelectListTheme();
+		const sl = new SelectList(items, Math.min(items.length + 2, 15), {
+			...baseTheme,
+			selectedText: (text: string) => baseTheme.selectedText(isPlaying ? `${text}  🔊` : text),
+		});
 
 		const currentIdx = SPEED_PRESETS.findIndex((p) => p.value === current);
 		if (currentIdx >= 0) sl.setSelectedIndex(currentIdx);
 
 		let previewAc: AbortController | undefined;
-		let isPlaying = false;
 
 		const abortPreview = () => {
 			previewAc?.abort();
@@ -433,6 +449,7 @@ async function pickSpeed(
 				const ac = new AbortController();
 				previewAc = ac;
 				isPlaying = true;
+				sl.invalidate();
 				tui.requestRender();
 				const text = LANG_PHRASES[effLang] ?? "Hello.";
 				const speed = parseFloat(item.value);
@@ -441,6 +458,7 @@ async function pickSpeed(
 					.finally(() => {
 						if (previewAc === ac) {
 							isPlaying = false;
+							sl.invalidate();
 							tui.requestRender();
 						}
 					});
@@ -450,7 +468,7 @@ async function pickSpeed(
 
 		return {
 			render: (w: number) => [
-				theme.bold(`Select speed  (current: ${current})${isPlaying ? "  🔊" : ""}`),
+				theme.bold(`Select speed  (current: ${current})`),
 				theme.fg("dim", "↑↓ navigate to preview · Enter to select · Esc to cancel"),
 				...sl.render(w),
 			],
@@ -493,13 +511,17 @@ async function pickSteps(
 
 	const result = await ctxWithCustom.ui.custom<string | null>((tui, theme, _kb, done) => {
 		const items: SelectItem[] = STEPS_PRESETS.map((p) => ({ value: String(p.value), label: p.label }));
-		const sl = new SelectList(items, Math.min(items.length + 2, 15), getSelectListTheme());
+		let isPlaying = false;
+		const baseTheme = getSelectListTheme();
+		const sl = new SelectList(items, Math.min(items.length + 2, 15), {
+			...baseTheme,
+			selectedText: (text: string) => baseTheme.selectedText(isPlaying ? `${text}  🔊` : text),
+		});
 
 		const currentIdx = STEPS_PRESETS.findIndex((p) => p.value === current);
 		if (currentIdx >= 0) sl.setSelectedIndex(currentIdx);
 
 		let previewAc: AbortController | undefined;
-		let isPlaying = false;
 
 		const abortPreview = () => {
 			previewAc?.abort();
@@ -526,6 +548,7 @@ async function pickSteps(
 				const ac = new AbortController();
 				previewAc = ac;
 				isPlaying = true;
+				sl.invalidate();
 				tui.requestRender();
 				const text = LANG_PHRASES[effLang] ?? "Hello.";
 				const steps = parseInt(item.value, 10);
@@ -534,6 +557,7 @@ async function pickSteps(
 					.finally(() => {
 						if (previewAc === ac) {
 							isPlaying = false;
+							sl.invalidate();
 							tui.requestRender();
 						}
 					});
@@ -543,7 +567,7 @@ async function pickSteps(
 
 		return {
 			render: (w: number) => [
-				theme.bold(`Select steps  (current: ${current})${isPlaying ? "  🔊" : ""}`),
+				theme.bold(`Select steps  (current: ${current})`),
 				theme.fg("dim", "↑↓ navigate to preview · Enter to select · Esc to cancel"),
 				...sl.render(w),
 			],
@@ -577,9 +601,10 @@ async function selectAt(
 	items: string[],
 	initialIndex: number,
 	opts?: {
-		/** Called during render; return a string to show above the list, undefined to show nothing. */
-		extraHeader?: () => string | undefined;
-		/** Called once with tui.requestRender so the caller can trigger re-renders. */
+		/** Return a suffix to append to the selected item's label, or undefined for none.
+		 *  Called on every render so closures work. */
+		dynamicSuffix?: (label: string) => string | undefined;
+		/** Called once with a render-trigger fn so the caller can trigger re-renders. */
 		bindRender?: (fn: () => void) => void;
 	},
 ): Promise<{ choice: string; index: number } | null> {
@@ -593,20 +618,24 @@ async function selectAt(
 
 	const result = await ctx.ui.custom<{ value: string; index: number } | null>(
 		(tui: TuiLike, _theme: unknown, _kb: unknown, done: (v: { value: string; index: number } | null) => void) => {
-			opts?.bindRender?.(tui.requestRender.bind(tui));
 			const selectItems: SelectItem[] = items.map((label) => ({ value: label, label }));
-			const sl = new SelectList(selectItems, Math.min(items.length, 18), getSelectListTheme());
+			const baseTheme = getSelectListTheme();
+			const sl = new SelectList(selectItems, Math.min(items.length, 18), {
+				...baseTheme,
+				selectedText: (text: string) => {
+					const suffix = opts?.dynamicSuffix?.(text);
+					return baseTheme.selectedText(suffix ? `${text}${suffix}` : text);
+				},
+			});
 			sl.setSelectedIndex(Math.max(0, Math.min(initialIndex, items.length - 1)));
 			sl.onSelect = (item) => done({ value: item.value, index: selectItems.indexOf(item) });
 			sl.onCancel = () => done(null);
+			opts?.bindRender?.(() => {
+				sl.invalidate();
+				tui.requestRender();
+			});
 			return {
-				render: (w: number) => {
-					const extra = opts?.extraHeader?.();
-					return [
-						...(extra ? [extra] : []),
-						...sl.render(w),
-					];
-				},
+				render: (w: number) => sl.render(w),
 				invalidate: () => sl.invalidate(),
 				handleInput: (data: string) => { sl.handleInput(data); tui.requestRender(); },
 			};
@@ -700,7 +729,8 @@ export async function runSpeakMenu(
 
 		const lastIndex = findMenuIndex(items, lastChoice);
 		const result = await selectAt(ctx, "speak", items, lastIndex, {
-			extraHeader: () => isTestPlaying ? "  🔊 testing…" : undefined,
+			dynamicSuffix: (label) =>
+				label.includes("Test speech") && isTestPlaying ? "  🔊" : undefined,
 			bindRender: (fn) => { requestMainMenuRender = fn; },
 		});
 		if (!result || result.choice === "Close") return;
@@ -718,6 +748,7 @@ export async function runSpeakMenu(
 
 		if (choice === "Test speech") {
 			isTestPlaying = true;
+			requestMainMenuRender?.();
 			void options.onTest()
 				.catch(() => {})
 				.finally(() => {

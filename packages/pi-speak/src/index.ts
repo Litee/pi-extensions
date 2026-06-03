@@ -248,7 +248,6 @@ export default function speakExtension(pi: ExtensionAPI): void {
 					}
 					const voice = sessionVoice ?? loadConfig().defaultVoice ?? "M1";
 					const lang  = sessionLang  ?? loadConfig().defaultLang  ?? "en";
-					cmdUi.ui.notify(`speak: testing with voice ${voice}…`, "info");
 					const assetsDir = getAssetsDir();
 					const tmpPath = join(tmpdir(), `pi-speak-test-${Date.now()}.wav`);
 					const text = LANG_PHRASES[lang] ?? "Hello from pi-speak.";
@@ -256,7 +255,6 @@ export default function speakExtension(pi: ExtensionAPI): void {
 						const result = await synthesise(text, { voice: voice as VoiceId, lang: lang as LangCode }, assetsDir);
 						await writeWav(tmpPath, result.wav, result.sampleRate);
 						await playAudioFile(tmpPath);
-						cmdUi.ui.notify("speak: test complete", "info");
 					} catch (err) {
 						cmdUi.ui.notify(`speak: test failed — ${(err as Error).message}`, "error");
 					} finally {
