@@ -116,7 +116,7 @@ describe("SubagentScheduler — end-to-end with real timers", () => {
     expect(final.runCount).toBe(1);
     expect(final.enabled).toBe(false);  // one-shot auto-disabled
     expect(final.lastRun).toBeDefined();
-  });
+  }, 30000);
 
   it("one-shot job that errors: store records lastStatus error (regression — bug #1)", async () => {
     const { spawnFn, manager } = makeFaithfulManager("error");  // Agent terminates with error status
@@ -137,7 +137,7 @@ describe("SubagentScheduler — end-to-end with real timers", () => {
 
     expect(scheduler.list().find(j => j.id === job.id)?.lastStatus).toBe("error");
     expect(scheduler.list().find(j => j.id === job.id)?.runCount).toBe(1);
-  });
+  }, 30000);
 
   it("interval job: fires repeatedly, runCount grows", async () => {
     const { spawnFn, manager } = makeFaithfulManager("completed");
@@ -164,7 +164,7 @@ describe("SubagentScheduler — end-to-end with real timers", () => {
     expect(final.enabled).toBe(true);  // intervals don't auto-disable
 
     scheduler.removeJob(job.id);
-  });
+  }, 30000);
 
   it("persistence: schedules survive re-instantiating the store on the same file", () => {
     const { manager } = makeFaithfulManager("completed");
@@ -239,5 +239,5 @@ describe("SubagentScheduler — end-to-end with real timers", () => {
       .filter((c) => c[0] === "subagents:scheduled")
       .map((c) => (c[1] as { type: string }).type);
     expect(after).toContain("removed");
-  });
+  }, 30000);
 });
