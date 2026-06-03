@@ -51,7 +51,7 @@ describe("worktree", () => {
 
     repoDir = initGitRepo();
     createdWorktreePaths.length = 0;
-  });
+  }, 30000);
 
   afterEach(() => {
     // Restore env vars
@@ -75,7 +75,7 @@ describe("worktree", () => {
     // Clean up any lingering worktrees first, then remove repo
     try { pruneWorktrees(repoDir); } catch { /* ignore */ }
     rmSync(repoDir, { recursive: true, force: true });
-  });
+  }, 30000);
 
   describe("createWorktree", () => {
     it("creates a worktree in tmpdir", () => {

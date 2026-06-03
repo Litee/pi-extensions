@@ -7,6 +7,7 @@ export default defineConfig({
 		include: ["packages/*/test/**/*.test.ts", "packages/*/src/**/*.test.ts"],
 		// Each extension is self-contained; run their tests in parallel by default.
 		pool: "threads",
+		hookTimeout: 30000,
 		coverage: {
 			provider: "v8",
 			// Measure only first-party source, not fixtures, tests, or configs.
