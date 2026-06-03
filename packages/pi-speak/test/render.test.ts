@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from "vitest";
 
-// Mock pi-tui Text so we don't need actual TUI runtime in tests
+// Mock pi-tui Text and Container so we don't need actual TUI runtime in tests
 vi.mock("@earendil-works/pi-tui", () => ({
 	Text: class {
 		constructor(
@@ -11,6 +11,9 @@ vi.mock("@earendil-works/pi-tui", () => ({
 		render(_width: number): string[] {
 			return this.content ? [this.content] : [];
 		}
+	},
+	Container: class {
+		render(_width: number): string[] { return []; }
 	},
 }));
 
@@ -67,15 +70,14 @@ describe("renderCall", () => {
 });
 
 describe("renderResult — ok (queued)", () => {
-	it("shows 'queued' confirmation", () => {
+	it("renders nothing (empty container) on success", () => {
 		const text = renderRes({ details: { ok: true, voice: "M2", lang: "ja", text: "hi" } });
-		expect(text).toContain("queued");
+		expect(text).toBe("");
 	});
 
-	it("shows 'queued' regardless of queuePosition", () => {
+	it("renders nothing regardless of queuePosition", () => {
 		const text = renderRes({ details: { ok: true, voice: "M1", lang: "en", text: "hi", queuePosition: 1 } });
-		expect(text).toContain("queued");
-		expect(text).not.toContain("#");
+		expect(text).toBe("");
 	});
 
 	it("does not show '#' when queuePosition is absent", () => {
@@ -106,8 +108,8 @@ describe("renderResult — error", () => {
 });
 
 describe("renderResult — no details", () => {
-	it("returns 'queued' fallback when details is missing", () => {
+	it("renders nothing (empty container) when details is missing", () => {
 		const text = renderRes({});
-		expect(text).toContain("queued");
+		expect(text).toBe("");
 	});
 });

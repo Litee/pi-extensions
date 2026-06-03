@@ -1,5 +1,5 @@
 import type { ToolDefinition } from "@earendil-works/pi-coding-agent";
-import { Text } from "@earendil-works/pi-tui";
+import { Container, Text } from "@earendil-works/pi-tui";
 import type { SpeakParamsT } from "./schema.js";
 
 type Theme = Parameters<NonNullable<ToolDefinition["renderResult"]>>[2];
@@ -26,7 +26,6 @@ export function renderCall(args: Partial<SpeakParamsT> | undefined, theme: Theme
 
 export const renderResult: NonNullable<ToolDefinition["renderResult"]> = (result, _opts, theme) => {
   const d = (result as { details?: SpeakResultDetails }).details;
-  if (!d) return new Text(theme.fg("muted", "queued"), 0, 0);
-  if (!d.ok) return new Text(theme.fg("error", `✗ ${d.message ?? "failed"}`), 0, 0);
-  return new Text(theme.fg("muted", "queued"), 0, 0);
+  if (d?.ok === false) return new Text(theme.fg("error", `✗ ${d.message ?? "failed"}`), 0, 0);
+  return new Container();
 };
