@@ -94,48 +94,30 @@ const SAMPLE_TABS: SlimBrowserTab[] = [
 ];
 
 describe("buildListTabsResult", () => {
-	it("returns a pagination header + one line per tab", () => {
-		const { content } = buildListTabsResult(SAMPLE_TABS, 0, 100);
+	it("returns a count header + one line per tab", () => {
+		const { content } = buildListTabsResult(SAMPLE_TABS);
 		const texts = content.map((c) => c.text);
-		expect(texts[0]).toMatch(/Showing tabs 1-3 of 3/);
+		expect(texts[0]).toMatch(/3 tabs open/);
 		expect(texts[1]).toMatch(/tab id=1/);
 		expect(texts[2]).toMatch(/tab id=2/);
 		expect(texts[3]).toMatch(/tab id=3/);
 	});
 
-	it("applies offset pagination", () => {
-		const { content } = buildListTabsResult(SAMPLE_TABS, 1, 1);
-		const texts = content.map((c) => c.text);
-		expect(texts[0]).toMatch(/Showing tabs 2-2 of 3/);
-		expect(texts[0]).toMatch(/offset=2/);
-		expect(content).toHaveLength(2);
-		expect(texts[1]).toMatch(/tab id=2/);
-	});
-
-	it("caps limit to 500", () => {
+	it("returns all tabs without truncation", () => {
 		const many: SlimBrowserTab[] = Array.from({ length: 600 }, (_, i) => ({
 			id: i,
 			url: `https://t${i}.com`,
 			title: `T${i}`,
 			normalizedUrl: `https://t${i}.com/`,
 		}));
-		const { content } = buildListTabsResult(many, 0, 9999);
-		expect(content).toHaveLength(501); // header + 500 tabs
+		const { content } = buildListTabsResult(many);
+		expect(content).toHaveLength(601); // header + 600 tabs
 	});
 
-	it("clamps limit minimum to 1", () => {
-		const { content } = buildListTabsResult(SAMPLE_TABS, 0, -1);
-		expect(content).toHaveLength(2); // header + 1 tab
-	});
-
-	it("includes 'use offset=N to see more' hint when there are more", () => {
-		const { content } = buildListTabsResult(SAMPLE_TABS, 0, 1);
-		expect(content[0]!.text).toMatch(/offset=1/);
-	});
-
-	it("does not include 'more' hint when all tabs fit", () => {
-		const { content } = buildListTabsResult(SAMPLE_TABS, 0, 100);
-		expect(content[0]!.text).not.toMatch(/offset=/);
+	it("handles empty tab list", () => {
+		const { content } = buildListTabsResult([]);
+		expect(content[0]!.text).toMatch(/0 tabs open/);
+		expect(content).toHaveLength(1);
 	});
 });
 

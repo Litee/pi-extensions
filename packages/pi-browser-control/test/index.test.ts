@@ -126,32 +126,12 @@ describe("browser_control operation=list_tabs — happy path", () => {
 		const pi = makeFakePi();
 		createExtension(pi.api, { socketClient: stub });
 		const result = await pi.tool("browser_control").execute(
-			"tc1", { operation: "list_tabs", offset: 0, limit: 100 }, undefined, undefined, {} as never,
+			"tc1", { operation: "list_tabs" }, undefined, undefined, {} as never,
 		);
 		const texts = result.content.map((c) => (c as { text: string }).text);
-		expect(texts[0]).toMatch(/Showing tabs 1-2 of 2/);
+		expect(texts[0]).toMatch(/2 tabs open/);
 		expect(texts[1]).toMatch(/tab id=1/);
 		expect(texts[2]).toMatch(/tab id=2/);
-	});
-
-	it("paginates with offset", async () => {
-		const stub = makeStub({
-			listTabs: vi.fn().mockResolvedValue({
-				tabs: [
-					{ id: 1, url: "https://a.com", title: "A", normalizedUrl: "https://a.com/" },
-					{ id: 2, url: "https://b.com", title: "B", normalizedUrl: "https://b.com/" },
-					{ id: 3, url: "https://c.com", title: "C", normalizedUrl: "https://c.com/" },
-				],
-			}),
-		});
-		const pi = makeFakePi();
-		createExtension(pi.api, { socketClient: stub });
-		const result = await pi.tool("browser_control").execute(
-			"tc2", { operation: "list_tabs", offset: 1, limit: 1 }, undefined, undefined, {} as never,
-		);
-		const texts = result.content.map((c) => (c as { text: string }).text);
-		expect(texts[0]).toMatch(/Showing tabs 2-2 of 3/);
-		expect(result.content).toHaveLength(2);
 	});
 });
 
@@ -400,7 +380,7 @@ describe("error paths", () => {
 		const pi = makeFakePi();
 		createExtension(pi.api, { socketClient: stub });
 		const result = await pi.tool("browser_control").execute(
-			"tc-err1", { operation: "list_tabs", offset: 0, limit: 100 }, undefined, undefined, {} as never,
+			"tc-err1", { operation: "list_tabs" }, undefined, undefined, {} as never,
 		);
 		const text = (result.content[0] as { text: string }).text;
 		expect(text).toMatch(/daemon|not running|install/i);
@@ -412,7 +392,7 @@ describe("error paths", () => {
 		const pi = makeFakePi();
 		createExtension(pi.api, { socketClient: stub });
 		const result = await pi.tool("browser_control").execute(
-			"tc-err2", { operation: "list_tabs", offset: 0, limit: 100 }, undefined, undefined, {} as never,
+			"tc-err2", { operation: "list_tabs" }, undefined, undefined, {} as never,
 		);
 		const text = (result.content[0] as { text: string }).text;
 		expect(text).toMatch(/add-on|addon|Firefox/i);
@@ -459,7 +439,7 @@ describe("error paths", () => {
 		const pi = makeFakePi();
 		createExtension(pi.api, { socketClient: stub });
 		const result = await pi.tool("browser_control").execute(
-			"tc-err4", { operation: "list_tabs", offset: 0, limit: 100 }, undefined, undefined, {} as never,
+			"tc-err4", { operation: "list_tabs" }, undefined, undefined, {} as never,
 		);
 		const text = (result.content[0] as { text: string }).text;
 		expect(text.length).toBeGreaterThan(0);
@@ -644,7 +624,7 @@ describe("errorResult — String(err) fallback when err has no .message", () => 
 		const pi = makeFakePi();
 		createExtension(pi.api, { socketClient: stub });
 		const result = await pi.tool("browser_control").execute(
-			"tc-str-err", { operation: "list_tabs", offset: 0, limit: 100 }, undefined, undefined, {} as never,
+			"tc-str-err", { operation: "list_tabs" }, undefined, undefined, {} as never,
 		);
 		const text = (result.content[0] as { text: string }).text;
 		expect(text.length).toBeGreaterThan(0);
