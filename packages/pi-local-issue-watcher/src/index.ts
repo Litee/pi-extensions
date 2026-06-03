@@ -468,6 +468,14 @@ export default function issueWatcher(pi: ExtensionAPI): void {
 	const rt = makeRuntime(dbRoot, pi);
 
 	pi.on("session_start", async (_event, ctx) => {
+		// Kill any poll loop from a prior session before doing anything else.
+		// On reload/fork/switch, session_start may fire before session_shutdown,
+		// leaving a stale loop that calls pi.sendMessage on a dead ctx and
+		// crashes with "stale ctx" (#0032).
+		stopPolling(rt);
+		// Reset toast guard so the new session can warn about bad files again.
+		rt.parseFailureToastState.hasToasted = false;
+
 		const anyCtx = ctx as unknown as {
 			hasUI?: boolean;
 			ui?: Runtime["ui"];
