@@ -67,15 +67,15 @@ describe("renderCall", () => {
 });
 
 describe("renderResult — ok (queued)", () => {
-	it("shows 🔊 with voice/lang tag", () => {
+	it("shows 'queued' confirmation", () => {
 		const text = renderRes({ details: { ok: true, voice: "M2", lang: "ja", text: "hi" } });
-		expect(text).toContain("🔊");
-		expect(text).toContain("[M2/ja]");
+		expect(text).toContain("queued");
 	});
 
-	it("shows queue position when queuePosition is provided", () => {
+	it("shows 'queued' regardless of queuePosition", () => {
 		const text = renderRes({ details: { ok: true, voice: "M1", lang: "en", text: "hi", queuePosition: 1 } });
-		expect(text).toContain("(#1)");
+		expect(text).toContain("queued");
+		expect(text).not.toContain("#");
 	});
 
 	it("does not show '#' when queuePosition is absent", () => {
@@ -106,8 +106,8 @@ describe("renderResult — error", () => {
 });
 
 describe("renderResult — no details", () => {
-	it("returns 🔊 fallback when details is missing", () => {
+	it("returns 'queued' fallback when details is missing", () => {
 		const text = renderRes({});
-		expect(text).toContain("🔊");
+		expect(text).toContain("queued");
 	});
 });

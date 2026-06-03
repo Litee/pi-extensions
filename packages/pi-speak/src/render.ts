@@ -26,9 +26,7 @@ export function renderCall(args: Partial<SpeakParamsT> | undefined, theme: Theme
 
 export const renderResult: NonNullable<ToolDefinition["renderResult"]> = (result, _opts, theme) => {
   const d = (result as { details?: SpeakResultDetails }).details;
-  if (!d) return new Text(theme.fg("muted", "🔊 …"), 0, 0);
+  if (!d) return new Text(theme.fg("muted", "queued"), 0, 0);
   if (!d.ok) return new Text(theme.fg("error", `✗ ${d.message ?? "failed"}`), 0, 0);
-  const pos = d.queuePosition !== undefined ? theme.fg("dim", ` (#${d.queuePosition})`) : "";
-  const tag = theme.fg("dim", `[${d.voice}/${d.lang}]`);
-  return new Text(`${theme.fg("success", "🔊")} ${tag}${pos}`, 0, 0);
+  return new Text(theme.fg("muted", "queued"), 0, 0);
 };
