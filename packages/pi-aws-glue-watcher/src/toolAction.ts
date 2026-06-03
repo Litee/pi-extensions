@@ -185,17 +185,17 @@ export async function handleToolAction(
 	switch (params.action) {
 		case "add": {
 			if (params.type !== "job" && params.type !== "workflow") {
-				const message = `glue-watcher: 'add' requires type to be 'job' or 'workflow', got ${JSON.stringify(params.type ?? "")}.`;
+				const message = `'add' requires type to be 'job' or 'workflow', got ${JSON.stringify(params.type ?? "")}.`;
 				return { content: toolText(message), details: { action: "add", ok: false, message } };
 			}
 			const name = params.name?.trim() ?? "";
 			if (!name) {
-				const message = "glue-watcher: 'add' requires a non-empty name.";
+				const message = "'add' requires a non-empty name.";
 				return { content: toolText(message), details: { action: "add", ok: false, message } };
 			}
 			const profile = params.profile?.trim() ?? "";
 			if (!profile) {
-				const message = "glue-watcher: 'add' requires a profile.";
+				const message = "'add' requires a profile.";
 				return { content: toolText(message), details: { action: "add", ok: false, message } };
 			}
 			const region = params.region?.trim() || undefined;
@@ -206,7 +206,7 @@ export async function handleToolAction(
 			let watchPollMs: number | undefined;
 			if (params.pollIntervalMs !== undefined) {
 				if (!Number.isFinite(params.pollIntervalMs) || params.pollIntervalMs < MIN_POLL_MS) {
-					const message = `glue-watcher: 'add' pollIntervalMs must be a finite number >= ${MIN_POLL_MS}ms.`;
+					const message = `'add' pollIntervalMs must be a finite number >= ${MIN_POLL_MS}ms.`;
 					return { content: toolText(message), details: { action: "add", ok: false, message } };
 				}
 				watchPollMs = params.pollIntervalMs;
@@ -220,7 +220,7 @@ export async function handleToolAction(
 							? await rt.client.getLatestJobRunId(name, profile, region)
 							: await rt.client.getLatestWorkflowRunId(name, profile, region);
 				} catch (err) {
-					const message = `glue-watcher: failed to fetch latest run ID for ${type} '${name}': ${(err as Error).message}`;
+					const message = `Failed to fetch latest run ID for ${type} '${name}': ${(err as Error).message}`;
 					return { content: toolText(message), details: { action: "add", ok: false, message } };
 				}
 			}
@@ -260,8 +260,8 @@ export async function handleToolAction(
 			const intervalNote = watchPollMs !== undefined ? ` | poll: ${Math.round(watchPollMs / 1000)}s` : "";
 			const stateLabel = watch.baseline ? watch.baseline.state || "?" : "?";
 			const message = watch.baseline
-				? `glue-watcher: added ${type} '${name}' (${runId}) — state=${stateLabel}${intervalNote}. Watch ID: ${watchId}`
-				: `glue-watcher: added ${type} '${name}' (${runId}), but seeding failed (${seedError ?? "unknown"})${intervalNote}. Watch ID: ${watchId}`;
+				? `added ${type} '${name}' (${runId}) — state=${stateLabel}${intervalNote}. Watch ID: ${watchId}`
+				: `added ${type} '${name}' (${runId}), but seeding failed (${seedError ?? "unknown"})${intervalNote}. Watch ID: ${watchId}`;
 			return {
 				content: toolText(message),
 				details: { action: "add", ok: true, message, watches: Object.keys(rt.watches) },
@@ -271,11 +271,11 @@ export async function handleToolAction(
 		case "remove": {
 			const id = params.watchId?.trim() ?? "";
 			if (!id) {
-				const message = "glue-watcher: 'remove' requires a watchId.";
+				const message = "'remove' requires a watchId.";
 				return { content: toolText(message), details: { action: "remove", ok: false, message } };
 			}
 			if (!(id in rt.watches)) {
-				const message = `glue-watcher: watch '${id}' not found.`;
+				const message = `Watch '${id}' not found.`;
 				return { content: toolText(message), details: { action: "remove", ok: false, message } };
 			}
 			stopWatchPolling(rt, id);
@@ -284,7 +284,7 @@ export async function handleToolAction(
 			writeState(rt.pi, rt);
 			rt.pi.events.emit("glue:change", {});
 			refreshStatus(rt);
-			const message = `glue-watcher: removed watch '${id}'. ${Object.keys(rt.watches).length} watch(es) remaining.`;
+			const message = `Removed watch '${id}'. ${Object.keys(rt.watches).length} watch(es) remaining.`;
 			return {
 				content: toolText(message),
 				details: { action: "remove", ok: true, message, watches: Object.keys(rt.watches) },
@@ -294,7 +294,7 @@ export async function handleToolAction(
 		case "list": {
 			const ids = Object.keys(rt.watches);
 			if (ids.length === 0) {
-				const message = "glue-watcher: no watches configured.";
+				const message = "No watches configured.";
 				return { content: toolText(message), details: { action: "list", ok: true, message, watches: [] } };
 			}
 			const lines = ids.map((id) => {
@@ -304,7 +304,7 @@ export async function handleToolAction(
 				const interval = w.pollIntervalMs !== undefined ? ` | poll: ${Math.round(w.pollIntervalMs / 1000)}s` : "";
 				return `- [${id}] ${w.type} '${w.name}' (${w.runId}) | state=${state}${w.terminal ? " [terminal]" : ""}${interval}`;
 			});
-			const message = `glue-watcher: ${ids.length} watch(es):\n${lines.join("\n")}`;
+			const message = `${ids.length} watch(es):\n${lines.join("\n")}`;
 			return { content: toolText(message), details: { action: "list", ok: true, message, watches: ids } };
 		}
 
@@ -313,7 +313,7 @@ export async function handleToolAction(
 			stopPolling(rt);
 			writeState(rt.pi, rt);
 			refreshStatus(rt);
-			const message = "glue-watcher: paused. Use the glue_watcher resume action to re-enable polling.";
+			const message = "Paused. Use the glue_watcher resume action to re-enable polling.";
 			return { content: toolText(message), details: { action: "pause", ok: true, message } };
 		}
 
@@ -323,7 +323,7 @@ export async function handleToolAction(
 			const activeWatches = Object.values(rt.watches).filter((w) => !w.terminal);
 			if (rt.enabled && activeWatches.length > 0) startPolling(rt);
 			refreshStatus(rt);
-			const message = `glue-watcher: resumed. Polling ${Object.keys(rt.watches).length} watch(es).`;
+			const message = `Resumed. Polling ${Object.keys(rt.watches).length} watch(es).`;
 			return { content: toolText(message), details: { action: "resume", ok: true, message } };
 		}
 
@@ -341,7 +341,7 @@ export async function handleToolAction(
 			}).filter(Boolean);
 			const intervalSection = intervalLines.length > 0 ? `\n  per-watch intervals:\n${intervalLines.join("\n")}` : "";
 			const message = [
-				`glue-watcher: ${statusLabel} | ${enabledLabel}`,
+				`${statusLabel} | ${enabledLabel}`,
 				`  watches: ${ids.length} total (${activeCount} active, ${terminalCount} terminal)`,
 			].join("\n") + intervalSection;
 			return { content: toolText(message), details: { action: "status", ok: true, message } };
@@ -350,17 +350,17 @@ export async function handleToolAction(
 		case "set-interval": {
 			const id = params.watchId?.trim() ?? "";
 			if (!id) {
-				const message = "glue-watcher: 'set-interval' requires a watchId.";
+				const message = "'set-interval' requires a watchId.";
 				return { content: toolText(message), details: { action: "set-interval", ok: false, message } };
 			}
 			const watch = rt.watches[id];
 			if (!watch) {
-				const message = `glue-watcher: watch '${id}' not found.`;
+				const message = `Watch '${id}' not found.`;
 				return { content: toolText(message), details: { action: "set-interval", ok: false, message } };
 			}
 			const MIN_POLL_MS = 5_000;
 			if (params.pollIntervalMs === undefined || !Number.isFinite(params.pollIntervalMs) || params.pollIntervalMs < MIN_POLL_MS) {
-				const message = `glue-watcher: 'set-interval' requires pollIntervalMs >= ${MIN_POLL_MS}ms.`;
+				const message = `'set-interval' requires pollIntervalMs >= ${MIN_POLL_MS}ms.`;
 				return { content: toolText(message), details: { action: "set-interval", ok: false, message } };
 			}
 			watch.pollIntervalMs = params.pollIntervalMs;
@@ -369,12 +369,12 @@ export async function handleToolAction(
 			if (!rt.paused && !watch.terminal) startWatchPolling(rt, id);
 			writeState(rt.pi, rt);
 			refreshStatus(rt);
-			const message = `glue-watcher: poll interval for watch '${id}' set to ${Math.round(params.pollIntervalMs / 1000)}s.`;
+			const message = `Poll interval for watch '${id}' set to ${Math.round(params.pollIntervalMs / 1000)}s.`;
 			return { content: toolText(message), details: { action: "set-interval", ok: true, message } };
 		}
 
 		default: {
-			const message = `glue-watcher: unknown action ${JSON.stringify(params.action)}.`;
+			const message = `Unknown action ${JSON.stringify(params.action)}.`;
 			return { content: toolText(message), details: { action: params.action, ok: false, message } };
 		}
 	}

@@ -674,7 +674,7 @@ describe("handleToolAction — list", () => {
 		const rt = makeRuntime(pi, makeClient());
 		const result = await handleToolAction(rt, { action: "list" });
 		expect(result.details.ok).toBe(true);
-		expect(result.details.message).toContain("no watches");
+		expect(result.details.message).toContain("No watches");
 		expect(result.details.watches).toEqual([]);
 	});
 
@@ -770,7 +770,6 @@ describe("handleToolAction — status", () => {
 
 		const result = await handleToolAction(rt, { action: "status" });
 
-		expect(result.details.message).toContain("glue-watcher:");
 		expect(result.details.message).toContain("watches:");
 	});
 });
@@ -875,7 +874,7 @@ describe("handleToolAction — unknown action", () => {
 		const rt = makeRuntime(pi, makeClient());
 		const result = await handleToolAction(rt, { action: "bogus" });
 		expect(result.details.ok).toBe(false);
-		expect(result.details.message).toContain("unknown action");
+		expect(result.details.message).toContain("Unknown action");
 	});
 });
 
