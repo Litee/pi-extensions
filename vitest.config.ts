@@ -134,6 +134,11 @@ export default defineConfig({
 				// all S3Watcher logic is covered in watcher.ts / poller.ts tests.
 				// The wiring itself requires a live pi runtime.
 				"**/pi-aws-s3-watcher/src/index.ts",
+				// pi-git-watcher/src/index.ts is a thin factory + re-export barrel.
+				// createExtensionWithClient() creates a GitWatcher and calls .register(pi);
+				// all GitWatcher logic is covered in watcher.ts / poller.ts tests.
+				// The wiring itself requires a live pi runtime.
+				"**/pi-git-watcher/src/index.ts",
 				// pi-aws-glue-watcher/src/index.ts is session lifecycle wiring:
 				// pi.on(session_start/turn_end/session_shutdown), pi.registerMessageRenderer,
 				// and pi.registerCommand. All pure logic (toolAction, command, runtime,
