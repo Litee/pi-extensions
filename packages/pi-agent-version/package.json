@@ -1,0 +1,14 @@
+{
+  "name": "pi-agent-version",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Pi extension that registers a /version slash command to print the running pi-coding-agent version.",
+  "type": "module",
+  "keywords": ["pi-package"],
+  "pi": {
+    "extensions": ["./src/index.ts"]
+  },
+  "peerDependencies": {
+    "@earendil-works/pi-coding-agent": "*"
+  }
+}
