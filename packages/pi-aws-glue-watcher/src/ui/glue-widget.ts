@@ -101,6 +101,17 @@ export function formatElapsed(
 
 export class GlueWidget {
 	private ctx: unknown = undefined;
+	/**
+	 * Whether the widget is currently registered with pi via `setWidget`.
+	 * Prevents repeated registrations that would reorder sidebar panels (#0002).
+	 */
+	private _registered = false;
+	/**
+	 * The TUI object passed by pi to the widget factory.
+	 * Stored so `refresh()` can call `tui.requestRender()` to keep
+	 * elapsed-time labels live without re-calling `setWidget()`.
+	 */
+	private _tui: unknown = undefined;
 	private refreshInterval: NodeJS.Timeout | undefined;
 	private readonly unsubscribe: () => void;
 
@@ -120,15 +131,21 @@ export class GlueWidget {
 			return;
 		}
 
-		const anyCtx = ctx as { ui?: { setWidget?: (...args: unknown[]) => void } };
-		anyCtx.ui?.setWidget?.(
-			WIDGET_ID,
-			(_tui: unknown, theme: unknown) => ({
-				render: (width: number) => this.renderWidget(width, theme),
-				invalidate: () => {},
-			}),
-			{ placement: "belowEditor" },
-		);
+		if (!this._registered) {
+			const anyCtx = ctx as { ui?: { setWidget?: (...args: unknown[]) => void } };
+			anyCtx.ui?.setWidget?.(
+				WIDGET_ID,
+				(tui: unknown, theme: unknown) => {
+					this._tui = tui;
+					return {
+						render: (width: number) => this.renderWidget(width, theme),
+						invalidate: () => {},
+					};
+				},
+				{ placement: "belowEditor" },
+			);
+			this._registered = true;
+		}
 
 		if (!this.refreshInterval) {
 			this.refreshInterval = setInterval(() => this.refresh(), 30_000);
@@ -138,6 +155,8 @@ export class GlueWidget {
 	hide(ctx: unknown): void {
 		const anyCtx = ctx as { ui?: { setWidget?: (...args: unknown[]) => void } };
 		anyCtx.ui?.setWidget?.(WIDGET_ID, undefined);
+		this._registered = false;
+		this._tui = undefined;
 		if (this.refreshInterval) {
 			clearInterval(this.refreshInterval);
 			this.refreshInterval = undefined;
@@ -145,8 +164,16 @@ export class GlueWidget {
 	}
 
 	refresh(): void {
-		if (this.ctx !== undefined) {
+		if (this.ctx === undefined) return;
+		if (!this._registered) {
+			// Widget was hidden (no watches); re-register now that watches are present.
 			this.show(this.ctx);
+		} else {
+			// Already registered — the render callback reads live data from
+			// getWatches(), so no setWidget() call is needed (avoids panel
+			// reordering, see #0002). Just request a repaint so elapsed-time
+			// labels stay current.
+			(this._tui as { requestRender?: () => void } | undefined)?.requestRender?.();
 		}
 	}
 
