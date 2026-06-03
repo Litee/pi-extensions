@@ -56,8 +56,7 @@ const BrowserControlParamsSchema = Type.Object({
 	], { description: "Operation to perform: list_tabs, export_tabs, get_tab_content, or close_tab." }),
 	path: Type.Optional(Type.String({ description: "Absolute file path to write the JSONL output to (creates or overwrites). Required for export_tabs." })),
 	tabId: Type.Optional(Type.Number({ description: "The numeric tab ID as returned by list_tabs. Required for get_tab_content and close_tab." })),
-	offset: Type.Optional(Type.Integer({ minimum: 0, default: 0, description: "Starting index (list_tabs) or character offset (get_tab_content) for pagination. Defaults to 0." })),
-	limit: Type.Optional(Type.Number({ default: 100, description: "Maximum number of tabs to return for list_tabs (default 100, capped 1–500)." })),
+	offset: Type.Optional(Type.Integer({ minimum: 0, default: 0, description: "Character offset for paginating large documents with get_tab_content. Defaults to 0." })),
 });
 type TBrowserControlParams = Static<typeof BrowserControlParamsSchema>;
 
@@ -270,7 +269,6 @@ export default function browserControl(
 		promptGuidelines: [
 			"Use operation=list_tabs to discover tab IDs before calling get_tab_content or close_tab.",
 			"Requires Firefox with the pi-browser-control add-on running. Run /browser-control to install and test.",
-			"Use offset/limit to paginate list_tabs — limit is capped to 500 per call.",
 			"Use operation=export_tabs to dump full tab metadata for all open Firefox tabs to a file.",
 			"The export output is JSON Lines format — one tab object per line.",
 		],
@@ -282,7 +280,7 @@ export default function browserControl(
 					const result = await client.listTabs();
 					const { tabs } = result as { tabs: SlimBrowserTab[] };
 					return {
-						...buildListTabsResult(tabs, params.offset ?? 0, params.limit ?? 100),
+						...buildListTabsResult(tabs),
 						details: { ok: true, operation: "list_tabs" as const },
 					};
 				}

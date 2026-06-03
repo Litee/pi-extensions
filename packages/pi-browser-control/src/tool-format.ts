@@ -107,27 +107,16 @@ export function formatTabLine(tab: SlimBrowserTab): string {
 // ---------------------------------------------------------------------------
 
 export function buildListTabsResult(
-	allTabs: SlimBrowserTab[],
-	offset: number,
-	limit: number,
+	tabs: SlimBrowserTab[],
 ): { content: { type: "text"; text: string }[] } {
-	const effectiveLimit = Math.min(Math.max(1, limit), 500);
-	const totalTabs = allTabs.length;
-	const paginated = allTabs.slice(offset, offset + effectiveLimit);
-	const hasMore = offset + effectiveLimit < totalTabs;
-
 	const header: { type: "text"; text: string } = {
 		type: "text",
-		text: `Showing tabs ${offset + 1}-${offset + paginated.length} of ${totalTabs} total tabs${
-			hasMore ? ` (use offset=${offset + effectiveLimit} to see more)` : ""
-		}`,
+		text: `${tabs.length} tab${tabs.length === 1 ? "" : "s"} open`,
 	};
-
-	const lines = paginated.map((tab) => ({
+	const lines = tabs.map((tab) => ({
 		type: "text" as const,
 		text: formatTabLine(tab),
 	}));
-
 	return { content: [header, ...lines] };
 }
 
