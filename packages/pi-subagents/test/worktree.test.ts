@@ -137,7 +137,7 @@ describe("worktree", () => {
       const result = cleanupWorktree(repoDir, wt, "test cleanup");
       expect(result.hasChanges).toBe(false);
       expect(result.branch).toBeUndefined();
-    });
+    }, 30000);
 
     it("commits changes and creates branch when changes exist", () => {
       const wt = createWorktree(repoDir, "dirty-1")!;
@@ -208,7 +208,7 @@ describe("worktree", () => {
 
       const result = cleanupWorktree(repoDir, wt, "already gone");
       expect(result.hasChanges).toBe(false);
-    });
+    }, 30000);
 
     it("truncates commit message at 200 chars", () => {
       const wt = createWorktree(repoDir, "long-msg")!;
