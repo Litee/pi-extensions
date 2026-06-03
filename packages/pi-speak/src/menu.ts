@@ -10,7 +10,7 @@ import { existsSync, readdirSync, statSync } from "node:fs";
 import { join } from "node:path";
 
 import { getSelectListTheme } from "@earendil-works/pi-coding-agent";
-import { SelectList, type SelectItem } from "@earendil-works/pi-tui";
+import { Key, matchesKey, SelectList, type SelectItem } from "@earendil-works/pi-tui";
 
 import type { SpeakConfig } from "./config.js";
 import { LANGS, VOICES, type LangCode, type VoiceId } from "./schema.js";
@@ -338,11 +338,17 @@ async function pickWithPreview(opts: PickWithPreviewOptions): Promise<string | n
 		return {
 			render: (w: number) => [
 				theme.bold(title),
-				theme.fg("dim", "↑↓ navigate to preview · Enter to select · Esc to cancel"),
+				theme.fg("dim", "↑↓ navigate to preview · Enter to select · ← / Esc to go back"),
 				...sl.render(w),
 			],
 			invalidate: () => sl.invalidate(),
 			handleInput: (data: string) => {
+				if (matchesKey(data, Key.left)) {
+					clearTimeout(debounceTimer);
+					abortPreview();
+					done(null);
+					return;
+				}
 				sl.handleInput(data);
 				tui.requestRender();
 			},
