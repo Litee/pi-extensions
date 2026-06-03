@@ -1,0 +1,4 @@
+#!/bin/sh
+# Only run health checks after a rebase, not after commit --amend.
+[ "$1" = "rebase" ] || exit 0
+npm run check
