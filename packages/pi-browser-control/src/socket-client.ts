@@ -35,7 +35,9 @@ export class SocketClientError extends Error {
 
 export interface SocketClientLike {
 	listTabs: () => Promise<unknown>;
+	exportTabs: () => Promise<unknown>;
 	getTabContent: (tabId: number, offset: number) => Promise<unknown>;
+	closeTab: (tabId: number) => Promise<unknown>;
 	status: () => Promise<unknown>;
 	ping: () => Promise<unknown>;
 }
@@ -66,10 +68,21 @@ export class SocketClient implements SocketClientLike {
 		return this._request({ op: "listTabs" }, this._opts.timeoutMs ?? 10_000);
 	}
 
+	async exportTabs(): Promise<unknown> {
+		return this._request({ op: "exportTabs" }, this._opts.timeoutMs ?? 10_000);
+	}
+
 	async getTabContent(tabId: number, offset: number): Promise<unknown> {
 		return this._request(
 			{ op: "getTabContent", params: { tabId, offset } },
 			this._opts.timeoutMs ?? 30_000,
+		);
+	}
+
+	async closeTab(tabId: number): Promise<unknown> {
+		return this._request(
+			{ op: "closeTab", params: { tabId } },
+			this._opts.timeoutMs ?? 10_000,
 		);
 	}
 

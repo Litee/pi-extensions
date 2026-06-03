@@ -79,6 +79,17 @@ describe("SocketClient — happy paths", () => {
 		expect((result as { tabs: unknown[] }).tabs).toHaveLength(1);
 	});
 
+	it("exportTabs succeeds and returns raw result", async () => {
+		await startServer((req) => ({
+			id: req["id"],
+			ok: true,
+			result: { tabs: [{ id: 1, url: "https://example.com", favIconUrl: null }] },
+		}));
+		const client = new SocketClient(sockFile);
+		const result = await client.exportTabs();
+		expect((result as { tabs: unknown[] }).tabs).toHaveLength(1);
+	});
+
 	it("getTabContent succeeds and returns raw result", async () => {
 		await startServer((req) => ({
 			id: req["id"],

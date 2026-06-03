@@ -1,5 +1,5 @@
 /**
- * Pi extension entry: register `browser_list_tabs` and `browser_get_tab_content`.
+ * Pi extension entry: register the unified `browser_control` tool.
  *
  * Both tools communicate with the Firefox pi-browser-control add-on through a
  * shared daemon process via a unix socket. The daemon is launched by Firefox
@@ -17,9 +17,10 @@
  */
 
 import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
+import { Text } from "@earendil-works/pi-tui";
 import { type Static, Type } from "typebox";
 
-import { SocketClient, SocketClientError, type SocketClientLike } from "./socket-client.js";
+import { SocketClient, type SocketClientLike } from "./socket-client.js";
 import { runBrowserControlCommand } from "./command.js";
 import { installManifest } from "./manifest-installer.js";
 import { installLauncher } from "./launcher-installer.js";
@@ -27,12 +28,17 @@ import { launcherPath } from "./socket-paths.js";
 import {
 	buildListTabsResult,
 	buildTabContentResult,
-	type BrowserTab,
+	type SlimBrowserTab,
+	type FullBrowserTab,
 	type TabContentData,
 } from "./tool-format.js";
 import { resolve, dirname, isAbsolute } from "node:path";
 import { fileURLToPath } from "node:url";
-import fs from "node:fs";
+import { promisify } from "node:util";
+import { execFile as execFileCb } from "node:child_process";
+import fs, { existsSync } from "node:fs";
+
+const execFile = promisify(execFileCb);
 
 // Re-export SocketClientLike so tests can import it from index.js
 export type { SocketClientLike };
@@ -41,37 +47,19 @@ export type { SocketClientLike };
 // TypeBox schemas
 // ---------------------------------------------------------------------------
 
-const ListTabsParamsSchema = Type.Object({
-	offset: Type.Integer({
-		minimum: 0,
-		default: 0,
-		description: "Starting index for pagination (0-based, must be >= 0).",
-	}),
-	limit: Type.Number({
-		default: 100,
-		description: "Maximum number of tabs to return (default 100, capped 1–500).",
-	}),
+const BrowserControlParamsSchema = Type.Object({
+	operation: Type.Union([
+		Type.Literal("list_tabs"),
+		Type.Literal("export_tabs"),
+		Type.Literal("get_tab_content"),
+		Type.Literal("close_tab"),
+	], { description: "Operation to perform: list_tabs, export_tabs, get_tab_content, or close_tab." }),
+	path: Type.Optional(Type.String({ description: "Absolute file path to write the JSONL output to (creates or overwrites). Required for export_tabs." })),
+	tabId: Type.Optional(Type.Number({ description: "The numeric tab ID as returned by list_tabs. Required for get_tab_content and close_tab." })),
+	offset: Type.Optional(Type.Integer({ minimum: 0, default: 0, description: "Starting index (list_tabs) or character offset (get_tab_content) for pagination. Defaults to 0." })),
+	limit: Type.Optional(Type.Number({ default: 100, description: "Maximum number of tabs to return for list_tabs (default 100, capped 1–500)." })),
 });
-type TListTabsParams = Static<typeof ListTabsParamsSchema>;
-
-const GetTabContentParamsSchema = Type.Object({
-	tabId: Type.Number({
-		description: "The numeric tab ID as returned by browser_list_tabs.",
-	}),
-	offset: Type.Number({
-		default: 0,
-		description:
-			"Character offset for paginating large documents. Pass 0 (default) for the first read.",
-	}),
-});
-type TGetTabContentParams = Static<typeof GetTabContentParamsSchema>;
-
-const ExportTabsParamsSchema = Type.Object({
-	path: Type.String({
-		description: "Absolute file path to write the JSONL output to (creates or overwrites).",
-	}),
-});
-type TExportTabsParams = Static<typeof ExportTabsParamsSchema>;
+type TBrowserControlParams = Static<typeof BrowserControlParamsSchema>;
 
 // ---------------------------------------------------------------------------
 // Dependency-injection interface for tests
@@ -90,10 +78,9 @@ export interface BrowserControlOptions {
 	 */
 	manifestPath?: string;
 	/**
-	 * Register the browser_get_tab_content tool. Disabled by default: content
-	 * extraction via executeScript can hang indefinitely on streaming/SPA tabs
-	 * (e.g. perplexity.ai, feedly.com) that never reach an idle load state, so
-	 * the tool is withheld from the agent until that is fixed. Tests opt in.
+	 * Kept for backward compatibility with existing tests. No longer used to
+	 * gate tool registration — get_tab_content is now an operation of the
+	 * unified browser_control tool and is always registered.
 	 */
 	enableGetTabContent?: boolean;
 }
@@ -122,7 +109,7 @@ function errorResult(err: unknown): {
 	} else if (code === "TAB_NOT_FOUND") {
 		text =
 			`browser-control error: ${msg}\n\n` +
-			"The requested tab was not found. Run browser_list_tabs again to get the current list of tab IDs.";
+			"The requested tab was not found. Run browser_control with operation=list_tabs to get the current list of tab IDs.";
 	} else if (code === "TAB_DISCARDED") {
 		text =
 			`browser-control error: ${msg}\n\n` +
@@ -148,6 +135,42 @@ function errorResult(err: unknown): {
 function resolveDaemonScriptPath(): string {
 	const __dirname = dirname(fileURLToPath(import.meta.url));
 	return resolve(__dirname, "daemon", "daemon.ts");
+}
+
+// ---------------------------------------------------------------------------
+// buildAddon — runs web-ext build on the firefox-addon/ directory
+// ---------------------------------------------------------------------------
+
+async function buildAddon(): Promise<{ ok: true; xpiPath: string } | { ok: false; error: string }> {
+	const __dirname = dirname(fileURLToPath(import.meta.url));
+	// src/ → packages/pi-browser-control/ (pkgRoot) → firefox-addon/
+	const pkgRoot = resolve(__dirname, "..");
+	const addonDir = resolve(pkgRoot, "firefox-addon");
+	const artifactsDir = resolve(pkgRoot, "web-ext-artifacts");
+	// npm workspaces hoists deps to the monorepo root — walk up from pkgRoot
+	// until we find node_modules/.bin/web-ext (handles both hoisted and local).
+	const monorepoRoot = resolve(pkgRoot, "..", "..");
+	const localBin = resolve(pkgRoot, "node_modules", ".bin", "web-ext");
+	const hoistedBin = resolve(monorepoRoot, "node_modules", ".bin", "web-ext");
+	const webExtBin = existsSync(localBin) ? localBin : hoistedBin;
+	try {
+		const { stdout } = await execFile(webExtBin, [
+			"build",
+			"--source-dir",
+			addonDir,
+			"--artifacts-dir",
+			artifactsDir,
+			"--overwrite-dest",
+		]);
+		// web-ext prints: "Your web extension is ready: /path/to/file.xpi"
+		const match = /Your web extension is ready:\s*(\S+\.xpi)/i.exec(stdout);
+		const xpiPath = match?.[1] ?? artifactsDir;
+		return { ok: true, xpiPath };
+	} catch (err: unknown) {
+		const e = err as { stderr?: string; message?: string };
+		const error = e.stderr?.trim() || e.message || String(err);
+		return { ok: false, error };
+	}
 }
 
 // ---------------------------------------------------------------------------
@@ -179,7 +202,7 @@ export default function browserControl(
 					try {
 						await client.ping();
 						const tabsResult = await client.listTabs();
-						const tabs = tabsResult as { tabs: BrowserTab[] };
+						const tabs = tabsResult as { tabs: SlimBrowserTab[] };
 						return {
 							ok: true,
 							message: `Connected to browser-control add-on. ${tabs.tabs.length} open tab(s).`,
@@ -225,130 +248,120 @@ export default function browserControl(
 						}),
 					);
 				},
+				buildAddon,
 			}),
 	});
 
 	// -------------------------------------------------------------------------
-	// browser_list_tabs
+	// browser_control (unified)
 	// -------------------------------------------------------------------------
 
 	pi.registerTool({
-		name: "browser_list_tabs",
-		label: "List Browser Tabs",
+		name: "browser_control",
+		label: "Browser Control",
 		description:
-			"List all open tabs in the user's Firefox browser. Returns tab IDs, URLs, titles, and last-accessed times. Use offset/limit for pagination when there are many tabs. Requires the pi-browser-control Firefox add-on to be installed and the daemon running.",
-		promptSnippet:
-			"List open Firefox browser tabs (requires pi-browser-control add-on)",
+			"Control the user's Firefox browser. Supports four operations:\n" +
+			"- list_tabs: List open tabs with IDs, URLs, titles, last-accessed times. Paginate with offset/limit.\n" +
+			"- export_tabs: Export all tab metadata to a JSON Lines file at the given absolute path.\n" +
+			"- get_tab_content: Get the full text content and links of a tab by ID.\n" +
+			"- close_tab: Close a single tab by ID.\n" +
+			"Requires the pi-browser-control Firefox add-on to be installed and the daemon running.",
+		promptSnippet: "Control Firefox browser tabs (requires pi-browser-control add-on)",
 		promptGuidelines: [
-			"Use browser_list_tabs to discover tab IDs before calling browser_get_tab_content.",
+			"Use operation=list_tabs to discover tab IDs before calling get_tab_content or close_tab.",
 			"Requires Firefox with the pi-browser-control add-on running. Run /browser-control to install and test.",
-			"Use offset/limit to paginate — limit is capped to 500 per call.",
+			"Use offset/limit to paginate list_tabs — limit is capped to 500 per call.",
+			"Use operation=export_tabs to dump full tab metadata for all open Firefox tabs to a file.",
+			"The export output is JSON Lines format — one tab object per line.",
 		],
-		parameters: ListTabsParamsSchema,
+		parameters: BrowserControlParamsSchema,
 
-		async execute(_toolCallId, params: TListTabsParams, _signal, _onUpdate, _ctx) {
+		async execute(_toolCallId, params: TBrowserControlParams, _signal, _onUpdate, _ctx) {
 			try {
-				const result = await client.listTabs();
-				const { tabs } = result as { tabs: BrowserTab[] };
-				return {
-					...buildListTabsResult(tabs, params.offset, params.limit),
-					details: { ok: true },
-				};
-			} catch (err: unknown) {
-				return errorResult(err);
-			}
-		},
-	});
-
-	// -------------------------------------------------------------------------
-	// browser_export_tabs
-	// -------------------------------------------------------------------------
-
-	pi.registerTool({
-		name: "browser_export_tabs",
-		label: "Export Browser Tabs",
-		description:
-			"Export metadata for all open Firefox tabs to a JSON Lines file. Each line is a JSON object with id, windowId, index, url, normalizedUrl, title, favIconUrl, status, active, pinned, hidden, discarded, incognito, audible, mutedInfo, isArticle, isInReaderMode, lastAccessed, cookieStoreId. Does not export page content. Requires the pi-browser-control Firefox add-on.",
-		promptSnippet: "Export all open Firefox tab metadata to a JSONL file (requires pi-browser-control add-on)",
-		promptGuidelines: [
-			"Use browser_export_tabs to dump full tab metadata for all open Firefox tabs to a file.",
-			"The output is JSON Lines format — one tab object per line.",
-			"Requires Firefox with the pi-browser-control add-on running.",
-		],
-		parameters: ExportTabsParamsSchema,
-
-		async execute(_toolCallId, params: TExportTabsParams, _signal, _onUpdate, _ctx) {
-			try {
-				// Require an absolute path to avoid ambiguous cwd-relative writes.
-				if (!isAbsolute(params.path)) {
+				if (params.operation === "list_tabs") {
+					const result = await client.listTabs();
+					const { tabs } = result as { tabs: SlimBrowserTab[] };
 					return {
-						content: [{ type: "text" as const, text: `browser_export_tabs error: path must be absolute (got "${params.path}")` }],
-						details: { ok: false },
+						...buildListTabsResult(tabs, params.offset ?? 0, params.limit ?? 100),
+						details: { ok: true, operation: "list_tabs" as const },
 					};
 				}
-				const result = await client.listTabs();
-				const { tabs } = result as { tabs: BrowserTab[] };
-				// Exclude private-browsing tabs — their URLs/titles must not be
-				// written to persistent storage without the user's explicit intent.
-				const publicTabs = tabs.filter((t) => !t.incognito);
-				const skipped = tabs.length - publicTabs.length;
-				const jsonl = publicTabs.map((tab) => JSON.stringify(tab)).join("\n");
-				try {
-					fs.writeFileSync(params.path, jsonl, "utf-8");
-				} catch (writeErr: unknown) {
-					const msg = writeErr instanceof Error ? writeErr.message : String(writeErr);
-					return {
-						content: [{ type: "text" as const, text: `browser_export_tabs error: failed to write file: ${msg}` }],
-						details: { ok: false, error: msg },
-					};
-				}
-				const note = skipped > 0 ? ` (${skipped} private-browsing tab${skipped === 1 ? "" : "s"} excluded)` : "";
-				return {
-					content: [{ type: "text" as const, text: `Exported ${publicTabs.length} tabs to ${params.path}${note}` }],
-					details: { ok: true },
-				};
-			} catch (err: unknown) {
-				return errorResult(err);
-			}
-		},
-	});
 
-	// -------------------------------------------------------------------------
-	// browser_get_tab_content
-	// -------------------------------------------------------------------------
-	// Temporarily disabled by default (hangs on streaming/SPA tabs). Opt in via
-	// options.enableGetTabContent once executeScript is made timeout-safe.
-
-	if (options.enableGetTabContent) {
-		pi.registerTool({
-			name: "browser_get_tab_content",
-			label: "Get Browser Tab Content",
-			description:
-				"Get the full text content and links of a Firefox browser tab by tab ID. Use offset only for large documents when the first call was truncated. Requires the pi-browser-control Firefox add-on to be installed and the daemon running.",
-			promptSnippet:
-				"Get full text + links of a Firefox tab by ID (requires pi-browser-control add-on)",
-			promptGuidelines: [
-				"Call browser_list_tabs first to get a valid tabId before calling browser_get_tab_content.",
-				"Use offset only when the previous call returned a truncation hint and you need more content.",
-				"Links are only included in the first call (offset=0); subsequent paginated calls omit them.",
-				"Requires Firefox with the pi-browser-control add-on running.",
-			],
-			parameters: GetTabContentParamsSchema,
-
-			async execute(_toolCallId, params: TGetTabContentParams, _signal, _onUpdate, _ctx) {
-				try {
-					const result = await client.getTabContent(params.tabId, params.offset);
-					return {
-						...buildTabContentResult(result as TabContentData, params.offset),
-						details: { ok: true },
-					};
-				} catch (err: unknown) {
-					if (err instanceof SocketClientError) {
-						return errorResult(err);
+				if (params.operation === "export_tabs") {
+					const filePath = params.path;
+					if (!filePath || !isAbsolute(filePath)) {
+						return {
+							content: [{ type: "text" as const, text: `browser_control error: path must be absolute (got "${filePath ?? "(none)"}" )` }],
+							details: { ok: false },
+						};
 					}
-					return errorResult(err);
+					const result = await client.exportTabs();
+					const { tabs } = result as { tabs: FullBrowserTab[] };
+					const publicTabs = tabs.filter((t) => !t.incognito);
+					const skipped = tabs.length - publicTabs.length;
+					const jsonl = publicTabs.map((tab) => JSON.stringify(tab)).join("\n");
+					try {
+						fs.writeFileSync(filePath, jsonl, "utf-8");
+					} catch (writeErr: unknown) {
+						const msg = writeErr instanceof Error ? writeErr.message : String(writeErr);
+						return {
+							content: [{ type: "text" as const, text: `browser_control error: failed to write file: ${msg}` }],
+							details: { ok: false, error: msg },
+						};
+					}
+					const note = skipped > 0 ? ` (${skipped} private-browsing tab${skipped === 1 ? "" : "s"} excluded)` : "";
+					return {
+						content: [{ type: "text" as const, text: `Exported ${publicTabs.length} tabs to ${filePath}${note}` }],
+						details: { ok: true, operation: "export_tabs" as const },
+					};
 				}
-			},
-		});
-	}
+
+				if (params.operation === "get_tab_content") {
+					const result = await client.getTabContent(params.tabId!, params.offset ?? 0);
+					return {
+						...buildTabContentResult(result as TabContentData, params.offset ?? 0),
+						details: { ok: true, operation: "get_tab_content" as const },
+					};
+				}
+
+				if (params.operation === "close_tab") {
+					await client.closeTab(params.tabId!);
+					return {
+						content: [{ type: "text" as const, text: `Tab ${params.tabId!} closed.` }],
+						details: { ok: true, operation: "close_tab" as const, tabId: params.tabId! },
+					};
+				}
+
+				// Exhaustive check — compile error here if a new operation is added without handling
+				const _exhaustive: never = params.operation;
+				return _exhaustive;
+			} catch (err: unknown) {
+				return errorResult(err);
+			}
+		},
+
+		renderResult(result, { expanded, isPartial }, theme) {
+			if (isPartial) return new Text(theme.fg("muted", "…"), 0, 0);
+			const content = result.content as { type: string; text: string }[] | undefined;
+			if (!content || content.length === 0) {
+				return new Text(theme.fg("muted", "(no output)"), 0, 0);
+			}
+			const op = (result.details as { operation?: string } | undefined)?.operation;
+			if (op === "list_tabs") {
+				const DISPLAY_LIMIT = 10;
+				const header = content[0]!.text;
+				const tabLines = content.slice(1);
+				const total = tabLines.length;
+				const shown = expanded ? tabLines.slice(0, DISPLAY_LIMIT) : tabLines.slice(0, 3);
+				const hidden = total - shown.length;
+				let text = theme.fg("dim", header) + "\n";
+				text += shown.map(l => l.text).join("\n");
+				if (hidden > 0) {
+					text += "\n" + theme.fg("muted", `… ${hidden} more tab${hidden === 1 ? "" : "s"} — open logs to see all`);
+				}
+				return new Text(text, 0, 0);
+			}
+			return new Text(content[0]!.text, 0, 0);
+		},
+	});
 }

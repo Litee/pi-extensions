@@ -143,6 +143,67 @@ describe("runBrowserControlCommand — Install manifest", () => {
 });
 
 // ---------------------------------------------------------------------------
+// Build & install XPI
+// ---------------------------------------------------------------------------
+
+describe("runBrowserControlCommand — Build & install XPI", () => {
+	const ITEM_BUILD = "Build & install XPI (permanent add-on)";
+
+	it("shows Build item in menu when buildAddon is provided", async () => {
+		const { ctx, selectMock } = makeCtx(["Close"]);
+		await runBrowserControlCommand(ctx, makeDeps({ buildAddon: vi.fn() }));
+		const options = (selectMock.mock.calls as unknown as Array<[string, string[]]>)[0]?.[1] ?? [];
+		expect(options).toContain(ITEM_BUILD);
+	});
+
+	it("does NOT show Build item when buildAddon is not provided", async () => {
+		const { ctx, selectMock } = makeCtx(["Close"]);
+		await runBrowserControlCommand(ctx, makeDeps());
+		const options = (selectMock.mock.calls as unknown as Array<[string, string[]]>)[0]?.[1] ?? [];
+		expect(options).not.toContain(ITEM_BUILD);
+	});
+
+	it("notifies success with XPI path on ok:true", async () => {
+		const xpiPath = "/fake/web-ext-artifacts/pi_browser_control-0.1.0.xpi";
+		const { ctx, notifications } = makeCtx([ITEM_BUILD, "Close"]);
+		await runBrowserControlCommand(
+			ctx,
+			makeDeps({ buildAddon: vi.fn().mockResolvedValue({ ok: true, xpiPath }) }),
+		);
+		const successNotify = notifications.find(
+			(n) => n.type === "info" && n.message.includes("XPI built"),
+		);
+		expect(successNotify).toBeDefined();
+		expect(successNotify?.message).toContain(xpiPath);
+		expect(successNotify?.message).toContain("about:config");
+		expect(successNotify?.message).toContain("xpinstall.signatures.required");
+	});
+
+	it("notifies error on ok:false", async () => {
+		const { ctx, notifications } = makeCtx([ITEM_BUILD, "Close"]);
+		await runBrowserControlCommand(
+			ctx,
+			makeDeps({
+				buildAddon: vi.fn().mockResolvedValue({ ok: false, error: "web-ext not found" }),
+			}),
+		);
+		const errorNotify = notifications.find((n) => n.type === "error");
+		expect(errorNotify).toBeDefined();
+		expect(errorNotify?.message).toMatch(/Build failed.*web-ext not found/);
+	});
+
+	it("notifies 'Building XPI…' before calling buildAddon", async () => {
+		const xpiPath = "/fake/out.xpi";
+		const { ctx, notifications } = makeCtx([ITEM_BUILD, "Close"]);
+		await runBrowserControlCommand(
+			ctx,
+			makeDeps({ buildAddon: vi.fn().mockResolvedValue({ ok: true, xpiPath }) }),
+		);
+		expect(notifications[0]).toEqual({ message: "Building XPI with web-ext\u2026", type: "info" });
+	});
+});
+
+// ---------------------------------------------------------------------------
 // extraItems
 // ---------------------------------------------------------------------------
 

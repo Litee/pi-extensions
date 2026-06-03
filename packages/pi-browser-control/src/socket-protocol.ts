@@ -4,7 +4,7 @@
  * Wire format: [UInt32 LE length][UTF-8 JSON body]
  * (Unlike NM framing, the socket protocol always uses little-endian.)
  *
- * Request:  { id, op:"listTabs"|"getTabContent"|"status"|"ping", params? }
+ * Request:  { id, op:"listTabs"|"exportTabs"|"getTabContent"|"closeTab"|"status"|"ping", params? }
  * Response: { id, ok:true, result:... } | { id, ok:false, error:{code,message} }
  */
 
@@ -43,7 +43,7 @@ export class Decoder {
 // Type shapes
 // ---------------------------------------------------------------------------
 
-export type SocketOp = "listTabs" | "getTabContent" | "status" | "ping";
+export type SocketOp = "listTabs" | "exportTabs" | "getTabContent" | "closeTab" | "status" | "ping";
 
 export interface SocketRequest {
 	id: string;
@@ -69,7 +69,9 @@ export interface SocketResponse {
 
 const VALID_OPS: ReadonlySet<string> = new Set<SocketOp>([
 	"listTabs",
+	"exportTabs",
 	"getTabContent",
+	"closeTab",
 	"status",
 	"ping",
 ]);

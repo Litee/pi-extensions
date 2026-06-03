@@ -29,6 +29,7 @@ export interface BrowserControlCommandDeps {
 	}>;
 	testConnection: () => Promise<{ ok: boolean; message: string }>;
 	installManifest: () => Promise<{ ok: true; path: string } | { ok: false; error: string }>;
+	buildAddon?: () => Promise<{ ok: true; xpiPath: string } | { ok: false; error: string }>;
 	extraItems?: ExtraMenuItem[];
 }
 
@@ -43,6 +44,7 @@ export async function runBrowserControlCommand(
 	const ITEM_STATUS = "Status";
 	const ITEM_TEST = "Test connection";
 	const ITEM_INSTALL = "Install Firefox native-messaging manifest";
+	const ITEM_BUILD = "Build & install XPI (permanent add-on)";
 	const ITEM_CLOSE = "Close";
 
 	while (true) {
@@ -52,6 +54,7 @@ export async function runBrowserControlCommand(
 			ITEM_STATUS,
 			ITEM_TEST,
 			ITEM_INSTALL,
+			...(deps.buildAddon ? [ITEM_BUILD] : []),
 			...extraLabels,
 			ITEM_CLOSE,
 		]);
@@ -94,6 +97,17 @@ export async function runBrowserControlCommand(
 				ctx.ui.notify(`Native-messaging manifest installed to ${r.path}`, "info");
 			} else {
 				ctx.ui.notify(`Install failed: ${r.error}`, "error");
+			}
+		} else if (choice === ITEM_BUILD && deps.buildAddon) {
+			ctx.ui.notify("Building XPI with web-ext…", "info");
+			const r = await deps.buildAddon();
+			if (r.ok) {
+				ctx.ui.notify(
+					`XPI built: ${r.xpiPath}\n\nTo install permanently:\n\nRequires Firefox ESR, Developer Edition, or Nightly (standard Firefox blocks unsigned add-ons).\n\n1. Open about:config → set xpinstall.signatures.required = false\n2. Open about:addons → gear icon → Install Add-on From File → select the XPI above\n3. The add-on will now survive Firefox restarts.`,
+					"info",
+				);
+			} else {
+				ctx.ui.notify(`Build failed: ${r.error}`, "error");
 			}
 		} else {
 			// Extra items
