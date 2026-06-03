@@ -19,7 +19,6 @@ import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { handleSessionStart } from "../src/index.js";
-import { RUNSTATE_ENTRY_TYPE } from "../src/persistence.js";
 
 interface StubPi {
 	sendMessage: ReturnType<typeof vi.fn>;
@@ -46,44 +45,15 @@ describe("pi-local-issue-watcher scheduler lifecycle", () => {
 		rmSync(dbRoot, { recursive: true, force: true });
 	});
 
-	it("handleSessionStart returns a started, non-paused result on a fresh dbRoot", async () => {
+	it("handleSessionStart returns a started result on a fresh dbRoot", async () => {
 		const pi = makePi();
 		const ctx = {
-			sessionManager: {
-				getEntries: () => [
-					// Explicit run-state = not paused so the watcher arms itself.
-					{
-						type: "custom",
-						customType: RUNSTATE_ENTRY_TYPE,
-						data: { savedAt: Date.now(), paused: false, items: [], baselines: {} },
-					},
-				],
-			},
+			sessionManager: { getEntries: () => [] },
 			hasUI: false,
 		};
 		const result = await handleSessionStart({ pi: pi as never, ctx: ctx, dbRoot });
 		expect(result.started).toBe(true);
-		expect(result.paused).toBe(false);
 		// Snapshot reflects the single sample issue we wrote above.
 		expect(Object.keys(result.snapshot).length).toBe(1);
-	});
-
-	it("handleSessionStart honours a persisted paused run-state", async () => {
-		const pi = makePi();
-		const ctx = {
-			sessionManager: {
-				getEntries: () => [
-					{
-						type: "custom",
-						customType: RUNSTATE_ENTRY_TYPE,
-						data: { savedAt: Date.now(), paused: true, items: [], baselines: {} },
-					},
-				],
-			},
-			hasUI: false,
-		};
-		const result = await handleSessionStart({ pi: pi as never, ctx: ctx, dbRoot });
-		expect(result.started).toBe(true);
-		expect(result.paused).toBe(true);
 	});
 });

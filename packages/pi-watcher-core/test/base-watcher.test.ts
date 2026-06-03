@@ -89,7 +89,6 @@ function makeCtx(entries: unknown[] = []): unknown {
 
 function makeCtxWithState(
   overrides: Partial<{
-    paused: boolean
     enabled: boolean
     displayMode: string
     watches: StubWatch[]
@@ -100,7 +99,6 @@ function makeCtxWithState(
     customType: 'stub-watcher:state',
     data: {
       savedAt: Date.now(),
-      paused: overrides.paused ?? false,
       enabled: overrides.enabled ?? false,
       displayMode: overrides.displayMode ?? 'statusline',
       watches: overrides.watches ?? [],
@@ -212,9 +210,6 @@ class StubWatcher extends BaseWatcher<StubWatch, StubBaseline, StubEvent> {
   get testBaselines() {
     return this.baselines
   }
-  get testPaused() {
-    return this.paused
-  }
   get testEnabled() {
     return this.enabled
   }
@@ -273,7 +268,6 @@ function makeCommandCtx(stub: StubWatcher, overrides: Partial<CommandCtx> = {}):
     state: (stub as unknown as { _currentState(): WatcherState })._currentState(),
     browse: () => Promise.resolve('stay' as const),
     refresh: () => {},
-    toggle: () => {},
     setDisplayMode: () => {},
     setUserDefault: () => {},
     confirm: () => Promise.resolve(true),
@@ -292,13 +286,6 @@ function makeWatcher(piOverride?: ExtensionAPI) {
 // ---------------------------------------------------------------------------
 
 describe('onSessionStart', () => {
-  it('rehydrates paused state from session log', async () => {
-    const { watcher } = makeWatcher()
-    const ctx = makeCtxWithState({ paused: true })
-    await watcher.onSessionStart(ctx)
-    expect(watcher.testPaused).toBe(true)
-  })
-
   it('rehydrates enabled and displayMode from session log', async () => {
     const { watcher } = makeWatcher()
     const ctx = makeCtxWithState({ enabled: true, displayMode: 'statusline' })
@@ -317,7 +304,7 @@ describe('onSessionStart', () => {
     expect(watcher.testWatches.get('w1')).toBeDefined()
   })
 
-  it('starts polling when there are active watches and not paused', async () => {
+  it('starts polling when there are active watches', async () => {
     vi.useFakeTimers()
     const { watcher } = makeWatcher()
     const ctx = makeCtxWithState({
@@ -326,18 +313,6 @@ describe('onSessionStart', () => {
     await watcher.onSessionStart(ctx)
     expect(watcher.testScheduler.isRunning).toBe(true)
     watcher.stopPolling()
-    vi.useRealTimers()
-  })
-
-  it('does not start polling when paused', async () => {
-    vi.useFakeTimers()
-    const { watcher } = makeWatcher()
-    const ctx = makeCtxWithState({
-      paused: true,
-      watches: [{ id: 'w1', label: 'Watch 1', terminal: false, consecutiveErrors: 0 }],
-    })
-    await watcher.onSessionStart(ctx)
-    expect(watcher.testScheduler.isRunning).toBe(false)
     vi.useRealTimers()
   })
 
@@ -470,15 +445,6 @@ describe('pollOnce', () => {
     vi.useRealTimers()
   })
 
-  it('does not call detectChanges when paused', async () => {
-    const { watcher } = makeWatcher()
-    const detectFn = vi.fn()
-    watcher.detectChangesFn = detectFn
-    watcher.testWatches.set('w1', { id: 'w1', label: 'L', terminal: false, consecutiveErrors: 0 })
-    ;(watcher as unknown as { paused: boolean }).paused = true
-    await watcher.pollOnce()
-    expect(detectFn).not.toHaveBeenCalled()
-  })
 
   it('stores the new baseline after detectChanges', async () => {
     const { watcher } = makeWatcher()
@@ -581,7 +547,6 @@ describe('writeState', () => {
     ]
     expect(type).toBe('stub-watcher:state')
     expect(typeof data['savedAt']).toBe('number')
-    expect(data['paused']).toBe(false)
     expect(Array.isArray(data['watches'])).toBe(true)
     expect((data['watches'] as unknown[]).length).toBe(1)
   })
@@ -600,12 +565,12 @@ describe('writeState', () => {
 // ---------------------------------------------------------------------------
 
 describe('buildMenu', () => {
-  it('always includes browse, paused, and close items', () => {
+  it('always includes browse and close items', () => {
     const { watcher } = makeWatcher()
     const menu = watcher.buildMenu()
     const ids = menu.map((m) => m.id)
     expect(ids).toContain('browse')
-    expect(ids).toContain('paused')
+    expect(ids).not.toContain('paused')
     expect(ids).toContain('close')
   })
 
@@ -682,46 +647,9 @@ describe('executeTool', () => {
     expect(addWatchSpy).toHaveBeenCalledOnce()
   })
 
-  it('pause sets paused = true and stops polling', async () => {
-    vi.useFakeTimers()
-    const { watcher } = makeWatcher()
-    watcher.testWatches.set('w1', { id: 'w1', label: 'L', terminal: false, consecutiveErrors: 0 })
-    watcher.startPolling()
-    expect(watcher.testScheduler.isRunning).toBe(true)
-    const result = await watcher.executeTool({ action: 'pause' })
-    expect(watcher.testPaused).toBe(true)
-    expect(watcher.testScheduler.isRunning).toBe(false)
-    expect(result.details['changed']).toBe(true)
-    vi.useRealTimers()
-  })
 
-  it('pause is idempotent when already paused', async () => {
-    const { watcher } = makeWatcher()
-    ;(watcher as unknown as { paused: boolean }).paused = true
-    const result = await watcher.executeTool({ action: 'pause' })
-    expect(result.details['changed']).toBe(false)
-    expect(result.content[0]?.text).toContain('already paused')
-  })
 
-  it('resume sets paused = false and starts polling when active watches exist', async () => {
-    vi.useFakeTimers()
-    const { watcher } = makeWatcher()
-    ;(watcher as unknown as { paused: boolean }).paused = true
-    watcher.testWatches.set('w1', { id: 'w1', label: 'L', terminal: false, consecutiveErrors: 0 })
-    const result = await watcher.executeTool({ action: 'resume' })
-    expect(watcher.testPaused).toBe(false)
-    expect(watcher.testScheduler.isRunning).toBe(true)
-    expect(result.details['changed']).toBe(true)
-    watcher.stopPolling()
-    vi.useRealTimers()
-  })
 
-  it('resume is idempotent when not paused', async () => {
-    const { watcher } = makeWatcher()
-    const result = await watcher.executeTool({ action: 'resume' })
-    expect(result.details['changed']).toBe(false)
-    expect(result.content[0]?.text).toContain('not paused')
-  })
 
   it('remove with valid watchId removes watch and baseline', async () => {
     const { watcher } = makeWatcher()
@@ -757,13 +685,12 @@ describe('executeTool', () => {
     expect(result.content[0]?.text).toContain('remove requires a watchId')
   })
 
-  it('status returns active count and paused state', async () => {
+  it('status returns active count', async () => {
     const { watcher } = makeWatcher()
     watcher.testWatches.set('w1', { id: 'w1', label: 'L', terminal: false, consecutiveErrors: 0 })
     watcher.testWatches.set('w2', { id: 'w2', label: 'L2', terminal: true, consecutiveErrors: 0 })
     const result = await watcher.executeTool({ action: 'status' })
     expect(result.details['activeCount']).toBe(1)
-    expect(result.details['paused']).toBe(false)
     expect(result.content[0]?.text).toContain('1 active watch')
   })
 
@@ -995,16 +922,6 @@ describe('statusLabel', () => {
     expect(result.content[0]?.text).not.toContain('stub-watcher:')
   })
 
-  it('custom statusLabel appears in executeTool pause response', async () => {
-    class LabeledWatcher extends StubWatcher {
-      override get statusLabel() { return 'stub' }
-    }
-    const pi = makePi()
-    const watcher = new LabeledWatcher({ pi, now: () => 0 })
-    const result = await watcher.executeTool({ action: 'pause' })
-    expect(result.content[0]?.text).toContain('stub:')
-    expect(result.content[0]?.text).not.toContain('stub-watcher:')
-  })
 
   it('custom statusLabel appears in pollWatch error threshold message', async () => {
     class LabeledWatcher extends StubWatcher {
@@ -1122,7 +1039,6 @@ describe('browseCount', () => {
   it('returns "activeCount/watchCount"', () => {
     const { watcher } = makeWatcher()
     const state: WatcherState = {
-      paused: false,
       pollIntervalMs: 60_000,
       enabled: false,
       displayMode: 'widget',
@@ -1137,7 +1053,6 @@ describe('browseCount', () => {
   it('buildMenu Browse item label shows activeCount/watchCount', () => {
     const { watcher } = makeWatcher()
     const state: WatcherState = {
-      paused: false,
       pollIntervalMs: 60_000,
       enabled: false,
       displayMode: 'widget',
@@ -1155,7 +1070,7 @@ describe('browseCount', () => {
     const { watcher } = makeWatcher()
     const items = watcher.buildMenu()
     const browse = items.find(i => i.id === 'browse')!
-    const state: WatcherState = { watchCount: 0, activeCount: 0, paused: false, pollIntervalMs: 60_000, enabled: false, displayMode: 'statusline', hasErrors: false }
+    const state: WatcherState = { watchCount: 0, activeCount: 0, pollIntervalMs: 60_000, enabled: false, displayMode: 'statusline', hasErrors: false }
     expect(browse.disabled?.(state)).toBe(true)
   })
 
@@ -1163,7 +1078,7 @@ describe('browseCount', () => {
     const { watcher } = makeWatcher()
     const items = watcher.buildMenu()
     const browse = items.find(i => i.id === 'browse')!
-    const state: WatcherState = { watchCount: 3, activeCount: 2, paused: false, pollIntervalMs: 60_000, enabled: false, displayMode: 'statusline', hasErrors: false }
+    const state: WatcherState = { watchCount: 3, activeCount: 2, pollIntervalMs: 60_000, enabled: false, displayMode: 'statusline', hasErrors: false }
     expect(browse.disabled?.(state)).toBe(false)
   })
 })
@@ -1263,22 +1178,19 @@ describe('executePurge', () => {
 })
 
 describe('browseHeader', () => {
-  const call = (count: number, filtered: number, paused?: boolean, activeCount?: number) => {
+  const call = (count: number, filtered: number, activeCount?: number) => {
     const { watcher } = makeWatcher()
-    return (watcher as unknown as { browseHeader: (s: { count: number; filtered: number; paused?: boolean; activeCount?: number }) => string }).browseHeader({ count, filtered, ...(paused !== undefined ? { paused } : {}), ...(activeCount !== undefined ? { activeCount } : {}) })
+    return (watcher as unknown as { browseHeader: (s: { count: number; filtered: number; activeCount?: number }) => string }).browseHeader({ count, filtered, ...(activeCount !== undefined ? { activeCount } : {}) })
   }
 
   it('shows (active/total) format', () => {
-    expect(call(3, 3, undefined, 2)).toBe('(2/3)')
+    expect(call(3, 3, 2)).toBe('(2/3)')
   })
 
   it('shows (total/total) when activeCount not provided', () => {
     expect(call(3, 3)).toBe('(3/3)')
   })
 
-  it('adds PAUSED suffix', () => {
-    expect(call(3, 3, true, 2)).toBe('(2/3) · PAUSED')
-  })
 })
 
 // ---------------------------------------------------------------------------
@@ -1324,27 +1236,6 @@ describe('commandName', () => {
 })
 
 // ---------------------------------------------------------------------------
-// Change 6: browseHeader paused
-// ---------------------------------------------------------------------------
-
-describe('browseHeader paused', () => {
-  it('shows PAUSED suffix when paused=true', () => {
-    const { watcher } = makeWatcher()
-    const result = (watcher as unknown as { browseHeader: (s: { count: number; filtered: number; paused?: boolean; activeCount?: number }) => string }).browseHeader({ count: 3, filtered: 3, paused: true })
-    expect(result).toBe('(3/3) · PAUSED')
-  })
-  it('no suffix when paused=false', () => {
-    const { watcher } = makeWatcher()
-    const result = (watcher as unknown as { browseHeader: (s: { count: number; filtered: number; paused?: boolean; activeCount?: number }) => string }).browseHeader({ count: 3, filtered: 3, paused: false })
-    expect(result).toBe('(3/3)')
-  })
-  it('shows (active/total) PAUSED when activeCount provided', () => {
-    const { watcher } = makeWatcher()
-    const result = (watcher as unknown as { browseHeader: (s: { count: number; filtered: number; paused?: boolean; activeCount?: number }) => string }).browseHeader({ count: 5, filtered: 2, paused: true, activeCount: 2 })
-    expect(result).toBe('(2/5) · PAUSED')
-  })
-})
-
 
 // ---------------------------------------------------------------------------
 // commandHandler menu — preserves selection position on rerender
@@ -1537,8 +1428,7 @@ describe('_rehydrateState — baselines from session log', () => {
       customType: 'stub-watcher:state',
       data: {
         savedAt: Date.now(),
-        paused: false,
-        enabled: false,
+                enabled: false,
         displayMode: 'widget',
         watches: [{ id: 'w1', label: 'Watch 1', terminal: false, consecutiveErrors: 0 }],
         baselines: {
@@ -1559,8 +1449,7 @@ describe('_rehydrateState — baselines from session log', () => {
       customType: 'stub-watcher:state',
       data: {
         savedAt: Date.now(),
-        paused: false,
-        enabled: false,
+                enabled: false,
         displayMode: 'widget',
         watches: [],
         baselines: {
@@ -1580,8 +1469,7 @@ describe('_rehydrateState — baselines from session log', () => {
       customType: 'stub-watcher:state',
       data: {
         savedAt: Date.now(),
-        paused: false,
-        enabled: false,
+                enabled: false,
         displayMode: 'widget',
         watches: [],
         baselines: ['not-an-object'],  // Array → should be skipped
@@ -1682,21 +1570,6 @@ describe('refreshStatus — statusline with no active watches', () => {
     expect(text).toContain('(errors)')
   })
 
-  it('appends (paused) suffix when paused', async () => {
-    const { watcher } = makeWatcher()
-    const ctx = makeCtxWithState({
-      paused: true,
-      displayMode: 'statusline',
-      watches: [{ id: 'w1', label: 'L', terminal: false, consecutiveErrors: 0 }],
-    })
-    await watcher.onSessionStart(ctx)
-    watcher.stopPolling()
-    const ui = (ctx as { ui: { setStatus: ReturnType<typeof vi.fn> } }).ui
-    ui.setStatus.mockClear()
-    watcher.refreshStatus()
-    const [, text] = ui.setStatus.mock.calls[0] as [string, string]
-    expect(text).toContain('(paused)')
-  })
 })
 
 describe('_seedMissingBaselines — error path', () => {
@@ -1779,17 +1652,6 @@ describe('executeTool — status with errors', () => {
   })
 })
 
-describe('executeTool — add when paused', () => {
-  it('add does not start polling when watcher is paused', async () => {
-    const { watcher } = makeWatcher()
-    ;(watcher as unknown as { paused: boolean }).paused = true
-    const addWatchSpy = vi.spyOn(watcher, 'addWatch')
-    await watcher.executeTool({ action: 'add', id: 'w1' })
-    expect(addWatchSpy).toHaveBeenCalledOnce()
-    // Scheduler should NOT be running since paused
-    expect(watcher.testScheduler.isRunning).toBe(false)
-  })
-})
 
 describe('executeTool — remove with fallback id params', () => {
   it('remove accepts "id" as fallback when watchId is absent', async () => {
@@ -2000,18 +1862,6 @@ describe('buildMenu — close item run callback', () => {
   })
 })
 
-describe('buildMenu — paused item run callback', () => {
-  it('paused item calls ctx.toggle("paused") and returns rerender', async () => {
-    const stub = makeStub()
-    const menu = stub.buildMenu()
-    const pausedItem = menu.find(m => m.id === 'paused')!
-    const ctx = makeCommandCtx(stub)
-    const toggleSpy = vi.spyOn(ctx, 'toggle')
-    const result = await pausedItem.run(ctx)
-    expect(toggleSpy).toHaveBeenCalledWith('paused')
-    expect(result).toBe('rerender')
-  })
-})
 
 describe('buildMenu — refresh item run callback (scan watcher)', () => {
   it('refresh item calls ctx.refresh() and returns rerender', async () => {
@@ -2054,7 +1904,6 @@ describe('buildMenu — userDefaultDisplayMode save fails', () => {
       state: (stub as unknown as { _currentState(): WatcherState })._currentState(),
       browse: () => Promise.resolve('stay' as const),
       refresh: () => {},
-      toggle: () => {},
       setDisplayMode: () => {},
       setUserDefault: () => {},
       confirm: () => Promise.resolve(true),
@@ -2149,73 +1998,6 @@ describe('onSessionStart — user-tool with enabled=true skips removeToolFromAct
 // commandHandler — _makeCommandCtx branches through real menu item run
 // ---------------------------------------------------------------------------
 
-describe('commandHandler — _makeCommandCtx toggle(paused) paths', () => {
-  it('toggle("paused") from paused=false sets paused=true and stops polling', async () => {
-    vi.useFakeTimers()
-    const { watcher } = makeWatcher()
-    watcher.testWatches.set('w1', { id: 'w1', label: 'L', terminal: false, consecutiveErrors: 0 })
-    watcher.startPolling()
-    expect(watcher.testScheduler.isRunning).toBe(true)
-
-    // Override openMenuView to invoke the "paused" item's run callback
-    const openMenuViewMock = vi.mocked(browseViewModule.openMenuView)
-    openMenuViewMock.mockImplementationOnce(async (_title, getItems) => {
-      const items = getItems()
-      const pausedItem = items.find(i => i.id === 'paused')
-      await pausedItem?.run()
-    })
-
-    const ctx = {
-      hasUI: true,
-      ui: {
-        hasUI: true,
-        notify: vi.fn(),
-        setStatus: vi.fn(),
-        theme: { fg: (_: string, t: string) => t, bold: (t: string) => t },
-        custom: vi.fn(),
-      },
-      sessionManager: { getEntries: () => [] },
-    }
-    await watcher.commandHandler()(undefined, ctx)
-
-    expect(watcher.testPaused).toBe(true)
-    expect(watcher.testScheduler.isRunning).toBe(false)
-    vi.useRealTimers()
-  })
-
-  it('toggle("paused") from paused=true with active watches starts polling', async () => {
-    vi.useFakeTimers()
-    const { watcher } = makeWatcher()
-    watcher.testWatches.set('w1', { id: 'w1', label: 'L', terminal: false, consecutiveErrors: 0 })
-    ;(watcher as unknown as { paused: boolean }).paused = true
-
-    const openMenuViewMock = vi.mocked(browseViewModule.openMenuView)
-    openMenuViewMock.mockImplementationOnce(async (_title, getItems) => {
-      const items = getItems()
-      const pausedItem = items.find(i => i.id === 'paused')
-      await pausedItem?.run()
-    })
-
-    const ctx = {
-      hasUI: true,
-      ui: {
-        hasUI: true,
-        notify: vi.fn(),
-        setStatus: vi.fn(),
-        theme: { fg: (_: string, t: string) => t, bold: (t: string) => t },
-        custom: vi.fn(),
-      },
-      sessionManager: { getEntries: () => [] },
-    }
-    await watcher.commandHandler()(undefined, ctx)
-
-    expect(watcher.testPaused).toBe(false)
-    expect(watcher.testScheduler.isRunning).toBe(true)
-    watcher.stopPolling()
-    vi.useRealTimers()
-  })
-})
-
 describe('commandHandler — _makeCommandCtx setDisplayMode paths', () => {
   function makeCtxForCommandHandler() {
     return {
@@ -2284,7 +2066,7 @@ describe('commandHandler — _makeCommandCtx setDisplayMode without widget', () 
     const openMenuViewMock = vi.mocked(browseViewModule.openMenuView)
     openMenuViewMock.mockImplementationOnce((_title, getItems) => {
       getItems()
-      // No displayMode item for non-widget watchers; use another item like paused
+      // No displayMode item for non-widget watchers
       // Actually, let's test by invoking the setDisplayMode directly through a custom item
       return Promise.resolve()
     })

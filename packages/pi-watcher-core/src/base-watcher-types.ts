@@ -54,7 +54,6 @@ export interface WatchLike {
  * the watcher instance.
  */
 export interface WatcherState {
-  paused: boolean
   pollIntervalMs: number
   /** Whether the LLM tool is active in the current session (user-tool only). */
   enabled: boolean
@@ -217,8 +216,6 @@ export interface CommandCtx {
   browse(): Promise<'stay' | 'close'>
   /** Force a synchronous status refresh (re-pins the status row). */
   refresh(): void
-  /** Toggle `paused` and start/stop polling accordingly. */
-  toggle(flag: 'paused'): void
   /** Set the session-scoped display mode (widget ↔ statusline). */
   setDisplayMode(mode: 'widget' | 'statusline'): void
   /** Persist the user-default display mode preference. Pass `undefined` to clear. */
@@ -317,7 +314,7 @@ export interface BrowseViewOptions<TWatch> {
   /** Returns true if `watch` matches `query`. */
   filter(watch: TWatch, query: string): boolean
   /** Header line above the list, e.g. `"12 watches (3 filtered)"`. */
-  header(state: { count: number; filtered: number; paused?: boolean; activeCount?: number }): string
+  header(state: { count: number; filtered: number; activeCount?: number }): string
 }
 
 // ---------------------------------------------------------------------------
@@ -338,9 +335,8 @@ export interface WatcherWidgetOptions<TWatch> {
   getWatches(): readonly TWatch[]
   /** Optional per-row action buttons shown in the widget. */
   rowActions?: ReadonlyArray<RowAction<TWatch>>
-  /** Returns current paused state for display in the widget header. */
-  getPaused?(): boolean
 }
+
 
 // ---------------------------------------------------------------------------
 // Widget lifecycle interface (returned by createWatcherWidget)

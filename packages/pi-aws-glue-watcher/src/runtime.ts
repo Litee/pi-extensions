@@ -66,7 +66,6 @@ export interface Runtime {
 	pi: Pick<ExtensionAPI, "sendMessage" | "appendEntry" | "events">;
 	client: GlueClient;
 	watches: WatchMap;
-	paused: boolean;
 	enabled: boolean;
 	displayMode: "widget" | "statusline";
 	/**
@@ -84,7 +83,6 @@ export function makeRuntime(pi: Runtime["pi"], client: GlueClient): Runtime {
 		pi,
 		client,
 		watches: {},
-		paused: false,
 		enabled: false,
 		displayMode: "widget",
 		schedulers: new Map(),
@@ -108,7 +106,6 @@ export function refreshStatus(rt: Runtime): void {
 	const intervalMs = minIntervalMs(rt);
 	const result = buildStatusLine({
 		watches: rt.watches,
-		paused: rt.paused,
 		pollIntervalMs: intervalMs,
 		hasErrors,
 	});
@@ -156,7 +153,6 @@ export function minIntervalMs(rt: Runtime): number {
  *   back-to-back chat messages when multiple watches are started together.
  */
 export function startWatchPolling(rt: Runtime, watchId: string, delayMs = 0): void {
-	if (rt.paused) return;
 	const watch = rt.watches[watchId];
 	if (!watch || watch.terminal) return;
 	if (rt.schedulers.has(watchId) && rt.schedulers.get(watchId)!.isRunning) return;
@@ -223,7 +219,6 @@ export function stopPolling(rt: Runtime): void {
  * and stops the scheduler when the run reaches a terminal state.
  */
 export async function pollWatch(rt: Runtime, watchId: string): Promise<void> {
-	if (rt.paused) return;
 	const watch = rt.watches[watchId];
 	if (!watch || watch.terminal) {
 		stopWatchPolling(rt, watchId);
@@ -332,7 +327,6 @@ export async function pollWatch(rt: Runtime, watchId: string): Promise<void> {
  * convenience path; in production each watch has its own scheduler.
  */
 export async function pollOnce(rt: Runtime): Promise<void> {
-	if (rt.paused) return;
 	const active = Object.values(rt.watches).filter((w) => !w.terminal);
 	if (active.length === 0) {
 		refreshStatus(rt);

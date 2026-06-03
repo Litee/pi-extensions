@@ -150,26 +150,8 @@ describe("buildChatMessageContent", () => {
 // buildStartupAnnouncement when paused (#0010)
 // ---------------------------------------------------------------------------
 
-describe("buildStartupAnnouncement when paused", () => {
-	it("drops the count summary entirely for the paused state", () => {
-		const snap: Snapshot = {
-			"/a": issue("open"),
-			"/b": issue("in_progress"),
-			"/c": issue("done"),
-		};
-		const msg = buildStartupAnnouncement("paused", "/abs/db", 60_000, snap);
-		expect(msg).toBe("local-issue-watcher: paused");
-		expect(msg).not.toMatch(/open|in_progress|done|total/);
-	});
-
-	it("paused line is exactly the prefix — no dbRoot, no poll, no counts", () => {
-		const msg = buildStartupAnnouncement("paused", "/abs/db", 60_000, {
-			"/a": issue("open"),
-		});
-		expect(msg).toBe("local-issue-watcher: paused");
-	});
-
-	it("'active' still includes open count", () => {
+describe("buildStartupAnnouncement — active state", () => {
+	it("'active' includes open count", () => {
 		const msg = buildStartupAnnouncement("active", "/abs/db", 60_000, {
 			"/a": issue("open"),
 		});
@@ -190,12 +172,6 @@ describe("buildStartupAnnouncement has no last-update segment", () => {
 		expect(msg).toBe("local-issue-watcher: active (1 open)");
 		expect(msg).not.toMatch(/last update/);
 		expect(msg).not.toMatch(/\b(never|just now|\dm ago|\dh ago|\dd ago)\b/);
-	});
-
-	it("paused state is exactly the prefix — no 'last update:', no dbRoot, no poll", () => {
-		const msg = buildStartupAnnouncement("paused", "/abs/db", 60_000, {});
-		expect(msg).toBe("local-issue-watcher: paused");
-		expect(msg).not.toMatch(/last update/);
 	});
 });
 

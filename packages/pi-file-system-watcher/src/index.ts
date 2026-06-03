@@ -3,8 +3,7 @@
  *
  * The `file_system_watcher` tool is registered and active from
  * session_start. The `/file-system-watcher` command opens an interactive
- * TUI menu for pause/resume and display-mode toggles without requiring
- * an LLM round-trip.
+ * TUI menu for display-mode toggles without requiring an LLM round-trip.
  */
 
 import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";

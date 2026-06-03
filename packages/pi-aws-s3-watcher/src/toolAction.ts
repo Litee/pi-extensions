@@ -34,8 +34,6 @@ export const S3WatcherParams = Type.Object({
       Type.Literal('add'),
       Type.Literal('remove'),
       Type.Literal('list'),
-      Type.Literal('pause'),
-      Type.Literal('resume'),
       Type.Literal('status'),
     ],
     {
@@ -43,8 +41,7 @@ export const S3WatcherParams = Type.Object({
         'add: start watching an S3 object URI. ' +
         'remove: stop watching by watchId. ' +
         'list: show all watches. ' +
-        'pause / resume: toggle polling globally (persisted). ' +
-        'status: show runtime state (paused, watch count, poll interval).',
+        'status: show runtime state (watch count, poll interval).',
     },
   ),
   uri: Type.Optional(

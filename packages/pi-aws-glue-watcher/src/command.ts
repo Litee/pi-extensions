@@ -21,8 +21,6 @@ import type { GlueClient } from "./glue-client.js";
 import { writeState } from "./persistence.js";
 import {
 	minIntervalMs,
-	refreshStatus,
-	startPolling,
 	stopPolling,
 	stopWatchPolling,
 	toggleDisplayMode,
@@ -36,7 +34,6 @@ import { WatchesView } from "./ui/watches-view.js";
 
 export const MENU_TITLE = "Glue Watcher";
 export const ITEM_BROWSE_PREFIX = "Browse watches";
-export const ITEM_PAUSED_PREFIX = "Paused:";
 export const ITEM_DISPLAY_PREFIX = "Display mode:";
 export const ITEM_USER_DEFAULT_PREFIX = "User default display mode:";
 export const ITEM_CLOSE = "Close";
@@ -93,25 +90,15 @@ export async function runGlueWatcherCommand(
 		const userDefault: DisplayMode | undefined = loadConfig().defaultDisplayMode;
 
 		const browseItem = `${ITEM_BROWSE_PREFIX} (${watchCount})`;
-		const pausedItem = `${ITEM_PAUSED_PREFIX} ${rt.paused ? "on" : "off"}`;
 		const displayItem = `${ITEM_DISPLAY_PREFIX} ${sessionMode}`;
 		const userDefaultItem = `${ITEM_USER_DEFAULT_PREFIX} ${userDefaultLabel(userDefault)}`;
 
-		const items = [browseItem, pausedItem, displayItem, userDefaultItem, ITEM_CLOSE];
+		const items = [browseItem, displayItem, userDefaultItem, ITEM_CLOSE];
 		const choice = await select(MENU_TITLE, items);
 		if (!choice || choice === ITEM_CLOSE) return;
 
 		if (choice.startsWith(ITEM_BROWSE_PREFIX)) {
 			await openBrowseView(ctx, rt, client);
-			continue;
-		}
-
-		if (choice.startsWith(ITEM_PAUSED_PREFIX)) {
-			togglePaused(rt);
-			surface?.notify?.(
-				`glue-watcher: ${rt.paused ? "paused" : "resumed"}.`,
-				"info",
-			);
 			continue;
 		}
 
@@ -141,18 +128,6 @@ export async function runGlueWatcherCommand(
 			continue;
 		}
 	}
-}
-
-function togglePaused(rt: Runtime): void {
-	rt.paused = !rt.paused;
-	if (rt.paused) {
-		stopPolling(rt);
-	} else {
-		const hasActive = Object.values(rt.watches).some((w) => !w.terminal);
-		if (hasActive && rt.schedulers.size === 0) startPolling(rt);
-	}
-	writeState(rt.pi, rt);
-	refreshStatus(rt);
 }
 
 async function openBrowseView(

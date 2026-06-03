@@ -8,18 +8,16 @@
  * Menu items (in order):
  *   1. Browse issues (N open)  → opens the TUI picker via makeInfoTuiPicker
  *   2. Refresh                 → forced poll-equivalent scan + diff
- *   3. Paused: on/off          → toggle pause state
- *   4. Close                   → exit the loop
+ *   3. Close                   → exit the loop
  */
 
 import { existsSync } from "node:fs";
 
 import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
 
-import { buildParseFailureToast, type WatcherState } from "./format.js";
+import { type WatcherState } from "./format.js";
 import { handleInfo, type InfoPicker } from "./infoHandler.js";
 import { makeInfoTuiPicker } from "./infoTui.js";
-import { persistRunState } from "./persistence.js";
 import { scanIssueFiles } from "./scanner.js";
 import type { Snapshot } from "./types.js";
 
@@ -38,7 +36,6 @@ export const STATUS_KEY = "pi-local-issue-watcher";
 export const MENU_TITLE = "Local Issue Watcher";
 export const ITEM_BROWSE_PREFIX = "Browse issues";
 export const ITEM_REFRESH = "Refresh";
-export const ITEM_PAUSED_PREFIX = "Paused:";
 export const ITEM_CLOSE = "Close";
 
 // ---------------------------------------------------------------------------
@@ -50,8 +47,7 @@ export interface LocalIssueWatcherCommandDeps {
 	startPolling: (rt: Runtime) => void;
 	stopPolling: (rt: Runtime) => void;
 	/**
-	 * Force-refresh: scan + diff + emit chat (same as pollOnce but ignores the
-	 * paused flag). Updates rt.snapshot, refreshes the status row.
+	 * Force-refresh: scan + diff + emit chat. Updates rt.snapshot, refreshes the status row.
 	 */
 	forceRefresh: (rt: Runtime) => void;
 	refreshStatusLine: (
@@ -77,14 +73,13 @@ type MenuCtx = {
 /**
  * Public entry point wired via `pi.registerCommand("local-issue-watcher", ...)`.
  *
- * Args are accepted but ignored — the menu always opens. This replaces the
- * old `pause | resume | status | browse` subcommand interface.
+ * Args are accepted but ignored — the menu always opens.
  */
 export async function runLocalIssueWatcherCommand(
 	_args: string | undefined,
 	ctx: unknown,
 	rt: Runtime,
-	pi: Pick<ExtensionAPI, "sendMessage" | "appendEntry">,
+	_pi: Pick<ExtensionAPI, "sendMessage" | "appendEntry">,
 	deps: LocalIssueWatcherCommandDeps,
 ): Promise<void> {
 	const menuCtx = ctx as MenuCtx;
@@ -113,8 +108,7 @@ export async function runLocalIssueWatcherCommand(
 			(i) => i.status === "open",
 		).length;
 		const browseItem = `${ITEM_BROWSE_PREFIX} (${openCount} open)`;
-		const pausedItem = `${ITEM_PAUSED_PREFIX} ${rt.paused ? "on" : "off"}`;
-		const items = [browseItem, ITEM_REFRESH, pausedItem, ITEM_CLOSE];
+		const items = [browseItem, ITEM_REFRESH, ITEM_CLOSE];
 
 		const choice = await select(MENU_TITLE, items);
 		if (!choice || choice === ITEM_CLOSE) return;
@@ -155,62 +149,6 @@ export async function runLocalIssueWatcherCommand(
 				`local-issue-watcher: refreshed (${openAfter} open)`,
 				"info",
 			);
-			continue;
-		}
-
-		// ── Pause / Resume ───────────────────────────────────────────────────
-		if (choice.startsWith(ITEM_PAUSED_PREFIX)) {
-			if (!rt.paused) {
-				// Pause ↓
-				rt.paused = true;
-				deps.stopPolling(rt);
-				try {
-					persistRunState(pi, true);
-				} catch {
-					/* persistence failure must not abort the action */
-				}
-				// #0019: paused = silent + zero-IO. Clear the pinned status row.
-				rt.ui?.setStatus?.(STATUS_KEY, undefined);
-				ui?.notify?.(
-					`local-issue-watcher: paused (dbRoot=${rt.dbRoot})`,
-					"info",
-				);
-			} else {
-				// Resume ↑
-				rt.paused = false;
-				try {
-					persistRunState(pi, false);
-				} catch {
-					/* persistence failure must not abort the action */
-				}
-				let resumeFailureCount = 0;
-				const resumedSnap = existsSync(rt.dbRoot)
-					? scanIssueFiles(rt.dbRoot, rt.snapshot, () => {
-							resumeFailureCount += 1;
-					  })
-					: ({} as Snapshot);
-				if (existsSync(rt.dbRoot)) {
-					rt.snapshot = resumedSnap;
-					deps.startPolling(rt);
-				}
-				// #0029: resume is a fresh scan site — fire the one-shot toast if
-				// bad files were found and the session hasn't already toasted.
-				if (
-					resumeFailureCount > 0 &&
-					ui !== undefined &&
-					ui.hasUI !== false &&
-					ui.notify !== undefined &&
-					!rt.parseFailureToastState.hasToasted
-				) {
-					ui.notify(buildParseFailureToast(resumeFailureCount), "warning");
-					rt.parseFailureToastState.hasToasted = true;
-				}
-				deps.refreshStatusLine(rt.ui, rt, "active", resumedSnap);
-				ui?.notify?.(
-					`local-issue-watcher: resumed (dbRoot=${rt.dbRoot})`,
-					"info",
-				);
-			}
 			continue;
 		}
 	}

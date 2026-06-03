@@ -794,7 +794,6 @@ describe('Ec2Watcher.onSessionStart', () => {
             customType: 'pi-aws-ec2-watcher:state',
             data: {
               savedAt: 1,
-              paused: true, // paused so polling doesn't start
               enabled: false,
               displayMode: 'widget',
               watches: [
@@ -853,7 +852,7 @@ describe('Ec2Watcher per-watch schedulers', () => {
     expect(s1).not.toBe(sf('key2'))
   })
 
-  it('addWatch starts a per-watch scheduler for the newly added watch when not paused', async () => {
+  it('addWatch starts a per-watch scheduler for the newly added watch', async () => {
     vi.useFakeTimers()
     const { watcher } = makeWatcher({ state: 'running' })
     const result = await watcher.executeTool({

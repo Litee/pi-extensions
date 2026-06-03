@@ -17,7 +17,6 @@ export interface StatusLineResult {
 
 export interface StatusLineInput {
 	watches: WatchMap;
-	paused: boolean;
 	/** Kept for API consistency with sibling watchers; no longer rendered. */
 	pollIntervalMs: number;
 	hasErrors?: boolean;
@@ -35,7 +34,7 @@ export interface StatusLineInput {
  * | Paused + errors  | `aws-ec2: 3 | ⚠ errors (paused)`   | warning |
  */
 export function buildStatusLine(input: StatusLineInput): StatusLineResult {
-	const { watches, paused, hasErrors } = input;
+	const { watches, hasErrors } = input;
 	const active = Object.values(watches).filter((w) => !w.terminal);
 	if (active.length === 0) return { text: "aws-ec2: idle", colorAlias: "muted" };
 
@@ -43,9 +42,9 @@ export function buildStatusLine(input: StatusLineInput): StatusLineResult {
 	if (hasErrors) parts.push("⚠ errors");
 
 	const body = parts.join(" | ");
-	const text = paused ? `aws-ec2: ${body} (paused)` : `aws-ec2: ${body}`;
+	const text = `aws-ec2: ${body}`;
 	const colorAlias: StatusLineColorAlias =
-		hasErrors ? "warning" : statusLineColorAlias(paused ? "paused" : "active");
+		hasErrors ? "warning" : statusLineColorAlias();
 	return { text, colorAlias };
 }
 

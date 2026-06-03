@@ -1,13 +1,10 @@
 import { describe, expect, it, vi } from "vitest";
 
 import {
-	RUNSTATE_ENTRY_TYPE,
 	STATE_ENTRY_TYPE,
 	STATE_MAX_AGE_MS,
 	rehydrateFromSession,
-	rehydrateRunStateFromSession,
 	persistSnapshot,
-	persistRunState,
 } from "../src/persistence.js";
 import type { Snapshot } from "../src/types.js";
 
@@ -38,18 +35,7 @@ function snapshotEntryData(
 ) {
 	return {
 		savedAt,
-		paused: false,
 		snapshot: items,
-		baselines: {},
-	};
-}
-
-/** Build a valid runstate entry data payload. */
-function runstateEntryData(paused: boolean, savedAt = now()) {
-	return {
-		savedAt,
-		paused,
-		items: [],
 		baselines: {},
 	};
 }
@@ -211,61 +197,6 @@ describe("rehydrateFromSession", () => {
 	});
 });
 
-// ---------------------------------------------------------------------------
-// rehydrateRunStateFromSession
-// ---------------------------------------------------------------------------
-
-describe("rehydrateRunStateFromSession", () => {
-	it("returns null when no entries", () => {
-		expect(rehydrateRunStateFromSession(makeCtx([]))).toBeNull();
-	});
-
-	it("returns the most recent run-state entry (paused=true)", () => {
-		const ctx = makeCtx([
-			entry(RUNSTATE_ENTRY_TYPE, runstateEntryData(false, now() - 1000)),
-			entry(RUNSTATE_ENTRY_TYPE, runstateEntryData(true, now())),
-		]);
-		const got = rehydrateRunStateFromSession(ctx);
-		expect(got!.paused).toBe(true);
-	});
-
-	it("returns the most recent run-state entry (paused=false)", () => {
-		const ctx = makeCtx([
-			entry(RUNSTATE_ENTRY_TYPE, runstateEntryData(true, now() - 1000)),
-			entry(RUNSTATE_ENTRY_TYPE, runstateEntryData(false, now())),
-		]);
-		const got = rehydrateRunStateFromSession(ctx);
-		expect(got!.paused).toBe(false);
-	});
-
-	it("no TTL — honours ancient entries", () => {
-		const ancient = now() - 7 * 24 * 60 * 60 * 1000;
-		const ctx = makeCtx([
-			entry(RUNSTATE_ENTRY_TYPE, runstateEntryData(true, ancient)),
-		]);
-		const got = rehydrateRunStateFromSession(ctx);
-		expect(got).not.toBeNull();
-		expect(got!.paused).toBe(true);
-	});
-
-	it("skips malformed entries (bad paused) and falls through to next", () => {
-		const ctx = makeCtx([
-			entry(RUNSTATE_ENTRY_TYPE, runstateEntryData(true, now() - 1000)), // older, valid
-			entry(RUNSTATE_ENTRY_TYPE, { ...runstateEntryData(false), paused: "yes" }), // newer, bad
-		]);
-		const got = rehydrateRunStateFromSession(ctx);
-		expect(got!.paused).toBe(true);
-	});
-
-	it("skips entries with no data", () => {
-		const ctx = makeCtx([
-			entry(RUNSTATE_ENTRY_TYPE, undefined),
-		]);
-		expect(rehydrateRunStateFromSession(ctx)).toBeNull();
-	});
-});
-
-// ---------------------------------------------------------------------------
 // persistSnapshot
 // ---------------------------------------------------------------------------
 
@@ -297,35 +228,6 @@ describe("persistSnapshot", () => {
 	});
 });
 
-// ---------------------------------------------------------------------------
-// persistRunState
-// ---------------------------------------------------------------------------
-
-describe("persistRunState", () => {
-	it("calls appendEntry with RUNSTATE_ENTRY_TYPE and paused=true", () => {
-		const appendEntry = vi.fn();
-		persistRunState({ appendEntry }, true);
-		const [ct, data] = appendEntry.mock.calls[0] as [string, Record<string, unknown>];
-		expect(ct).toBe(RUNSTATE_ENTRY_TYPE);
-		expect(data["paused"]).toBe(true);
-	});
-
-	it("calls appendEntry with RUNSTATE_ENTRY_TYPE and paused=false", () => {
-		const appendEntry = vi.fn();
-		persistRunState({ appendEntry }, false);
-		const [, data] = appendEntry.mock.calls[0] as [string, Record<string, unknown>];
-		expect(data["paused"]).toBe(false);
-	});
-
-	it("swallows errors from appendEntry", () => {
-		const appendEntry = vi.fn().mockImplementation(() => {
-			throw new Error("storage failure");
-		});
-		expect(() => persistRunState({ appendEntry }, false)).not.toThrow();
-	});
-});
-
-// ---------------------------------------------------------------------------
 // Constants
 // ---------------------------------------------------------------------------
 
@@ -334,9 +236,6 @@ describe("constants", () => {
 		expect(STATE_ENTRY_TYPE).toBe("pi-local-issue-watcher:state");
 	});
 
-	it("RUNSTATE_ENTRY_TYPE uses colon separator (not dash)", () => {
-		expect(RUNSTATE_ENTRY_TYPE).toBe("pi-local-issue-watcher:runstate");
-	});
 });
 
 // ---------------------------------------------------------------------------

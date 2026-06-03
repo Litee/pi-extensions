@@ -16,7 +16,6 @@ export interface StatusLineResult {
 
 export interface StatusLineInput {
 	watches: WatchMap;
-	paused: boolean;
 	/** Kept for back-compat; no longer rendered. */
 	pollIntervalMs: number;
 	hasErrors?: boolean;
@@ -38,7 +37,7 @@ export interface StatusLineInput {
  * rendered.
  */
 export function buildStatusLine(input: StatusLineInput): StatusLineResult {
-	const { watches, paused, hasErrors } = input;
+	const { watches, hasErrors } = input;
 	const active = Object.values(watches).filter((w) => !w.terminal);
 	if (active.length === 0) return { text: "aws-s3: idle", colorAlias: "muted" };
 
@@ -46,9 +45,9 @@ export function buildStatusLine(input: StatusLineInput): StatusLineResult {
 	if (hasErrors) parts.push("⚠ errors");
 
 	const body = parts.join(" | ");
-	const text = paused ? `aws-s3: ${body} (paused)` : `aws-s3: ${body}`;
+	const text = `aws-s3: ${body}`;
 	const colorAlias: StatusLineColorAlias =
-		hasErrors ? "warning" : statusLineColorAlias(paused ? "paused" : "active");
+		hasErrors ? "warning" : statusLineColorAlias();
 	return { text, colorAlias };
 }
 

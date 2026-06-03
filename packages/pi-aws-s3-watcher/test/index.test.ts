@@ -95,7 +95,6 @@ function makeClient(resp: HeadObjectResult = { exists: false }): S3Client {
 function makeStateEntry(data: {
   watches?: unknown[]
   baselines?: Record<string, unknown>
-  paused?: boolean
   enabled?: boolean
   displayMode?: string
 }) {
@@ -104,7 +103,6 @@ function makeStateEntry(data: {
     customType: STATE_CUSTOM_TYPE,
     data: {
       savedAt: Date.now(),
-      paused: data.paused ?? false,
       watches: data.watches ?? [],
       baselines: data.baselines ?? {},
       enabled: data.enabled ?? false,
@@ -556,7 +554,6 @@ describe('/aws-s3-watcher TUI menu', () => {
     expect(items.map((i) => i.label)).toEqual([
       'Browse S3 objects (0/0)',
       'Purge completed (0)',
-      'Paused: off',
       'Display mode: widget',
       'Default display mode: unset',
       'Close',
@@ -575,30 +572,6 @@ describe('/aws-s3-watcher TUI menu', () => {
     expect(openMenuViewMock).toHaveBeenCalledOnce()
   })
 
-  it('Paused toggle flips state and getItems returns updated label', async () => {
-    const { pi, handlers, commands } = makePi()
-    createExtensionWithClient(pi, makeClient())
-    await handlers.sessionStart!({}, makeCtx())
-    const openMenuViewMock = vi.mocked(browseViewModule.openMenuView)
-    openMenuViewMock.mockClear()
-
-    await commands[COMMAND_NAME]!.handler('', makeMenuCtx(vi.fn()))
-
-    const [, getItems] = openMenuViewMock.mock.calls[0]! as unknown as [
-      string,
-      () => Array<{ id: string; label: string; run: () => Promise<'stay' | 'close' | 'rerender'> }>,
-    ]
-
-    // Confirm initial label
-    expect(getItems().find((i) => i.id === 'paused')?.label).toBe('Paused: off')
-
-    // Run the Paused toggle item
-    const pausedItem = getItems().find((i) => i.id === 'paused')!
-    await pausedItem.run()
-
-    // Label should now reflect toggled state
-    expect(getItems().find((i) => i.id === 'paused')?.label).toBe('Paused: on')
-  })
 
   it('Display mode toggle flips from widget to statusline', async () => {
     const { pi, handlers, commands } = makePi()

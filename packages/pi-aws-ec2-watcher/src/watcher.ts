@@ -204,7 +204,7 @@ export class Ec2Watcher extends BaseWatcher<Ec2Watch, Ec2Baseline, Ec2Event> {
       'Watch an AWS EC2 instance for state transitions (pending → running → stopping → stopped → terminated). ' +
       'Polls DescribeInstances at increasing intervals (60s → 15min) and fires a chat notification ' +
       'whenever the instance state changes. ' +
-      'Actions: add, remove, list, pause, resume, status.'
+      'Actions: add, remove, list, status.'
     )
   }
 
@@ -232,7 +232,6 @@ export class Ec2Watcher extends BaseWatcher<Ec2Watch, Ec2Baseline, Ec2Event> {
       displayName: this.displayName,
       commandName: this.commandName,
       getWatches: () => Array.from(this.watches.values()),
-      getPaused: () => this.paused,
     })
     const { defaultDisplayMode } = loadConfig()
     if (defaultDisplayMode !== undefined) {
@@ -443,11 +442,9 @@ export class Ec2Watcher extends BaseWatcher<Ec2Watch, Ec2Baseline, Ec2Event> {
       this.baselines.set(watchId, watch.baseline)
     }
 
-    // Start per-watch scheduler immediately when not paused
-    if (!this.paused) {
-      const s = this.schedulerFor(watchId)
-      if (!s.isRunning) s.start(() => this.pollWatch(watchId))
-    }
+    // Start per-watch scheduler immediately
+    const s = this.schedulerFor(watchId)
+    if (!s.isRunning) s.start(() => this.pollWatch(watchId))
 
     const stateLabel = watch.baseline?.state ?? '?'
     const cappedNote = capped ? ` (capped from ${requestedSeconds}s)` : ''

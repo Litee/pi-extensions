@@ -22,7 +22,6 @@ import {
 	ITEM_BROWSE_PREFIX,
 	ITEM_CLOSE,
 	ITEM_DISPLAY_PREFIX,
-	ITEM_PAUSED_PREFIX,
 	ITEM_USER_DEFAULT_PREFIX,
 	MENU_TITLE,
 	runGlueWatcherCommand,
@@ -85,7 +84,6 @@ describe("runGlueWatcherCommand — TUI menu", () => {
 		expect(title).toBe(MENU_TITLE);
 		expect(items).toEqual([
 			`${ITEM_BROWSE_PREFIX} (0)`,
-			`${ITEM_PAUSED_PREFIX} off`,
 			`${ITEM_DISPLAY_PREFIX} widget`,
 			`${ITEM_USER_DEFAULT_PREFIX} unset`,
 			ITEM_CLOSE,
@@ -110,25 +108,6 @@ describe("runGlueWatcherCommand — TUI menu", () => {
 		expect(select).toHaveBeenCalledTimes(1);
 	});
 
-	it("Paused switch toggles rt.paused and re-renders", async () => {
-		vi.mocked(loadConfig).mockReturnValue({});
-		const rt = freshRuntime();
-		expect(rt.paused).toBe(false);
-		const select = vi
-			.fn()
-			.mockResolvedValueOnce(`${ITEM_PAUSED_PREFIX} off`)
-			.mockResolvedValueOnce(ITEM_CLOSE);
-		const notify = vi.fn();
-		const pi = makeFakePi();
-		await runGlueWatcherCommand(undefined, makeMenuCtx(select, notify), rt, pi, rt.client);
-		expect(select).toHaveBeenCalledTimes(2);
-		expect(rt.paused).toBe(true);
-		expect((select.mock.calls[1]![1] as string[])[1]).toBe(`${ITEM_PAUSED_PREFIX} on`);
-		expect(notify).toHaveBeenCalledWith(
-			expect.stringMatching(/glue-watcher: paused/),
-			"info",
-		);
-	});
 
 	it("Display mode switch toggles session display mode", async () => {
 		vi.mocked(loadConfig).mockReturnValue({});
@@ -142,7 +121,7 @@ describe("runGlueWatcherCommand — TUI menu", () => {
 		const pi = makeFakePi();
 		await runGlueWatcherCommand(undefined, makeMenuCtx(select, notify), rt, pi, rt.client);
 		expect(rt.displayMode).toBe("statusline");
-		expect((select.mock.calls[1]![1] as string[])[2]).toBe(`${ITEM_DISPLAY_PREFIX} statusline`);
+		expect((select.mock.calls[1]![1] as string[])[1]).toBe(`${ITEM_DISPLAY_PREFIX} statusline`);
 		expect(notify).toHaveBeenCalledWith(
 			expect.stringMatching(/session display → statusline/),
 			"info",
@@ -250,7 +229,6 @@ describe("runGlueWatcherCommand — TUI menu", () => {
 			runGlueWatcherCommand(undefined, headlessCtx, rt, pi, rt.client),
 		).resolves.not.toThrow();
 		// The function returns early without opening any menu or modifying runtime state.
-		expect(rt.paused).toBe(false);
 		expect(rt.displayMode).toBe("widget");
 	});
 });
@@ -333,26 +311,6 @@ describe("runGlueWatcherCommand — TUI menu", () => {
 		await commandPromise;
 	});
 
-	it("Paused toggle from paused→active with active watches starts polling", async () => {
-		vi.mocked(loadConfig).mockReturnValue({});
-		const rt = freshRuntime();
-		rt.paused = true;
-		// Add an active watch
-		rt.watches["ww1"] = {
-			watchId: "ww1", type: "job", name: "my-job", runId: "jr_1",
-			profile: "p", region: undefined, addedAt: Date.now(),
-			lastPolledAt: undefined, baseline: undefined, terminal: false, consecutiveErrors: 0,
-		};
-		const select = vi.fn()
-			.mockResolvedValueOnce(`${ITEM_PAUSED_PREFIX} on`)
-			.mockResolvedValueOnce(ITEM_CLOSE);
-		const notify = vi.fn();
-		const pi = makeFakePi();
-		await runGlueWatcherCommand(undefined, makeMenuCtx(select, notify), rt, pi, rt.client);
-		// paused was true → toggled to false → should have tried to start polling
-		expect(rt.paused).toBe(false);
-		expect(notify).toHaveBeenCalledWith(expect.stringMatching(/resumed/), "info");
-	});
 
 	it("Browse warns when ctx.ui.custom is unavailable", async () => {
 		vi.mocked(loadConfig).mockReturnValue({});

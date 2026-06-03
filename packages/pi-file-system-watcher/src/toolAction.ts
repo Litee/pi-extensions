@@ -13,8 +13,6 @@ export const FsWatcherParams = Type.Object({
       Type.Literal("add"),
       Type.Literal("remove"),
       Type.Literal("list"),
-      Type.Literal("pause"),
-      Type.Literal("resume"),
       Type.Literal("status"),
     ],
     {
@@ -22,7 +20,6 @@ export const FsWatcherParams = Type.Object({
         "add: start watching a filesystem path. " +
         "remove: stop watching by watchId. " +
         "list: show all watches. " +
-        "pause / resume: toggle polling globally (persisted). " +
         "status: show runtime state.",
     },
   ),

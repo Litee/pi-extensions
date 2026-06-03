@@ -21,7 +21,6 @@ export interface StatusLineResult {
 
 export interface StatusLineInput {
 	watches: WatchMap;
-	paused: boolean;
 	pollIntervalMs: number;
 	/** When `true` at least one active watch has hit the consecutive-error threshold. */
 	hasErrors?: boolean;
@@ -59,7 +58,7 @@ function isGlueSuccessState(state: string | undefined): boolean {
  * `pollIntervalMs` is accepted for back-compat but no longer rendered.
  */
 export function buildStatusLine(input: StatusLineInput): StatusLineResult {
-	const { watches, paused, hasErrors } = input;
+	const { watches, hasErrors } = input;
 
 	const allWatches = Object.values(watches);
 
@@ -75,10 +74,10 @@ export function buildStatusLine(input: StatusLineInput): StatusLineResult {
 	const effectiveHasErrors = (hasErrors ?? false) || errorInStates;
 
 	const body = effectiveHasErrors ? `⚠ ${M}/${N}` : `${M}/${N}`;
-	const text = paused ? `☁ Glue: ${body} (paused)` : `☁ Glue: ${body}`;
+	const text = `☁ Glue: ${body}`;
 
 	const colorAlias: StatusLineColorAlias =
-		effectiveHasErrors ? "warning" : statusLineColorAlias(paused ? "paused" : "active");
+		effectiveHasErrors ? "warning" : statusLineColorAlias();
 	return { text, colorAlias };
 }
 

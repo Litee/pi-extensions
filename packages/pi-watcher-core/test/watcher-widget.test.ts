@@ -19,29 +19,13 @@ import type { WatcherWidgetOptions, WatchLike } from '../src/base-watcher-types.
 
 describe('formatWidgetHeader', () => {
   it('formats header as "name (active/total)"', () => {
-    expect(formatWidgetHeader('AWS S3 Watcher', 2, 3, false)).toBe('AWS S3 Watcher (2/3)')
-  })
-  it('shows PAUSED suffix when paused', () => {
-    expect(formatWidgetHeader('AWS S3 Watcher', 2, 3, true)).toBe('AWS S3 Watcher (2/3) · PAUSED')
+    expect(formatWidgetHeader('AWS S3 Watcher', 2, 3)).toBe('AWS S3 Watcher (2/3)')
   })
   it('shows (0/3) when all terminal', () => {
-    expect(formatWidgetHeader('X', 0, 3, false)).toBe('X (0/3)')
+    expect(formatWidgetHeader('X', 0, 3)).toBe('X (0/3)')
   })
   it('shows (3/3) when all active', () => {
-    expect(formatWidgetHeader('X', 3, 3, false)).toBe('X (3/3)')
-  })
-})
-
-// ---------------------------------------------------------------------------
-// Change 6: formatWidgetHeader paused
-// ---------------------------------------------------------------------------
-
-describe('formatWidgetHeader paused', () => {
-  it('shows PAUSED suffix when paused', () => {
-    expect(formatWidgetHeader('AWS S3 Watcher', 2, 3, true)).toBe('AWS S3 Watcher (2/3) · PAUSED')
-  })
-  it('no suffix when not paused', () => {
-    expect(formatWidgetHeader('AWS S3 Watcher', 2, 3, false)).toBe('AWS S3 Watcher (2/3)')
+    expect(formatWidgetHeader('X', 3, 3)).toBe('X (3/3)')
   })
 })
 
@@ -84,7 +68,6 @@ function makeWidget(watches: SimpleWatch[]) {
   const opts: WatcherWidgetOptions<SimpleWatch> = {
     extensionName: 'test-watcher',
     getWatches: () => watches,
-    getPaused: () => false,
   }
 
   const view = {
@@ -174,7 +157,6 @@ function makeWidgetForRender(watches: RenderWatch[]) {
   const opts: WatcherWidgetOptions<RenderWatch> = {
     extensionName: 'test-render-watcher',
     getWatches: () => watches,
-    getPaused: () => false,
   }
 
   // Richer view stub: provides renderItemRowTUI and isRowDimmed so

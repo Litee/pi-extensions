@@ -5,7 +5,7 @@ import type { Snapshot } from "./types.js";
 import { formatShortTime } from "pi-watcher-core/time";
 
 /** The set of states the watcher status line can be in. */
-export type WatcherState = "active" | "paused";
+export type WatcherState = "active";
 
 /**
  * Well-known statuses emitted by `local-skill-issues-tracker`, in the order
@@ -20,7 +20,6 @@ const WELL_KNOWN_STATUSES = ["open", "in_progress", "done", "wont_fix"] as const
  *
  * Format:
  *   active  → `local-issue-watcher: active (N open)`
- *   paused  → `local-issue-watcher: paused`
  *
  * The count is embedded in parentheses after the state so it reads as an
  * annotation rather than a separate metric. Total issue count is omitted —
@@ -41,7 +40,6 @@ export function buildStartupAnnouncement(
 	snapshot: Snapshot,
 ): string {
 	const prefix = `local-issue-watcher: ${state}`;
-	if (state === "paused") return prefix;
 	return `${prefix} (${formatCompactStatusSummary(snapshot)})`;
 }
 

@@ -4,19 +4,12 @@ import { buildStatusLine, formatWatchList, statusLineColorAlias } from "../src/s
 describe("buildStatusLine", () => {
 	it("returns empty string for count 0", () => {
 		expect(buildStatusLine({ label: "tickets", mode: "active", count: 0 })).toBe("");
-		expect(buildStatusLine({ label: "tickets", mode: "paused", count: 0 })).toBe("");
 	});
 
 	it("active with no modifier", () => {
 		expect(
 			buildStatusLine({ label: "tickets", mode: "active", count: 3 }),
 		).toBe("tickets: 3");
-	});
-
-	it("paused", () => {
-		expect(
-			buildStatusLine({ label: "tickets", mode: "paused", count: 3 }),
-		).toBe("tickets: 3 (paused)");
 	});
 
 	it("active throttled", () => {
@@ -42,24 +35,14 @@ describe("buildStatusLine", () => {
 			buildStatusLine({ label: "x", mode: "active", count: 1, modifier: "none" }),
 		).toBe("x: 1");
 	});
-
-	it("paused ignores modifier", () => {
-		// Paused always shows "N (paused)" regardless of modifier.
-		expect(
-			buildStatusLine({ label: "x", mode: "paused", count: 2, modifier: "throttled" }),
-		).toBe("x: 2 (paused)");
-	});
 });
 
 describe("statusLineColorAlias", () => {
-	it("active + none → accent", () => expect(statusLineColorAlias("active", "none")).toBe("accent"));
-	it("active + throttled → warning", () => expect(statusLineColorAlias("active", "throttled")).toBe("warning"));
-	it("active + auth-error → warning", () => expect(statusLineColorAlias("active", "auth-error")).toBe("warning"));
-	it("paused + none → muted", () => expect(statusLineColorAlias("paused", "none")).toBe("muted"));
-	it("paused + throttled → muted (paused wins)", () => expect(statusLineColorAlias("paused", "throttled")).toBe("muted"));
+	it("none → accent", () => expect(statusLineColorAlias("none")).toBe("accent"));
+	it("throttled → warning", () => expect(statusLineColorAlias("throttled")).toBe("warning"));
+	it("auth-error → warning", () => expect(statusLineColorAlias("auth-error")).toBe("warning"));
 	it("modifier defaults to none", () => {
-		expect(statusLineColorAlias("active")).toBe("accent");
-		expect(statusLineColorAlias("paused")).toBe("muted");
+		expect(statusLineColorAlias()).toBe("accent");
 	});
 });
 

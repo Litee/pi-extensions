@@ -22,7 +22,6 @@ import { writeState } from "./persistence.js";
 import { snapshotJobRun, snapshotWorkflowRun } from "./poller.js";
 import {
 	refreshStatus,
-	startPolling,
 	startWatchPolling,
 	stopPolling,
 	stopWatchPolling,
@@ -40,8 +39,6 @@ export const GlueWatcherParams = Type.Object({
 			Type.Literal("add"),
 			Type.Literal("remove"),
 			Type.Literal("list"),
-			Type.Literal("pause"),
-			Type.Literal("resume"),
 			Type.Literal("status"),
 			Type.Literal("set-interval"),
 		],
@@ -50,9 +47,7 @@ export const GlueWatcherParams = Type.Object({
 				"add: start watching a job or workflow run (seeds baseline immediately). " +
 				"remove: stop watching a run by its watchId. " +
 				"list: show the current watch list with state. " +
-				"pause: suspend polling (persisted). " +
-				"resume: resume polling (persisted). " +
-				"status: show runtime state (enabled, paused, watch count, poll interval). " +
+				"status: show runtime state (enabled, watch count, poll interval). " +
 				"set-interval: update the poll interval for a specific watch (requires watchId and pollIntervalMs).",
 		},
 	),
@@ -253,7 +248,7 @@ export async function handleToolAction(
 
 			rt.watches[watchId] = watch;
 			writeState(rt.pi, rt);
-			if (!rt.paused) startWatchPolling(rt, watchId);
+			startWatchPolling(rt, watchId);
 			rt.pi.events.emit("glue:change", {});
 			refreshStatus(rt);
 
@@ -308,30 +303,11 @@ export async function handleToolAction(
 			return { content: toolText(message), details: { action: "list", ok: true, message, watches: ids } };
 		}
 
-		case "pause": {
-			rt.paused = true;
-			stopPolling(rt);
-			writeState(rt.pi, rt);
-			refreshStatus(rt);
-			const message = "Paused. Use the glue_watcher resume action to re-enable polling.";
-			return { content: toolText(message), details: { action: "pause", ok: true, message } };
-		}
-
-		case "resume": {
-			rt.paused = false;
-			writeState(rt.pi, rt);
-			const activeWatches = Object.values(rt.watches).filter((w) => !w.terminal);
-			if (rt.enabled && activeWatches.length > 0) startPolling(rt);
-			refreshStatus(rt);
-			const message = `Resumed. Polling ${Object.keys(rt.watches).length} watch(es).`;
-			return { content: toolText(message), details: { action: "resume", ok: true, message } };
-		}
 
 		case "status": {
 			const ids = Object.keys(rt.watches);
 			const activeCount = ids.filter((id) => !rt.watches[id]?.terminal).length;
 			const terminalCount = ids.length - activeCount;
-			const statusLabel = rt.paused ? "paused" : "active";
 			const enabledLabel = rt.enabled ? "enabled" : "disabled";
 			const intervalLines = ids.map((id) => {
 				const w = rt.watches[id];
@@ -341,7 +317,7 @@ export async function handleToolAction(
 			}).filter(Boolean);
 			const intervalSection = intervalLines.length > 0 ? `\n  per-watch intervals:\n${intervalLines.join("\n")}` : "";
 			const message = [
-				`${statusLabel} | ${enabledLabel}`,
+				`glue-watcher: active | ${enabledLabel}`,
 				`  watches: ${ids.length} total (${activeCount} active, ${terminalCount} terminal)`,
 			].join("\n") + intervalSection;
 			return { content: toolText(message), details: { action: "status", ok: true, message } };
@@ -366,7 +342,7 @@ export async function handleToolAction(
 			watch.pollIntervalMs = params.pollIntervalMs;
 			// Restart this watch's scheduler with the new interval.
 			stopWatchPolling(rt, id);
-			if (!rt.paused && !watch.terminal) startWatchPolling(rt, id);
+			if (!watch.terminal) startWatchPolling(rt, id);
 			writeState(rt.pi, rt);
 			refreshStatus(rt);
 			const message = `Poll interval for watch '${id}' set to ${Math.round(params.pollIntervalMs / 1000)}s.`;

@@ -229,7 +229,6 @@ describe("session resume: widget + polling restored from persisted watches", () 
 			customType: "pi-aws-glue-watcher:state",
 			data: {
 				savedAt: 1,
-				paused: false,
 				baselines: { enabled, displayMode: "widget" },
 				watches: [{
 					watchId: "w1",
@@ -293,7 +292,6 @@ describe("startup chat message: triggerTurn + label", () => {
 		expect(pi._handlers.sessionStart).toBeDefined();
 		const persistedData = {
 			savedAt: 1,
-			paused: false,
 			baselines: { enabled: true, displayMode: "widget" as const },
 			watches: [{
 				watchId: "w1",
@@ -334,7 +332,6 @@ describe("startup chat message: triggerTurn + label", () => {
 		createExtensionWithClient(pi as unknown as ExtensionAPI, client);
 		const persistedData = {
 			savedAt: 1,
-			paused: false,
 			baselines: { enabled: true, displayMode: "widget" as const },
 			watches: [{
 				watchId: "w1",
@@ -704,35 +701,6 @@ describe("handleToolAction — list", () => {
 		expect(result.details.message).toContain("[terminal]");
 	});
 });
-
-// ---------------------------------------------------------------------------
-// handleToolAction — pause / resume
-// ---------------------------------------------------------------------------
-
-describe("handleToolAction — pause / resume", () => {
-	it("sets paused=true on the runtime", async () => {
-		const pi = makePi();
-		const rt = makeRuntime(pi, makeClient());
-		await handleToolAction(rt, { action: "pause" });
-		expect(rt.paused).toBe(true);
-	});
-
-	it("clears paused=false on the runtime", async () => {
-		const pi = makePi();
-		const rt = makeRuntime(pi, makeClient());
-		rt.paused = true;
-		await handleToolAction(rt, { action: "resume" });
-		expect(rt.paused).toBe(false);
-	});
-
-	it("persists state when pausing", async () => {
-		const pi = makePi();
-		const rt = makeRuntime(pi, makeClient());
-		await handleToolAction(rt, { action: "pause" });
-		expect(pi.appendEntry).toHaveBeenCalled();
-	});
-});
-
 // ---------------------------------------------------------------------------
 // handleToolAction — status
 // ---------------------------------------------------------------------------
@@ -753,17 +721,6 @@ describe("handleToolAction — status", () => {
 		expect(result.details.message).toContain("1 active");
 		expect(result.details.message).toContain("1 terminal");
 	});
-
-	it("shows 'paused' when the runtime is paused", async () => {
-		const pi = makePi();
-		const rt = makeRuntime(pi, makeClient());
-		rt.paused = true;
-
-		const result = await handleToolAction(rt, { action: "status" });
-
-		expect(result.details.message).toContain("paused");
-	});
-
 	it("shows watch count and state in status", async () => {
 		const pi = makePi();
 		const rt = makeRuntime(pi, makeClient());
@@ -823,15 +780,6 @@ describe("handleToolAction — set-interval", () => {
 		expect(rt.watches["aa"]?.pollIntervalMs).toBe(30_000);
 	});
 
-	it("does not restart polling when paused", async () => {
-		const pi = makePi();
-		const rt = makeRuntime(pi, makeClient());
-		rt.paused = true;
-		rt.watches["aa"] = makeWatch({ watchId: "aa" });
-		const result = await handleToolAction(rt, { action: "set-interval", watchId: "aa", pollIntervalMs: 60_000 });
-		expect(result.details.ok).toBe(true);
-	});
-
 	it("does not restart polling when watch is terminal", async () => {
 		const pi = makePi();
 		const rt = makeRuntime(pi, makeClient());
@@ -883,20 +831,6 @@ describe("handleToolAction — unknown action", () => {
 // ---------------------------------------------------------------------------
 
 describe("pollOnce", () => {
-	it("does nothing when paused", async () => {
-		const pi = makePi();
-		const client = makeClient();
-		const rt = makeRuntime(pi, client);
-		rt.paused = true;
-		rt.enabled = true;
-		rt.watches["aa"] = makeWatch({ watchId: "aa" });
-
-		await pollOnce(rt);
-
-		expect(client.getJobRun).not.toHaveBeenCalled();
-		expect(pi.sendMessage).not.toHaveBeenCalled();
-	});
-
 	it("polls even when not enabled (rt.enabled only controls tool active-set)", async () => {
 		const pi = makePi();
 		const client = makeClient();
@@ -1207,36 +1141,6 @@ describe("handleToolAction — status with per-watch intervals", () => {
 		const rt = makeRuntime(pi, makeClient());
 		rt.watches["aa"] = makeWatch({ watchId: "aa" });
 		const result = await handleToolAction(rt, { action: "status" });
-		expect(result.details.ok).toBe(true);
-	});
-});
-
-describe("handleToolAction — add when paused", () => {
-	it("does not start polling when paused", async () => {
-		const pi = makePi();
-		const client = makeClient();
-		const rt = makeRuntime(pi, client);
-		rt.paused = true;
-		const result = await handleToolAction(rt, {
-			action: "add",
-			type: "job",
-			name: "my-job",
-			runId: "jr_123",
-			profile: "p",
-		});
-		expect(result.details.ok).toBe(true);
-		// startWatchPolling should NOT have been called because rt.paused = true
-	});
-});
-
-describe("handleToolAction — resume with active watches", () => {
-	it("starts polling when enabled and active watches exist", async () => {
-		const pi = makePi();
-		const rt = makeRuntime(pi, makeClient());
-		rt.enabled = true;
-		rt.watches["aa"] = makeWatch({ watchId: "aa" });
-		await handleToolAction(rt, { action: "pause" });
-		const result = await handleToolAction(rt, { action: "resume" });
 		expect(result.details.ok).toBe(true);
 	});
 });

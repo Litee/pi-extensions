@@ -60,7 +60,6 @@ export interface PersistenceOptions<TWatchItems, TBaselines> {
 
 export interface PersistedState<TWatchItems, TBaselines> {
 	savedAt: number;
-	paused: boolean;
 	items: TWatchItems;
 	baselines: TBaselines;
 }
@@ -81,7 +80,7 @@ export interface Persistence<TWatchItems, TBaselines> {
 	 */
 	writeState(
 		pi: { appendEntry(customType: string, data: unknown): void },
-		snapshot: { items: TWatchItems; paused: boolean; baselines: TBaselines },
+		snapshot: { items: TWatchItems; baselines: TBaselines },
 	): void;
 }
 
@@ -120,10 +119,6 @@ export function createPersistence<TWatchItems, TBaselines>(
 				onMalformed?.(`[${stateCustomType}] persisted state entry has invalid savedAt`);
 				continue;
 			}
-			if (typeof data["paused"] !== "boolean") {
-				onMalformed?.(`[${stateCustomType}] persisted state entry has invalid paused`);
-				continue;
-			}
 			const rawItems = data[watchItemsKey];
 			if (!Array.isArray(rawItems)) {
 				onMalformed?.(`[${stateCustomType}] persisted state entry has invalid ${watchItemsKey}`);
@@ -131,7 +126,6 @@ export function createPersistence<TWatchItems, TBaselines>(
 			}
 			return {
 				savedAt,
-				paused: data["paused"],
 				items: normaliseItems(rawItems),
 				baselines: normaliseBaselines(data["baselines"]),
 			};
@@ -141,13 +135,12 @@ export function createPersistence<TWatchItems, TBaselines>(
 
 	function writeState(
 		pi: { appendEntry(customType: string, data: unknown): void },
-		snapshot: { items: TWatchItems; paused: boolean; baselines: TBaselines },
+		snapshot: { items: TWatchItems; baselines: TBaselines },
 	): void {
 		try {
 			pi.appendEntry(stateCustomType, {
 				savedAt: Date.now(),
 				[watchItemsKey]: snapshot.items,
-				paused: snapshot.paused,
 				baselines: snapshot.baselines,
 			});
 		} catch (err) {

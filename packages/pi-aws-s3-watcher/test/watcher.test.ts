@@ -758,7 +758,6 @@ describe('S3Watcher.onSessionStart config integration', () => {
             customType: 'pi-aws-s3-watcher:state',
             data: {
               savedAt: 1,
-              paused: false,
               watches: [],
               baselines: {},
               enabled: false,
@@ -800,7 +799,7 @@ describe('S3Watcher per-watch schedulers', () => {
     expect(s1).not.toBe(sf('key2'))
   })
 
-  it('addWatch starts a per-watch scheduler for the newly added watch when not paused', async () => {
+  it('addWatch starts a per-watch scheduler for the newly added watch', async () => {
     vi.useFakeTimers()
     const { watcher } = makeWatcher({ exists: false })
     const result = await watcher.executeTool({
@@ -1157,15 +1156,7 @@ describe('commandName', () => {
 
   it('widget opts include commandName "aws-s3-watcher"', () => {
     const { watcher } = makeWatcher()
-    const widgetOpts = (watcher['widget'] as { opts?: { commandName?: string; getPaused?: () => boolean } } | null | undefined)?.opts
+    const widgetOpts = (watcher['widget'] as { opts?: { commandName?: string } } | null | undefined)?.opts
     expect(widgetOpts?.commandName).toBe('aws-s3-watcher')
-  })
-
-  it('widget opts include getPaused function (Change 6)', () => {
-    const { watcher } = makeWatcher()
-    const widgetOpts = (watcher['widget'] as { opts?: { commandName?: string; getPaused?: () => boolean } } | null | undefined)?.opts
-    expect(typeof widgetOpts?.getPaused).toBe('function')
-    // initially not paused
-    expect(widgetOpts?.getPaused?.()).toBe(false)
   })
 })

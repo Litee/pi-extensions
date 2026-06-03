@@ -46,7 +46,7 @@ describe('S3WatcherParams schema', () => {
     }
     const literals = schema.properties.action.anyOf.map((l) => l.const)
     expect(literals).toEqual(
-      expect.arrayContaining(['add', 'remove', 'list', 'pause', 'resume', 'status']),
+      expect.arrayContaining(['add', 'remove', 'list', 'status']),
     )
   })
 })

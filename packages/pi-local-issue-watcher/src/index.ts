@@ -50,7 +50,6 @@ import {
 import type { InfoPicker } from "./infoHandler.js";
 import {
 	rehydrateFromSession,
-	rehydrateRunStateFromSession,
 	persistSnapshot,
 	type SessionLike,
 } from "./persistence.js";
@@ -167,13 +166,6 @@ export interface HandleSessionStartResult {
 	/** Did polling start? `false` when dbRoot was missing. */
 	started: boolean;
 	/**
-	 * Persisted run-state observed on entry. `paused === true` means the
-	 * caller should honour the user's last explicit pause and NOT start
-	 * the poll loop. `paused === false` (the default when nothing has
-	 * been persisted yet) means it is safe to resume polling.
-	 */
-	paused: boolean;
-	/**
 	 * The on-disk snapshot captured during this call. Callers (the default
 	 * export wrapper) should reuse this exact value as the polling baseline
 	 * instead of re-scanning — re-scanning introduces a TOCTOU window where
@@ -238,27 +230,6 @@ export function handleSessionStart(
 		}
 	});
 
-	// #0019: paused = silent + zero-IO. Rehydrate the user's explicit
-	// pause / resume preference BEFORE touching the filesystem so that a
-	// paused watcher performs no existsSync / scanIssueFiles calls and
-	// pins no status row. Absent entry → default to **paused** (#0012).
-	// Side-effect (#0019): a paused watcher is invisible, so we cannot
-	// surface a 'dbRoot missing' warning while paused either — the user
-	// has explicitly asked us to stop watching.
-	const runState = rehydrateRunStateFromSession(ctx);
-	const paused = runState?.paused !== false;
-
-	if (paused) {
-		// Clear any stale status row pinned by a prior non-paused session
-		// (e.g. the user paused mid-session and the process later reloaded).
-		// If the row was never written, `setStatus?.(KEY, undefined)` is a
-		// harmless no-op. Intentionally: no notify, no pinned row, no chat
-		// startup summary.
-		setStatus?.(STATUS_KEY, undefined);
-		const baselineSnapshot = rehydrateFromSession(ctx)?.snapshot ?? {};
-		return Promise.resolve({ started: true, paused: true, snapshot: baselineSnapshot });
-	}
-
 	if (!existsSync(dbRoot)) {
 		notify?.(
 			`local-issue-watcher: dbRoot not found (${dbRoot}); not watching.`,
@@ -280,7 +251,7 @@ export function handleSessionStart(
 			},
 			{ deliverAs: "followUp", triggerTurn: true },
 		);
-		return Promise.resolve({ started: false, paused: false, snapshot: {} });
+		return Promise.resolve({ started: false, snapshot: {} });
 	}
 
 	const baseline = rehydrateFromSession(ctx);
@@ -318,7 +289,7 @@ export function handleSessionStart(
 			},
 			{ deliverAs: "followUp", triggerTurn: false },
 		);
-		return Promise.resolve({ started: true, paused: false, snapshot: currentSnapshot });
+		return Promise.resolve({ started: true, snapshot: currentSnapshot });
 	}
 
 	const changes = diffSnapshots(baseline.snapshot, currentSnapshot);
@@ -355,16 +326,15 @@ export function handleSessionStart(
 		);
 	}
 
-	return Promise.resolve({ started: true, paused: false, snapshot: currentSnapshot });
+	return Promise.resolve({ started: true, snapshot: currentSnapshot });
 }
 
 // ---------------------------------------------------------------------------
-// Runtime (polling loop + paused flag)
+// Runtime (polling loop)
 // ---------------------------------------------------------------------------
 
 export interface Runtime {
 	dbRoot: string;
-	paused: boolean;
 	/** Most recent snapshot used as the diff baseline across polls. */
 	snapshot: Snapshot;
 	/**
@@ -389,8 +359,7 @@ export interface Runtime {
 	 * One-shot parse-failure toast state (#0029). Shared between
 	 * `handleSessionStart`, `pollOnce`, and the status command so exactly
 	 * one toast fires per session regardless of which scan site first
-	 * sees a bad file. Pause/resume must NOT reset this — see test
-	 * coverage for #0029 flapping + pause/resume invariants.
+	 * sees a bad file.
 	 */
 	parseFailureToastState: { hasToasted: boolean };
 }
@@ -398,7 +367,6 @@ export interface Runtime {
 function makeRuntime(dbRoot: string, pi: Runtime["pi"]): Runtime {
 	return {
 		dbRoot,
-		paused: false,
 		snapshot: {},
 		scheduler: new PollScheduler({
 			baseMs: POLL_INTERVAL_MS,
@@ -442,9 +410,8 @@ export function stopPolling(rt: Runtime): void {
 }
 
 /**
- * Force a single poll cycle — same as the inner body of pollOnce but ignores
- * the paused flag. Used by the Refresh menu item so the user can get an
- * immediate diff even when the watcher is paused. Callers MUST check that
+ * Force a single poll cycle. Called by the Refresh menu item so the user can get an
+ * immediate diff. Callers MUST check that
  * rt.dbRoot exists before calling (a missing dbRoot is a no-op inside, but
  * the caller needs to show the right warning message).
  */
@@ -484,7 +451,6 @@ export function forceRefresh(rt: Runtime): void {
 }
 
 function pollOnce(rt: Runtime): void {
-	if (rt.paused) return;
 	forceRefresh(rt);
 }
 
@@ -521,11 +487,7 @@ export default function issueWatcher(pi: ExtensionAPI): void {
 		// second scanIssueFiles() here would open a TOCTOU window where
 		// a file written between the two scans is silently lost (#0001).
 		rt.snapshot = res.snapshot;
-		rt.paused = res.paused;
-		// If the user explicitly paused in a prior session (or earlier in this
-		// one, before a reload) we honour that and stay quiet until they run
-		// `/local-issue-watcher resume`. Otherwise start the poll loop.
-		if (!rt.paused) startPolling(rt);
+		startPolling(rt);
 	});
 
 	pi.on("session_shutdown", () => {
@@ -578,7 +540,7 @@ export default function issueWatcher(pi: ExtensionAPI): void {
 // Re-exports for convenience
 // ---------------------------------------------------------------------------
 
-export { STATE_ENTRY_TYPE, RUNSTATE_ENTRY_TYPE } from "./persistence.js";
+export { STATE_ENTRY_TYPE } from "./persistence.js";
 export { scanIssueFiles } from "./scanner.js";
 export { diffSnapshots, changedPaths, formatChange } from "./diff.js";
 export { buildChatMessageContent, buildMissingDbRootStatus, buildStartupAnnouncement, buildStartupChatMessage, buildStatusDetailMessage, formatStatusSummary, type WatcherState } from "./format.js";

@@ -625,19 +625,6 @@ describe("startWatchPolling — delayed scheduler starts when identity check pas
 // ---------------------------------------------------------------------------
 
 describe("pollWatch — early-exit branches", () => {
-	it("returns without polling when rt.paused is true", async () => {
-		const pi = makePi();
-		const client = makeClient(makeJobRunResponse("SUCCEEDED"));
-		const rt = makeRuntime(pi, client);
-		rt.paused = true;
-		const watch = makeJobWatch({ state: "RUNNING", errorMessage: "" });
-		rt.watches[watch.watchId] = watch;
-
-		await pollWatch(rt, watch.watchId);
-
-		expect(client.getJobRun).not.toHaveBeenCalled();
-		expect(pi.sendMessage).not.toHaveBeenCalled();
-	});
 
 	it("stops polling and returns when the watch is already terminal", async () => {
 		const pi = makePi();

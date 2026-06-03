@@ -190,7 +190,7 @@ export class S3Watcher extends BaseWatcher<S3Watch, S3Baseline, S3Event> {
       'Polls HeadObject at increasing intervals (60s → 15min) and fires ' +
       'exactly one chat notification when the target condition is met ' +
       '(or when an optional timeout elapses). ' +
-      'Actions: add, remove, list, pause, resume, status.'
+      'Actions: add, remove, list, status.'
     )
   }
 
@@ -218,7 +218,6 @@ export class S3Watcher extends BaseWatcher<S3Watch, S3Baseline, S3Event> {
       displayName: this.displayName,
       commandName: this.commandName,
       getWatches: () => Array.from(this.watches.values()),
-      getPaused: () => this.paused,
     })
     const { defaultDisplayMode } = loadConfig()
     if (defaultDisplayMode !== undefined) {
@@ -428,11 +427,9 @@ export class S3Watcher extends BaseWatcher<S3Watch, S3Baseline, S3Event> {
       this.baselines.set(watchId, watch.baseline)
     }
 
-    // Start per-watch scheduler immediately when not paused
-    if (!this.paused) {
-      const s = this.schedulerFor(watchId)
-      if (!s.isRunning) s.start(() => this.pollWatch(watchId))
-    }
+    // Start per-watch scheduler immediately
+    const s = this.schedulerFor(watchId)
+    if (!s.isRunning) s.start(() => this.pollWatch(watchId))
 
     const stateLabel =
       watch.baseline === undefined ? '?' : watch.baseline.exists ? 'present' : 'absent'

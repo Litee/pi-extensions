@@ -56,7 +56,6 @@ function validEntry(overrides?: Partial<Record<string, unknown>>) {
 		customType: "test:state",
 		data: {
 			savedAt: 1_000_000,
-			paused: false,
 			items: ["A", "B"],
 			baselines: { key1: { ts: 42 } },
 			...overrides,
@@ -82,7 +81,7 @@ describe("rehydrateStateFromSession", () => {
 		// Arrange
 		const p = makePersistence();
 		const ctx = makeCtx([
-			{ type: "custom", customType: "other:state", data: { savedAt: 1, paused: false, items: [] } },
+			{ type: "custom", customType: "other:state", data: { savedAt: 1, items: [] } },
 		]);
 
 		// Act / Assert
@@ -112,7 +111,7 @@ describe("rehydrateStateFromSession", () => {
 		const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
 		const ctx = makeCtx([
 			validEntry({ savedAt: 500, items: ["fallback"] }), // older valid
-			{ type: "custom", customType: "test:state", data: { savedAt: "not-a-number", paused: false, items: [] } },
+			{ type: "custom", customType: "test:state", data: { savedAt: "not-a-number", items: [] } },
 		]);
 
 		// Act
@@ -138,28 +137,13 @@ describe("rehydrateStateFromSession", () => {
 		warn.mockRestore();
 	});
 
-	it("skips_entry_with_non_boolean_paused", () => {
-		// Arrange
-		const p = makePersistence();
-		const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
-		const ctx = makeCtx([
-			validEntry({ savedAt: 50 }),
-			{ type: "custom", customType: "test:state", data: { savedAt: 999, paused: "yes", items: [] } },
-		]);
-
-		// Act
-		const result = p.rehydrateStateFromSession(ctx);
-		expect(result!.savedAt).toBe(50);
-		warn.mockRestore();
-	});
-
 	it("skips_entry_whose_items_key_is_not_an_array", () => {
 		// Arrange
 		const p = makePersistence();
 		const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
 		const ctx = makeCtx([
 			validEntry({ savedAt: 30 }),
-			{ type: "custom", customType: "test:state", data: { savedAt: 999, paused: false, items: "not-an-array" } },
+			{ type: "custom", customType: "test:state", data: { savedAt: 999, items: "not-an-array" } },
 		]);
 
 		// Act
@@ -177,7 +161,6 @@ describe("rehydrateStateFromSession", () => {
 				customType: "test:state",
 				data: {
 					savedAt: 1,
-					paused: true,
 					items: ["keep", 42, null, "also-keep"],
 					baselines: { k: { ts: 7 } },
 				},
@@ -190,7 +173,6 @@ describe("rehydrateStateFromSession", () => {
 		// Assert
 		expect(result.items).toEqual(["keep", "also-keep"]);
 		expect(result.baselines["k"]).toEqual({ ts: 7 });
-		expect(result.paused).toBe(true);
 	});
 });
 
@@ -208,7 +190,6 @@ describe("writeState", () => {
 		// Act
 		p.writeState(pi, {
 			items: ["P123"],
-			paused: false,
 			baselines: { "ticket:P123": { ts: 999 } },
 		});
 
@@ -221,7 +202,6 @@ describe("writeState", () => {
 		expect(type).toBe("test:state");
 		expect(typeof data["savedAt"]).toBe("number");
 		expect(data["items"]).toEqual(["P123"]);
-		expect(data["paused"]).toBe(false);
 		expect(data["baselines"]).toEqual({ "ticket:P123": { ts: 999 } });
 	});
 
@@ -236,7 +216,7 @@ describe("writeState", () => {
 		const appendEntry = vi.fn();
 
 		// Act
-		p.writeState({ appendEntry }, { items: ["CR-1"], paused: false, baselines: {} });
+		p.writeState({ appendEntry }, { items: ["CR-1"], baselines: {} });
 
 		// Assert
 		const [, data] = appendEntry.mock.calls[0] as [string, Record<string, unknown>];
@@ -255,7 +235,7 @@ describe("writeState", () => {
 
 		// Act / Assert — must not propagate
 		expect(() =>
-			p.writeState(pi, { items: [], paused: false, baselines: {} }),
+			p.writeState(pi, { items: [], baselines: {} }),
 		).not.toThrow();
 	});
 
@@ -277,7 +257,7 @@ describe("writeState", () => {
 		};
 
 		// Act
-		p.writeState(pi, { items: [], paused: false, baselines: {} });
+		p.writeState(pi, { items: [], baselines: {} });
 
 		// Assert — onError fires with the same Error instance
 		expect(onError).toHaveBeenCalledTimes(1);
@@ -301,7 +281,7 @@ describe("writeState", () => {
 		};
 
 		// Act
-		p.writeState(pi, { items: [], paused: false, baselines: {} });
+		p.writeState(pi, { items: [], baselines: {} });
 
 		// Assert
 		expect(onError).toHaveBeenCalledTimes(1);
@@ -329,7 +309,7 @@ describe("writeState", () => {
 		};
 
 		// Act
-		p.writeState(pi, { items: [], paused: false, baselines: {} });
+		p.writeState(pi, { items: [], baselines: {} });
 
 		// Assert — onError receives an Error wrapping the string
 		expect(onError).toHaveBeenCalledTimes(1);
@@ -350,7 +330,7 @@ describe("writeState", () => {
 		});
 
 		// Act
-		p.writeState({ appendEntry: vi.fn() }, { items: [], paused: false, baselines: {} });
+		p.writeState({ appendEntry: vi.fn() }, { items: [], baselines: {} });
 
 		// Assert
 		expect(onError).not.toHaveBeenCalled();

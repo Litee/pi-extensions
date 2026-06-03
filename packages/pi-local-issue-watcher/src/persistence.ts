@@ -21,7 +21,6 @@ import type { IssueInfo, Snapshot } from "./types.js";
 // ---------------------------------------------------------------------------
 
 export const STATE_ENTRY_TYPE = "pi-local-issue-watcher:state";
-export const RUNSTATE_ENTRY_TYPE = "pi-local-issue-watcher:runstate";
 
 export const STATE_MAX_AGE_MS = 24 * 60 * 60 * 1000;
 
@@ -49,10 +48,6 @@ export interface RehydratedState {
 	savedAt: number;
 	snapshot: Snapshot;
 }
-export interface RehydratedRunState {
-	savedAt: number;
-	paused: boolean;
-}
 
 // ---------------------------------------------------------------------------
 // Persistence instances
@@ -62,13 +57,6 @@ const _snapshotPersistence = createPersistence<SerialisedSnapshot, Record<string
 	stateCustomType: STATE_ENTRY_TYPE,
 	watchItemsKey: "snapshot",
 	normaliseItems: _normaliseSnapshotItems,
-	normaliseBaselines: () => ({}),
-});
-
-const _runstatePersistence = createPersistence<string[], Record<string, never>>({
-	stateCustomType: RUNSTATE_ENTRY_TYPE,
-	watchItemsKey: "items",
-	normaliseItems: (raw: unknown) => (Array.isArray(raw) ? raw.filter((x): x is string => typeof x === "string") : []),
 	normaliseBaselines: () => ({}),
 });
 
@@ -102,32 +90,6 @@ export function persistSnapshot(
 	_snapshotPersistence.writeState(pi, {
 		// Stored as Object.entries([path, info][]); normaliseItems reconstructs the record on read.
 		items: Object.entries(_serialiseSnapshot(snapshot)) as unknown as SerialisedSnapshot,
-		paused: false,
-		baselines: {},
-	});
-}
-
-/**
- * Rehydrate run state (paused/running) from session. No TTL.
- */
-export function rehydrateRunStateFromSession(
-	ctx: import("pi-watcher-core/persistence").SessionLike,
-): RehydratedRunState | null {
-	const state = _runstatePersistence.rehydrateStateFromSession(ctx);
-	if (state === null) return null;
-	return { savedAt: state.savedAt, paused: state.paused };
-}
-
-/**
- * Write run-state entry. Best-effort.
- */
-export function persistRunState(
-	pi: { appendEntry(customType: string, data: unknown): void },
-	paused: boolean,
-): void {
-	_runstatePersistence.writeState(pi, {
-		items: [],
-		paused,
 		baselines: {},
 	});
 }

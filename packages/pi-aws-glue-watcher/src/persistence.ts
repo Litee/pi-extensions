@@ -21,7 +21,6 @@ const _persistence = createPersistence<GlueWatch[], Baselines>({
 export interface PersistedState {
 	savedAt: number;
 	enabled: boolean;
-	paused: boolean;
 	watches: WatchMap;
 	displayMode?: "widget" | "statusline";
 }
@@ -29,7 +28,6 @@ export interface PersistedState {
 export interface HydratedState {
 	savedAt: number;
 	enabled: boolean;
-	paused: boolean;
 	watches: WatchMap;
 	displayMode: "widget" | "statusline";
 }
@@ -39,7 +37,6 @@ export function rehydrateStateFromSession(ctx: import("pi-watcher-core/persisten
 	if (state === null) return null;
 	return {
 		savedAt: state.savedAt,
-		paused: state.paused,
 		watches: _toWatchMap(state.items),
 		enabled: state.baselines.enabled,
 		displayMode: state.baselines.displayMode,
@@ -48,11 +45,10 @@ export function rehydrateStateFromSession(ctx: import("pi-watcher-core/persisten
 
 export function writeState(
 	pi: { appendEntry(customType: string, data: unknown): void },
-	snapshot: { enabled: boolean; paused: boolean; watches: WatchMap; displayMode: "widget" | "statusline" },
+	snapshot: { enabled: boolean; watches: WatchMap; displayMode: "widget" | "statusline" },
 ): void {
 	_persistence.writeState(pi, {
 		items: Object.values(snapshot.watches),
-		paused: snapshot.paused,
 		baselines: { enabled: snapshot.enabled, displayMode: snapshot.displayMode },
 	});
 }

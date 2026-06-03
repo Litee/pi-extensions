@@ -53,7 +53,6 @@ export function createExtensionWithClient(pi: ExtensionAPI, client: GlueClient):
 
 		const state = rehydrateStateFromSession(ctx);
 		rt.watches = state?.watches ?? {};
-		rt.paused = state?.paused ?? false;
 		// Display-mode precedence: persisted state > user config > hardcoded
 		// default. loadConfig() runs at session_start (rather than at module-eval
 		// time) so it stays cheap and lets tests override per call.
@@ -91,7 +90,7 @@ export function createExtensionWithClient(pi: ExtensionAPI, client: GlueClient):
 		});
 
 		const activeWatches = Object.values(rt.watches).filter((w) => !w.terminal);
-		if (!rt.paused && activeWatches.length > 0) startPolling(rt);
+		if (activeWatches.length > 0) startPolling(rt);
 		refreshStatus(rt);
 		if (rt.displayMode === "widget") rt.widget?.show(ctx);
 		else rt.widget?.hide(ctx);
@@ -110,7 +109,7 @@ export function createExtensionWithClient(pi: ExtensionAPI, client: GlueClient):
 			rt.enabled = true;
 			writeState(rt.pi, rt);
 			const activeWatches = Object.values(rt.watches).filter((w) => !w.terminal);
-			if (!rt.paused && activeWatches.length > 0 && !rt.schedulers.size)
+			if (activeWatches.length > 0 && !rt.schedulers.size)
 				startPolling(rt);
 			refreshStatus(rt);
 			if (rt.displayMode === "widget") rt.widget?.show(ctx);

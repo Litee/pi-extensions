@@ -285,10 +285,9 @@ export abstract class BaseWatcher<
    * Browse-view header line given current count/filter state.
    * Default: `"<N> <noun(s)>"` or `"<filtered>/<total> <noun(s)>"`.
    */
-  protected browseHeader(state: { count: number; filtered: number; paused?: boolean; activeCount?: number }): string {
+  protected browseHeader(state: { count: number; filtered: number; activeCount?: number }): string {
     const active = state.activeCount ?? state.count
-    const countStr = `(${active}/${state.count})`
-    return state.paused ? `${countStr} · PAUSED` : countStr
+    return `(${active}/${state.count})`
   }
 
   /**
@@ -389,7 +388,6 @@ export abstract class BaseWatcher<
   protected readonly watches = new Map<string, TWatch>()
   /** Per-watch baselines — key = `watchKey(watch)`. */
   protected readonly baselines = new Map<string, TBaseline>()
-  protected paused = false
   /** Whether the LLM tool is active (user-tool only). */
   protected enabled = false
   protected displayMode: 'widget' | 'statusline' = 'widget'
@@ -452,7 +450,7 @@ export abstract class BaseWatcher<
       case 'add': {
         const result = await this.addWatch(params)
         this.writeState()
-        if (!this.paused) this.startPolling()
+        this.startPolling()
         this._pi.events.emit(this.eventChannel, {})
         this.refreshStatus()
         return result
@@ -492,43 +490,19 @@ export abstract class BaseWatcher<
         }
       }
 
-      case 'pause': {
-        if (this.paused) {
-          return { content: [{ type: 'text' as const, text: `${this.statusLabel}: already paused.` }], details: { action: 'pause', changed: false } }
-        }
-        this.paused = true
-        this.stopPolling()
-        this.writeState()
-        this.refreshStatus()
-        return { content: [{ type: 'text' as const, text: `${this.statusLabel}: paused.` }], details: { action: 'pause', changed: true } }
-      }
-
-      case 'resume': {
-        if (!this.paused) {
-          return { content: [{ type: 'text' as const, text: `${this.statusLabel}: not paused.` }], details: { action: 'resume', changed: false } }
-        }
-        this.paused = false
-        const hasActive = Array.from(this.watches.values()).some((w) => !w.terminal)
-        if (hasActive) this.startPolling()
-        this.writeState()
-        this.refreshStatus()
-        return { content: [{ type: 'text' as const, text: `${this.statusLabel}: resumed.` }], details: { action: 'resume', changed: true } }
-      }
-
       case 'status': {
         const active = Array.from(this.watches.values()).filter((w) => !w.terminal)
-        const pausedSuffix = this.paused ? ' (paused)' : ''
         const errors = active.filter((w) => w.consecutiveErrors >= POLL_ERROR_THRESHOLD).length
         const text = [
-          `${this.statusLabel}: ${active.length} active watch(es)${pausedSuffix}`,
+          `${this.statusLabel}: ${active.length} active watch(es)`,
           errors > 0 ? `  ${errors} watch(es) with repeated errors` : null,
           `  poll interval: ${Math.round(this.sharedScheduler.intervalMs / 1000)}s`,
         ].filter(Boolean).join('\n')
-        return { content: [{ type: 'text' as const, text }], details: { action: 'status', activeCount: active.length, paused: this.paused } }
+        return { content: [{ type: 'text' as const, text }], details: { action: 'status', activeCount: active.length } }
       }
 
       default:
-        return this._toolError(`Unknown action: "${action}". Valid actions: add, remove, list, pause, resume, status.`)
+        return this._toolError(`Unknown action: "${action}". Valid actions: add, remove, list, status.`)
     }
   }
 
@@ -581,18 +555,6 @@ export abstract class BaseWatcher<
           this.executeTool(params as Record<string, unknown>) as unknown as Promise<any>,
       })
     }
-
-    // Widget hotkey: toggle-pause event from the TUI widget
-    pi.on(`${this.extensionName}:toggle-pause` as never, () => {
-      this.paused = !this.paused
-      if (this.paused) this.stopPolling()
-      else {
-        const hasActive = Array.from(this.watches.values()).some((w) => !w.terminal)
-        if (hasActive && !this.sharedScheduler.isRunning) this.startPolling()
-      }
-      this.writeState()
-      this.refreshStatus()
-    })
 
     // Lifecycle events
     pi.on('session_start', async (_evt: unknown, ctx: unknown) => {
@@ -648,7 +610,7 @@ export abstract class BaseWatcher<
     const activeWatches = Array.from(this.watches.values()).filter(
       (w) => !w.terminal,
     )
-    if (!this.paused && activeWatches.length > 0) this.startPolling()
+    if (activeWatches.length > 0) this.startPolling()
 
     // Show/hide widget
     if (this.hasWidget && this.widget !== null) {
@@ -682,7 +644,7 @@ export abstract class BaseWatcher<
       this.enabled = true
       this.writeState()
       const anyActive = Array.from(this.watches.values()).some((w) => !w.terminal)
-      if (!this.paused && anyActive && !this.sharedScheduler.isRunning) {
+      if (anyActive && !this.sharedScheduler.isRunning) {
         this.startPolling()
       }
       this.refreshStatus()
@@ -850,8 +812,6 @@ export abstract class BaseWatcher<
    * errors are isolated inside `pollWatch`.
    */
   async pollOnce(): Promise<void> {
-    if (this.paused) return
-
     // Scan watchers: refresh watch list from data source
     if (this.itemSource === 'scan' && this.scanItems !== undefined) {
       const items = await this.scanItems()
@@ -892,7 +852,6 @@ export abstract class BaseWatcher<
         savedAt: this._now(),
         watches: watchesArr,
         baselines: baselinesObj,
-        paused: this.paused,
         enabled: this.enabled,
         displayMode: this.displayMode,
       })
@@ -958,11 +917,10 @@ export abstract class BaseWatcher<
     const hasErrors = Array.from(this.watches.values()).some(
       (w) => !w.terminal && w.consecutiveErrors >= POLL_ERROR_THRESHOLD,
     )
-    const mode = this.paused ? 'paused' : 'active'
     const modifier = hasErrors ? ('auth-error' as const) : ('none' as const)
-    const alias = statusLineColorAlias(mode, modifier)
+    const alias = statusLineColorAlias(modifier)
 
-    const suffix = this.paused ? ' (paused)' : hasErrors ? ' (errors)' : ''
+    const suffix = hasErrors ? ' (errors)' : ''
     const text = `${this.statusLabel}: ${activeCount}${suffix}`
 
     this.ui?.setStatus?.(this.statusKey, colorize(this.ui?.theme, alias, text))
@@ -1063,7 +1021,7 @@ export abstract class BaseWatcher<
       watches,
       view: this.view,
       filter: (w, q) => this.browseFilter(w, q),
-      header: (s) => this.browseHeader({ ...s, paused: this.paused, activeCount }),
+      header: (s) => this.browseHeader({ ...s, activeCount }),
       onQuit: () => { quit = true },
     }
     const opts: BrowseViewOptions<TWatch> = { ...baseOpts, ...this.browseOptions() }
@@ -1104,7 +1062,7 @@ export abstract class BaseWatcher<
       run: (ctx) => ctx.browse(),
     })
 
-    // Purge completed watches (user-tool watchers only)
+    // Purge completed watches (user-tool watchers only) — inserted after browse
     if (this.itemSource === 'user-tool') {
       items.push({
         id: 'purge',
@@ -1139,16 +1097,6 @@ export abstract class BaseWatcher<
         },
       })
     }
-
-    // Pause / Resume toggle
-    items.push({
-      id: 'paused',
-      label: (state) => `Paused: ${state.paused ? 'on' : 'off'}`,
-      run: (ctx): Promise<MenuResult> => {
-        ctx.toggle('paused')
-        return Promise.resolve('rerender')
-      },
-    })
 
     // Display mode toggle (widget-capable watchers only)
     if (this.hasWidget) {
@@ -1209,7 +1157,6 @@ export abstract class BaseWatcher<
     )
     const ud = this.userDefaultDisplayMode
     return {
-      paused: this.paused,
       pollIntervalMs: this.sharedScheduler.intervalMs,
       enabled: this.enabled,
       displayMode: this.displayMode,
@@ -1231,21 +1178,7 @@ export abstract class BaseWatcher<
       state,
       browse: () => this.browseAction(ctx),
       refresh: () => this.refreshStatus(),
-      toggle: (flag) => {
-        if (flag === 'paused') {
-          this.paused = !this.paused
-          if (this.paused) {
-            this.stopPolling()
-          } else {
-            const hasActive = Array.from(this.watches.values()).some(
-              (w) => !w.terminal,
-            )
-            if (hasActive && !this.sharedScheduler.isRunning) this.startPolling()
-          }
-          this.writeState()
-          this.refreshStatus()
-        }
-      },
+
       setDisplayMode: (mode) => {
         this.displayMode = mode
         this.writeState()
@@ -1309,13 +1242,11 @@ export abstract class BaseWatcher<
       const savedAt =
         typeof data['savedAt'] === 'number' ? data['savedAt'] : NaN
       if (!Number.isFinite(savedAt)) continue
-      if (typeof data['paused'] !== 'boolean') continue
 
       const rawWatches = data['watches']
       if (!Array.isArray(rawWatches)) continue
 
       // Valid entry found — apply it
-      this.paused = data['paused']
       this.enabled =
         typeof data['enabled'] === 'boolean' ? data['enabled'] : false
       this.displayMode =

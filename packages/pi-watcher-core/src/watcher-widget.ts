@@ -44,9 +44,8 @@ import { renderRowColumns, renderDimmedRow } from './browse-view.js'
  * Format the widget header: `<displayName> (N)` or `<displayName> (N) · PAUSED`.
  * Used in the DynamicBorder title row.
  */
-export function formatWidgetHeader(extensionName: string, activeCount: number, totalCount: number, paused: boolean): string {
-  const base = `${extensionName} (${activeCount}/${totalCount})`
-  return paused ? `${base} · PAUSED` : base
+export function formatWidgetHeader(extensionName: string, activeCount: number, totalCount: number): string {
+  return `${extensionName} (${activeCount}/${totalCount})`
 }
 
 /**
@@ -157,9 +156,8 @@ class WatcherWidgetImpl<TWatch extends WatchLike, TEvent> implements WatcherWidg
     const watches = this.opts.getWatches()
     const totalCount = watches.length
     const activeCount = watches.filter((w) => !w.terminal).length
-    const paused = this.opts.getPaused?.() ?? false
     const name = this.opts.displayName ?? this.opts.extensionName
-    const count = t.fg('dim', ` (${activeCount}/${totalCount})${paused ? ' · PAUSED' : ''}`)
+    const count = t.fg('dim', ` (${activeCount}/${totalCount})`)
     const footer = formatWidgetFooter(this.opts.commandName ?? this.opts.extensionName)
 
     const headerLine = `${t.fg('accent', t.bold(name))}${count}  ${t.fg('dim', footer)}`
@@ -199,7 +197,6 @@ class WatcherWidgetImpl<TWatch extends WatchLike, TEvent> implements WatcherWidg
   private _makeState(): WatcherState {
     const watches = this.opts.getWatches()
     return {
-      paused: false,
       pollIntervalMs: 0,
       enabled: false,
       displayMode: 'widget',

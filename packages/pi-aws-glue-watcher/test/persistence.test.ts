@@ -28,7 +28,6 @@ function makeSession(entries: unknown[]) {
 // New session format: watches is an array, baselines holds enabled/displayMode
 const VALID_DATA = {
 	savedAt: 1_746_527_400_000,
-	paused: false,
 	watches: [] as GlueWatch[],
 	baselines: { enabled: true, displayMode: "widget" as const },
 };
@@ -57,7 +56,6 @@ describe("rehydrateStateFromSession", () => {
 		const result = rehydrateStateFromSession(ctx);
 		expect(result).not.toBeNull();
 		expect(result!.enabled).toBe(true);
-		expect(result!.paused).toBe(false);
 		expect(result!.savedAt).toBe(VALID_DATA.savedAt);
 		expect(result!.watches).toEqual({});
 	});
@@ -88,11 +86,6 @@ describe("rehydrateStateFromSession", () => {
 		expect(rehydrateStateFromSession(ctx)).toBeNull();
 	});
 
-	it("skips an entry where paused is not a boolean", () => {
-		const bad = makeEntry({ ...VALID_DATA, paused: 0 });
-		const ctx = makeSession([bad]);
-		expect(rehydrateStateFromSession(ctx)).toBeNull();
-	});
 
 	it("skips an entry where watches is not an array", () => {
 		// In new format watches must be an array
@@ -138,13 +131,12 @@ describe("rehydrateStateFromSession", () => {
 describe("writeState", () => {
 	it("calls appendEntry with STATE_CUSTOM_TYPE and the expected data shape", () => {
 		const appendEntry = vi.fn();
-		writeState({ appendEntry }, { enabled: true, paused: false, watches: {}, displayMode: "widget" });
+		writeState({ appendEntry }, { enabled: true, watches: {}, displayMode: "widget" });
 		expect(appendEntry).toHaveBeenCalledOnce();
 		const [ct, data] = appendEntry.mock.calls[0] as [string, Record<string, unknown>];
 		expect(ct).toBe(STATE_CUSTOM_TYPE);
 		// watches is stored as array (Object.values({}))
 		expect(Array.isArray(data["watches"])).toBe(true);
-		expect(data["paused"]).toBe(false);
 		expect(typeof data["savedAt"]).toBe("number");
 		// baselines holds enabled + displayMode
 		expect((data["baselines"] as Record<string, unknown>)["enabled"]).toBe(true);
@@ -155,7 +147,7 @@ describe("writeState", () => {
 			throw new Error("storage failure");
 		});
 		expect(() =>
-			writeState({ appendEntry }, { enabled: false, paused: false, watches: {}, displayMode: "widget" }),
+			writeState({ appendEntry }, { enabled: false, watches: {}, displayMode: "widget" }),
 		).not.toThrow();
 	});
 });

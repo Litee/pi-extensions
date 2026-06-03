@@ -25,7 +25,7 @@ function makeWatch(overrides: Partial<Ec2Watch> = {}): Ec2Watch {
 
 describe("buildStatusLine", () => {
 	it("idle → muted when no watches", () => {
-		expect(buildStatusLine({ watches: {}, paused: false, pollIntervalMs: 60_000 }))
+		expect(buildStatusLine({ watches: {}, pollIntervalMs: 60_000 }))
 			.toEqual({ text: "aws-ec2: idle", colorAlias: "muted" });
 	});
 
@@ -35,37 +35,24 @@ describe("buildStatusLine", () => {
 			b: makeWatch({ watchId: "b" }),
 			c: makeWatch({ watchId: "c" }),
 		};
-		expect(buildStatusLine({ watches, paused: false, pollIntervalMs: 60_000 }))
+		expect(buildStatusLine({ watches, pollIntervalMs: 60_000 }))
 			.toEqual({ text: "aws-ec2: 3", colorAlias: "accent" });
 	});
 
 	it("active + errors → warning with ⚠ errors segment", () => {
 		const watches: WatchMap = { a: makeWatch() };
-		expect(buildStatusLine({ watches, paused: false, pollIntervalMs: 60_000, hasErrors: true }))
+		expect(buildStatusLine({ watches, pollIntervalMs: 60_000, hasErrors: true }))
 			.toEqual({ text: "aws-ec2: 1 | ⚠ errors", colorAlias: "warning" });
 	});
 
-	it("paused → muted, (paused) suffix", () => {
-		const watches: WatchMap = { a: makeWatch() };
-		expect(buildStatusLine({ watches, paused: true, pollIntervalMs: 60_000 }))
-			.toEqual({ text: "aws-ec2: 1 (paused)", colorAlias: "muted" });
-	});
 
-	it("paused + errors → warning (errors take colour priority over paused)", () => {
-		const watches: WatchMap = {
-			a: makeWatch({ watchId: "a" }),
-			b: makeWatch({ watchId: "b" }),
-		};
-		expect(buildStatusLine({ watches, paused: true, pollIntervalMs: 60_000, hasErrors: true }))
-			.toEqual({ text: "aws-ec2: 2 | ⚠ errors (paused)", colorAlias: "warning" });
-	});
 
 	it("excludes terminal watches from the count", () => {
 		const watches: WatchMap = {
 			a: makeWatch({ watchId: "a", terminal: true }),
 			b: makeWatch({ watchId: "b" }),
 		};
-		expect(buildStatusLine({ watches, paused: false, pollIntervalMs: 60_000 }))
+		expect(buildStatusLine({ watches, pollIntervalMs: 60_000 }))
 			.toEqual({ text: "aws-ec2: 1", colorAlias: "accent" });
 	});
 
@@ -73,7 +60,7 @@ describe("buildStatusLine", () => {
 		const watches: WatchMap = {
 			a: makeWatch({ watchId: "a", terminal: true }),
 		};
-		expect(buildStatusLine({ watches, paused: false, pollIntervalMs: 60_000 }))
+		expect(buildStatusLine({ watches, pollIntervalMs: 60_000 }))
 			.toEqual({ text: "aws-ec2: idle", colorAlias: "muted" });
 	});
 });

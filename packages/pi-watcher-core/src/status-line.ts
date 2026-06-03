@@ -12,7 +12,7 @@
  *   "tickets: 3 (auth error)"
  */
 
-export type StatusLineMode = "active" | "paused";
+export type StatusLineMode = "active";
 export type StatusLineModifier = "throttled" | "auth-error" | "none";
 export type StatusLineColorAlias = "accent" | "muted" | "warning";
 
@@ -27,17 +27,14 @@ export interface StatusLineOptions {
 }
 
 /**
- * Returns the theme colour alias to use for a given mode + modifier.
+ * Returns the theme colour alias to use for a given modifier.
  *
  * - `accent`  — active, no error
- * - `muted`   — paused (modifier is ignored; paused takes precedence)
  * - `warning` — throttled or auth-error
  */
 export function statusLineColorAlias(
-	mode: StatusLineMode,
 	modifier: StatusLineModifier = "none",
 ): StatusLineColorAlias {
-	if (mode === "paused") return "muted";
 	if (modifier === "throttled" || modifier === "auth-error") return "warning";
 	return "accent";
 }
@@ -52,7 +49,6 @@ export function statusLineColorAlias(
 export function buildStatusLine(opts: StatusLineOptions): string {
 	if (opts.count === 0) return "";
 	const modifier = opts.modifier ?? "none";
-	if (opts.mode === "paused")    return `${opts.label}: ${opts.count} (paused)`;
 	if (modifier === "throttled")  return `${opts.label}: ${opts.count} (throttled)`;
 	if (modifier === "auth-error") return `${opts.label}: ${opts.count} (auth error)`;
 	return `${opts.label}: ${opts.count}`;
