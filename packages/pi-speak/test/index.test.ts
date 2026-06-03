@@ -145,6 +145,13 @@ function makeSpeakEntry(enabled: boolean): SessionEntry {
 }
 
 // ---------------------------------------------------------------------------
+// Helpers
+// ---------------------------------------------------------------------------
+
+/** Flush all pending microtasks and macrotasks (one setTimeout(0) round). */
+const flushAsync = () => new Promise<void>((r) => setTimeout(r, 0));
+
+// ---------------------------------------------------------------------------
 // Setup
 // ---------------------------------------------------------------------------
 
@@ -494,6 +501,9 @@ describe("tool execute — trigger_turn", () => {
 		) as { details: { ok: boolean } };
 
 		expect(result.details.ok).toBe(true);
+		// sendMessage fires via onDone after the queue plays the item — flush the
+		// async queue so the mock resolves before we assert.
+		await flushAsync();
 		expect(pi.sendMessage).toHaveBeenCalledWith(
 			expect.objectContaining({ customType: "pi-speak:continue" }),
 			expect.objectContaining({ triggerTurn: true }),

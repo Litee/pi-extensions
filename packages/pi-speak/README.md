@@ -55,7 +55,7 @@ Once the download completes, the extension auto-discovers the model from the Hug
 | `lang` | language code | `en` | Language (en, ko, ja, de, fr, …) |
 | `speed` | number 0.5–2.0 | `1.05` | Speaking rate multiplier |
 | `steps` | integer 1–32 | `8` | Diffusion steps (higher = better quality, slower) |
-| `wait` | boolean | `true` | Block until playback finishes |
+| `trigger_turn` | boolean | `false` | If true, triggers a new LLM turn after speech is enqueued. Default false. |
 
 Supported languages: `en`, `ko`, `ja`, `ar`, `bg`, `cs`, `da`, `de`, `el`, `es`, `et`, `fi`, `fr`, `hi`, `hr`, `hu`, `id`, `it`, `lt`, `lv`, `nl`, `pl`, `pt`, `ro`, `ru`, `sk`, `sl`, `sv`, `tr`, `uk`, `vi`, `na`.
 

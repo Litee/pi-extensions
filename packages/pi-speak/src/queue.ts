@@ -40,6 +40,8 @@ export interface QueueItem {
 	speed: number;
 	steps: number;
 	assetsDir: string;
+	/** Called after this specific item finishes playing (or is skipped due to synthesis error). */
+	onDone?: () => void;
 }
 
 // ---------------------------------------------------------------------------
@@ -134,6 +136,8 @@ export class SpeechQueue {
 					try { unlinkSync(tmpPath); } catch { /* ignore */ }
 				}
 			}
+			// Fire per-item callback after this item finishes (or was skipped).
+			item.onDone?.();
 
 			// If clear() was called during synthesis or playback, discard any
 			// prefetched WAV and stop the pipeline.

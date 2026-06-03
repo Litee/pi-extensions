@@ -172,14 +172,15 @@ export default function speakExtension(pi: ExtensionAPI): void {
 			const speed = sessionSpeed  ?? params.speed  ?? cfg.defaultSpeed   ?? 1.05;
 			const steps = sessionSteps  ?? params.steps  ?? cfg.defaultSteps   ?? 8;
 
-			const pos = queue.enqueue({ text, voice, lang, speed, steps, assetsDir });
-
-			if (params.trigger_turn) {
-				pi.sendMessage(
-					{ customType: "pi-speak:continue", content: "", display: false },
-					{ triggerTurn: true, deliverAs: "followUp" },
-				);
-			}
+			const pos = queue.enqueue({
+				text, voice, lang, speed, steps, assetsDir,
+				...(params.trigger_turn ? {
+					onDone: () => pi.sendMessage(
+						{ customType: "pi-speak:continue", content: "", display: false },
+						{ triggerTurn: true, deliverAs: "followUp" },
+					),
+				} : {}),
+			});
 
 			return {
 				content: [{ type: "text" as const, text: `Queued (#${pos}): ${shortText}${text.length > 80 ? "…" : ""}` }],

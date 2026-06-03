@@ -53,12 +53,11 @@ a new session.
 `speak` synthesises text in-process using the Supertone ONNX TTS engine,
 writes a temporary WAV file, and plays it through the OS audio device
 (`afplay` on macOS; `paplay`/`aplay`/`ffplay` on Linux; PowerShell
-`Media.SoundPlayer` on Windows). When `wait` is true (default) the call
-blocks until playback finishes. The temporary file is deleted immediately
+`Media.SoundPlayer` on Windows). Speech always plays in the background
+queue — the tool never blocks. The temporary file is deleted immediately
 after playback.
 
-**Use the `speak` tool for short outputs.** Long text is auto-chunked
-but blocks the conversation for the full playback duration. Prefer
+**Use the `speak` tool for short outputs.** Prefer
 short, high-value utterances (confirmations, summaries, key results)
 over narrating large blocks of text.
 
@@ -71,7 +70,7 @@ speak({
   "lang":  "en",               // optional: language code, default en
   "speed": 1.05,               // optional: 0.5–2.0 rate multiplier, default 1.05
   "steps": 8,                  // optional: 1–32 diffusion steps, default 8
-  "wait":  true                // optional: block until playback finishes, default true
+  "trigger_turn": false        // optional: if true, triggers a new LLM turn after speech plays, default false
 })
 ```
 
@@ -142,8 +141,8 @@ auto-discovered HF cache path.
    ```
    speak({"text": "Task complete. Three files were updated.", "voice": "F1"})
    ```
-3. The call blocks until playback finishes (with `wait: true`), then
-   returns a confirmation with the voice used and elapsed time.
+3. The call returns immediately — speech plays in the background queue.
+   Pass `trigger_turn: true` to fire a new LLM turn after the item finishes.
 
 ## Related Skills
 
