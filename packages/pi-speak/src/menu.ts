@@ -190,6 +190,45 @@ export const LANG_PHRASES: Readonly<Record<string, string>> = {
 	na: "Hello, I speak neutral.",
 };
 
+/**
+ * Per-language templates for voice picker previews.
+ * The `{voice}` placeholder is replaced with the voice ID (e.g. M1, F2).
+ */
+const VOICE_PREVIEW_TEMPLATES: Readonly<Record<string, string>> = {
+	en: "Hello, I'm voice {voice}.",
+	ko: "안녕하세요, 저는 {voice} 목소리입니다.",
+	ja: "こんにちは、私は声 {voice} です。",
+	ar: "مرحباً، أنا الصوت {voice}.",
+	bg: "Здравейте, аз съм глас {voice}.",
+	cs: "Dobrý den, jsem hlas {voice}.",
+	da: "Hej, jeg er stemme {voice}.",
+	de: "Hallo, ich bin Stimme {voice}.",
+	el: "Γεια σας, είμαι η φωνή {voice}.",
+	es: "Hola, soy la voz {voice}.",
+	et: "Tere, olen hääl {voice}.",
+	fi: "Hei, olen ääni {voice}.",
+	fr: "Bonjour, je suis la voix {voice}.",
+	hi: "नमस्ते, मैं आवाज़ {voice} हूँ।",
+	hr: "Bok, ja sam glas {voice}.",
+	hu: "Helló, én a {voice} hang vagyok.",
+	id: "Halo, saya adalah suara {voice}.",
+	it: "Ciao, sono la voce {voice}.",
+	lt: "Labas, aš esu balsas {voice}.",
+	lv: "Sveiki, es esmu balss {voice}.",
+	nl: "Hallo, ik ben stem {voice}.",
+	pl: "Cześć, jestem głos {voice}.",
+	pt: "Olá, eu sou a voz {voice}.",
+	ro: "Bună ziua, eu sunt vocea {voice}.",
+	ru: "Привет, я голос {voice}.",
+	sk: "Ahoj, som hlas {voice}.",
+	sl: "Zdravo, jaz sem glas {voice}.",
+	sv: "Hej, jag är röst {voice}.",
+	tr: "Merhaba, ben {voice} sesiyim.",
+	uk: "Привіт, я голос {voice}.",
+	vi: "Xin chào, tôi là giọng {voice}.",
+	na: "Hello, I'm voice {voice}.",
+};
+
 // ---------------------------------------------------------------------------
 // Sub-menu pickers — shared helper
 // ---------------------------------------------------------------------------
@@ -324,7 +363,7 @@ async function pickVoice(
 		title: `Select voice  (current: ${current})`,
 		items,
 		initialIndex,
-		previewText: (v) => `Hello, I'm voice ${v}.`,
+		previewText: (v) => (VOICE_PREVIEW_TEMPLATES[effLang] ?? VOICE_PREVIEW_TEMPLATES["en"]!).replace("{voice}", v),
 		effVoice: (v) => v,
 		effLang,
 		onPreview: options.onPreview,
