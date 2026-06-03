@@ -36,6 +36,8 @@ export const STATUS_KEY = "pi-local-issue-watcher";
 export const MENU_TITLE = "Local Issue Watcher";
 export const ITEM_BROWSE_PREFIX = "Browse issues";
 export const ITEM_REFRESH = "Refresh";
+export const ITEM_ENABLE = "Enable watcher";
+export const ITEM_DISABLE = "Disable watcher";
 export const ITEM_CLOSE = "Close";
 
 // ---------------------------------------------------------------------------
@@ -58,6 +60,8 @@ export interface LocalIssueWatcherCommandDeps {
 	) => void;
 	/** Return the current infoPickerOverride (or null to fall back to the real TUI). */
 	getInfoPickerOverride: () => InfoPicker | null;
+	/** Persist the enabled flag to the session log. */
+	persistEnabled: (enabled: boolean) => void;
 }
 
 type MenuCtx = {
@@ -108,10 +112,33 @@ export async function runLocalIssueWatcherCommand(
 			(i) => i.status === "open",
 		).length;
 		const browseItem = `${ITEM_BROWSE_PREFIX} (${openCount} open)`;
-		const items = [browseItem, ITEM_REFRESH, ITEM_CLOSE];
+		const items = [
+			browseItem,
+			ITEM_REFRESH,
+			rt.enabled ? ITEM_DISABLE : ITEM_ENABLE,
+			ITEM_CLOSE,
+		];
 
 		const choice = await select(MENU_TITLE, items);
 		if (!choice || choice === ITEM_CLOSE) return;
+
+		// ── Enable ──────────────────────────────────────────────────────────
+		if (choice === ITEM_ENABLE) {
+			deps.persistEnabled(true);
+			rt.enabled = true;
+			deps.startPolling(rt);
+			deps.refreshStatusLine(rt.ui, rt, "active", rt.snapshot);
+			continue;
+		}
+
+		// ── Disable ─────────────────────────────────────────────────────────
+		if (choice === ITEM_DISABLE) {
+			deps.persistEnabled(false);
+			rt.enabled = false;
+			deps.stopPolling(rt);
+			ui?.setStatus?.(STATUS_KEY, undefined);
+			continue;
+		}
 
 		// ── Browse ──────────────────────────────────────────────────────────
 		if (choice.startsWith(ITEM_BROWSE_PREFIX)) {

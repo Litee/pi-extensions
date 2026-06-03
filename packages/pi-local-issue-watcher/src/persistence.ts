@@ -13,6 +13,7 @@
  */
 import { createPersistence } from "pi-watcher-core/persistence";
 export type { SessionLike } from "pi-watcher-core/persistence";
+import type { SessionLike as _SessionLike } from "pi-watcher-core/persistence";
 
 import type { IssueInfo, Snapshot } from "./types.js";
 
@@ -23,6 +24,8 @@ import type { IssueInfo, Snapshot } from "./types.js";
 export const STATE_ENTRY_TYPE = "pi-local-issue-watcher:state";
 
 export const STATE_MAX_AGE_MS = 24 * 60 * 60 * 1000;
+
+export const ENABLED_ENTRY_TYPE = "pi-local-issue-watcher:enabled";
 
 // ---------------------------------------------------------------------------
 // Serialised shapes (JSON-safe)
@@ -52,6 +55,52 @@ export interface RehydratedState {
 // ---------------------------------------------------------------------------
 // Persistence instances
 // ---------------------------------------------------------------------------
+
+// ---------------------------------------------------------------------------
+// Enabled-flag persistence (sticky, no TTL)
+// ---------------------------------------------------------------------------
+
+const _enabledPersistence = createPersistence<never[], { enabled: boolean }>(
+	{
+		stateCustomType: ENABLED_ENTRY_TYPE,
+		watchItemsKey: "items",
+		normaliseItems: () => [],
+		normaliseBaselines: (raw) => {
+			if (
+				raw != null &&
+				typeof raw === "object" &&
+				typeof (raw as Record<string, unknown>)["enabled"] === "boolean"
+			) {
+				return { enabled: (raw as Record<string, unknown>)["enabled"] as boolean };
+			}
+			return { enabled: false };
+		},
+	},
+);
+
+/**
+ * Rehydrate the enabled flag from session. Returns `false` (inactive) by
+ * default — the watcher only activates if explicitly enabled via the menu.
+ * No TTL: the flag is sticky across all session restarts.
+ */
+export function rehydrateEnabledFromSession(
+	ctx: _SessionLike,
+): boolean {
+	const state = _enabledPersistence.rehydrateStateFromSession(ctx);
+	if (state === null) return false;
+	return state.baselines.enabled === true;
+}
+
+/**
+ * Persist the enabled flag. Best-effort — errors from `appendEntry` are
+ * swallowed by `createPersistence`.
+ */
+export function persistEnabled(
+	pi: { appendEntry(customType: string, data: unknown): void },
+	enabled: boolean,
+): void {
+	_enabledPersistence.writeState(pi, { items: [], baselines: { enabled } });
+}
 
 const _snapshotPersistence = createPersistence<SerialisedSnapshot, Record<string, never>>({
 	stateCustomType: STATE_ENTRY_TYPE,

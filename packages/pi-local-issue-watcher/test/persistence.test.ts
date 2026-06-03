@@ -3,8 +3,11 @@ import { describe, expect, it, vi } from "vitest";
 import {
 	STATE_ENTRY_TYPE,
 	STATE_MAX_AGE_MS,
+	ENABLED_ENTRY_TYPE,
 	rehydrateFromSession,
+	rehydrateEnabledFromSession,
 	persistSnapshot,
+	persistEnabled,
 } from "../src/persistence.js";
 import type { Snapshot } from "../src/types.js";
 
@@ -236,6 +239,94 @@ describe("constants", () => {
 		expect(STATE_ENTRY_TYPE).toBe("pi-local-issue-watcher:state");
 	});
 
+	it("ENABLED_ENTRY_TYPE uses colon separator", () => {
+		expect(ENABLED_ENTRY_TYPE).toBe("pi-local-issue-watcher:enabled");
+	});
+});
+
+// ---------------------------------------------------------------------------
+// rehydrateEnabledFromSession
+// ---------------------------------------------------------------------------
+
+describe("rehydrateEnabledFromSession", () => {
+	it("returns false when no entries", () => {
+		expect(rehydrateEnabledFromSession(makeCtx([]))).toBe(false);
+	});
+
+	it("returns false when no matching entry exists", () => {
+		const ctx = makeCtx([
+			entry("some-other-type", { savedAt: now(), items: [], baselines: { enabled: true } }),
+		]);
+		expect(rehydrateEnabledFromSession(ctx)).toBe(false);
+	});
+
+	it("returns false when entry has enabled: false", () => {
+		const ctx = makeCtx([
+			entry(ENABLED_ENTRY_TYPE, { savedAt: now(), items: [], baselines: { enabled: false } }),
+		]);
+		expect(rehydrateEnabledFromSession(ctx)).toBe(false);
+	});
+
+	it("returns true when entry has enabled: true", () => {
+		const ctx = makeCtx([
+			entry(ENABLED_ENTRY_TYPE, { savedAt: now(), items: [], baselines: { enabled: true } }),
+		]);
+		expect(rehydrateEnabledFromSession(ctx)).toBe(true);
+	});
+
+	it("returns false when baselines has no enabled key", () => {
+		const ctx = makeCtx([
+			entry(ENABLED_ENTRY_TYPE, { savedAt: now(), items: [], baselines: {} }),
+		]);
+		expect(rehydrateEnabledFromSession(ctx)).toBe(false);
+	});
+
+	it("reads the newest entry (latest enabled state wins)", () => {
+		const ctx = makeCtx([
+			entry(ENABLED_ENTRY_TYPE, { savedAt: now() - 2000, items: [], baselines: { enabled: true } }),
+			entry(ENABLED_ENTRY_TYPE, { savedAt: now(), items: [], baselines: { enabled: false } }),
+		]);
+		expect(rehydrateEnabledFromSession(ctx)).toBe(false);
+	});
+
+	it("ignores TTL — sticky flag regardless of age", () => {
+		// Unlike the snapshot, the enabled flag has no expiry.
+		const ctx = makeCtx([
+			entry(ENABLED_ENTRY_TYPE, { savedAt: now() - 30 * 24 * 60 * 60 * 1000, items: [], baselines: { enabled: true } }),
+		]);
+		expect(rehydrateEnabledFromSession(ctx)).toBe(true);
+	});
+});
+
+// ---------------------------------------------------------------------------
+// persistEnabled
+// ---------------------------------------------------------------------------
+
+describe("persistEnabled", () => {
+	it("calls appendEntry with ENABLED_ENTRY_TYPE and enabled:true", () => {
+		const appendEntry = vi.fn();
+		persistEnabled({ appendEntry }, true);
+		expect(appendEntry).toHaveBeenCalledOnce();
+		const [ct, data] = appendEntry.mock.calls[0] as [string, Record<string, unknown>];
+		expect(ct).toBe(ENABLED_ENTRY_TYPE);
+		expect((data["baselines"] as Record<string, unknown>)["enabled"]).toBe(true);
+		expect(typeof data["savedAt"]).toBe("number");
+	});
+
+	it("calls appendEntry with ENABLED_ENTRY_TYPE and enabled:false", () => {
+		const appendEntry = vi.fn();
+		persistEnabled({ appendEntry }, false);
+		const [ct, data] = appendEntry.mock.calls[0] as [string, Record<string, unknown>];
+		expect(ct).toBe(ENABLED_ENTRY_TYPE);
+		expect((data["baselines"] as Record<string, unknown>)["enabled"]).toBe(false);
+	});
+
+	it("swallows errors from appendEntry", () => {
+		const appendEntry = vi.fn().mockImplementation(() => {
+			throw new Error("storage failure");
+		});
+		expect(() => persistEnabled({ appendEntry }, true)).not.toThrow();
+	});
 });
 
 // ---------------------------------------------------------------------------

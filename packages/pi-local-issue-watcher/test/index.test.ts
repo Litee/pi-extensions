@@ -13,16 +13,31 @@ import createExtension, {
 import {
 	ITEM_BROWSE_PREFIX,
 	ITEM_CLOSE,
+	ITEM_ENABLE,
+	ITEM_DISABLE,
 	ITEM_REFRESH,
 	MENU_TITLE,
 } from "../src/command.js";
 import type { InfoPicker, InfoRow } from "../src/infoHandler.js";
-import { STATE_ENTRY_TYPE } from "../src/persistence.js";
+import { STATE_ENTRY_TYPE, ENABLED_ENTRY_TYPE } from "../src/persistence.js";
 import { abbreviatePath } from "../src/path.js";
 import type { Snapshot } from "../src/types.js";
 
 // Local const for backward compat (runstate persistence removed)
 const RUNSTATE_ENTRY_TYPE = "pi-local-issue-watcher:runstate";
+
+// ---------------------------------------------------------------------------
+// Session-entry helpers
+// ---------------------------------------------------------------------------
+
+/** Build a persisted enabled=true entry (sticky, no TTL). */
+function makeEnabledEntry(enabled = true) {
+	return {
+		type: "custom",
+		customType: ENABLED_ENTRY_TYPE,
+		data: { savedAt: Date.now(), items: [], baselines: { enabled } },
+	};
+}
 
 // ---------------------------------------------------------------------------
 // Fixture helpers
@@ -681,8 +696,9 @@ describe("/local-issue-watcher command", () => {
 		expect(title).toBe(MENU_TITLE);
 		expect(items[0]).toMatch(new RegExp(`^${ITEM_BROWSE_PREFIX} \\(`));
 		expect(items[1]).toBe(ITEM_REFRESH);
-		expect(items[2]).toBe(ITEM_CLOSE);
-		expect(items).toHaveLength(3);
+		expect(items[2]).toBe(ITEM_ENABLE); // rt.enabled starts false
+		expect(items[3]).toBe(ITEM_CLOSE);
+		expect(items).toHaveLength(4);
 	});
 
 	it("ignores any args — menu always opens", async () => {
@@ -710,7 +726,7 @@ describe("/local-issue-watcher command", () => {
 		const pi = makeFakePi();
 		extensionWithDbRoot(pi, dbRoot);
 		// session_start populates rt.snapshot
-		const ctx = makeFakeCtx([runningRunstate()]);
+		const ctx = makeFakeCtx([runningRunstate(), makeEnabledEntry()]);
 		await pi.sessionStartHandler!({}, ctx);
 		// Now invoke the menu and capture the items
 		const select = vi.fn().mockResolvedValueOnce(ITEM_CLOSE);
@@ -793,7 +809,7 @@ describe("/local-issue-watcher command", () => {
 		const pi = makeFakePi();
 		extensionWithDbRoot(pi, dbRoot);
 		// Run session_start so rt.snapshot is populated (no diff on subsequent Refresh)
-		const ctx = makeFakeCtx([runningRunstate()]);
+		const ctx = makeFakeCtx([runningRunstate(), makeEnabledEntry()]);
 		await pi.sessionStartHandler!({}, ctx);
 		pi.sendMessage.mockClear();
 
@@ -895,7 +911,7 @@ describe("polling lifecycle", () => {
 		}
 
 		const handler = pi.sessionStartHandler!;
-		const ctx = makeFakeCtx([runningRunstate()]); // first session: saves baseline, no diff
+		const ctx = makeFakeCtx([runningRunstate(), makeEnabledEntry()]); // first session: saves baseline, no diff
 		await handler({}, ctx);
 
 		// Fresh session emits the #0011 startup summary (with triggerTurn:false)
@@ -957,7 +973,7 @@ describe("polling lifecycle", () => {
 		expect(sessionStart).toBeDefined();
 		expect(sessionShutdown).toBeDefined();
 
-		await sessionStart({}, makeFakeCtx([]));
+		await sessionStart({}, makeFakeCtx([makeEnabledEntry()]));
 		const diffsBefore = pi.sendMessage.mock.calls.filter(
 			(c) => (c[0] as { content: string }).content.includes("update:"),
 		).length;
@@ -996,7 +1012,7 @@ describe("polling lifecycle", () => {
 		}
 
 		const handler = pi.sessionStartHandler!;
-		const ctx = makeFakeCtx([runningRunstate()]);
+		const ctx = makeFakeCtx([runningRunstate(), makeEnabledEntry()]);
 		await handler({}, ctx);
 		const diffsAfterStartup = pi.sendMessage.mock.calls.filter(
 			(c) => (c[0] as { content: string }).content.includes("update:"),
@@ -1100,6 +1116,7 @@ describe("run-state persistence", () => {
 					customType: RUNSTATE_ENTRY_TYPE,
 					data: { savedAt: Date.now(), items: [], baselines: {} },
 				},
+				makeEnabledEntry(),
 			]);
 			await pi.sessionStartHandler!({}, ctx);
 			// Mutate disk with a bumped mtime so the scanner sees a change.
@@ -1118,9 +1135,150 @@ describe("run-state persistence", () => {
 	});
 });
 
-
 // ---------------------------------------------------------------------------
-// last-update timestamp in pinned status line (#0009)
+// Enabled/disabled lifecycle (default inactive, menu-activated)
+// ---------------------------------------------------------------------------
+
+describe("enabled/disabled lifecycle", () => {
+	let dbRoot: string;
+
+	beforeEach(() => {
+		dbRoot = mkdtempSync(join(tmpdir(), "pi-local-issue-watcher-en-"));
+		vi.useFakeTimers();
+	});
+	afterEach(() => {
+		vi.useRealTimers();
+		rmSync(dbRoot, { recursive: true, force: true });
+	});
+
+	function writeIssue(skill: string, fname: string, body: Record<string, unknown>): string {
+		const skillDir = join(dbRoot, skill);
+		mkdirSync(skillDir, { recursive: true });
+		const p = join(skillDir, fname);
+		writeFileSync(p, JSON.stringify(body), "utf8");
+		return p;
+	}
+
+	function extensionWithDbRoot(pi: StubPi, root: string): void {
+		const prev = process.env["LOCAL_ISSUE_TRACKER_DB_ROOT"];
+		process.env["LOCAL_ISSUE_TRACKER_DB_ROOT"] = root;
+		try {
+			createExtension(pi as never);
+		} finally {
+			if (prev === undefined) delete process.env["LOCAL_ISSUE_TRACKER_DB_ROOT"];
+			else process.env["LOCAL_ISSUE_TRACKER_DB_ROOT"] = prev;
+		}
+	}
+
+	it("session_start with no enabled entry → does NOT start polling (stays inactive)", async () => {
+		writeIssue("skill-a", "0001-a.json", { id: "0001", status: "open", skill: "skill-a" });
+		const pi = makeFakePi();
+		extensionWithDbRoot(pi, dbRoot);
+		// No enabled entry — watcher defaults to inactive.
+		const ctx = makeFakeCtx([]);
+		await pi.sessionStartHandler!({}, ctx);
+
+		// No status pinned, no message sent, no snapshot persisted.
+		expect(pi.sendMessage).not.toHaveBeenCalled();
+		expect(pi.appendEntry).not.toHaveBeenCalled();
+
+		// Advance past one poll interval — no diff fires.
+		await vi.advanceTimersByTimeAsync(POLL_INTERVAL_MS);
+		expect(pi.sendMessage).not.toHaveBeenCalled();
+	});
+
+	it("session_start with enabled:true persisted → starts polling", async () => {
+		const filePath = writeIssue("skill-a", "0001-a.json", { id: "0001", status: "open", skill: "skill-a" });
+		const pi = makeFakePi();
+		extensionWithDbRoot(pi, dbRoot);
+		const ctx = makeFakeCtx([makeEnabledEntry()]);
+		await pi.sessionStartHandler!({}, ctx);
+
+		// Snapshot was persisted (baseline saved on first session).
+		expect(pi.appendEntry).toHaveBeenCalled();
+
+		// Mutate disk so the poll produces a diff.
+		writeIssue("skill-a", "0001-a.json", { id: "0001", status: "done", skill: "skill-a" });
+		const { utimesSync } = await import("node:fs");
+		utimesSync(filePath, new Date(Date.now() + 60_000), new Date(Date.now() + 60_000));
+		await vi.advanceTimersByTimeAsync(POLL_INTERVAL_MS);
+
+		const diffCalls = pi.sendMessage.mock.calls.filter(
+			(c) => (c[0] as { content: string }).content.includes("status changed"),
+		);
+		expect(diffCalls).toHaveLength(1);
+	});
+
+	it("menu 'Enable watcher' → persistEnabled(true) called, startPolling fires", async () => {
+		writeIssue("skill-a", "0001-a.json", { id: "0001", status: "open", skill: "skill-a" });
+		const pi = makeFakePi();
+		extensionWithDbRoot(pi, dbRoot);
+		// Start disabled (no enabled entry).
+		await pi.sessionStartHandler!({}, makeFakeCtx([]));
+		pi.appendEntry.mockClear();
+
+		// Open menu and click Enable.
+		const select = vi.fn()
+			.mockResolvedValueOnce(ITEM_ENABLE)
+			.mockResolvedValueOnce(ITEM_CLOSE);
+		const ctx = makeMenuCtx(select);
+		await pi.commands.get("local-issue-watcher")!.handler("", ctx);
+
+		// persistEnabled(true) appended an ENABLED_ENTRY_TYPE entry.
+		const enableCalls = pi.appendEntry.mock.calls.filter(
+			([ct]) => ct === ENABLED_ENTRY_TYPE,
+		) as Array<[string, Record<string, unknown>]>;
+		expect(enableCalls).toHaveLength(1);
+		expect((enableCalls[0]![1]["baselines"] as Record<string, unknown>)["enabled"]).toBe(true);
+
+		// Polling now runs: disk change after Enable fires a diff.
+		const filePath = join(dbRoot, "skill-a", "0001-a.json");
+		writeIssue("skill-a", "0001-a.json", { id: "0001", status: "done", skill: "skill-a" });
+		const { utimesSync } = await import("node:fs");
+		utimesSync(filePath, new Date(Date.now() + 60_000), new Date(Date.now() + 60_000));
+		await vi.advanceTimersByTimeAsync(POLL_INTERVAL_MS);
+		const diffs = pi.sendMessage.mock.calls.filter(
+			(c) => (c[0] as { customType?: string }).customType === "pi-local-issue-watcher",
+		);
+		expect(diffs.length).toBeGreaterThan(0);
+	});
+
+	it("menu 'Disable watcher' → persistEnabled(false) called, stopPolling fires", async () => {
+		writeIssue("skill-a", "0001-a.json", { id: "0001", status: "open", skill: "skill-a" });
+		const pi = makeFakePi();
+		extensionWithDbRoot(pi, dbRoot);
+		// Start enabled.
+		await pi.sessionStartHandler!({}, makeFakeCtx([makeEnabledEntry()]));
+		pi.appendEntry.mockClear();
+		pi.sendMessage.mockClear();
+
+		// Open menu and click Disable.
+		const select = vi.fn()
+			.mockResolvedValueOnce(ITEM_DISABLE)
+			.mockResolvedValueOnce(ITEM_CLOSE);
+		const notify = vi.fn();
+		const setStatus = vi.fn();
+		const ctx = makeMenuCtx(select, notify, setStatus);
+		await pi.commands.get("local-issue-watcher")!.handler("", ctx);
+
+		// persistEnabled(false) appended an ENABLED_ENTRY_TYPE entry.
+		const disableCalls = pi.appendEntry.mock.calls.filter(
+			([ct]) => ct === ENABLED_ENTRY_TYPE,
+		) as Array<[string, Record<string, unknown>]>;
+		expect(disableCalls).toHaveLength(1);
+		expect((disableCalls[0]![1]["baselines"] as Record<string, unknown>)["enabled"]).toBe(false);
+
+		// Polling stopped: no diffs fire after Disable.
+		writeIssue("skill-a", "0001-a.json", { id: "0001", status: "done", skill: "skill-a" });
+		await vi.advanceTimersByTimeAsync(POLL_INTERVAL_MS * 2);
+		const diffs = pi.sendMessage.mock.calls.filter(
+			(c) => (c[0] as { content: string }).content?.includes("update:"),
+		);
+		expect(diffs).toHaveLength(0);
+	});
+});
+
+
 // ---------------------------------------------------------------------------
 
 describe("status line — refresh on every poll (#0016 supersedes #0009)", () => {
@@ -1226,7 +1384,7 @@ describe("status line — refresh on every poll (#0016 supersedes #0009)", () =>
 			}
 
 			const handler = pi.sessionStartHandler!;
-			const ctx = makeFakeCtx([runningRunstate()]);
+			const ctx = makeFakeCtx([runningRunstate(), makeEnabledEntry()]);
 			await handler({}, ctx);
 
 			const statusAtStart = ctx.ui.setStatus.mock.calls.filter(
@@ -1701,11 +1859,8 @@ describe("/local-issue-watcher message renderer (#0028)", () => {
 
 		const pi = makeFakePi();
 		extensionWithDbRoot(pi, dbRoot);
-		const ctx = makeFakeCtx([runningRunstate()]);
+		const ctx = makeFakeCtx([runningRunstate(), makeEnabledEntry()]);
 		await pi.sessionStartHandler!({}, ctx);
-		// session_start uses `deferMessages: true` — sendMessage calls emitted
-		// during handleSessionStart are queued via setImmediate, not fired
-		// synchronously. Flush the setImmediate queue before inspecting.
 		await new Promise((resolve) => setImmediate(resolve));
 
 		const [customType, renderer] = pi.registerMessageRenderer.mock.calls[0] as [

@@ -51,6 +51,8 @@ import type { InfoPicker } from "./infoHandler.js";
 import {
 	rehydrateFromSession,
 	persistSnapshot,
+	rehydrateEnabledFromSession,
+	persistEnabled as persistEnabledFn,
 	type SessionLike,
 } from "./persistence.js";
 import {
@@ -337,6 +339,8 @@ export interface Runtime {
 	dbRoot: string;
 	/** Most recent snapshot used as the diff baseline across polls. */
 	snapshot: Snapshot;
+	/** Whether the watcher has been explicitly enabled via the menu. */
+	enabled: boolean;
 	/**
 	 * Back-off-aware poll scheduler (pi-watcher-core). Configured with
 	 * baseMs === maxMs === idleMaxMs so the effective interval never
@@ -368,6 +372,7 @@ function makeRuntime(dbRoot: string, pi: Runtime["pi"]): Runtime {
 	return {
 		dbRoot,
 		snapshot: {},
+		enabled: false,
 		scheduler: new PollScheduler({
 			baseMs: POLL_INTERVAL_MS,
 			maxMs: POLL_INTERVAL_MS,
@@ -469,6 +474,9 @@ export default function issueWatcher(pi: ExtensionAPI): void {
 		};
 		const hasUI = anyCtx.hasUI ?? anyCtx.ui?.hasUI ?? anyCtx.ui !== undefined;
 		rt.ui = hasUI ? (anyCtx.ui as Runtime["ui"]) ?? null : null;
+		// Default: inactive. Only start if explicitly enabled via /local-issue-watcher.
+		const enabled = rehydrateEnabledFromSession(ctx);
+		if (!enabled) return;
 		const res = await handleSessionStart({
 			pi,
 			ctx: ctx as unknown as HandleSessionStartOptions["ctx"],
@@ -487,6 +495,7 @@ export default function issueWatcher(pi: ExtensionAPI): void {
 		// second scanIssueFiles() here would open a TOCTOU window where
 		// a file written between the two scans is silently lost (#0001).
 		rt.snapshot = res.snapshot;
+		rt.enabled = true;
 		startPolling(rt);
 	});
 
@@ -531,6 +540,7 @@ export default function issueWatcher(pi: ExtensionAPI): void {
 				forceRefresh,
 				refreshStatusLine,
 				getInfoPickerOverride: () => infoPickerOverride,
+				persistEnabled: (en: boolean) => persistEnabledFn(pi, en),
 			});
 		},
 	});
@@ -540,7 +550,7 @@ export default function issueWatcher(pi: ExtensionAPI): void {
 // Re-exports for convenience
 // ---------------------------------------------------------------------------
 
-export { STATE_ENTRY_TYPE } from "./persistence.js";
+export { STATE_ENTRY_TYPE, ENABLED_ENTRY_TYPE } from "./persistence.js";
 export { scanIssueFiles } from "./scanner.js";
 export { diffSnapshots, changedPaths, formatChange } from "./diff.js";
 export { buildChatMessageContent, buildMissingDbRootStatus, buildStartupAnnouncement, buildStartupChatMessage, buildStatusDetailMessage, formatStatusSummary, type WatcherState } from "./format.js";
