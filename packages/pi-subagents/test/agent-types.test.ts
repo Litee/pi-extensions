@@ -300,3 +300,42 @@ describe("agent type registry", () => {
       expect(allTypes.length).toBeGreaterThanOrEqual(getAvailableTypes().length);
     });
   });
+
+describe("getToolNamesForType — explicit empty builtinToolNames", () => {
+  it("returns zero tools when builtinToolNames is explicitly []", () => {
+    const agents = new Map([["no-tools", makeAgentConfig({
+      name: "no-tools",
+      builtinToolNames: [],
+    })]]);
+    registerAgents(agents);
+    const names = getToolNamesForType("no-tools");
+    expect(names).toEqual([]);
+  });
+
+  it("returns all built-ins when builtinToolNames is undefined", () => {
+    const agents = new Map([["all-tools", makeAgentConfig({
+      name: "all-tools",
+      builtinToolNames: undefined,
+    })]]);
+    registerAgents(agents);
+    const names = getToolNamesForType("all-tools");
+    expect(names.length).toBeGreaterThan(0);
+    expect(names).toContain("read");
+    expect(names).toContain("bash");
+  });
+});
+
+describe("getToolNamesForType — disabled agent falls back to built-ins", () => {
+  it("returns all built-ins for a disabled agent", () => {
+    const agents = new Map([["disabled-agent", makeAgentConfig({
+      name: "disabled-agent",
+      enabled: false,
+      builtinToolNames: ["read"],
+    })]]);
+    registerAgents(agents);
+    // Disabled → config is treated as undefined → falls back to all built-ins
+    const names = getToolNamesForType("disabled-agent");
+    expect(names).toContain("read");
+    expect(names).toContain("bash");
+  });
+});

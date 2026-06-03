@@ -16,7 +16,7 @@ import { defineTool, type AgentSession, type ExtensionAPI, type ExtensionCommand
 import { Container, Key, matchesKey, type SettingItem, SettingsList, Spacer, Text } from "@earendil-works/pi-tui";
 import { Type } from "@sinclair/typebox";
 import { AgentManager } from "./agent-manager.js";
-import { getAgentConversation, getDefaultMaxTurns, getGraceTurns, normalizeMaxTurns, setDefaultMaxTurns, setGraceTurns, steerAgent } from "./agent-runner.js";
+import { getAgentConversation, getDefaultMaxTurns, getGraceTurns, normalizeMaxTurns, SUBAGENT_TOOL_NAMES, setDefaultMaxTurns, setGraceTurns, steerAgent } from "./agent-runner.js";
 import { BUILTIN_TOOL_NAMES, getAgentConfig, getAllTypes, getAvailableTypes, getDefaultAgentNames, getUserAgentNames, registerAgents, resolveType } from "./agent-types.js";
 import { registerRpcHandlers, type SpawnCapable } from "./cross-extension-rpc.js";
 import { loadCustomAgents } from "./custom-agents.js";
@@ -28,6 +28,7 @@ import { createOutputFilePath, streamToOutputFile, writeInitialEntry } from "./o
 import { SubagentScheduler } from "./schedule.js";
 import { resolveStorePath, ScheduleStore } from "./schedule-store.js";
 import { applyAndEmitLoaded, type SubagentsSettings, saveAndEmitChanged } from "./settings.js";
+import { getStatusNote } from "./status-note.js";
 import { type AgentConfig, type AgentInvocation, type AgentRecord, type JoinMode, type NotificationDetails } from "./types.js";
 import {
   type AgentActivity,
@@ -117,16 +118,6 @@ function getStatusLabel(status: string, error?: string): string {
   }
 }
 
-/** Parenthetical status note for completed agent result text. */
-function getStatusNote(status: string): string {
-  switch (status) {
-    case "aborted": return " (aborted — max turns exceeded, output may be incomplete)";
-    case "steered": return " (wrapped up — reached turn limit)";
-    case "stopped": return " (stopped by user)";
-    default: return "";
-  }
-}
-
 /** Escape XML special characters to prevent injection in structured notifications. */
 function escapeXml(s: string): string {
   return s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
@@ -153,7 +144,7 @@ function formatTaskNotification(record: AgentRecord, resultMaxLen: number): stri
     record.toolCallId ? `<tool-use-id>${escapeXml(record.toolCallId)}</tool-use-id>` : null,
     record.outputFile ? `<output-file>${escapeXml(record.outputFile)}</output-file>` : null,
     `<status>${escapeXml(status)}</status>`,
-    `<summary>Agent "${escapeXml(record.description)}" ${record.status}</summary>`,
+    `<summary>Agent "${escapeXml(record.description)}" ${record.status}${getStatusNote(record.status)}</summary>`,
     `<result>${escapeXml(resultPreview)}</result>`,
     `<usage><total_tokens>${totalTokens}</total_tokens><tool_uses>${record.toolUses}</tool_uses>${ctxXml}${compactXml}<duration_ms>${durationMs}</duration_ms></usage>`,
     `</task-notification>`,
@@ -651,7 +642,7 @@ export default function (pi: ExtensionAPI) {
     : "";
 
   pi.registerTool(defineTool({
-    name: "Agent",
+    name: SUBAGENT_TOOL_NAMES.AGENT,
     label: "Agent",
     description: `Launch a new agent to handle complex, multi-step tasks autonomously. Each agent type has specific capabilities and tools available to it.
 
@@ -695,6 +686,13 @@ Provide clear, detailed prompts so the agent can work autonomously. Brief it lik
 Terse command-style prompts produce shallow, generic work.
 
 **Never delegate understanding.** Don't write "based on your findings, fix the bug" or "based on the research, implement it." Those phrases push synthesis onto the agent instead of doing it yourself. Write prompts that prove you understood: include file paths, line numbers, what specifically to change.`,
+    promptSnippet: "Launch autonomous sub-agents for complex multi-step tasks",
+    promptGuidelines: [
+      "Use Agent with specialized agents when the task matches an agent type's description. Subagents are valuable for parallelizing independent queries or for protecting the main context window from excessive results, but should not be used excessively when not needed. Importantly, avoid duplicating work that subagents are already doing — if you delegate research to a subagent, do not also perform the same searches yourself.",
+      "For broad codebase exploration or research, spawn Agent with an appropriate subagent_type (e.g. Explore). Otherwise use direct tools (read, grep, find) when the target is already known.",
+      "When an agent runs in the background, you will be notified on completion — do not poll or sleep waiting for it. Continue with other work instead.",
+      "Trust but verify: an agent's summary describes intent, not outcome. When an agent writes or edits code, check the actual changes before reporting work as done.",
+    ],
     parameters: Type.Object({
       prompt: Type.String({
         description: "The task for the agent to perform.",
@@ -765,7 +763,7 @@ Terse command-style prompts produce shallow, generic work.
         return new Text(text, 0, 0);
       }
 
-      // Helper: build "haiku · thinking: high · ⟳5≤30 · 3 tool uses · 33.8k tokens" stats string
+      // Helper: build "haiku · thinking: high · ↻5≤30 · 3 tool uses · 33.8k tokens" stats string
       const stats = (d: AgentDetails) => {
         const parts: string[] = [];
         if (d.modelName) parts.push(d.modelName);
@@ -1179,10 +1177,11 @@ Terse command-style prompts produce shallow, generic work.
   // ---- get_subagent_result tool ----
 
   pi.registerTool(defineTool({
-    name: "get_subagent_result",
+    name: SUBAGENT_TOOL_NAMES.GET_RESULT,
     label: "Get Agent Result",
     description:
       "Check status and retrieve results from a background agent. Use the agent ID returned by Agent with run_in_background.",
+    promptSnippet: "Check status and retrieve results from a background agent",
     parameters: Type.Object({
       agent_id: Type.String({
         description: "The agent ID to check.",
@@ -1266,7 +1265,7 @@ Terse command-style prompts produce shallow, generic work.
 
       let output =
         `Agent: ${record.id}\n` +
-        `Type: ${displayName} | Status: ${record.status} | ${statsParts.join(" | ")}\n` +
+        `Type: ${displayName} | Status: ${record.status}${getStatusNote(record.status)} | ${statsParts.join(" | ")}\n` +
         `Description: ${record.description}\n\n`;
 
       if (record.status === "running") {
@@ -1298,11 +1297,12 @@ Terse command-style prompts produce shallow, generic work.
   // ---- steer_subagent tool ----
 
   pi.registerTool(defineTool({
-    name: "steer_subagent",
+    name: SUBAGENT_TOOL_NAMES.STEER,
     label: "Steer Agent",
     description:
       "Send a steering message to a running agent. The message will interrupt the agent after its current tool execution " +
       "and be injected into its conversation, allowing you to redirect its work mid-run. Only works on running agents.",
+    promptSnippet: "Send a steering message to redirect a running background agent",
     parameters: Type.Object({
       agent_id: Type.String({
         description: "The agent ID to steer (must be currently running).",
@@ -1520,7 +1520,11 @@ Terse command-style prompts produce shallow, generic work.
 
     await ctx.ui.custom<undefined>(
       (tui, theme, _keybindings, done) => {
-        return new ConversationViewer(tui, session, record, activity, theme, done);
+        return new ConversationViewer(tui, session, record, activity, theme, done, () => {
+          if (manager.abort(record.id)) {
+            ctx.ui.notify(`Stopped "${record.description}".`, "info");
+          }
+        });
       },
       {
         overlay: true,

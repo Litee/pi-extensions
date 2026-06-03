@@ -26,6 +26,9 @@ export interface AgentConfig {
   displayName?: string | undefined;
   description: string;
   builtinToolNames?: string[] | undefined;
+  /** Raw `ext:` selector entries from the `tools:` CSV, e.g. ["ext:foo", "ext:bar/x"].
+   * Presence of any entry flips extension tools to an explicit allowlist. */
+  extSelectors?: string[];
   /** Tool denylist — these tools are removed even if `builtinToolNames` or extensions include them. */
   disallowedTools?: string[] | undefined;
   /** true = inherit all, string[] = only listed, false = none */

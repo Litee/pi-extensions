@@ -23,6 +23,8 @@ vi.mock("@earendil-works/pi-coding-agent", () => ({
     }
 
     async reload() {}
+
+    getExtensions() { return { extensions: [] }; }
   },
   getAgentDir,
   SessionManager: { inMemory: sessionManagerInMemory },
@@ -30,6 +32,7 @@ vi.mock("@earendil-works/pi-coding-agent", () => ({
 }));
 
 vi.mock("../src/agent-types.js", () => ({
+  BUILTIN_TOOL_NAMES: ["read", "bash", "edit", "write", "grep", "find", "ls"],
   getConfig: vi.fn(() => ({
     displayName: "Explore",
     description: "Explore",
@@ -471,17 +474,16 @@ describe("agent-runner — extensions as array", () => {
     } as never);
 
     const { session } = createSession("EXT");
-    // Return a mix of tools: one builtin, one matching extension, one non-matching
-    session.getActiveToolNames = vi.fn(() => ["read", "allowed-ext:tool", "other-ext:tool", "Agent"]);
     createAgentSession.mockResolvedValue({ session });
 
     await runAgent(ctx, "Explore", "go", { pi });
 
-    const activeToolsSet = session.setActiveToolsByName.mock.calls[0]![0] as string[];
-    expect(activeToolsSet).toContain("read");
-    expect(activeToolsSet).toContain("allowed-ext:tool");
-    expect(activeToolsSet).not.toContain("other-ext:tool");
-    expect(activeToolsSet).not.toContain("Agent");
+    // Tools are now passed to createAgentSession (no post-construction setActiveToolsByName)
+    const sessionCallOpts = createAgentSession.mock.calls.at(-1)?.[0] as { tools: string[] };
+    expect(sessionCallOpts.tools).toContain("read");
+    expect(sessionCallOpts.tools).not.toContain("Agent");
+    // Mock loader returns no extensions, so no extension tools surface
+    expect(sessionCallOpts.tools).not.toContain("other-ext:tool");
   });
 });
 
@@ -490,7 +492,7 @@ describe("agent-runner — disallowedTools with extensions=false", () => {
     vi.mocked(getAgentConfig).mockReturnValueOnce({
       name: "Explore",
       description: "Explore",
-      builtinToolNames: ["read"],
+      builtinToolNames: ["read", "bash"],
       extensions: false,
       skills: false,
       systemPrompt: "You are Explore.",
@@ -502,14 +504,14 @@ describe("agent-runner — disallowedTools with extensions=false", () => {
     } as never);
 
     const { session } = createSession("DENY");
-    session.getActiveToolNames = vi.fn(() => ["read", "bash", "write"]);
     createAgentSession.mockResolvedValue({ session });
 
     await runAgent(ctx, "Explore", "go", { pi });
 
-    const activeToolsSet = session.setActiveToolsByName.mock.calls[0]![0] as string[];
-    expect(activeToolsSet).not.toContain("bash");
-    expect(activeToolsSet).toContain("read");
+    // Tools are now passed to createAgentSession; disallowed tools are excluded there
+    const sessionCallOpts = createAgentSession.mock.calls.at(-1)?.[0] as { tools: string[] };
+    expect(sessionCallOpts.tools).not.toContain("bash");
+    expect(sessionCallOpts.tools).toContain("read");
   });
 });
 
@@ -1097,15 +1099,16 @@ describe("agent-runner — extensions=true (not array, not false)", () => {
     } as never);
 
     const { session } = createSession("ALLTOOLS");
-    session.getActiveToolNames = vi.fn(() => ["read", "bash", "other-ext:tool"]);
     createAgentSession.mockResolvedValue({ session });
 
     await runAgent(ctx, "Explore", "go", { pi });
 
-    // With extensions=true, all tools should pass through (no prefix filter)
-    const activeToolsSet = session.setActiveToolsByName.mock.calls[0]![0] as string[];
-    expect(activeToolsSet).toContain("other-ext:tool");
-    expect(activeToolsSet).not.toContain("Agent");
+    // With extensions=true, builtin tools pass through; EXCLUDED_TOOL_NAMES are excluded
+    const sessionCallOpts = createAgentSession.mock.calls.at(-1)?.[0] as { tools: string[] };
+    expect(sessionCallOpts.tools).toContain("read");
+    expect(sessionCallOpts.tools).not.toContain("Agent");
+    // Mock loader returns no extensions so no ext tools — but builtin tools are kept
+    expect(sessionCallOpts.tools).not.toContain("other-ext:tool");
   });
 });
 
@@ -1186,15 +1189,15 @@ describe("agent-runner — runAgent disallowedSet excludes specified tools", () 
     } as never);
 
     const { session } = createSession("EXCL");
-    session.getActiveToolNames = vi.fn(() => ["read", "bash", "Agent", "get_subagent_result"]);
     createAgentSession.mockResolvedValue({ session });
 
     await runAgent(ctx, "Explore", "go", { pi });
 
-    const activeToolsSet = session.setActiveToolsByName.mock.calls[0]![0] as string[];
-    expect(activeToolsSet).not.toContain("Agent");
-    expect(activeToolsSet).not.toContain("get_subagent_result");
-    expect(activeToolsSet).not.toContain("bash"); // disallowed
-    expect(activeToolsSet).toContain("read");
+    const sessionCallOpts = createAgentSession.mock.calls.at(-1)?.[0] as { tools: string[] };
+    expect(sessionCallOpts.tools).not.toContain("Agent");
+    expect(sessionCallOpts.tools).not.toContain("get_subagent_result");
+    expect(sessionCallOpts.tools).not.toContain("bash"); // disallowed
+    expect(sessionCallOpts.tools).toContain("read");
   });
 });
+

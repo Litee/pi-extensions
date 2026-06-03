@@ -5,11 +5,21 @@
  * User agents override defaults with the same name. Disabled agents are kept but excluded from spawning.
  */
 
+import { createCodingTools, createReadOnlyTools } from "@earendil-works/pi-coding-agent";
 import { DEFAULT_AGENTS } from "./default-agents.js";
 import type { AgentConfig } from "./types.js";
 
-/** All known built-in tool names. */
-export const BUILTIN_TOOL_NAMES: string[] = ["read", "bash", "edit", "write", "grep", "find", "ls"];
+/**
+ * All known built-in tool names, derived from pi's own tool factories rather
+ * than hardcoded so the set tracks pi-mono if it adds/renames a built-in.
+ * `createCodingTools` → read/bash/edit/write; `createReadOnlyTools` →
+ * read/grep/find/ls; their de-duplicated union is the 7 built-ins
+ * (read, bash, edit, write, grep, find, ls). The `cwd` only binds tool
+ * operations we never invoke here — we read each tool's `.name` and discard it.
+ */
+export const BUILTIN_TOOL_NAMES: string[] = [
+  ...new Set([...createCodingTools("."), ...createReadOnlyTools(".")].map((t) => t.name)),
+];
 
 /** Unified runtime registry of all agents (defaults + user-defined). */
 const agents = new Map<string, AgentConfig>();
@@ -112,8 +122,9 @@ export function getToolNamesForType(type: string): string[] {
   const key = resolveKey(type);
   const raw = key ? agents.get(key) : undefined;
   const config = raw?.enabled !== false ? raw : undefined;
-  const names = config?.builtinToolNames?.length ? config.builtinToolNames : [...BUILTIN_TOOL_NAMES];
-  return names;
+  // `undefined` (definition omitted the field) → all built-ins; an explicit `[]`
+  // (`tools: none` or a `tools:` with only `ext:` entries) → zero built-ins.
+  return config?.builtinToolNames ?? [...BUILTIN_TOOL_NAMES];
 }
 
 /** Get config for a type (case-insensitive, returns a SubagentTypeConfig-compatible object). Falls back to general-purpose. */

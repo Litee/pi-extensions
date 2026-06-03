@@ -5,9 +5,7 @@
  * Any upstream fixes should be pulled via a diff against the link above.
  */
 
-import { StringEnum } from "@earendil-works/pi-ai";
-import type { Static } from "typebox";
-import { Type } from "typebox";
+import { type Static, StringEnum, Type } from "@earendil-works/pi-ai";
 
 /**
  * Type of cron job

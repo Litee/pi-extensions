@@ -6,7 +6,7 @@ information below to diff against upstream and pick up future changes.
 ## Source
 
 - **Repository:** [`openai/codex`](https://github.com/openai/codex)
-- **Upstream path:** `codex-rs/core/templates/goals/`
+- **Upstream path:** `codex-rs/prompts/templates/goals/`
 - **License:** Apache License 2.0, © 2025 OpenAI
 - **License file:** [`LICENSE-APACHE-2.0`](./LICENSE-APACHE-2.0)
 - **Attribution:** [`NOTICE`](./NOTICE)
@@ -19,7 +19,7 @@ continuation lifecycle are copied verbatim. Variables in the templates
 before the rendered prompt is injected into the agent context.
 
 - **Initially ported:** `99157f3` (initial copy of all three templates, 2026-05-13)
-- **Last synced:** `0d344ac` (`continuation.md` only — `goal: pause continuation loops on usage limits and blockers (#23094)`, 2026-05-18)
+- **Last synced:** `d36a3ea` (`revert: publish release symbol artifacts (#25988)`, 2026-06-02)
 
 The `99157f3` SHA is the `main` HEAD at the time of the initial copy (the
 shallow clone used during the port did not retain per-file history).
@@ -62,12 +62,12 @@ not redistributing modified copies of the original work.
 ```bash
 UP=$(mktemp -d)/codex
 git clone --quiet --filter=blob:limit=200k https://github.com/openai/codex.git "$UP"
-git -C "$UP" log --follow 0d344ac..origin/HEAD -- \
-    codex-rs/core/templates/goals/continuation.md \
-    codex-rs/core/templates/goals/budget_limit.md \
-    codex-rs/core/templates/goals/objective_updated.md
+git -C "$UP" log d36a3ea..origin/HEAD -- \
+    codex-rs/prompts/templates/goals/continuation.md \
+    codex-rs/prompts/templates/goals/budget_limit.md \
+    codex-rs/prompts/templates/goals/objective_updated.md
 ```
 
-If new templates appear under `codex-rs/core/templates/goals/`, evaluate
+If new templates appear under `codex-rs/prompts/templates/goals/`, evaluate
 whether they map to a useful pi event (e.g. user edits, session resume) and
 port them with the same attribution pattern.

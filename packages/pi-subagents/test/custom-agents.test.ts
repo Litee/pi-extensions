@@ -465,4 +465,41 @@ Bad isolation.`);
       rmSync(altAgentDir, { recursive: true, force: true });
     }
   });
+
+  describe("ext: selectors in tools: field", () => {
+    let agentDir: string;
+
+    beforeEach(() => {
+      agentDir = join(tmpDir, ".pi", "agents");
+      mkdirSync(agentDir, { recursive: true });
+    });
+
+  it("parses ext: entries into extSelectors and excludes them from builtinToolNames", () => {
+    writeFileSync(join(agentDir, "ext-agent.md"),
+      "---\ndescription: Uses ext selectors\ntools: read, ext:pi-subagents, ext:foo/MyTool\n---\n\nBody.");
+    const result = loadCustomAgents(tmpDir);
+    const config = result.get("ext-agent");
+    expect(config).toBeDefined();
+    expect(config!.builtinToolNames).toEqual(["read"]);
+    expect(config!.extSelectors).toEqual(["ext:pi-subagents", "ext:foo/MyTool"]);
+  });
+
+  it("tools: * expands to all built-ins and extSelectors are still separated", () => {
+    writeFileSync(join(agentDir, "wildcard-agent.md"),
+      "---\ndescription: Wildcard\ntools: all, ext:pi-subagents\n---\n\nBody.");
+    const result = loadCustomAgents(tmpDir);
+    const config = result.get("wildcard-agent");
+    expect(config).toBeDefined();
+    expect(config!.builtinToolNames).toEqual(expect.arrayContaining(["read", "bash"]));
+    expect(config!.extSelectors).toEqual(["ext:pi-subagents"]);
+  });
+
+  it("extSelectors is undefined when no ext: entries present", () => {
+    writeFileSync(join(agentDir, "no-ext-agent.md"),
+      "---\ndescription: No ext\ntools: read\n---\n\nBody.");
+    const result = loadCustomAgents(tmpDir);
+    const config = result.get("no-ext-agent");
+    expect(config!.extSelectors).toBeUndefined();
+  });
+});
 });

@@ -31,11 +31,11 @@ describe("formatSessionTokens", () => {
 
   it("annotates compaction count alongside percent", () => {
     // compactions only (e.g. immediately post-compaction, percent null)
-    expect(formatSessionTokens(1234, null, theme, 1)).toBe("<dim>1.2k token</dim> (<dim>↻1</dim>)");
-    expect(formatSessionTokens(1234, null, theme, 3)).toBe("<dim>1.2k token</dim> (<dim>↻3</dim>)");
+    expect(formatSessionTokens(1234, null, theme, 1)).toBe("<dim>1.2k token</dim> (<dim>⇊1</dim>)");
+    expect(formatSessionTokens(1234, null, theme, 3)).toBe("<dim>1.2k token</dim> (<dim>⇊3</dim>)");
     // percent + compactions, joined with ` · `
-    expect(formatSessionTokens(1234, 45, theme, 2)).toBe("<dim>1.2k token</dim> (<dim>45%</dim> · <dim>↻2</dim>)");
-    expect(formatSessionTokens(1234, 88, theme, 4)).toBe("<dim>1.2k token</dim> (<error>88%</error> · <dim>↻4</dim>)");
+    expect(formatSessionTokens(1234, 45, theme, 2)).toBe("<dim>1.2k token</dim> (<dim>45%</dim> · <dim>⇊2</dim>)");
+    expect(formatSessionTokens(1234, 88, theme, 4)).toBe("<dim>1.2k token</dim> (<error>88%</error> · <dim>⇊4</dim>)");
     // compactions=0 omitted
     expect(formatSessionTokens(1234, 45, theme, 0)).toBe("<dim>1.2k token</dim> (<dim>45%</dim>)");
   });
@@ -256,16 +256,16 @@ describe("formatMs", () => {
 
 describe("formatTurns", () => {
   it("formats without limit when maxTurns is undefined", () => {
-    expect(formatTurns(5, undefined)).toBe("⟳5");
+    expect(formatTurns(5, undefined)).toBe("↻5");
   });
 
   it("formats without limit when maxTurns is null", () => {
-    expect(formatTurns(3, null)).toBe("⟳3");
+    expect(formatTurns(3, null)).toBe("↻3");
   });
 
   it("formats with limit when maxTurns is provided", () => {
-    expect(formatTurns(5, 30)).toBe("⟳5≤30");
-    expect(formatTurns(0, 10)).toBe("⟳0≤10");
+    expect(formatTurns(5, 30)).toBe("↻5≤30");
+    expect(formatTurns(0, 10)).toBe("↻0≤10");
   });
 });
 
