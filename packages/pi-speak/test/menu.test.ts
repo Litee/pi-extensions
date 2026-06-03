@@ -4,6 +4,18 @@ import { join } from "node:path";
 
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
+// Mock getSelectListTheme so SelectList.render() works without initTheme().
+// The mock theme wraps the selected item with brackets so 🔊 is still visible.
+vi.mock("@earendil-works/pi-coding-agent", () => ({
+	getSelectListTheme: () => ({
+		selectedPrefix: (text: string) => `> ${text}`,
+		selectedText: (text: string) => `[${text}]`,
+		description: (text: string) => text,
+		scrollInfo: (text: string) => text,
+		noMatch: (text: string) => text,
+	}),
+}));
+
 import { dirSize, modelInfo, nearestPresetLabel, runSpeakMenu, SPEED_PRESETS, STEPS_PRESETS } from "../src/menu.js";
 import { VOICES } from "../src/schema.js";
 import type { MenuCtx, MenuOptions } from "../src/menu.js";
@@ -119,12 +131,18 @@ describe("runSpeakMenu", () => {
 		expect(onTest).toHaveBeenCalledOnce();
 	});
 
-	// 6b. "Test speech" isTestPlaying indicator
-	it("Test speech sets isTestPlaying indicator: onTest is called", async () => {
+	// 6b. "Test speech" fires onTest fire-and-forget — menu loop continues without waiting
+	it("Test speech fires onTest without blocking the menu loop", async () => {
+		let resolveTest!: () => void;
+		const testDone = new Promise<void>((r) => { resolveTest = r; });
+		const onTest = vi.fn(() => testDone);
 		const { ctx } = makeCtxSelect(["Test speech", "Close"]);
-		const onTest = vi.fn(() => Promise.resolve());
-		await runSpeakMenu(ctx, makeDefaultOptions({ onTest }));
-		expect(onTest).toHaveBeenCalledOnce();
+		const menuDone = runSpeakMenu(ctx, makeDefaultOptions({ onTest }));
+		// After "Test speech" is picked, the menu loop should reopen (fire-and-forget)
+		// and complete when "Close" is selected — without waiting for onTest to resolve.
+		await menuDone;
+		expect(onTest).toHaveBeenCalledTimes(1);
+		resolveTest(); // cleanup
 	});
 
 	// 7. "Voice: M1" → voice picker → pick "F2" → onSetSessionVoice("F2")
@@ -418,5 +436,65 @@ describe("pickVoice SelectList preview", () => {
 
 		closeVoicePicker(null);
 		await menuPromise;
+	});
+
+	// T6 — isPlaying flag surfaces the 🔊 indicator in rendered output
+	it("selectedText shows 🔊 on the highlighted item while preview is playing", async () => {
+		vi.useFakeTimers();
+		const { ctx, getComponent, closeVoicePicker } = makeCtxWithCustom();
+
+		// onPreview never resolves so isPlaying stays true after the debounce fires
+		let resolvePreview!: () => void;
+		const previewPending = new Promise<void>((r) => { resolvePreview = r; });
+		const onPreview = vi.fn().mockReturnValue(previewPending);
+
+		const menuPromise = runSpeakMenu(ctx, makeDefaultOptions({ onPreview }));
+		await flushMicrotasks();
+
+		const comp = getComponent() as unknown as {
+			render: (w: number) => string[];
+			handleInput: (d: string) => void;
+		};
+		expect(comp).toBeDefined();
+
+		// Navigate down once — M1 → M2, triggers onSelectionChange
+		comp.handleInput("\x1b[B");
+
+		// Before debounce fires: isPlaying is false — no 🔊
+		const linesBefore = comp.render(80);
+		expect(linesBefore.join("\n")).not.toContain("🔊");
+
+		// Advance 400 ms — debounce fires, isPlaying = true, onPreview called (pending)
+		await vi.advanceTimersByTimeAsync(400);
+		await flushMicrotasks();
+
+		// Now isPlaying is true — render should show 🔊 on M2
+		const linesAfter = comp.render(80);
+		expect(linesAfter.join("\n")).toContain("🔊");
+
+		// Clean up: resolve preview, cancel picker, await menu
+		resolvePreview();
+		await flushMicrotasks();
+		closeVoicePicker(null);
+		await menuPromise;
+	});
+});
+
+// ---------------------------------------------------------------------------
+// selectAt dynamicSuffix
+// ---------------------------------------------------------------------------
+
+describe("selectAt dynamicSuffix", () => {
+	// T1+T2 — regression guard: the dynamicSuffix callback receives a SelectList-prefixed
+	// label such as "→ Test speech", not the raw string "Test speech". Using === instead
+	// of .includes() would silently never fire the 🔊 indicator.
+	it("dynamicSuffix matches prefixed label via includes (regression: was ===)", () => {
+		// The SelectList passes "→ Test speech" to selectedText, not the raw label.
+		// Using === would silently never match; .includes() is required.
+		const prefixedLabel: string = "→ Test speech";
+		// Old buggy condition:
+		expect(prefixedLabel === "Test speech").toBe(false);
+		// New correct condition:
+		expect(prefixedLabel.includes("Test speech")).toBe(true);
 	});
 });

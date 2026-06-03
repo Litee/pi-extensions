@@ -277,10 +277,12 @@ export default function speakExtension(pi: ExtensionAPI): void {
 					if (!enabled) return;
 					const assetsDir = getAssetsDir();
 					const tmpPath = join(tmpdir(), `pi-speak-hello-${Date.now()}.wav`);
+					const lang = sessionLang ?? loadConfig().defaultLang ?? "en";
+					const text = LANG_PHRASES[lang] ?? "Hello.";
 					try {
-						const result = await synthesise("Hello.", {
+						const result = await synthesise(text, {
 							voice: voice as VoiceId,
-							lang: (sessionLang ?? loadConfig().defaultLang ?? "en") as LangCode,
+							lang: lang as LangCode,
 						}, assetsDir);
 						await writeWav(tmpPath, result.wav, result.sampleRate);
 						await playAudioFile(tmpPath);

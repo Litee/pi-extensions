@@ -8,9 +8,13 @@ vi.mock("node:fs", () => ({
 	unlinkSync: vi.fn(),
 }));
 
-vi.mock("../src/menu.js", () => ({
-	runSpeakMenu: vi.fn().mockResolvedValue(undefined),
-}));
+vi.mock("../src/menu.js", async (importOriginal) => {
+	const actual = await importOriginal<typeof import("../src/menu.js")>();
+	return {
+		...actual,
+		runSpeakMenu: vi.fn().mockResolvedValue(undefined),
+	};
+});
 
 vi.mock("node:os", () => ({
 	tmpdir: () => "/tmp",
@@ -52,6 +56,7 @@ import type {
 
 import speakExtension from "../src/index.js";
 import { runSpeakMenu } from "../src/menu.js";
+import type { MenuOptions } from "../src/menu.js";
 import { loadConfig, discoverAssetsDir, assetsReady } from "../src/config.js";
 import { synthesise, writeWav } from "../src/tts.js";
 import { playAudioFile } from "../src/audio.js";
@@ -78,6 +83,7 @@ function makeFakePi(initial: { active: string[] } = { active: [] }) {
 	const getActiveTools = vi.fn(() => [...active]);
 	const setActiveTools = vi.fn((names: string[]) => { active = new Set(names); });
 	const appendEntry = vi.fn();
+	const sendMessage = vi.fn();
 
 	async function fire(name: string, event: unknown, ctx: unknown) {
 		for (const h of (handlers[name] ?? [])) await h(event, ctx);
@@ -85,7 +91,7 @@ function makeFakePi(initial: { active: string[] } = { active: [] }) {
 
 	const api = {
 		registerTool, registerCommand, on,
-		getActiveTools, setActiveTools, appendEntry,
+		getActiveTools, setActiveTools, appendEntry, sendMessage,
 	} as unknown as ExtensionAPI;
 
 	return {
@@ -96,6 +102,7 @@ function makeFakePi(initial: { active: string[] } = { active: [] }) {
 		setActiveTools,
 		appendEntry,
 		getActiveTools,
+		sendMessage,
 		get active() { return active; },
 		get speakTool(): ToolDefinition {
 			const t = registeredTools.find((r) => r.name === "speak");
@@ -468,3 +475,131 @@ describe("tool execute — session param priority", () => {
 	});
 });
 
+
+// ---------------------------------------------------------------------------
+// 13. execute — trigger_turn sends a follow-up message
+// ---------------------------------------------------------------------------
+describe("tool execute — trigger_turn", () => {
+	it("calls sendMessage when trigger_turn is true", async () => {
+		vi.mocked(assetsReady).mockReturnValue(true);
+		const pi = makeFakePi({ active: [] });
+		speakExtension(pi.api);
+
+		const result = await pi.speakTool.execute(
+			"tc",
+			{ text: "hello", trigger_turn: true },
+			undefined,
+			undefined,
+			makeCtx(),
+		) as { details: { ok: boolean } };
+
+		expect(result.details.ok).toBe(true);
+		expect(pi.sendMessage).toHaveBeenCalledWith(
+			expect.objectContaining({ customType: "pi-speak:continue" }),
+			expect.objectContaining({ triggerTurn: true }),
+		);
+	});
+
+	it("does not call sendMessage when trigger_turn is omitted", async () => {
+		vi.mocked(assetsReady).mockReturnValue(true);
+		const pi = makeFakePi({ active: [] });
+		speakExtension(pi.api);
+
+		await pi.speakTool.execute(
+			"tc",
+			{ text: "hello" },
+			undefined,
+			undefined,
+			makeCtx(),
+		);
+
+		expect(pi.sendMessage).not.toHaveBeenCalled();
+	});
+});
+
+// ---------------------------------------------------------------------------
+// 14. onTest callback — uses LANG_PHRASES for the session language (T7)
+// ---------------------------------------------------------------------------
+describe("onTest callback — LANG_PHRASES", () => {
+	it("synthesises using LANG_PHRASES phrase for the session language", async () => {
+		vi.mocked(assetsReady).mockReturnValue(true);
+
+		// Capture the options passed to runSpeakMenu
+		let capturedOptions: MenuOptions | undefined;
+		vi.mocked(runSpeakMenu).mockImplementationOnce(async (_ctx, opts) => { // eslint-disable-line @typescript-eslint/require-await
+			capturedOptions = opts;
+		});
+
+		const pi = makeFakePi({ active: [] });
+		speakExtension(pi.api);
+
+		// Restore session: enabled=true, sessionLang="fr"
+		const ctx = makeCtx({
+			branch: [{
+				type: "custom",
+				customType: SPEAK_STATE_CUSTOM_TYPE,
+				data: { enabled: true, sessionLang: "fr" },
+				id: "test-lang-fr",
+				timestamp: Date.now(),
+			} as unknown as SessionEntry],
+			select: vi.fn().mockResolvedValue(null),
+		});
+		await pi.fireEvent("session_tree", {}, ctx);
+
+		// Run /speak command to invoke runSpeakMenu and capture options
+		await pi.runCommand("speak", "", ctx);
+		expect(capturedOptions).toBeDefined();
+
+		// Invoke onTest directly — should synthesise the French LANG_PHRASES text
+		await capturedOptions!.onTest();
+
+		// LANG_PHRASES["fr"] = "Bonjour, je parle français."
+		expect(synthesise).toHaveBeenCalledWith(
+			"Bonjour, je parle français.",
+			expect.objectContaining({ lang: "fr" }),
+			expect.any(String),
+		);
+	});
+});
+
+// ---------------------------------------------------------------------------
+// 15. onSpeakHello callback — uses LANG_PHRASES not hardcoded "Hello." (H5)
+// ---------------------------------------------------------------------------
+describe("onSpeakHello callback — LANG_PHRASES", () => {
+	it("synthesises using LANG_PHRASES phrase instead of hardcoded \"Hello.\"", async () => {
+		vi.mocked(assetsReady).mockReturnValue(true);
+
+		let capturedOptions: MenuOptions | undefined;
+		vi.mocked(runSpeakMenu).mockImplementationOnce(async (_ctx, opts) => { // eslint-disable-line @typescript-eslint/require-await
+			capturedOptions = opts;
+		});
+
+		const pi = makeFakePi({ active: [] });
+		speakExtension(pi.api);
+
+		// Restore session: enabled=true, sessionLang="de"
+		const ctx = makeCtx({
+			branch: [{
+				type: "custom",
+				customType: SPEAK_STATE_CUSTOM_TYPE,
+				data: { enabled: true, sessionLang: "de" },
+				id: "test-lang-de",
+				timestamp: Date.now(),
+			} as unknown as SessionEntry],
+			select: vi.fn().mockResolvedValue(null),
+		});
+		await pi.fireEvent("session_tree", {}, ctx);
+		await pi.runCommand("speak", "", ctx);
+		expect(capturedOptions).toBeDefined();
+
+		// Invoke onSpeakHello directly
+		await capturedOptions!.onSpeakHello("M1");
+
+		// LANG_PHRASES["de"] = "Hallo, ich spreche Deutsch."
+		expect(synthesise).toHaveBeenCalledWith(
+			"Hallo, ich spreche Deutsch.",
+			expect.objectContaining({ lang: "de" }),
+			expect.any(String),
+		);
+	});
+});

@@ -1,9 +1,9 @@
 /**
  * `/speak` TUI menu.
  *
- * `runSpeakMenu` is pure of the pi API — it only needs `ctx.ui.select` and
- * `ctx.ui.notify`. All state mutations are delegated to callbacks supplied by
- * the caller (index.ts), which makes this module unit-testable in isolation.
+ * `runSpeakMenu` orchestrates the `/speak` TUI menu. All state mutations are
+ * delegated to callbacks supplied by the caller (index.ts), which makes this
+ * module unit-testable in isolation.
  */
 
 import { existsSync, readdirSync, statSync } from "node:fs";
@@ -191,15 +191,33 @@ export const LANG_PHRASES: Readonly<Record<string, string>> = {
 };
 
 // ---------------------------------------------------------------------------
-// Sub-menu pickers
+// Sub-menu pickers — shared helper
 // ---------------------------------------------------------------------------
 
-async function pickVoice(
-	ctx: MenuCtx,
-	current: string,
-	effLang: string,
-	options: Pick<MenuOptions, "onPreview" | "onSpeakHello">,
-): Promise<string | null> {
+interface PickWithPreviewOptions {
+	ctx: MenuCtx;
+	title: string;
+	items: SelectItem[];
+	initialIndex: number;
+	/** Called with the item's raw value when debounce fires. Returns preview text. */
+	previewText: (value: string) => string;
+	/** Called with the item's raw value when debounce fires. Returns synthOpts or undefined. */
+	synthOpts?: (value: string) => { speed?: number; steps?: number } | undefined;
+	/**
+	 * Voice used for preview synthesis. Pass a function to use the selected item's
+	 * value as the voice (e.g. voice picker uses `(v) => v`).
+	 */
+	effVoice: string | ((value: string) => string);
+	/**
+	 * Language used for preview synthesis. Pass a function to use the selected item's
+	 * value as the language (e.g. lang picker uses `(l) => l`).
+	 */
+	effLang: string | ((value: string) => string);
+	onPreview: MenuOptions["onPreview"];
+}
+
+async function pickWithPreview(opts: PickWithPreviewOptions): Promise<string | null> {
+	const { ctx, title, items, initialIndex, previewText, synthOpts, onPreview } = opts;
 	type TuiLike = { requestRender: () => void };
 	type ThemeLike = { fg: (r: string, s: string) => string; bold: (s: string) => string };
 	type ComponentLike = { render: (w: number) => string[]; invalidate: () => void; handleInput: (d: string) => void };
@@ -213,14 +231,17 @@ async function pickVoice(
 	};
 
 	if (!ctxWithCustom.ui.custom) {
-		const items: string[] = [...VOICES, "─────", "Cancel"];
-		const choice = await ctx.ui.select(`Select voice  (current: ${current})`, items);
+		const fallbackItems: string[] = [
+			...items.map((i) => i.label.replace(/ ◀$/, "")),
+			"─────",
+			"Cancel",
+		];
+		const choice = await ctx.ui.select(title, fallbackItems);
 		if (!choice || choice === "Cancel" || choice.startsWith("─")) return null;
-		return choice;
+		return items.find((i) => i.label.replace(/ ◀$/, "") === choice)?.value ?? null;
 	}
 
 	return (ctxWithCustom.ui.custom<string | null>((tui, theme, _kb, done) => {
-		const items: SelectItem[] = VOICES.map((v) => ({ value: v, label: v === current ? `${v} ◀` : v }));
 		let isPlaying = false;
 		const baseTheme = getSelectListTheme();
 		const sl = new SelectList(items, Math.min(items.length + 2, 15), {
@@ -228,8 +249,7 @@ async function pickVoice(
 			selectedText: (text: string) => baseTheme.selectedText(isPlaying ? `${text}  🔊` : text),
 		});
 
-		const currentIdx = VOICES.indexOf(current as VoiceId);
-		if (currentIdx >= 0) sl.setSelectedIndex(currentIdx);
+		if (initialIndex >= 0) sl.setSelectedIndex(initialIndex);
 
 		let previewAc: AbortController | undefined;
 
@@ -260,8 +280,10 @@ async function pickVoice(
 				isPlaying = true;
 				sl.invalidate();
 				tui.requestRender();
-				const text = `Hello, I'm voice ${item.value}.`;
-				void options.onPreview(text, item.value, effLang, ac.signal)
+				const voice = typeof opts.effVoice === "function" ? opts.effVoice(item.value) : opts.effVoice;
+				const lang = typeof opts.effLang === "function" ? opts.effLang(item.value) : opts.effLang;
+				const text = previewText(item.value);
+				void onPreview(text, voice, lang, ac.signal, synthOpts?.(item.value))
 					.catch(() => {})
 					.finally(() => {
 						if (previewAc === ac) {
@@ -276,7 +298,7 @@ async function pickVoice(
 
 		return {
 			render: (w: number) => [
-				theme.bold(`Select voice  (current: ${current})`),
+				theme.bold(title),
 				theme.fg("dim", "↑↓ navigate to preview · Enter to select · Esc to cancel"),
 				...sl.render(w),
 			],
@@ -289,99 +311,44 @@ async function pickVoice(
 	})) ?? null;
 }
 
+async function pickVoice(
+	ctx: MenuCtx,
+	current: string,
+	effLang: string,
+	options: Pick<MenuOptions, "onPreview" | "onSpeakHello">,
+): Promise<string | null> {
+	const items: SelectItem[] = VOICES.map((v) => ({ value: v, label: v === current ? `${v} ◀` : v }));
+	const initialIndex = Math.max(0, VOICES.indexOf(current as VoiceId));
+	return pickWithPreview({
+		ctx,
+		title: `Select voice  (current: ${current})`,
+		items,
+		initialIndex,
+		previewText: (v) => `Hello, I'm voice ${v}.`,
+		effVoice: (v) => v,
+		effLang,
+		onPreview: options.onPreview,
+	});
+}
+
 async function pickLang(
 	ctx: MenuCtx,
 	current: string,
 	effVoice: string,
 	options: Pick<MenuOptions, "onPreview">,
 ): Promise<string | null> {
-	type TuiLike = { requestRender: () => void };
-	type ThemeLike = { fg: (r: string, s: string) => string; bold: (s: string) => string };
-	type ComponentLike = { render: (w: number) => string[]; invalidate: () => void; handleInput: (d: string) => void };
-
-	const ctxWithCustom = ctx as {
-		ui: {
-			custom?: <T>(
-				factory: (tui: TuiLike, theme: ThemeLike, kb: unknown, done: (v: T) => void) => ComponentLike,
-			) => Promise<T>;
-		};
-	};
-
-	if (!ctxWithCustom.ui.custom) {
-		const items: string[] = [...LANGS, "─────", "Cancel"];
-		const choice = await ctx.ui.select(`Select language  (current: ${current})`, items);
-		if (!choice || choice === "Cancel" || choice.startsWith("─")) return null;
-		return choice;
-	}
-
-	return (ctxWithCustom.ui.custom<string | null>((tui, theme, _kb, done) => {
-		const items: SelectItem[] = LANGS.map((l) => ({ value: l, label: l === current ? `${l} ◀` : l }));
-		let isPlaying = false;
-		const baseTheme = getSelectListTheme();
-		const sl = new SelectList(items, Math.min(items.length + 2, 15), {
-			...baseTheme,
-			selectedText: (text: string) => baseTheme.selectedText(isPlaying ? `${text}  🔊` : text),
-		});
-
-		const currentIdx = LANGS.indexOf(current as LangCode);
-		if (currentIdx >= 0) sl.setSelectedIndex(currentIdx);
-
-		let previewAc: AbortController | undefined;
-
-		const abortPreview = () => {
-			previewAc?.abort();
-			previewAc = undefined;
-		};
-
-		sl.onSelect = (item) => {
-			clearTimeout(debounceTimer);
-			abortPreview();
-			done(item.value);
-		};
-		sl.onCancel = () => {
-			clearTimeout(debounceTimer);
-			abortPreview();
-			done(null);
-		};
-
-		let debounceTimer: ReturnType<typeof setTimeout> | undefined;
-		sl.onSelectionChange = (item) => {
-			clearTimeout(debounceTimer);
-			abortPreview();
-			isPlaying = false;
-			debounceTimer = setTimeout(() => {
-				const ac = new AbortController();
-				previewAc = ac;
-				isPlaying = true;
-				sl.invalidate();
-				tui.requestRender();
-				const text = LANG_PHRASES[item.value] ?? `Hello, I'm ${LANG_NAMES[item.value] ?? item.value}.`;
-				void options.onPreview(text, effVoice, item.value, ac.signal)
-					.catch(() => {})
-					.finally(() => {
-						if (previewAc === ac) {
-							isPlaying = false;
-							sl.invalidate();
-							tui.requestRender();
-						}
-					});
-			}, 400);
-			tui.requestRender();
-		};
-
-		return {
-			render: (w: number) => [
-				theme.bold(`Select language  (current: ${current})`),
-				theme.fg("dim", "↑↓ navigate to preview · Enter to select · Esc to cancel"),
-				...sl.render(w),
-			],
-			invalidate: () => sl.invalidate(),
-			handleInput: (data: string) => {
-				sl.handleInput(data);
-				tui.requestRender();
-			},
-		};
-	})) ?? null;
+	const items: SelectItem[] = LANGS.map((l) => ({ value: l, label: l === current ? `${l} ◀` : l }));
+	const initialIndex = Math.max(0, LANGS.indexOf(current as LangCode));
+	return pickWithPreview({
+		ctx,
+		title: `Select language  (current: ${current})`,
+		items,
+		initialIndex,
+		previewText: (l) => LANG_PHRASES[l] ?? `Hello, I'm ${LANG_NAMES[l] ?? l}.`,
+		effVoice,
+		effLang: (l) => l,
+		onPreview: options.onPreview,
+	});
 }
 
 async function pickSpeed(
@@ -391,95 +358,19 @@ async function pickSpeed(
 	effLang: string,
 	options: Pick<MenuOptions, "onPreview">,
 ): Promise<number | null> {
-	type TuiLike = { requestRender: () => void };
-	type ThemeLike = { fg: (r: string, s: string) => string; bold: (s: string) => string };
-	type ComponentLike = { render: (w: number) => string[]; invalidate: () => void; handleInput: (d: string) => void };
-
-	const ctxWithCustom = ctx as {
-		ui: {
-			custom?: <T>(
-				factory: (tui: TuiLike, theme: ThemeLike, kb: unknown, done: (v: T) => void) => ComponentLike,
-			) => Promise<T>;
-		};
-	};
-
-	if (!ctxWithCustom.ui.custom) {
-		const items: string[] = [...SPEED_PRESETS.map((p) => p.label), "─────", "Cancel"];
-		const choice = await ctx.ui.select(`Select speed  (current: ${current})`, items);
-		if (!choice || choice === "Cancel" || choice.startsWith("─")) return null;
-		return SPEED_PRESETS.find((p) => p.label === choice)?.value ?? null;
-	}
-
-	const result = await ctxWithCustom.ui.custom<string | null>((tui, theme, _kb, done) => {
-		const items: SelectItem[] = SPEED_PRESETS.map((p) => ({ value: String(p.value), label: p.label }));
-		let isPlaying = false;
-		const baseTheme = getSelectListTheme();
-		const sl = new SelectList(items, Math.min(items.length + 2, 15), {
-			...baseTheme,
-			selectedText: (text: string) => baseTheme.selectedText(isPlaying ? `${text}  🔊` : text),
-		});
-
-		const currentIdx = SPEED_PRESETS.findIndex((p) => p.value === current);
-		if (currentIdx >= 0) sl.setSelectedIndex(currentIdx);
-
-		let previewAc: AbortController | undefined;
-
-		const abortPreview = () => {
-			previewAc?.abort();
-			previewAc = undefined;
-		};
-
-		sl.onSelect = (item) => {
-			clearTimeout(debounceTimer);
-			abortPreview();
-			done(item.value);
-		};
-		sl.onCancel = () => {
-			clearTimeout(debounceTimer);
-			abortPreview();
-			done(null);
-		};
-
-		let debounceTimer: ReturnType<typeof setTimeout> | undefined;
-		sl.onSelectionChange = (item) => {
-			clearTimeout(debounceTimer);
-			abortPreview();
-			isPlaying = false;
-			debounceTimer = setTimeout(() => {
-				const ac = new AbortController();
-				previewAc = ac;
-				isPlaying = true;
-				sl.invalidate();
-				tui.requestRender();
-				const text = LANG_PHRASES[effLang] ?? "Hello.";
-				const speed = parseFloat(item.value);
-				void options.onPreview(text, effVoice, effLang, ac.signal, { speed })
-					.catch(() => {})
-					.finally(() => {
-						if (previewAc === ac) {
-							isPlaying = false;
-							sl.invalidate();
-							tui.requestRender();
-						}
-					});
-			}, 400);
-			tui.requestRender();
-		};
-
-		return {
-			render: (w: number) => [
-				theme.bold(`Select speed  (current: ${current})`),
-				theme.fg("dim", "↑↓ navigate to preview · Enter to select · Esc to cancel"),
-				...sl.render(w),
-			],
-			invalidate: () => sl.invalidate(),
-			handleInput: (data: string) => {
-				sl.handleInput(data);
-				tui.requestRender();
-			},
-		};
+	const items: SelectItem[] = SPEED_PRESETS.map((p) => ({ value: String(p.value), label: p.label }));
+	const initialIndex = SPEED_PRESETS.findIndex((p) => p.value === current);
+	const result = await pickWithPreview({
+		ctx,
+		title: `Select speed  (current: ${current})`,
+		items,
+		initialIndex,
+		previewText: (_v) => LANG_PHRASES[effLang] ?? "Hello.",
+		synthOpts: (v) => ({ speed: parseFloat(v) }),
+		effVoice,
+		effLang,
+		onPreview: options.onPreview,
 	});
-
 	return result !== null ? parseFloat(result) : null;
 }
 
@@ -490,99 +381,22 @@ async function pickSteps(
 	effLang: string,
 	options: Pick<MenuOptions, "onPreview">,
 ): Promise<number | null> {
-	type TuiLike = { requestRender: () => void };
-	type ThemeLike = { fg: (r: string, s: string) => string; bold: (s: string) => string };
-	type ComponentLike = { render: (w: number) => string[]; invalidate: () => void; handleInput: (d: string) => void };
-
-	const ctxWithCustom = ctx as {
-		ui: {
-			custom?: <T>(
-				factory: (tui: TuiLike, theme: ThemeLike, kb: unknown, done: (v: T) => void) => ComponentLike,
-			) => Promise<T>;
-		};
-	};
-
-	if (!ctxWithCustom.ui.custom) {
-		const items: string[] = [...STEPS_PRESETS.map((p) => p.label), "─────", "Cancel"];
-		const choice = await ctx.ui.select(`Select steps  (current: ${current})`, items);
-		if (!choice || choice === "Cancel" || choice.startsWith("─")) return null;
-		return STEPS_PRESETS.find((p) => p.label === choice)?.value ?? null;
-	}
-
-	const result = await ctxWithCustom.ui.custom<string | null>((tui, theme, _kb, done) => {
-		const items: SelectItem[] = STEPS_PRESETS.map((p) => ({ value: String(p.value), label: p.label }));
-		let isPlaying = false;
-		const baseTheme = getSelectListTheme();
-		const sl = new SelectList(items, Math.min(items.length + 2, 15), {
-			...baseTheme,
-			selectedText: (text: string) => baseTheme.selectedText(isPlaying ? `${text}  🔊` : text),
-		});
-
-		const currentIdx = STEPS_PRESETS.findIndex((p) => p.value === current);
-		if (currentIdx >= 0) sl.setSelectedIndex(currentIdx);
-
-		let previewAc: AbortController | undefined;
-
-		const abortPreview = () => {
-			previewAc?.abort();
-			previewAc = undefined;
-		};
-
-		sl.onSelect = (item) => {
-			clearTimeout(debounceTimer);
-			abortPreview();
-			done(item.value);
-		};
-		sl.onCancel = () => {
-			clearTimeout(debounceTimer);
-			abortPreview();
-			done(null);
-		};
-
-		let debounceTimer: ReturnType<typeof setTimeout> | undefined;
-		sl.onSelectionChange = (item) => {
-			clearTimeout(debounceTimer);
-			abortPreview();
-			isPlaying = false;
-			debounceTimer = setTimeout(() => {
-				const ac = new AbortController();
-				previewAc = ac;
-				isPlaying = true;
-				sl.invalidate();
-				tui.requestRender();
-				const text = LANG_PHRASES[effLang] ?? "Hello.";
-				const steps = parseInt(item.value, 10);
-				void options.onPreview(text, effVoice, effLang, ac.signal, { steps })
-					.catch(() => {})
-					.finally(() => {
-						if (previewAc === ac) {
-							isPlaying = false;
-							sl.invalidate();
-							tui.requestRender();
-						}
-					});
-			}, 400);
-			tui.requestRender();
-		};
-
-		return {
-			render: (w: number) => [
-				theme.bold(`Select steps  (current: ${current})`),
-				theme.fg("dim", "↑↓ navigate to preview · Enter to select · Esc to cancel"),
-				...sl.render(w),
-			],
-			invalidate: () => sl.invalidate(),
-			handleInput: (data: string) => {
-				sl.handleInput(data);
-				tui.requestRender();
-			},
-		};
+	const items: SelectItem[] = STEPS_PRESETS.map((p) => ({ value: String(p.value), label: p.label }));
+	const initialIndex = STEPS_PRESETS.findIndex((p) => p.value === current);
+	const result = await pickWithPreview({
+		ctx,
+		title: `Select steps  (current: ${current})`,
+		items,
+		initialIndex,
+		previewText: (_v) => LANG_PHRASES[effLang] ?? "Hello.",
+		synthOpts: (v) => ({ steps: parseInt(v, 10) }),
+		effVoice,
+		effLang,
+		onPreview: options.onPreview,
 	});
-
 	return result !== null ? parseInt(result, 10) : null;
 }
 
-// ---------------------------------------------------------------------------
 // ---------------------------------------------------------------------------
 // selectAt — ctx.ui.select with remembered cursor position
 // ---------------------------------------------------------------------------
@@ -748,7 +562,6 @@ export async function runSpeakMenu(
 
 		if (choice === "Test speech") {
 			isTestPlaying = true;
-			requestMainMenuRender?.();
 			void options.onTest()
 				.catch(() => {})
 				.finally(() => {
