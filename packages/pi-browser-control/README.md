@@ -8,20 +8,32 @@ management command for setting configuration interactively.
 
 ## Tools
 
-| Tool | Description |
-|---|---|
-| `browser_list_tabs` | Lists all open browser tabs with IDs, URLs, titles, and last-accessed times. Supports `offset`/`limit` pagination (limit capped to 500). |
-| `browser_get_tab_content` | Returns the full text content and links of a tab by ID. Supports `offset` pagination for large documents. Links are only included in the first call (`offset=0`). |
+| Tool | Operation | Description |
+|---|---|---|
+| `browser_control` | `list_tabs` | Lists all open browser tabs with IDs, URLs, titles, and last-accessed times. Supports `offset`/`limit` pagination (limit capped to 500). |
+| `browser_control` | `export_tabs` | Exports all tab metadata to a JSON Lines file at the given absolute path. Excludes private-browsing tabs. |
+| `browser_control` | `get_tab_content` | Returns the full text content and links of a tab by ID. Supports `offset` pagination for large documents. Links are only included in the first call (`offset=0`). |
+| `browser_control` | `close_tab` | Closes a single tab by its numeric ID. |
 
 ## Setup
 
-### 1. Install the Firefox browser-control add-on
+### 1. Use a Firefox version that allows unsigned add-ons
+
+Standard Firefox does not allow unsigned add-ons. You need one of:
+
+- **Firefox ESR** — disable signing via `about:config` → `xpinstall.signatures.required = false`
+- **Firefox Developer Edition** — same `about:config` toggle
+- **Firefox Nightly** — same `about:config` toggle
+
+Unbranded Firefox builds also work but are primarily intended for developers.
+
+### 2. Install the Firefox browser-control add-on
 
 Install the [browser-control Firefox extension](https://github.com/eyalzh/browser-control-mcp)
 from the upstream repository. The add-on listens on a local WebSocket port and
 relays tab data to any connected MCP/WebSocket client.
 
-### 2. Configure with `/browser-control` (recommended)
+### 3. Configure with `/browser-control` (recommended)
 
 The easiest way to configure is via the interactive command. In pi, type:
 
@@ -40,7 +52,7 @@ This opens a menu with three options:
 Config is stored at `~/.pi/agent/pi-browser-control.json` and persists across
 pi sessions.
 
-### 3. (Alternative) Set environment variables
+### 4. (Alternative) Set environment variables
 
 You can also configure via environment variables before starting pi. These
 take precedence over the saved config file:
@@ -52,7 +64,7 @@ export EXTENSION_PORT=9000   # optional, default 8089
 
 The `EXTENSION_SECRET` value must match the secret on the add-on's options page.
 
-### 4. Start pi
+### 5. Start pi
 
 With Firefox open and the add-on running, start pi. The first call to either
 tool will start the local WebSocket server and wait for the Firefox add-on to

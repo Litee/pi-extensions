@@ -9,7 +9,21 @@
 // Types
 // ---------------------------------------------------------------------------
 
-export interface BrowserTab {
+/** Slim tab shape returned by `listTabs` — 9 key fields, no large data URIs. */
+export interface SlimBrowserTab {
+	id?: number;
+	windowId?: number;
+	url?: string;
+	normalizedUrl: string | null;
+	title?: string;
+	lastAccessed?: number;
+	active?: boolean;
+	pinned?: boolean;
+	discarded?: boolean;
+}
+
+/** Full 19-field tab shape returned by `exportTabs` — for export use only. */
+export interface FullBrowserTab {
 	id?: number;
 	windowId?: number;
 	index?: number;
@@ -30,6 +44,9 @@ export interface BrowserTab {
 	lastAccessed?: number;
 	cookieStoreId?: string | null;
 }
+
+/** @deprecated Use SlimBrowserTab for listTabs or FullBrowserTab for exportTabs. */
+export type BrowserTab = SlimBrowserTab;
 
 export interface TabLink {
 	url: string;
@@ -76,7 +93,7 @@ export function fromNow(ms: number): string {
 // Tab line formatter
 // ---------------------------------------------------------------------------
 
-export function formatTabLine(tab: BrowserTab): string {
+export function formatTabLine(tab: SlimBrowserTab): string {
 	let lastAccessed = "unknown";
 	if (tab.lastAccessed !== undefined) {
 		lastAccessed = fromNow(tab.lastAccessed);
@@ -90,7 +107,7 @@ export function formatTabLine(tab: BrowserTab): string {
 // ---------------------------------------------------------------------------
 
 export function buildListTabsResult(
-	allTabs: BrowserTab[],
+	allTabs: SlimBrowserTab[],
 	offset: number,
 	limit: number,
 ): { content: { type: "text"; text: string }[] } {
@@ -131,7 +148,7 @@ export function buildTabContentResult(
 							`The following text content is truncated due to size (includes character range ${offset}-${
 								offset + data.fullText.length
 							} out of ${data.totalLength}). ` +
-							"If you want to read characters beyond this range, please use the 'browser_get_tab_content' tool with an offset.",
+							"If you want to read characters beyond this range, please use the 'browser_control' tool with operation: \"get_tab_content\" and an offset.",
 					},
 				]
 			: [];

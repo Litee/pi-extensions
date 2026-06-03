@@ -10,7 +10,7 @@ import {
 	formatTabLine,
 	buildListTabsResult,
 	buildTabContentResult,
-	type BrowserTab,
+	type SlimBrowserTab,
 	type TabContentData,
 } from "../src/tool-format.js";
 
@@ -62,7 +62,7 @@ describe("fromNow", () => {
 
 describe("formatTabLine", () => {
 	it("formats a tab with all fields", () => {
-		const tab: BrowserTab = {
+		const tab: SlimBrowserTab = {
 			id: 5,
 			url: "https://example.com",
 			title: "Example",
@@ -78,7 +78,7 @@ describe("formatTabLine", () => {
 	});
 
 	it("shows 'unknown' when lastAccessed is absent", () => {
-		const tab: BrowserTab = { id: 1, url: "https://x.com", title: "X", normalizedUrl: "https://x.com/" };
+		const tab: SlimBrowserTab = { id: 1, url: "https://x.com", title: "X", normalizedUrl: "https://x.com/" };
 		expect(formatTabLine(tab)).toContain("last accessed=unknown");
 	});
 });
@@ -87,7 +87,7 @@ describe("formatTabLine", () => {
 // buildListTabsResult
 // ---------------------------------------------------------------------------
 
-const SAMPLE_TABS: BrowserTab[] = [
+const SAMPLE_TABS: SlimBrowserTab[] = [
 	{ id: 1, url: "https://a.com", title: "A", lastAccessed: Date.now() - 60_000, normalizedUrl: "https://a.com/" },
 	{ id: 2, url: "https://b.com", title: "B", lastAccessed: Date.now() - 3_600_000, normalizedUrl: "https://b.com/" },
 	{ id: 3, url: "https://c.com", title: "C", normalizedUrl: "https://c.com/" },
@@ -113,7 +113,7 @@ describe("buildListTabsResult", () => {
 	});
 
 	it("caps limit to 500", () => {
-		const many: BrowserTab[] = Array.from({ length: 600 }, (_, i) => ({
+		const many: SlimBrowserTab[] = Array.from({ length: 600 }, (_, i) => ({
 			id: i,
 			url: `https://t${i}.com`,
 			title: `T${i}`,

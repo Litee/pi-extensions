@@ -85,6 +85,14 @@ describe("socket-protocol Decoder", () => {
 // ---------------------------------------------------------------------------
 
 describe("isSocketRequest", () => {
+	it("accepts a closeTab request", () => {
+		expect(isSocketRequest({ id: "r1c", op: "closeTab" })).toBe(true);
+	});
+
+	it("accepts an exportTabs request", () => {
+		expect(isSocketRequest({ id: "r1b", op: "exportTabs" })).toBe(true);
+	});
+
 	it("accepts a listTabs request", () => {
 		expect(isSocketRequest({ id: "r1", op: "listTabs" })).toBe(true);
 	});

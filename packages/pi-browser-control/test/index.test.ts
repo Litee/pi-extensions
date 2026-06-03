@@ -1,5 +1,5 @@
 /**
- * Tests for src/index.ts (new architecture: socket-client callers).
+ * Tests for src/index.ts — unified browser_control tool.
  */
 
 import { describe, expect, it, vi } from "vitest";
@@ -39,6 +39,7 @@ function makeFakePi() {
 function makeStub(overrides?: Partial<SocketClientLike>): SocketClientLike {
 	return {
 		listTabs: vi.fn().mockResolvedValue({ tabs: [] }),
+		exportTabs: vi.fn().mockResolvedValue({ tabs: [] }),
 		getTabContent: vi.fn().mockResolvedValue({
 			tabId: 1,
 			fullText: "hello",
@@ -46,6 +47,7 @@ function makeStub(overrides?: Partial<SocketClientLike>): SocketClientLike {
 			isTruncated: false,
 			links: [],
 		}),
+		closeTab: vi.fn().mockResolvedValue({ closed: true, tabId: 1 }),
 		status: vi.fn().mockResolvedValue({
 			daemon: { pid: 1, uptimeSec: 1, version: "0.1.0" },
 			addon: { connected: true, lastSeenSec: 0 },
@@ -60,22 +62,26 @@ function makeStub(overrides?: Partial<SocketClientLike>): SocketClientLike {
 // ---------------------------------------------------------------------------
 
 describe("registration", () => {
-	it("registers browser_list_tabs and browser_export_tabs by default (get_tab_content disabled)", () => {
+	it("registers exactly one browser_control tool", () => {
 		const pi = makeFakePi();
 		createExtension(pi.api, { socketClient: makeStub() });
-		expect(pi.registerTool).toHaveBeenCalledTimes(2);
-		expect(pi.tools.has("browser_list_tabs")).toBe(true);
-		expect(pi.tools.has("browser_export_tabs")).toBe(true);
+		expect(pi.registerTool).toHaveBeenCalledTimes(1);
+		expect(pi.tools.has("browser_control")).toBe(true);
+	});
+
+	it("old tool names are NOT registered", () => {
+		const pi = makeFakePi();
+		createExtension(pi.api, { socketClient: makeStub() });
+		expect(pi.tools.has("browser_list_tabs")).toBe(false);
+		expect(pi.tools.has("browser_export_tabs")).toBe(false);
 		expect(pi.tools.has("browser_get_tab_content")).toBe(false);
 	});
 
-	it("registers browser_get_tab_content when enableGetTabContent is set", () => {
+	it("enableGetTabContent option is accepted without error (backward compat)", () => {
 		const pi = makeFakePi();
+		// Should not throw
 		createExtension(pi.api, { socketClient: makeStub(), enableGetTabContent: true });
-		expect(pi.registerTool).toHaveBeenCalledTimes(3);
-		expect(pi.tools.has("browser_list_tabs")).toBe(true);
-		expect(pi.tools.has("browser_export_tabs")).toBe(true);
-		expect(pi.tools.has("browser_get_tab_content")).toBe(true);
+		expect(pi.tools.has("browser_control")).toBe(true);
 	});
 
 	it("registers the browser-control command", () => {
@@ -88,27 +94,26 @@ describe("registration", () => {
 		);
 	});
 
-	it("each tool has description, promptSnippet, promptGuidelines, parameters, execute", () => {
+	it("browser_control has description, promptSnippet, promptGuidelines, parameters, execute, renderResult", () => {
 		const pi = makeFakePi();
-		createExtension(pi.api, { socketClient: makeStub(), enableGetTabContent: true });
-		for (const name of ["browser_list_tabs", "browser_export_tabs", "browser_get_tab_content"]) {
-			const t = pi.tool(name);
-			expect(typeof t.description).toBe("string");
-			expect(t.description.length).toBeGreaterThan(0);
-			expect(typeof t.promptSnippet).toBe("string");
-			expect(Array.isArray(t.promptGuidelines)).toBe(true);
-			expect((t.promptGuidelines ?? []).length).toBeGreaterThan(0);
-			expect(t.parameters).toBeDefined();
-			expect(typeof t.execute).toBe("function");
-		}
+		createExtension(pi.api, { socketClient: makeStub() });
+		const t = pi.tool("browser_control");
+		expect(typeof t.description).toBe("string");
+		expect(t.description.length).toBeGreaterThan(0);
+		expect(typeof t.promptSnippet).toBe("string");
+		expect(Array.isArray(t.promptGuidelines)).toBe(true);
+		expect((t.promptGuidelines ?? []).length).toBeGreaterThan(0);
+		expect(t.parameters).toBeDefined();
+		expect(typeof t.execute).toBe("function");
+		expect(typeof t.renderResult).toBe("function");
 	});
 });
 
 // ---------------------------------------------------------------------------
-// browser_list_tabs
+// operation: list_tabs
 // ---------------------------------------------------------------------------
 
-describe("browser_list_tabs — happy path", () => {
+describe("browser_control operation=list_tabs — happy path", () => {
 	it("returns header + tab lines", async () => {
 		const stub = makeStub({
 			listTabs: vi.fn().mockResolvedValue({
@@ -120,8 +125,8 @@ describe("browser_list_tabs — happy path", () => {
 		});
 		const pi = makeFakePi();
 		createExtension(pi.api, { socketClient: stub });
-		const result = await pi.tool("browser_list_tabs").execute(
-			"tc1", { offset: 0, limit: 100 }, undefined, undefined, {} as never,
+		const result = await pi.tool("browser_control").execute(
+			"tc1", { operation: "list_tabs", offset: 0, limit: 100 }, undefined, undefined, {} as never,
 		);
 		const texts = result.content.map((c) => (c as { text: string }).text);
 		expect(texts[0]).toMatch(/Showing tabs 1-2 of 2/);
@@ -141,8 +146,8 @@ describe("browser_list_tabs — happy path", () => {
 		});
 		const pi = makeFakePi();
 		createExtension(pi.api, { socketClient: stub });
-		const result = await pi.tool("browser_list_tabs").execute(
-			"tc2", { offset: 1, limit: 1 }, undefined, undefined, {} as never,
+		const result = await pi.tool("browser_control").execute(
+			"tc2", { operation: "list_tabs", offset: 1, limit: 1 }, undefined, undefined, {} as never,
 		);
 		const texts = result.content.map((c) => (c as { text: string }).text);
 		expect(texts[0]).toMatch(/Showing tabs 2-2 of 3/);
@@ -151,10 +156,10 @@ describe("browser_list_tabs — happy path", () => {
 });
 
 // ---------------------------------------------------------------------------
-// browser_export_tabs
+// operation: export_tabs
 // ---------------------------------------------------------------------------
 
-describe("browser_export_tabs — happy path", () => {
+describe("browser_control operation=export_tabs — happy path", () => {
 	it("writes JSONL with one line per tab", async () => {
 		const fsNode = await import("node:fs");
 		const osNode = await import("node:os");
@@ -167,12 +172,12 @@ describe("browser_export_tabs — happy path", () => {
 				{ id: 2, windowId: 1, index: 1, url: "https://b.com", normalizedUrl: "https://b.com/", title: "B", favIconUrl: null, status: "complete", active: false, pinned: false, hidden: false, discarded: false, incognito: false, audible: false, mutedInfo: { muted: false, reason: null }, isArticle: false, isInReaderMode: false, lastAccessed: 2000, cookieStoreId: null },
 			];
 			const stub = makeStub({
-				listTabs: vi.fn().mockResolvedValue({ tabs }),
+				exportTabs: vi.fn().mockResolvedValue({ tabs }),
 			});
 			const pi = makeFakePi();
 			createExtension(pi.api, { socketClient: stub });
-			const result = await pi.tool("browser_export_tabs").execute(
-				"tc-exp1", { path: outPath }, undefined, undefined, {} as never,
+			const result = await pi.tool("browser_control").execute(
+				"tc-exp1", { operation: "export_tabs", path: outPath }, undefined, undefined, {} as never,
 			);
 			const text = (result.content[0] as { text: string }).text;
 			expect(text).toMatch(/Exported 2 tabs to/);
@@ -201,12 +206,12 @@ describe("browser_export_tabs — happy path", () => {
 		const outPath = pathNode.join(osNode.tmpdir(), `pi-bc-export-empty-${cryptoNode.randomUUID()}.jsonl`);
 		try {
 			const stub = makeStub({
-				listTabs: vi.fn().mockResolvedValue({ tabs: [] }),
+				exportTabs: vi.fn().mockResolvedValue({ tabs: [] }),
 			});
 			const pi = makeFakePi();
 			createExtension(pi.api, { socketClient: stub });
-			const result = await pi.tool("browser_export_tabs").execute(
-				"tc-exp2", { path: outPath }, undefined, undefined, {} as never,
+			const result = await pi.tool("browser_control").execute(
+				"tc-exp2", { operation: "export_tabs", path: outPath }, undefined, undefined, {} as never,
 			);
 			const text = (result.content[0] as { text: string }).text;
 			expect(text).toMatch(/Exported 0 tabs to/);
@@ -216,9 +221,7 @@ describe("browser_export_tabs — happy path", () => {
 			if (fsNode.existsSync(outPath)) fsNode.unlinkSync(outPath);
 		}
 	});
-});
 
-describe("browser_export_tabs — error paths", () => {
 	it("DAEMON_NOT_RUNNING → returns error message, does not write file", async () => {
 		const fsNode = await import("node:fs");
 		const osNode = await import("node:os");
@@ -226,11 +229,11 @@ describe("browser_export_tabs — error paths", () => {
 		const cryptoNode = await import("node:crypto");
 		const outPath = pathNode.join(osNode.tmpdir(), `pi-bc-export-dnr-${cryptoNode.randomUUID()}.jsonl`);
 		const err = Object.assign(new Error("daemon not running"), { code: "DAEMON_NOT_RUNNING" });
-		const stub = makeStub({ listTabs: vi.fn().mockRejectedValue(err) });
+		const stub = makeStub({ exportTabs: vi.fn().mockRejectedValue(err) });
 		const pi = makeFakePi();
 		createExtension(pi.api, { socketClient: stub });
-		const result = await pi.tool("browser_export_tabs").execute(
-			"tc-exp3", { path: outPath }, undefined, undefined, {} as never,
+		const result = await pi.tool("browser_control").execute(
+			"tc-exp3", { operation: "export_tabs", path: outPath }, undefined, undefined, {} as never,
 		);
 		const text = (result.content[0] as { text: string }).text;
 		expect(text).toMatch(/daemon|not running|install/i);
@@ -242,11 +245,10 @@ describe("browser_export_tabs — error paths", () => {
 			{ id: 1, url: "https://a.com", normalizedUrl: "https://a.com/", title: "A" },
 		];
 		const stub = makeStub({
-			listTabs: vi.fn().mockResolvedValue({ tabs }),
+			exportTabs: vi.fn().mockResolvedValue({ tabs }),
 		});
 		const pi = makeFakePi();
 		createExtension(pi.api, { socketClient: stub });
-		// Use a path that cannot be written (directory as target)
 		const fsNode = await import("node:fs");
 		const osNode = await import("node:os");
 		const pathNode = await import("node:path");
@@ -254,8 +256,8 @@ describe("browser_export_tabs — error paths", () => {
 		const badDir = pathNode.join(osNode.tmpdir(), `pi-bc-export-baddir-${cryptoNode.randomUUID()}`);
 		fsNode.mkdirSync(badDir);
 		try {
-			const result = await pi.tool("browser_export_tabs").execute(
-				"tc-exp4", { path: badDir }, undefined, undefined, {} as never,
+			const result = await pi.tool("browser_control").execute(
+				"tc-exp4", { operation: "export_tabs", path: badDir }, undefined, undefined, {} as never,
 			);
 			const text = (result.content[0] as { text: string }).text;
 			expect(text).toMatch(/error|fail/i);
@@ -266,16 +268,15 @@ describe("browser_export_tabs — error paths", () => {
 	});
 
 	it("relative path → returns error without writing", async () => {
-		const stub = makeStub({ listTabs: vi.fn() });
+		const stub = makeStub({ exportTabs: vi.fn() });
 		const pi = makeFakePi();
 		createExtension(pi.api, { socketClient: stub });
-		const result = await pi.tool("browser_export_tabs").execute(
-			"tc-exp5", { path: "relative/path.jsonl" }, undefined, undefined, {} as never,
+		const result = await pi.tool("browser_control").execute(
+			"tc-exp5", { operation: "export_tabs", path: "relative/path.jsonl" }, undefined, undefined, {} as never,
 		);
 		const text = (result.content[0] as { text: string }).text;
 		expect(text).toMatch(/absolute/i);
-		// listTabs should never have been called
-		expect(stub.listTabs).not.toHaveBeenCalled();
+		expect(stub.exportTabs).not.toHaveBeenCalled();
 	});
 
 	it("incognito tabs excluded from export", async () => {
@@ -288,12 +289,12 @@ describe("browser_export_tabs — error paths", () => {
 			{ id: 1, url: "https://public.com", normalizedUrl: "https://public.com/", title: "Public", incognito: false },
 			{ id: 2, url: "https://private.com", normalizedUrl: "https://private.com/", title: "Private", incognito: true },
 		];
-		const stub = makeStub({ listTabs: vi.fn().mockResolvedValue({ tabs }) });
+		const stub = makeStub({ exportTabs: vi.fn().mockResolvedValue({ tabs }) });
 		const pi = makeFakePi();
 		createExtension(pi.api, { socketClient: stub });
 		try {
-			const result = await pi.tool("browser_export_tabs").execute(
-				"tc-exp6", { path: outPath }, undefined, undefined, {} as never,
+			const result = await pi.tool("browser_control").execute(
+				"tc-exp6", { operation: "export_tabs", path: outPath }, undefined, undefined, {} as never,
 			);
 			const text = (result.content[0] as { text: string }).text;
 			expect(text).toMatch(/Exported 1 tab/);
@@ -308,10 +309,10 @@ describe("browser_export_tabs — error paths", () => {
 });
 
 // ---------------------------------------------------------------------------
-// browser_get_tab_content
+// operation: get_tab_content
 // ---------------------------------------------------------------------------
 
-describe("browser_get_tab_content — happy path", () => {
+describe("browser_control operation=get_tab_content — happy path", () => {
 	it("returns text + links at offset=0", async () => {
 		const stub = makeStub({
 			getTabContent: vi.fn().mockResolvedValue({
@@ -323,9 +324,9 @@ describe("browser_get_tab_content — happy path", () => {
 			}),
 		});
 		const pi = makeFakePi();
-		createExtension(pi.api, { socketClient: stub, enableGetTabContent: true });
-		const result = await pi.tool("browser_get_tab_content").execute(
-			"tc3", { tabId: 5, offset: 0 }, undefined, undefined, {} as never,
+		createExtension(pi.api, { socketClient: stub });
+		const result = await pi.tool("browser_control").execute(
+			"tc3", { operation: "get_tab_content", tabId: 5, offset: 0 }, undefined, undefined, {} as never,
 		);
 		expect(vi.mocked(stub.getTabContent)).toHaveBeenCalledWith(5, 0);
 		const texts = result.content.map((c) => (c as { text: string }).text);
@@ -344,12 +345,47 @@ describe("browser_get_tab_content — happy path", () => {
 			}),
 		});
 		const pi = makeFakePi();
-		createExtension(pi.api, { socketClient: stub, enableGetTabContent: true });
-		const result = await pi.tool("browser_get_tab_content").execute(
-			"tc4", { tabId: 5, offset: 100 }, undefined, undefined, {} as never,
+		createExtension(pi.api, { socketClient: stub });
+		const result = await pi.tool("browser_control").execute(
+			"tc4", { operation: "get_tab_content", tabId: 5, offset: 100 }, undefined, undefined, {} as never,
 		);
 		const texts = result.content.map((c) => (c as { text: string }).text);
 		expect(texts.some((t) => t.includes("Link text:"))).toBe(false);
+	});
+});
+
+// ---------------------------------------------------------------------------
+// operation: close_tab
+// ---------------------------------------------------------------------------
+
+describe("browser_control operation=close_tab", () => {
+	it("closes tab and returns confirmation", async () => {
+		const stub = makeStub({
+			closeTab: vi.fn().mockResolvedValue({ closed: true, tabId: 42 }),
+		});
+		const pi = makeFakePi();
+		createExtension(pi.api, { socketClient: stub });
+		const result = await pi.tool("browser_control").execute(
+			"tc-close1", { operation: "close_tab", tabId: 42 }, undefined, undefined, {} as never,
+		);
+		expect(vi.mocked(stub.closeTab)).toHaveBeenCalledWith(42);
+		const text = (result.content[0] as { text: string }).text;
+		expect(text).toMatch(/42/);
+		expect(text).toMatch(/closed/i);
+		expect(result.details).toMatchObject({ ok: true, tabId: 42 });
+	});
+
+	it("TAB_NOT_FOUND on close → returns error message", async () => {
+		const err = Object.assign(new Error("tab not found"), { code: "TAB_NOT_FOUND" });
+		const stub = makeStub({ closeTab: vi.fn().mockRejectedValue(err) });
+		const pi = makeFakePi();
+		createExtension(pi.api, { socketClient: stub });
+		const result = await pi.tool("browser_control").execute(
+			"tc-close2", { operation: "close_tab", tabId: 99 }, undefined, undefined, {} as never,
+		);
+		const text = (result.content[0] as { text: string }).text;
+		expect(text).toMatch(/tab|not found/i);
+		expect(result.details).toMatchObject({ ok: false });
 	});
 });
 
@@ -363,8 +399,8 @@ describe("error paths", () => {
 		const stub = makeStub({ listTabs: vi.fn().mockRejectedValue(err) });
 		const pi = makeFakePi();
 		createExtension(pi.api, { socketClient: stub });
-		const result = await pi.tool("browser_list_tabs").execute(
-			"tc-err1", { offset: 0, limit: 100 }, undefined, undefined, {} as never,
+		const result = await pi.tool("browser_control").execute(
+			"tc-err1", { operation: "list_tabs", offset: 0, limit: 100 }, undefined, undefined, {} as never,
 		);
 		const text = (result.content[0] as { text: string }).text;
 		expect(text).toMatch(/daemon|not running|install/i);
@@ -375,20 +411,20 @@ describe("error paths", () => {
 		const stub = makeStub({ listTabs: vi.fn().mockRejectedValue(err) });
 		const pi = makeFakePi();
 		createExtension(pi.api, { socketClient: stub });
-		const result = await pi.tool("browser_list_tabs").execute(
-			"tc-err2", { offset: 0, limit: 100 }, undefined, undefined, {} as never,
+		const result = await pi.tool("browser_control").execute(
+			"tc-err2", { operation: "list_tabs", offset: 0, limit: 100 }, undefined, undefined, {} as never,
 		);
 		const text = (result.content[0] as { text: string }).text;
 		expect(text).toMatch(/add-on|addon|Firefox/i);
 	});
 
-	it("TAB_NOT_FOUND → message about re-listing tabs", async () => {
+	it("TAB_NOT_FOUND on get_tab_content → message about re-listing tabs", async () => {
 		const err = Object.assign(new Error("tab not found"), { code: "TAB_NOT_FOUND" });
 		const stub = makeStub({ getTabContent: vi.fn().mockRejectedValue(err) });
 		const pi = makeFakePi();
-		createExtension(pi.api, { socketClient: stub, enableGetTabContent: true });
-		const result = await pi.tool("browser_get_tab_content").execute(
-			"tc-err3", { tabId: 99, offset: 0 }, undefined, undefined, {} as never,
+		createExtension(pi.api, { socketClient: stub });
+		const result = await pi.tool("browser_control").execute(
+			"tc-err3", { operation: "get_tab_content", tabId: 99, offset: 0 }, undefined, undefined, {} as never,
 		);
 		const text = (result.content[0] as { text: string }).text;
 		expect(text).toMatch(/tab|not found/i);
@@ -398,9 +434,9 @@ describe("error paths", () => {
 		const err = Object.assign(new Error("tab discarded"), { code: "TAB_DISCARDED" });
 		const stub = makeStub({ getTabContent: vi.fn().mockRejectedValue(err) });
 		const pi = makeFakePi();
-		createExtension(pi.api, { socketClient: stub, enableGetTabContent: true });
-		const result = await pi.tool("browser_get_tab_content").execute(
-			"tc-disc", { tabId: 99, offset: 0 }, undefined, undefined, {} as never,
+		createExtension(pi.api, { socketClient: stub });
+		const result = await pi.tool("browser_control").execute(
+			"tc-disc", { operation: "get_tab_content", tabId: 99, offset: 0 }, undefined, undefined, {} as never,
 		);
 		const text = (result.content[0] as { text: string }).text;
 		expect(text).toMatch(/unload|reload|loaded/i);
@@ -410,9 +446,9 @@ describe("error paths", () => {
 		const err = Object.assign(new Error("timed out"), { code: "EXTRACTION_TIMEOUT" });
 		const stub = makeStub({ getTabContent: vi.fn().mockRejectedValue(err) });
 		const pi = makeFakePi();
-		createExtension(pi.api, { socketClient: stub, enableGetTabContent: true });
-		const result = await pi.tool("browser_get_tab_content").execute(
-			"tc-to", { tabId: 99, offset: 0 }, undefined, undefined, {} as never,
+		createExtension(pi.api, { socketClient: stub });
+		const result = await pi.tool("browser_control").execute(
+			"tc-to", { operation: "get_tab_content", tabId: 99, offset: 0 }, undefined, undefined, {} as never,
 		);
 		const text = (result.content[0] as { text: string }).text;
 		expect(text).toMatch(/time|streaming|loading|settle/i);
@@ -422,15 +458,14 @@ describe("error paths", () => {
 		const stub = makeStub({ listTabs: vi.fn().mockRejectedValue(new Error("something weird")) });
 		const pi = makeFakePi();
 		createExtension(pi.api, { socketClient: stub });
-		const result = await pi.tool("browser_list_tabs").execute(
-			"tc-err4", { offset: 0, limit: 100 }, undefined, undefined, {} as never,
+		const result = await pi.tool("browser_control").execute(
+			"tc-err4", { operation: "list_tabs", offset: 0, limit: 100 }, undefined, undefined, {} as never,
 		);
 		const text = (result.content[0] as { text: string }).text;
 		expect(text.length).toBeGreaterThan(0);
 		expect(result.details).toMatchObject({ ok: false });
 	});
 });
-
 
 // ---------------------------------------------------------------------------
 // /browser-control command — exercises index.ts lambdas
@@ -543,14 +578,14 @@ describe("/browser-control command — installManifest lambda", () => {
 	});
 });
 
-describe("browser_get_tab_content — SocketClientError vs generic error path", () => {
-	it("SocketClientError goes through errorResult", async () => {
+describe("get_tab_content — SocketClientError goes through errorResult", () => {
+	it("SocketClientError returns ok:false", async () => {
 		const err = new (await import("../src/socket-client.js")).SocketClientError("no tab", "TAB_NOT_FOUND");
 		const stub = makeStub({ getTabContent: vi.fn().mockRejectedValue(err) });
 		const pi = makeFakePi();
-		createExtension(pi.api, { socketClient: stub, enableGetTabContent: true });
-		const result = await pi.tool("browser_get_tab_content").execute(
-			"tc-sce", { tabId: 9, offset: 0 }, undefined, undefined, {} as never,
+		createExtension(pi.api, { socketClient: stub });
+		const result = await pi.tool("browser_control").execute(
+			"tc-sce", { operation: "get_tab_content", tabId: 9, offset: 0 }, undefined, undefined, {} as never,
 		);
 		expect(result.details).toMatchObject({ ok: false });
 	});
@@ -589,17 +624,17 @@ describe("/browser-control command — installManifest failure path", () => {
 // index.ts branch gaps
 // ---------------------------------------------------------------------------
 
-describe("createExtension — socketClient ?? new SocketClient() branch (line 129)", () => {
+describe("createExtension — socketClient ?? new SocketClient() branch", () => {
 	it("works without explicit socketClient option (uses default SocketClient)", () => {
 		const pi = makeFakePi();
 		// No socketClient option → exercises `options.socketClient ?? new SocketClient()`
 		createExtension(pi.api);
-		// Extension registered correctly
 		expect(pi.commands.has("browser-control")).toBe(true);
+		expect(pi.tools.has("browser_control")).toBe(true);
 	});
 });
 
-describe("errorResult — String(err) fallback when err has no .message (line 87)", () => {
+describe("errorResult — String(err) fallback when err has no .message", () => {
 	it("returns non-empty error message for plain object without .message", async () => {
 		// Throw a plain object (no .message) → e.message is undefined → String(err) is used
 		const plainErr = { code: "OTHER" }; // no .message
@@ -608,10 +643,93 @@ describe("errorResult — String(err) fallback when err has no .message (line 87
 		});
 		const pi = makeFakePi();
 		createExtension(pi.api, { socketClient: stub });
-		const result = await pi.tool("browser_list_tabs").execute(
-			"tc-str-err", { offset: 0, limit: 100 }, undefined, undefined, {} as never,
+		const result = await pi.tool("browser_control").execute(
+			"tc-str-err", { operation: "list_tabs", offset: 0, limit: 100 }, undefined, undefined, {} as never,
 		);
 		const text = (result.content[0] as { text: string }).text;
 		expect(text.length).toBeGreaterThan(0);
+	});
+});
+
+// ---------------------------------------------------------------------------
+// renderResult
+// ---------------------------------------------------------------------------
+
+const mockTheme = {
+	fg: (_color: string, text: string) => text,
+};
+
+describe("browser_control renderResult", () => {
+	it("is a function on the registered tool", () => {
+		const pi = makeFakePi();
+		createExtension(pi.api, { socketClient: makeStub() });
+		const tool = pi.tool("browser_control");
+		expect(typeof tool.renderResult).toBe("function");
+	});
+
+	it("list_tabs: renders header + tab lines; truncates with '… N more' footer", () => {
+		const pi = makeFakePi();
+		createExtension(pi.api, { socketClient: makeStub() });
+		const tool = pi.tool("browser_control");
+		const result = {
+			content: [
+				{ type: "text", text: "Showing tabs 1-5 of 5 total tabs" },
+				{ type: "text", text: "tab id=1, tab url=https://a.com" },
+				{ type: "text", text: "tab id=2, tab url=https://b.com" },
+				{ type: "text", text: "tab id=3, tab url=https://c.com" },
+				{ type: "text", text: "tab id=4, tab url=https://d.com" },
+				{ type: "text", text: "tab id=5, tab url=https://e.com" },
+			],
+			details: { ok: true, operation: "list_tabs" },
+		};
+		// Not expanded → shows first 3 tab lines, rest truncated
+		const rendered = tool.renderResult!(result as never, { expanded: false, isPartial: false }, mockTheme as never, {} as never);
+		const text = (rendered as unknown as { text: string }).text;
+		expect(text).toContain("Showing tabs 1-5 of 5 total tabs");
+		expect(text).toContain("tab id=1");
+		expect(text).toContain("tab id=3");
+		expect(text).not.toContain("tab id=4");
+		expect(text).toMatch(/… 2 more tab/);
+	});
+
+	it("get_tab_content: multi-element content renders only content[0].text, not tab-list format", () => {
+		const pi = makeFakePi();
+		createExtension(pi.api, { socketClient: makeStub() });
+		const tool = pi.tool("browser_control");
+		// buildTabContentResult returns hint + fullText + links (multiple elements)
+		const result = {
+			content: [
+				{ type: "text", text: "The following text content is truncated..." },
+				{ type: "text", text: "Main page text here" },
+				{ type: "text", text: "Link text: Example, Link URL: https://example.com" },
+			],
+			details: { ok: true, operation: "get_tab_content" },
+		};
+		const rendered2 = tool.renderResult!(result as never, { expanded: false, isPartial: false }, mockTheme as never, {} as never);
+		const text2 = (rendered2 as unknown as { text: string }).text;
+		// Should render only content[0].text — no tab-list formatting, no "… N more tabs" footer
+		expect(text2).toBe("The following text content is truncated...");
+		expect(text2).not.toContain("Main page text here");
+		expect(text2).not.toMatch(/… \d+ more tab/);
+	});
+
+	it("isPartial: renders ellipsis", () => {
+		const pi = makeFakePi();
+		createExtension(pi.api, { socketClient: makeStub() });
+		const tool = pi.tool("browser_control");
+		const result = { content: [], details: { ok: true, operation: "list_tabs" } };
+		const rendered3 = tool.renderResult!(result, { expanded: false, isPartial: true }, mockTheme as never, {} as never);
+		const text3 = (rendered3 as unknown as { text: string }).text;
+		expect(text3).toContain("…");
+	});
+
+	it("empty content: renders (no output)", () => {
+		const pi = makeFakePi();
+		createExtension(pi.api, { socketClient: makeStub() });
+		const tool = pi.tool("browser_control");
+		const result = { content: [], details: { ok: true } };
+		const rendered4 = tool.renderResult!(result, { expanded: false, isPartial: false }, mockTheme as never, {} as never);
+		const text4 = (rendered4 as unknown as { text: string }).text;
+		expect(text4).toContain("(no output)");
 	});
 });

@@ -9,8 +9,10 @@
  *   addon → daemon: { correlationId, ok, result|error }
  *
  * Ops:
- *   listTabs       → browser.tabs.query({}) → { tabs:[{id,url,title,lastAccessed}] }
+ *   listTabs       → browser.tabs.query({}) → { tabs:[{id,windowId,url,normalizedUrl,title,lastAccessed,active,pinned,discarded}] } (9 slim fields)
+ *   exportTabs     → browser.tabs.query({}) → { tabs:[...all 19 fields...] } (full metadata for export)
  *   getTabContent  → executeScript with content-extract.js → { tabId, fullText, totalLength, isTruncated, links? }
+ *   closeTab       → browser.tabs.remove(tabId) → { closed: true, tabId }
  *   ping           → { addon:"ready", version }
  *
  * Note: console.log is fine here — we run in the browser extension context,
@@ -85,6 +87,25 @@ async function handleMessage(msg) {
       result = { addon: "ready", version: ADDON_VERSION };
 
     } else if (op === "listTabs") {
+      // Slim response: 9 key fields only. No favIconUrl (base64 data URIs),
+      // no status/hidden/incognito/audible/mutedInfo/isArticle/isInReaderMode/cookieStoreId.
+      const tabs = await browser.tabs.query({});
+      result = {
+        tabs: tabs.map((t) => ({
+          id: t.id,
+          windowId: t.windowId,
+          url: t.url,
+          normalizedUrl: normalizeUrl(t.url),
+          title: t.title,
+          lastAccessed: t.lastAccessed,
+          active: t.active,
+          pinned: t.pinned,
+          discarded: t.discarded,
+        })),
+      };
+
+    } else if (op === "exportTabs") {
+      // Full 19-field response for export use only.
       const tabs = await browser.tabs.query({});
       result = {
         tabs: tabs.map((t) => ({
@@ -193,6 +214,25 @@ async function handleMessage(msg) {
         // Links only on first call (offset === 0)
         ...(offset === 0 ? { links: extracted.links ?? [] } : {}),
       };
+
+    } else if (op === "closeTab") {
+      const tabId = params?.tabId;
+      if (typeof tabId !== "number") {
+        sendReply(correlationId, false, null, { code: "TAB_NOT_FOUND", message: "tabId is required" });
+        return;
+      }
+      try {
+        // WARNING: If this is the last tab of the last window, closing it will
+        // close Firefox entirely. The NM port will be destroyed before this
+        // reply can be sent, so the caller will receive a timeout error rather
+        // than a clean response. This is a Firefox limitation and cannot be
+        // avoided from the extension side.
+        await browser.tabs.remove(tabId);
+      } catch (e) {
+        sendReply(correlationId, false, null, { code: "TAB_NOT_FOUND", message: `Tab ${tabId} not found or could not be closed: ${String(e)}` });
+        return;
+      }
+      result = { closed: true, tabId };
 
     } else {
       sendReply(correlationId, false, null, { code: "INTERNAL", message: `Unknown op: ${String(op)}` });

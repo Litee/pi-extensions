@@ -2,7 +2,7 @@
   "manifest_version": 2,
   "name": "pi-browser-control",
   "version": "0.1.0",
-  "description": "Connects the pi coding agent to Firefox via native messaging, enabling browser_list_tabs and browser_get_tab_content tools.",
+  "description": "Connects the pi coding agent to Firefox via native messaging, enabling the browser_control tool.",
   "browser_specific_settings": {
     "gecko": {
       "id": "pi-browser-control@earendil-works",
