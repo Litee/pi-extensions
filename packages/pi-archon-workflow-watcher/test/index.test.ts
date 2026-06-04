@@ -1,7 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import type { ArchonClient } from "../src/archon-client.js";
-import {
+import archonWorkflowWatcher, {
 	createExtensionWithClient,
 	POLL_INTERVAL_MS,
 	STATE_ENTRY_TYPE,
@@ -146,21 +146,12 @@ function makeClient(runs: ArchonRun[] | Error): ArchonClient {
 	return { getWorkflowStatus: vi.fn().mockResolvedValue(runs) };
 }
 
-/** A combined state entry seeded as "not paused" so session_start goes into active mode. */
+/** A combined state entry for session_start active mode. */
 function runningRunstate() {
 	return {
 		type: "custom",
 		customType: STATE_ENTRY_TYPE,
-		data: { savedAt: Date.now(), paused: false, watchedIds: [], baselines: {} },
-	};
-}
-
-/** A combined state entry seeded as "paused". */
-function pausedRunstate() {
-	return {
-		type: "custom",
-		customType: STATE_ENTRY_TYPE,
-		data: { savedAt: Date.now(), paused: true, watchedIds: [], baselines: {} },
+		data: { savedAt: Date.now(), watchedIds: [], baselines: {} },
 	};
 }
 
@@ -215,7 +206,7 @@ describe("POLL_INTERVAL_MS", () => {
 // session_start — active path
 // ---------------------------------------------------------------------------
 
-describe("session_start — active (not paused)", () => {
+describe("session_start", () => {
 	beforeEach(() => { resetToolRegisteredForTests(); });
 	afterEach(() => { resetToolRegisteredForTests(); });
 	it("emits a startup chat message via sendMessage", async () => {
@@ -227,7 +218,7 @@ describe("session_start — active (not paused)", () => {
 			{
 				type: "custom",
 				customType: STATE_ENTRY_TYPE,
-				data: { savedAt: Date.now(), paused: false, watchedIds: ["r1"], baselines: {} },
+				data: { savedAt: Date.now(), watchedIds: ["r1"], baselines: {} },
 			},
 		]);
 		await pi.sessionStartHandler!({}, ctx);
@@ -253,7 +244,7 @@ describe("session_start — active (not paused)", () => {
 			{
 				type: "custom",
 				customType: STATE_ENTRY_TYPE,
-				data: { savedAt: Date.now(), paused: false, watchedIds: ["r1"], baselines: {} },
+				data: { savedAt: Date.now(), watchedIds: ["r1"], baselines: {} },
 			},
 		]);
 		await pi.sessionStartHandler!({}, ctx);
@@ -287,7 +278,7 @@ describe("session_start — active (not paused)", () => {
 			{
 				type: "custom",
 				customType: STATE_ENTRY_TYPE,
-				data: { savedAt: Date.now(), paused: false, watchedIds: ["r1"], baselines: { r1: run } },
+				data: { savedAt: Date.now(), watchedIds: ["r1"], baselines: { r1: run } },
 			},
 		]);
 		await pi.sessionStartHandler!({}, ctx);
@@ -315,7 +306,6 @@ describe("session_start — active (not paused)", () => {
 				customType: STATE_ENTRY_TYPE,
 				data: {
 					savedAt: Date.now(),
-					paused: false,
 					watchedIds: ["r1"],
 					baselines: { r1: makeRun({ id: "r1", status: "running" }) },
 				},
@@ -343,7 +333,6 @@ describe("session_start — active (not paused)", () => {
 				customType: STATE_ENTRY_TYPE,
 				data: {
 					savedAt: Date.now(),
-					paused: false,
 					watchedIds: ["r1"],
 					baselines: { r1: run },
 				},
@@ -377,85 +366,6 @@ describe("session_start — active (not paused)", () => {
 	});
 });
 
-// ---------------------------------------------------------------------------
-// session_start — paused path
-// ---------------------------------------------------------------------------
-
-describe("session_start — paused", () => {
-	beforeEach(() => { resetToolRegisteredForTests(); });
-	afterEach(() => { resetToolRegisteredForTests(); });
-	it("does NOT fetch workflow status when paused", async () => {
-		const pi = makePi();
-		const client = makeClient([]);
-		createExtensionWithClient(pi as never, client);
-		const ctx = makeFakeCtx([pausedRunstate()]);
-		await pi.sessionStartHandler!({}, ctx);
-		expect(client.getWorkflowStatus).not.toHaveBeenCalled();
-	});
-
-	it("does NOT emit sendMessage when paused", async () => {
-		const pi = makePi();
-		createExtensionWithClient(pi as never, makeClient([]));
-		const ctx = makeFakeCtx([pausedRunstate()]);
-		await pi.sessionStartHandler!({}, ctx);
-		await new Promise<void>((r) => setImmediate(r));
-		expect(pi.sendMessage).not.toHaveBeenCalled();
-	});
-
-	it("clears the status row when paused (no 'paused' string pinned)", async () => {
-		const pi = makePi();
-		createExtensionWithClient(pi as never, makeClient([]));
-		const ctx = makeFakeCtx([pausedRunstate()]);
-		await pi.sessionStartHandler!({}, ctx);
-
-		const statusCalls = ctx.ui.setStatus.mock.calls as Array<
-			[string, string | undefined]
-		>;
-		const ours = statusCalls.filter(([k]) => k === "pi-archon-workflow-watcher");
-		for (const [, v] of ours) {
-			expect(v).toBeUndefined();
-		}
-	});
-
-	it("does NOT start polling when paused", async () => {
-		vi.useFakeTimers();
-		try {
-			const pi = makePi();
-			const client = makeClient([]);
-			createExtensionWithClient(pi as never, client);
-			const ctx = makeFakeCtx([pausedRunstate()]);
-			await pi.sessionStartHandler!({}, ctx);
-			await vi.advanceTimersByTimeAsync(POLL_INTERVAL_MS * 3);
-			// getWorkflowStatus was never called (no polling, no session_start fetch)
-			expect(client.getWorkflowStatus).not.toHaveBeenCalled();
-		} finally {
-			vi.useRealTimers();
-		}
-	});
-
-	it("defaults to NOT paused when there is no runstate entry", async () => {
-		const pi = makePi();
-		const client = makeClient([]);
-		createExtensionWithClient(pi as never, client);
-		// No runstate entry → defaults to not paused.
-		// Add a baseline with watchedIds so the active path proceeds and calls the client.
-		const ctx = makeFakeCtx([
-			{
-				type: "custom",
-				customType: STATE_ENTRY_TYPE,
-				data: { savedAt: Date.now(), paused: false, watchedIds: ["r1"], baselines: {} },
-			},
-		]);
-		await pi.sessionStartHandler!({}, ctx);
-		// active path: getWorkflowStatus should have been called
-		expect(client.getWorkflowStatus).toHaveBeenCalled();
-	});
-});
-
-// ---------------------------------------------------------------------------
-// session_shutdown
-// ---------------------------------------------------------------------------
-
 describe("session_shutdown", () => {
 	it("stops polling and clears the status row", async () => {
 		vi.useFakeTimers();
@@ -484,82 +394,6 @@ describe("session_shutdown", () => {
 // ---------------------------------------------------------------------------
 
 describe("/archon-watcher command", () => {
-	it("'pause' notifies the user and persists paused=true", async () => {
-		const pi = makePi();
-		createExtensionWithClient(pi as never, makeClient([]));
-		const cmd = pi.commands.get("archon-watcher")!;
-		const ctx = makeFakeCtx();
-		await cmd.handler("pause", ctx);
-
-		expect(ctx.ui.notify).toHaveBeenCalledWith(
-			expect.stringContaining("paused"),
-			expect.any(String),
-		);
-		const runstateCalls = pi.appendEntry.mock.calls.filter(
-			(c) => c[0] === STATE_ENTRY_TYPE,
-		);
-		expect(runstateCalls.length).toBeGreaterThanOrEqual(1);
-		const lastData = runstateCalls[runstateCalls.length - 1]![1] as {
-			paused: boolean;
-		};
-		expect(lastData.paused).toBe(true);
-	});
-
-	it("'pause' clears the status row", async () => {
-		const pi = makePi();
-		createExtensionWithClient(pi as never, makeClient([]));
-		const cmd = pi.commands.get("archon-watcher")!;
-		const ctx = makeFakeCtx();
-		await cmd.handler("pause", ctx);
-
-		const statusCalls = ctx.ui.setStatus.mock.calls as Array<
-			[string, string | undefined]
-		>;
-		const ours = statusCalls.filter(([k]) => k === "pi-archon-workflow-watcher");
-		expect(ours.length).toBeGreaterThanOrEqual(1);
-		for (const [, v] of ours) {
-			expect(v).toBeUndefined();
-		}
-	});
-
-	it("'resume' notifies the user and persists paused=false", async () => {
-		const pi = makePi();
-		createExtensionWithClient(pi as never, makeClient([]));
-		const cmd = pi.commands.get("archon-watcher")!;
-		const ctx = makeFakeCtx();
-		await cmd.handler("pause", ctx);
-		await cmd.handler("resume", ctx);
-
-		const notifies = ctx.ui.notify.mock.calls.map((c) => String(c[0]));
-		expect(notifies.some((m) => /resumed/i.test(m))).toBe(true);
-
-		const runstateCalls = pi.appendEntry.mock.calls.filter(
-			(c) => c[0] === STATE_ENTRY_TYPE,
-		);
-		const lastData = runstateCalls[runstateCalls.length - 1]![1] as {
-			paused: boolean;
-		};
-		expect(lastData.paused).toBe(false);
-	});
-
-	it("'resume' clears the status line when no runs are active", async () => {
-		const pi = makePi();
-		createExtensionWithClient(pi as never, makeClient([]));
-		const cmd = pi.commands.get("archon-watcher")!;
-		const ctx = makeFakeCtx();
-		await cmd.handler("pause", ctx);
-		ctx.ui.setStatus.mockClear();
-		await cmd.handler("resume", ctx);
-
-		const statusCalls = ctx.ui.setStatus.mock.calls as Array<
-			[string, string | undefined]
-		>;
-		const ours = statusCalls.filter(([k]) => k === "pi-archon-workflow-watcher");
-		// With no active runs the status row must be cleared (undefined), never set.
-		const setsString = ours.some(([, v]) => typeof v === "string");
-		expect(setsString).toBe(false);
-	});
-
 	it("'status' fetches current status and sends a chat message", async () => {
 		const pi = makePi();
 		const client = makeClient([makeRun({ id: "r1", status: "running" })]);
@@ -609,8 +443,7 @@ describe("/archon-watcher command", () => {
 
 		const [msg, level] = ctx.ui.notify.mock.calls[0] as [string, string];
 		expect(msg).toMatch(/unknown subcommand/i);
-		expect(msg).toContain("pause");
-		expect(msg).toContain("resume");
+		expect(msg).toContain("status");
 		expect(level).toBe("warning");
 	});
 });
@@ -641,7 +474,6 @@ describe("polling loop integration", () => {
 				customType: STATE_ENTRY_TYPE,
 				data: {
 					savedAt: Date.now(),
-					paused: false,
 					watchedIds: ["r1"],
 					baselines: { r1: makeRun({ id: "r1", status: "running" }) },
 				},
@@ -666,5 +498,324 @@ describe("polling loop integration", () => {
 		};
 		expect(newMsg.customType).toBe("pi-archon-workflow-watcher");
 		expect(newMsg.content).toMatch(/change.*detected/);
+	});
+});
+
+// ---------------------------------------------------------------------------
+// Message renderer — covers lines 181-194 (content ternary branches)
+// ---------------------------------------------------------------------------
+
+describe("message renderer", () => {
+	beforeEach(() => { resetToolRegisteredForTests(); });
+	afterEach(() => { resetToolRegisteredForTests(); });
+
+	it("renders string content without throwing", () => {
+		const pi = makePi();
+		createExtensionWithClient(pi as never, makeClient([]));
+		const [, renderer] = pi.registerMessageRenderer.mock.calls[0] as [
+			string,
+			(
+				msg: { content: string | Array<{ type: string; text: string }> },
+				opts: unknown,
+				theme: { bold: (t: string) => string; fg: (k: string, t: string) => string; bg: (k: string, t: string) => string },
+			) => unknown,
+		];
+		const theme = {
+			bold: (t: string) => t,
+			fg: (_k: string, t: string) => t,
+			bg: (_k: string, t: string) => t,
+		};
+		expect(() => renderer({ content: "hello world" }, {}, theme)).not.toThrow();
+	});
+
+	it("renders array content by joining text parts", () => {
+		const pi = makePi();
+		createExtensionWithClient(pi as never, makeClient([]));
+		const [, renderer] = pi.registerMessageRenderer.mock.calls[0] as [
+			string,
+			(
+				msg: { content: string | Array<{ type: string; text: string }> },
+				opts: unknown,
+				theme: { bold: (t: string) => string; fg: (k: string, t: string) => string; bg: (k: string, t: string) => string },
+			) => unknown,
+		];
+		const theme = {
+			bold: (t: string) => t,
+			fg: (_k: string, t: string) => t,
+			bg: (_k: string, t: string) => t,
+		};
+		expect(() => renderer(
+			{ content: [{ type: "text", text: "part1" }, { type: "text", text: "part2" }] },
+			{},
+			theme,
+		)).not.toThrow();
+	});
+});
+
+// ---------------------------------------------------------------------------
+// session_start — error path when watchedIds non-empty (line 122)
+// ---------------------------------------------------------------------------
+
+describe("session_start — client error with watched IDs", () => {
+	beforeEach(() => { resetToolRegisteredForTests(); });
+	afterEach(() => { resetToolRegisteredForTests(); });
+
+	it("stays silent when client throws during session_start with watched IDs", async () => {
+		const pi = makePi();
+		createExtensionWithClient(pi as never, makeClient(new Error("archon crashed")));
+		const ctx = makeFakeCtx([
+			{
+				type: "custom",
+				customType: STATE_ENTRY_TYPE,
+				data: { savedAt: Date.now(), watchedIds: ["r1"], baselines: {} },
+			},
+		]);
+		await pi.sessionStartHandler!({}, ctx);
+		await new Promise<void>((r) => setImmediate(r));
+		// Error was recorded but no chat message was emitted (no active runs)
+		const stateErrors = pi.appendEntry.mock.calls.filter(
+			(c) => c[0] === "archon-watcher:init-error",
+		);
+		expect(stateErrors.length).toBeGreaterThanOrEqual(1);
+		expect(pi.sendMessage).not.toHaveBeenCalled();
+	});
+});
+
+// ---------------------------------------------------------------------------
+// default export — archonWorkflowWatcher (line 246)
+// ---------------------------------------------------------------------------
+
+describe("default export — archonWorkflowWatcher", () => {
+	beforeEach(() => { resetToolRegisteredForTests(); });
+	afterEach(() => { resetToolRegisteredForTests(); });
+
+	it("registers without throwing when called with a minimal fake pi", () => {
+		const pi = makePi();
+		expect(() => archonWorkflowWatcher(pi as never)).not.toThrow();
+		// Should have registered the same handlers as createExtensionWithClient
+		expect(pi.on).toHaveBeenCalledWith("session_start", expect.any(Function));
+		expect(pi.on).toHaveBeenCalledWith("session_shutdown", expect.any(Function));
+	});
+});
+
+// ---------------------------------------------------------------------------
+// session_start — ui.custom wiring (index.ts lines 78-80)
+// ---------------------------------------------------------------------------
+
+describe("session_start — ui.custom wiring (lines 78-80)", () => {
+	beforeEach(() => { resetToolRegisteredForTests(); });
+	afterEach(() => { resetToolRegisteredForTests(); });
+
+	it("wires showApprovalDialog onto rt.ui; calling it invokes the body (lines 79-80)", async () => {
+		const pi = makePi();
+		const client = makeClient([]);
+		createExtensionWithClient(pi as never, client);
+
+		// customFn CALLS its first argument (the callback) to cover the arrow function
+		// body at lines 79-80 of index.ts: (tui, theme, _kb, done) => createApprovalDialog(...).
+		const customFn = vi.fn().mockImplementation(
+			(callback: (tui: unknown, theme: unknown, kb: unknown, done: (r: unknown) => void) => void) => {
+				// Invoke the callback — this executes the arrow function body at lines 79-80.
+				callback(
+					{ requestRender: () => {} }, // tui
+					{ fg: (_k: string, t: string) => t, bold: (t: string) => t, bg: (_k: string, t: string) => t }, // theme
+					undefined, // _kb
+					() => {}, // done (no-op)
+				);
+				return Promise.resolve(null);
+			},
+		);
+		const ctxUi = {
+			notify: vi.fn(),
+			setStatus: vi.fn(),
+			theme: {
+				fg: vi.fn((_k: string, t: string) => t),
+				bold: vi.fn((t: string) => t),
+			},
+			hasUI: true,
+			custom: customFn,
+		};
+		const ctx = {
+			hasUI: true,
+			ui: ctxUi,
+			sessionManager: { getEntries: () => [] },
+		};
+
+		// No watched IDs → session_start returns early, but the custom-wiring branch (lines 78-80) runs first.
+		await expect(pi.sessionStartHandler!({}, ctx)).resolves.toBeUndefined();
+		// After session_start, rt.ui.showApprovalDialog is wired onto ctxUi (same object reference).
+		// Calling it invokes the function body at lines 79-80 (return uiCtx.custom!(...)).
+		const showDialog = (ctxUi as Record<string, unknown>)["showApprovalDialog"] as
+			((p: unknown) => Promise<unknown>) | undefined;
+		expect(typeof showDialog).toBe("function");
+		if (showDialog) {
+			await showDialog({ runId: "r1", workflowName: "wf", nodeId: "n", message: "m" });
+			expect(customFn).toHaveBeenCalled();
+		}
+	});
+});
+
+// ---------------------------------------------------------------------------
+// /archon-watcher command — hasUI detection fallback branches (lines 206-207)
+// and run.id === "" filter (line 225)
+// ---------------------------------------------------------------------------
+
+describe("/archon-watcher command — additional branch coverage", () => {
+	beforeEach(() => { resetToolRegisteredForTests(); });
+	afterEach(() => { resetToolRegisteredForTests(); });
+
+	it("'status' detects hasUI from ui.hasUI when top-level hasUI is absent (lines 206-207 fallback)", async () => {
+		const pi = makePi();
+		createExtensionWithClient(pi as never, makeClient([]));
+		const cmd = pi.commands.get("archon-watcher")!;
+		// Ctx without top-level hasUI — forces ?? to evaluate anyCtx.ui?.hasUI
+		const ctx = {
+			ui: { notify: vi.fn(), setStatus: vi.fn(), theme: { fg: vi.fn((_k: string, t: string) => t), bold: vi.fn((t: string) => t) }, hasUI: true },
+			sessionManager: { getEntries: () => [] },
+			// no hasUI at top level
+		};
+		await cmd.handler("status", ctx);
+		expect(pi.sendMessage).toHaveBeenCalledOnce();
+	});
+
+	it("'status' with ui undefined treats hasUI as false (lines 206-207 full fallback)", async () => {
+		const pi = makePi();
+		createExtensionWithClient(pi as never, makeClient([]));
+		const cmd = pi.commands.get("archon-watcher")!;
+		// No hasUI at any level → hasUI = (undefined !== undefined) = false
+		// So ui = undefined, and ui?.notify?.() is a no-op
+		const ctx = {
+			sessionManager: { getEntries: () => [] },
+		};
+		// Should not throw — ui is undefined, notify is not called
+		await cmd.handler("status", ctx);
+		expect(pi.sendMessage).toHaveBeenCalledOnce();
+	});
+
+	it("'status' filters out runs with empty id (line 225 FALSE branch)", async () => {
+		const pi = makePi();
+		// Client returns a run with id="" (should be filtered out)
+		const client = makeClient([{ id: "", status: "running" }]);
+		createExtensionWithClient(pi as never, client);
+		const cmd = pi.commands.get("archon-watcher")!;
+		const ctx = makeFakeCtx();
+		await cmd.handler("status", ctx);
+		expect(pi.sendMessage).toHaveBeenCalledOnce();
+		const content = (pi.sendMessage.mock.calls[0]![0] as { content: string }).content;
+		// No active runs (empty id was filtered)
+		expect(content).toContain("No active workflow runs");
+	});
+});
+
+// ---------------------------------------------------------------------------
+// session_start — all watched runs removed between sessions (line 162 FALSE)
+// ---------------------------------------------------------------------------
+
+describe("session_start — all watched runs removed (line 162 FALSE branch)", () => {
+	beforeEach(() => { resetToolRegisteredForTests(); });
+	afterEach(() => { resetToolRegisteredForTests(); });
+
+	it("does not start polling when all watched runs disappeared (covers line 162 FALSE)", async () => {
+		vi.useFakeTimers();
+		try {
+			const pi = makePi();
+			// All watched runs return empty → run_removed events → watchedIds cleared
+			const client = makeClient([]);
+			createExtensionWithClient(pi as never, client);
+
+			const ctx = makeFakeCtx([
+				{
+					type: "custom",
+					customType: STATE_ENTRY_TYPE,
+					data: {
+						savedAt: Date.now(),
+						watchedIds: ["r1"],
+						baselines: { r1: makeRun({ id: "r1", status: "running" }) },
+					},
+				},
+			]);
+			await pi.sessionStartHandler!({}, ctx);
+			await vi.advanceTimersByTimeAsync(0); // flush setImmediate
+
+			// r1 disappeared → run_removed event → watchedIds.delete("r1") → size = 0
+			// → if (rt.watchedIds.size > 0) startPolling(rt) NOT called (FALSE branch)
+			// No polls should fire
+			const callsBefore = (client.getWorkflowStatus as ReturnType<typeof vi.fn>).mock.calls.length;
+			await vi.advanceTimersByTimeAsync(POLL_INTERVAL_MS * 3);
+			const callsAfter = (client.getWorkflowStatus as ReturnType<typeof vi.fn>).mock.calls.length;
+			expect(callsAfter).toBe(callsBefore); // no new polls = polling never started
+		} finally {
+			vi.useRealTimers();
+		}
+	});
+});
+
+// ---------------------------------------------------------------------------
+// session_start — hasUI detection fallback branches (lines 71-75)
+// ---------------------------------------------------------------------------
+
+describe("session_start — hasUI detection fallback branches (lines 71-75)", () => {
+	beforeEach(() => { resetToolRegisteredForTests(); });
+	afterEach(() => { resetToolRegisteredForTests(); });
+
+	it("detects hasUI from ui.hasUI when top-level hasUI is absent (line 71 second ?? operand)", async () => {
+		const pi = makePi();
+		createExtensionWithClient(pi as never, makeClient([]));
+		// No top-level hasUI — forces evaluation of ui?.hasUI (second ?? operand at line 71)
+		const ctx = {
+			ui: {
+				notify: vi.fn(), setStatus: vi.fn(), hasUI: true,
+				theme: { fg: vi.fn((_k: string, t: string) => t), bold: vi.fn((t: string) => t) },
+			},
+			sessionManager: { getEntries: () => [] },
+		};
+		await expect(pi.sessionStartHandler!({}, ctx)).resolves.toBeUndefined();
+	});
+
+	it("hasUI is false when ctx has no hasUI and no ui (line 72 FALSE, line 75 FALSE)", async () => {
+		const pi = makePi();
+		createExtensionWithClient(pi as never, makeClient([]));
+		// No hasUI and no ui → hasUI = false → rt.ui = null → if(rt.ui !== null) is FALSE
+		const ctx = { sessionManager: { getEntries: () => [] } };
+		await expect(pi.sessionStartHandler!({}, ctx)).resolves.toBeUndefined();
+	});
+
+	it("session_start: run returned by client is not in watchedIds (line 127 FALSE branch)", async () => {
+		const pi = makePi();
+		// Client returns r2 but state watches only r1 → r2 not in watchedIds → FALSE branch at line 127
+		createExtensionWithClient(pi as never, makeClient([makeRun({ id: "r2", status: "running" })]));
+		const ctx = makeFakeCtx([
+			{
+				type: "custom",
+				customType: STATE_ENTRY_TYPE,
+				data: { savedAt: Date.now(), watchedIds: ["r1"], baselines: {} },
+			},
+		]);
+		await pi.sessionStartHandler!({}, ctx);
+		await new Promise<void>((r) => setImmediate(r));
+		// r2 was returned by client but not in watchedIds → filtered out → no active runs → silent
+		expect(pi.sendMessage).not.toHaveBeenCalled();
+	});
+});
+
+// ---------------------------------------------------------------------------
+// session_start — line 72 ?? null: hasUI=true but ui is absent
+// ---------------------------------------------------------------------------
+
+describe("session_start — line 72 ?? null branch (hasUI=true but ui=undefined)", () => {
+	beforeEach(() => { resetToolRegisteredForTests(); });
+	afterEach(() => { resetToolRegisteredForTests(); });
+
+	it("rt.ui = null when hasUI=true but ctx has no ui property (covers line 72 ?? null)", async () => {
+		const pi = makePi();
+		createExtensionWithClient(pi as never, makeClient([]));
+		// hasUI=true forces the ternary TRUE branch at line 72,
+		// but ui is absent → anyCtx.ui = undefined → (anyCtx.ui as UiSurface) ?? null → null
+		const ctx = {
+			hasUI: true,
+			// no ui property → anyCtx.ui is undefined → ?? null fires
+			sessionManager: { getEntries: () => [] },
+		};
+		await expect(pi.sessionStartHandler!({}, ctx)).resolves.toBeUndefined();
 	});
 });

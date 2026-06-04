@@ -40,13 +40,9 @@ export interface StatusLineResult {
 }
 
 export function buildStatusLine(state: {
-	paused: boolean;
 	runCount: number;
 	activeCount: number;
 }): StatusLineResult {
-	const mode = state.paused ? "paused" : "active";
-	const text = state.paused
-		? `archon: ${state.runCount} (paused)`
-		: `archon: ${state.runCount}`;
-	return { text, colorAlias: statusLineColorAlias(mode) };
+	const text = `archon: ${state.runCount}`;
+	return { text, colorAlias: statusLineColorAlias() };
 }

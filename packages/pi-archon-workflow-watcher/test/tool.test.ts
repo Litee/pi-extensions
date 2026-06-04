@@ -1,9 +1,10 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import type { ArchonClient } from "../src/archon-client.js";
-import { makeRuntime, POLL_INTERVAL_MS } from "../src/runtime.js";
+import { makeRuntime } from "../src/runtime.js";
 import {
 	handleToolAction,
+	registerToolIfNeeded,
 	resetToolRegisteredForTests,
 } from "../src/tool.js";
 import type { ArchonRun, RunSnapshot } from "../src/types.js";
@@ -98,7 +99,7 @@ describe("handleToolAction — status", () => {
 		expect(result.content[0]!.text).toContain("watching");
 		expect(rt.watchedIds.has("r1")).toBe(true);
 		expect(rt.snapshot["r1"]).toBeDefined();
-		// timer started because not paused
+		// timer started
 		expect(rt.scheduler.isRunning).toBe(true);
 		rt.scheduler.stop();
 		vi.useRealTimers();
@@ -169,83 +170,6 @@ describe("handleToolAction — remove", () => {
 });
 
 // ---------------------------------------------------------------------------
-// pause action
-// ---------------------------------------------------------------------------
-
-describe("handleToolAction — pause", () => {
-	it("sets rt.paused = true and stops the timer", async () => {
-		vi.useFakeTimers();
-		const { rt, pi } = makeRt([]);
-		rt.paused = false;
-		const result = await handleToolAction(rt, { action: "pause" }, pi);
-		expect(rt.paused).toBe(true);
-		expect(rt.scheduler.isRunning).toBe(false);
-		expect(result.details.ok).toBe(true);
-		expect(result.content[0]!.text).toContain("paused");
-		vi.useRealTimers();
-	});
-
-	it("persists the pause state via appendEntry", async () => {
-		const { rt, pi } = makeRt([]);
-		await handleToolAction(rt, { action: "pause" }, pi);
-		const calls = pi.appendEntry.mock.calls as Array<[string, unknown]>;
-		const stateCall = calls.find(([type]) =>
-			type === "pi-archon-workflow-watcher:state",
-		);
-		expect(stateCall).toBeDefined();
-		expect((stateCall![1] as { paused: boolean }).paused).toBe(true);
-	});
-});
-
-// ---------------------------------------------------------------------------
-// resume action
-// ---------------------------------------------------------------------------
-
-describe("handleToolAction — resume", () => {
-	it("sets rt.paused = false and starts the timer", async () => {
-		vi.useFakeTimers();
-		const { rt, pi } = makeRt([]);
-		rt.paused = true;
-		rt.watchedIds.add("r1"); // timer only starts when watchedIds is non-empty
-		const result = await handleToolAction(rt, { action: "resume" }, pi);
-		expect(rt.paused).toBe(false);
-		expect(rt.scheduler.isRunning).toBe(true);
-		expect(result.details.ok).toBe(true);
-		expect(result.content[0]!.text).toContain("resumed");
-		// cleanup
-		rt.scheduler.stop();
-		vi.useRealTimers();
-	});
-
-	it("persists the resume state via appendEntry", async () => {
-		vi.useFakeTimers();
-		const { rt, pi } = makeRt([]);
-		rt.paused = true;
-		await handleToolAction(rt, { action: "resume" }, pi);
-		const calls = pi.appendEntry.mock.calls as Array<[string, unknown]>;
-		const stateCall = calls.find(([type]) =>
-			type === "pi-archon-workflow-watcher:state",
-		);
-		expect(stateCall).toBeDefined();
-		expect((stateCall![1] as { paused: boolean }).paused).toBe(false);
-		rt.scheduler.stop();
-		vi.useRealTimers();
-	});
-
-	it("includes current poll interval in the result message", async () => {
-		vi.useFakeTimers();
-		const { rt, pi } = makeRt([]);
-		rt.paused = true;
-		const result = await handleToolAction(rt, { action: "resume" }, pi);
-		expect(result.content[0]!.text).toContain(
-			`${Math.round(POLL_INTERVAL_MS / 1000)}s`,
-		);
-		rt.scheduler.stop();
-		vi.useRealTimers();
-	});
-});
-
-// ---------------------------------------------------------------------------
 // poll action
 // ---------------------------------------------------------------------------
 
@@ -297,6 +221,28 @@ describe("handleToolAction — unknown action", () => {
 });
 
 // ---------------------------------------------------------------------------
+// handleToolAction — add: seeding fails gracefully (line 89)
+// ---------------------------------------------------------------------------
+
+describe("handleToolAction — add: seeding fails gracefully (line 89)", () => {
+	it("still adds runId to watchedIds even when getWorkflowStatus throws during seeding", async () => {
+		vi.useFakeTimers();
+		try {
+			const { rt, pi } = makeRt(new Error("cli unavailable"));
+			const result = await handleToolAction(rt, { action: "add", runId: "r1" }, pi);
+			// Non-fatal: add still succeeds even though seeding threw
+			expect(result.details.ok).toBe(true);
+			expect(rt.watchedIds.has("r1")).toBe(true);
+			// Snapshot not seeded (getWorkflowStatus threw)
+			expect(rt.snapshot["r1"]).toBeUndefined();
+			rt.scheduler.stop();
+		} finally {
+			vi.useRealTimers();
+		}
+	});
+});
+
+// ---------------------------------------------------------------------------
 // resetToolRegisteredForTests
 // ---------------------------------------------------------------------------
 
@@ -306,5 +252,106 @@ describe("resetToolRegisteredForTests", () => {
 
 	it("is exported and callable without throwing", () => {
 		expect(() => resetToolRegisteredForTests()).not.toThrow();
+	});
+});
+
+// ---------------------------------------------------------------------------
+// registerToolIfNeeded — execute lambda (line 89)
+// ---------------------------------------------------------------------------
+
+describe("registerToolIfNeeded — execute lambda (line 89)", () => {
+	beforeEach(() => resetToolRegisteredForTests());
+	afterEach(() => resetToolRegisteredForTests());
+
+	it("invoke the registered tool execute lambda (covers line 89: return handleToolAction(...))", async () => {
+		vi.useFakeTimers();
+		try {
+			const pi = makePi();
+			const { rt } = makeRt([]);
+			registerToolIfNeeded(pi as never, rt);
+
+			// Capture the registered tool definition
+			const toolDef = (pi.registerTool as ReturnType<typeof vi.fn>).mock.calls[0]![0] as {
+				execute: (toolCallId: string, params: unknown) => Promise<unknown>;
+			};
+			// Call the execute lambda — covers line 89
+			const result = await toolDef.execute("call-1", { action: "status" });
+			expect((result as { details: { action: string } }).details.action).toBe("status");
+		} finally {
+			vi.useRealTimers();
+		}
+	});
+});
+
+// ---------------------------------------------------------------------------
+// handleToolAction — 'add': scheduler already running (line 143 FALSE branch)
+// ---------------------------------------------------------------------------
+
+describe("handleToolAction — add: scheduler already running (line 143 FALSE)", () => {
+	it("does not restart polling when the scheduler is already running", async () => {
+		vi.useFakeTimers();
+		try {
+			const { rt, pi } = makeRt([
+				makeRun({ id: "r1", status: "running" }),
+				makeRun({ id: "r2", status: "running" }),
+			]);
+			// First add: starts polling (scheduler not running → TRUE branch)
+			await handleToolAction(rt, { action: "add", runId: "r1" }, pi);
+			expect(rt.scheduler.isRunning).toBe(true);
+			// Second add: scheduler already running → !rt.scheduler.isRunning is FALSE → no startPolling
+			const result = await handleToolAction(rt, { action: "add", runId: "r2" }, pi);
+			expect(result.details.ok).toBe(true);
+			expect(rt.watchedIds.has("r2")).toBe(true);
+			expect(rt.scheduler.isRunning).toBe(true); // still running
+			rt.scheduler.stop();
+		} finally {
+			vi.useRealTimers();
+		}
+	});
+});
+
+// ---------------------------------------------------------------------------
+// handleToolAction — 'remove': watchedIds not empty after remove (line 163 FALSE)
+// ---------------------------------------------------------------------------
+
+describe("handleToolAction — remove: watchedIds not empty after remove (line 163 FALSE)", () => {
+	it("does not stop polling when other runs remain after remove", async () => {
+		vi.useFakeTimers();
+		try {
+			const { rt, pi } = makeRt([]);
+			rt.watchedIds.add("r1");
+			rt.watchedIds.add("r2");
+			// Start polling manually
+			const { startPolling } = await import("../src/runtime.js");
+			startPolling(rt);
+			expect(rt.scheduler.isRunning).toBe(true);
+			// Remove r1 — r2 still remains → size === 1 > 0 → FALSE branch → no stopPolling
+			const result = await handleToolAction(rt, { action: "remove", runId: "r1" }, pi);
+			expect(result.details.ok).toBe(true);
+			expect(rt.watchedIds.has("r1")).toBe(false);
+			expect(rt.watchedIds.has("r2")).toBe(true);
+			expect(rt.scheduler.isRunning).toBe(true); // still running
+			rt.scheduler.stop();
+		} finally {
+			vi.useRealTimers();
+		}
+	});
+});
+
+// ---------------------------------------------------------------------------
+// registerToolIfNeeded — already registered no-op (line ~73 if TRUE branch)
+// ---------------------------------------------------------------------------
+
+describe("registerToolIfNeeded — already registered no-op (if(toolRegistered) TRUE)", () => {
+	beforeEach(() => resetToolRegisteredForTests());
+	afterEach(() => resetToolRegisteredForTests());
+
+	it("second call is a no-op (covers if(toolRegistered) return TRUE branch)", () => {
+		const { rt, pi } = makeRt([]);
+		registerToolIfNeeded(pi as never, rt);
+		const callsBefore = (pi.registerTool as ReturnType<typeof vi.fn>).mock.calls.length;
+		// Second call: toolRegistered = true → early return (TRUE branch)
+		registerToolIfNeeded(pi as never, rt);
+		expect((pi.registerTool as ReturnType<typeof vi.fn>).mock.calls.length).toBe(callsBefore);
 	});
 });

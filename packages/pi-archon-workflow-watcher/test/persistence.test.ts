@@ -45,14 +45,12 @@ function now(): number {
 function validData(
 	overrides: {
 		savedAt?: number;
-		paused?: boolean;
 		watchedIds?: string[];
 		baselines?: RunSnapshot;
 	} = {},
 ) {
 	return {
 		savedAt: overrides.savedAt ?? now(),
-		paused: overrides.paused ?? false,
 		watchedIds: overrides.watchedIds ?? [],
 		baselines: overrides.baselines ?? {},
 	};
@@ -87,14 +85,12 @@ describe("rehydrateStateFromSession", () => {
 	it("returns full state from a valid entry", () => {
 		const ctx = makeCtx([
 			entry(STATE_ENTRY_TYPE, validData({
-				paused: false,
 				watchedIds: ["r1"],
 				baselines: SAMPLE_SNAPSHOT,
 			})),
 		]);
 		const got = rehydrateStateFromSession(ctx);
 		expect(got).not.toBeNull();
-		expect(got!.paused).toBe(false);
 		expect(got!.watchedIds).toEqual(["r1"]);
 		expect(got!.snapshot).toEqual(SAMPLE_SNAPSHOT);
 	});
@@ -129,16 +125,6 @@ describe("rehydrateStateFromSession", () => {
 		expect(got!.watchedIds).toEqual(["r1"]);
 	});
 
-	it("skips entries with non-boolean paused", () => {
-		const ctx = makeCtx([
-			entry(STATE_ENTRY_TYPE, validData({ watchedIds: ["r1"] })), // older valid
-			entry(STATE_ENTRY_TYPE, { ...validData(), paused: "yes" }), // newer, bad paused
-		]);
-		const got = rehydrateStateFromSession(ctx);
-		expect(got).not.toBeNull();
-		expect(got!.watchedIds).toEqual(["r1"]);
-	});
-
 	it("skips entries with non-array watchedIds", () => {
 		const ctx = makeCtx([
 			entry(STATE_ENTRY_TYPE, validData({ watchedIds: ["r1"] })), // older valid
@@ -147,14 +133,6 @@ describe("rehydrateStateFromSession", () => {
 		const got = rehydrateStateFromSession(ctx);
 		expect(got).not.toBeNull();
 		expect(got!.watchedIds).toEqual(["r1"]);
-	});
-
-	it("reads paused=true correctly", () => {
-		const ctx = makeCtx([
-			entry(STATE_ENTRY_TYPE, validData({ paused: true, watchedIds: ["r1"] })),
-		]);
-		const got = rehydrateStateFromSession(ctx);
-		expect(got!.paused).toBe(true);
 	});
 
 	it("filters watchedIds to strings only", () => {
@@ -194,13 +172,11 @@ describe("writeState", () => {
 		writeState({ appendEntry }, {
 			snapshot: SAMPLE_SNAPSHOT,
 			watchedIds: new Set(["r1"]),
-			paused: false,
 		});
 		expect(appendEntry).toHaveBeenCalledOnce();
 		const [ct, data] = appendEntry.mock.calls[0] as [string, Record<string, unknown>];
 		expect(ct).toBe(STATE_ENTRY_TYPE);
 		expect(typeof data["savedAt"]).toBe("number");
-		expect(data["paused"]).toBe(false);
 		expect(data["watchedIds"]).toEqual(["r1"]);
 		expect(data["baselines"]).toEqual(SAMPLE_SNAPSHOT);
 	});
@@ -210,7 +186,7 @@ describe("writeState", () => {
 			throw new Error("storage failure");
 		});
 		expect(() =>
-			writeState({ appendEntry }, { snapshot: {}, watchedIds: new Set(), paused: false }),
+			writeState({ appendEntry }, { snapshot: {}, watchedIds: new Set() }),
 		).not.toThrow();
 	});
 });
@@ -222,5 +198,38 @@ describe("writeState", () => {
 describe("constants", () => {
 	it("STATE_ENTRY_TYPE uses the package-name-prefixed form", () => {
 		expect(STATE_ENTRY_TYPE).toBe("pi-archon-workflow-watcher:state");
+	});
+});
+
+// ---------------------------------------------------------------------------
+// normaliseBaselines — falsy / non-object / array guards (lines 18-20)
+// ---------------------------------------------------------------------------
+
+describe("normaliseBaselines — falsy/non-object/array guards", () => {
+	it("returns snapshot {} when baselines is null", () => {
+		const ctx = makeCtx([
+			entry(STATE_ENTRY_TYPE, { ...validData({ watchedIds: ["r1"] }), baselines: null }),
+		]);
+		const got = rehydrateStateFromSession(ctx);
+		expect(got).not.toBeNull();
+		expect(got!.snapshot).toEqual({});
+	});
+
+	it("returns snapshot {} when baselines is a string", () => {
+		const ctx = makeCtx([
+			entry(STATE_ENTRY_TYPE, { ...validData({ watchedIds: ["r1"] }), baselines: "not-an-object" }),
+		]);
+		const got = rehydrateStateFromSession(ctx);
+		expect(got).not.toBeNull();
+		expect(got!.snapshot).toEqual({});
+	});
+
+	it("returns snapshot {} when baselines is an array", () => {
+		const ctx = makeCtx([
+			entry(STATE_ENTRY_TYPE, { ...validData({ watchedIds: ["r1"] }), baselines: [{ id: "r1" }] }),
+		]);
+		const got = rehydrateStateFromSession(ctx);
+		expect(got).not.toBeNull();
+		expect(got!.snapshot).toEqual({});
 	});
 });

@@ -123,34 +123,29 @@ describe("buildStartupChatMessage", () => {
 // ---------------------------------------------------------------------------
 
 describe("buildStatusLine", () => {
-	it("renders active rows with accent alias and just the count", () => {
-		const r = buildStatusLine({ paused: false, runCount: 3, activeCount: 2 });
+	it("renders the run count with accent alias", () => {
+		const r = buildStatusLine({ runCount: 3, activeCount: 2 });
 		expect(r).toEqual({ text: "archon: 3", colorAlias: "accent" });
 	});
 
-	it("renders paused rows with muted alias and a (paused) suffix", () => {
-		const r = buildStatusLine({ paused: true, runCount: 3, activeCount: 2 });
-		expect(r).toEqual({ text: "archon: 3 (paused)", colorAlias: "muted" });
-	});
-
 	it("ignores activeCount entirely — count is always runCount", () => {
-		const r = buildStatusLine({ paused: false, runCount: 5, activeCount: 3 });
+		const r = buildStatusLine({ runCount: 5, activeCount: 3 });
 		expect(r.text).toBe("archon: 5");
 	});
 
 	it("works for zero counts", () => {
-		const r = buildStatusLine({ paused: false, runCount: 0, activeCount: 0 });
+		const r = buildStatusLine({ runCount: 0, activeCount: 0 });
 		expect(r).toEqual({ text: "archon: 0", colorAlias: "accent" });
 	});
 
 	it("uses 'archon:' label (not 'archon-watcher:')", () => {
-		const r = buildStatusLine({ paused: false, runCount: 1, activeCount: 1 });
+		const r = buildStatusLine({ runCount: 1, activeCount: 1 });
 		expect(r.text).toMatch(/^archon: /);
 		expect(r.text).not.toContain("archon-watcher");
 	});
 
 	it("never includes the mode word 'active'", () => {
-		const r = buildStatusLine({ paused: false, runCount: 2, activeCount: 1 });
+		const r = buildStatusLine({ runCount: 2, activeCount: 1 });
 		expect(r.text).not.toMatch(/active/);
 	});
 });

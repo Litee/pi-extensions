@@ -411,3 +411,123 @@ describe("createApprovalDialog — help text", () => {
 		expect(lines.some((l) => l.includes("↑↓ select"))).toBe(true);
 	});
 });
+
+// ---------------------------------------------------------------------------
+// Cancel workflow decision (line 246)
+// ---------------------------------------------------------------------------
+
+describe("createApprovalDialog — cancel workflow decision (line 246)", () => {
+	it("calls done with cancel decision when Cancel workflow item is selected", () => {
+		const done = vi.fn();
+		const dialog = createApprovalDialog(makeParams(), done, makeTui(), makeTheme());
+		// Select list order: Approve (0), Reject (1), Cancel workflow (2)
+		dialog.handleInput("\x1b[B"); // ↓ → Reject
+		dialog.handleInput("\x1b[B"); // ↓ → Cancel workflow
+		dialog.handleInput("\r"); // Enter
+		expect(done).toHaveBeenCalledOnce();
+		const result = done.mock.calls[0]![0] as ApprovalResult;
+		expect(result?.decision).toBe("cancel");
+	});
+});
+
+// ---------------------------------------------------------------------------
+// SelectList callbacks — selectedPrefix (line 235) via theme spy
+// ---------------------------------------------------------------------------
+
+describe("createApprovalDialog — selectedPrefix callback (line 235)", () => {
+	it("selectedPrefix callback fires when rendering a selected item with custom theme", () => {
+		const calls: string[] = [];
+		const theme = {
+			fg: (color: string, text: string) => {
+				calls.push(`fg:${color}`);
+				return text;
+			},
+			bold: (t: string) => t,
+			bg: (_k: string, t: string) => t,
+		};
+		const dialog = createApprovalDialog(makeParams(), vi.fn(), makeTui(), theme);
+		// Render triggers SelectList which calls selectedPrefix for the selected item
+		dialog.render(80);
+		// The 'accent' color should appear from selectedPrefix/selectedText callbacks
+		expect(calls.some((c) => c === "fg:accent")).toBe(true);
+	});
+});
+
+// ---------------------------------------------------------------------------
+// Line 411 — empty feedback fallback "(no feedback provided)"
+// ---------------------------------------------------------------------------
+
+describe("createApprovalDialog — empty feedback fallback (line 411)", () => {
+	it("calls done with '(no feedback provided)' when Enter is pressed with no feedback typed", () => {
+		const done = vi.fn();
+		const dialog = createApprovalDialog(makeParams(), done, makeTui(), makeTheme());
+		dialog.handleInput("\x1b[B"); // ↓ → Reject with feedback
+		dialog.handleInput("\r"); // Enter → enters reject-input phase
+		// Press Enter immediately without typing any feedback → empty string → fallback
+		dialog.handleInput("\r");
+		expect(done).toHaveBeenCalledOnce();
+		const result = done.mock.calls[0]![0] as ApprovalResult;
+		expect(result?.decision).toBe("reject");
+		if (result?.decision === "reject") {
+			expect(result.feedback).toBe("(no feedback provided)");
+		}
+	});
+});
+
+// ---------------------------------------------------------------------------
+// ScrollableText.wrap() — raw.trim() === "" TRUE branch (empty line in body)
+// ---------------------------------------------------------------------------
+
+describe("createApprovalDialog — empty line in section body (wrap() empty-line branch)", () => {
+	it("renders a section body containing empty lines (covers if (raw.trim() === '') TRUE)", () => {
+		// Body has an empty line between Step 1 and Step 3
+		const dialog = createApprovalDialog(
+			makeParams({ sections: [section("Diff", "Step 1\n\nStep 3")] }),
+			vi.fn(),
+			makeTui(),
+			makeTheme(),
+		);
+		const lines = dialog.render(80);
+		expect(lines.some((l) => l.includes("Step 1"))).toBe(true);
+		expect(lines.some((l) => l.includes("Step 3"))).toBe(true);
+	});
+});
+
+// ---------------------------------------------------------------------------
+// ScrollableText.scrollDown() FALSE branch — already at bottom (max=0)
+// ---------------------------------------------------------------------------
+
+describe("createApprovalDialog — scrollDown() FALSE branch (already at bottom)", () => {
+	it("Ctrl-D when primary content fits in visible window is a no-op (covers scrollDown() FALSE)", () => {
+		// Short body: 1 line. Primary section has 18 visible lines → max = max(0, 1-18) = 0.
+		// scrollDown(): offset (0) < max (0) → FALSE → no increment.
+		const dialog = createApprovalDialog(
+			makeParams({ sections: [section("plan.md", "One line only", true)] }),
+			vi.fn(),
+			makeTui(),
+			makeTheme(),
+		);
+		dialog.render(80);
+		dialog.handleInput("\x04"); // Ctrl-D
+		expect(() => dialog.render(80)).not.toThrow();
+	});
+});
+
+// ---------------------------------------------------------------------------
+// ScrollableText.scrollUp() FALSE branch — already at top (offset=0)
+// ---------------------------------------------------------------------------
+
+describe("createApprovalDialog — scrollUp() FALSE branch (already at top)", () => {
+	it("Ctrl-U when primary offset is already 0 is a no-op (covers scrollUp() FALSE)", () => {
+		// Short body: offset starts at 0. scrollUp(): offset (0) > 0 → FALSE → no decrement.
+		const dialog = createApprovalDialog(
+			makeParams({ sections: [section("plan.md", "One line only", true)] }),
+			vi.fn(),
+			makeTui(),
+			makeTheme(),
+		);
+		dialog.render(80);
+		dialog.handleInput("\x15"); // Ctrl-U without first scrolling down
+		expect(() => dialog.render(80)).not.toThrow();
+	});
+});

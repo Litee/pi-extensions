@@ -26,7 +26,6 @@ export interface RehydratedState {
 	savedAt: number;
 	watchedIds: string[];
 	snapshot: RunSnapshot;
-	paused: boolean;
 }
 
 /**
@@ -42,20 +41,18 @@ export function rehydrateStateFromSession(
 		savedAt: state.savedAt,
 		watchedIds: state.items,
 		snapshot: state.baselines,
-		paused: state.paused,
 	};
 }
 
 /**
- * Write a combined state entry (watchedIds + snapshot + paused). Best-effort.
+ * Write a combined state entry (watchedIds + snapshot). Best-effort.
  */
 export function writeState(
 	pi: { appendEntry(customType: string, data: unknown): void },
-	opts: { snapshot: RunSnapshot; watchedIds: Iterable<string>; paused: boolean },
+	opts: { snapshot: RunSnapshot; watchedIds: Iterable<string> },
 ): void {
 	_persistence.writeState(pi, {
 		items: [...opts.watchedIds],
-		paused: opts.paused,
 		baselines: opts.snapshot,
 	});
 }

@@ -1,9 +1,18 @@
-import { describe, expect, it } from "vitest";
+import { mkdirSync, rmSync, writeFileSync } from "node:fs";
+import { homedir, tmpdir } from "node:os";
+import { join as pathJoin } from "node:path";
+import { afterEach, describe, expect, it, vi } from "vitest";
+
+vi.mock("node:os", async () => {
+	const actual = await vi.importActual<typeof import("node:os")>("node:os");
+	return { ...actual, homedir: vi.fn(() => actual.homedir()) };
+});
 
 import {
 	ArchonCliError,
 	findArchonWorkspaceCwd,
 	parseStatusOutput,
+	runArchonStatus,
 } from "../src/archon-client.js";
 
 // ---------------------------------------------------------------------------
@@ -214,6 +223,39 @@ describe("parseStatusOutput — approval metadata", () => {
 		expect(runs[0]!.approvalType).toBe("approval");
 	});
 
+	it("handles metadata === null gracefully (line 81 FALSE branch)", () => {
+		const raw = JSON.stringify({
+			runs: [{ id: "r1", status: "paused", metadata: null }],
+		});
+		const runs = parseStatusOutput(raw);
+		expect(runs[0]!.approvalNodeId).toBeUndefined();
+		expect(runs[0]!.approvalMessage).toBeUndefined();
+	});
+
+	it("handles metadata as a non-object (line 81 FALSE branch via typeof check)", () => {
+		const raw = JSON.stringify({
+			runs: [{ id: "r1", status: "paused", metadata: "not-an-object" }],
+		});
+		const runs = parseStatusOutput(raw);
+		expect(runs[0]!.approvalNodeId).toBeUndefined();
+	});
+
+	it("handles metadata.approval === null gracefully (line 83 FALSE branch)", () => {
+		const raw = JSON.stringify({
+			runs: [{ id: "r1", status: "paused", metadata: { approval: null } }],
+		});
+		const runs = parseStatusOutput(raw);
+		expect(runs[0]!.approvalNodeId).toBeUndefined();
+	});
+
+	it("handles metadata.approval as non-object string (line 83 FALSE branch via typeof)", () => {
+		const raw = JSON.stringify({
+			runs: [{ id: "r1", status: "paused", metadata: { approval: "some-string" } }],
+		});
+		const runs = parseStatusOutput(raw);
+		expect(runs[0]!.approvalNodeId).toBeUndefined();
+	});
+
 	it("handles missing metadata.approval gracefully", () => {
 		const raw = JSON.stringify({ runs: [{ id: "r1", status: "running" }] });
 		const runs = parseStatusOutput(raw);
@@ -222,6 +264,7 @@ describe("parseStatusOutput — approval metadata", () => {
 	});
 });
 
+// ---------------------------------------------------------------------------
 // DB_LOCKED_MARKER export
 // ---------------------------------------------------------------------------
 
@@ -229,5 +272,270 @@ describe("DB_LOCKED_MARKER", () => {
 	it("is exported and matches the archon error string", async () => {
 		const { DB_LOCKED_MARKER } = await import("../src/archon-client.js");
 		expect(DB_LOCKED_MARKER).toBe("database is locked");
+	});
+});
+
+// ---------------------------------------------------------------------------
+// runWithRetry — db-locked retry loop (lines 39, 191-192, 197)
+// ---------------------------------------------------------------------------
+
+describe("runWithRetry — db-locked retry exhaustion (lines 39, 191-192, 197)", () => {
+	beforeEach(() => {
+		vi.useFakeTimers();
+	});
+	afterEach(() => {
+		vi.useRealTimers();
+		vi.restoreAllMocks();
+		vi.resetAllMocks();
+	});
+
+	it("retries on every db-locked error, sleeps between attempts, and throws after all retries exhausted", async () => {
+		const childProcess = await import("node:child_process");
+		const execFileMock = vi.mocked(childProcess.execFile);
+		execFileMock.mockImplementation(
+			((_cmd: string, _args: readonly string[], cb: (err: Error, stdout: string, stderr: string) => void) => {
+				cb(Object.assign(new Error("database is locked"), { code: 1 }), "", "");
+			}) as typeof childProcess.execFile,
+		);
+
+		const client = createArchonClient();
+		const promise = client.getWorkflowStatus();
+		// Attach the rejection handler BEFORE advancing timers to avoid unhandled-rejection warnings.
+		const assertion = expect(promise).rejects.toThrow("database is locked");
+		// Advance all fake timers so the sleep() calls between retries resolve.
+		await vi.runAllTimersAsync();
+		await assertion;
+		// 4 total execFile calls: attempts 0, 1, 2, 3 (DB_LOCKED_RETRIES = 3)
+		expect(execFileMock.mock.calls.length).toBe(4);
+	});
+});
+
+// ---------------------------------------------------------------------------
+// findArchonWorkspaceCwd — .git found and non-dir skipped
+// ---------------------------------------------------------------------------
+
+describe("findArchonWorkspaceCwd — git workspace present", () => {
+	it("returns the repo path when a .git directory exists inside a workspace", () => {
+		const tmp = pathJoin(tmpdir(), "archon-faw-" + Date.now());
+		const repoPath = pathJoin(tmp, ".archon", "workspaces", "owner", "my-repo");
+		mkdirSync(pathJoin(repoPath, ".git"), { recursive: true });
+		try {
+			const result = findArchonWorkspaceCwd(tmp);
+			expect(result).toBe(repoPath);
+		} finally {
+			rmSync(tmp, { recursive: true, force: true });
+		}
+	});
+
+	it("skips non-directory entries in the owner dir (covers line 118 TRUE - repo-level skip)", () => {
+		const tmp = pathJoin(tmpdir(), "archon-faw-skip-" + Date.now());
+		const ownerDir = pathJoin(tmp, ".archon", "workspaces", "owner");
+		mkdirSync(ownerDir, { recursive: true });
+		// Place a file where a repo directory would be expected
+		writeFileSync(pathJoin(ownerDir, "not-a-dir.txt"), "x");
+		try {
+			const result = findArchonWorkspaceCwd(tmp);
+			expect(result).toBeNull();
+		} finally {
+			rmSync(tmp, { recursive: true, force: true });
+		}
+	});
+
+	it("skips non-directory entries in workspaces root (covers line 115 TRUE - owner-level skip)", () => {
+		const tmp = pathJoin(tmpdir(), "archon-faw-skip-owner-" + Date.now());
+		const workspacesDir = pathJoin(tmp, ".archon", "workspaces");
+		mkdirSync(workspacesDir, { recursive: true });
+		// Place a file directly in .archon/workspaces/ where an owner dir would be expected
+		writeFileSync(pathJoin(workspacesDir, "not-an-owner.txt"), "x");
+		try {
+			const result = findArchonWorkspaceCwd(tmp);
+			expect(result).toBeNull();
+		} finally {
+			rmSync(tmp, { recursive: true, force: true });
+		}
+	});
+
+	it("returns null when repo dir exists but has no .git directory (covers line 120 FALSE)", () => {
+		const tmp = pathJoin(tmpdir(), "archon-faw-nogit-" + Date.now());
+		const repoDir = pathJoin(tmp, ".archon", "workspaces", "owner", "repo");
+		mkdirSync(repoDir, { recursive: true });
+		// NO .git directory — existsSync returns false
+		try {
+			const result = findArchonWorkspaceCwd(tmp);
+			expect(result).toBeNull();
+		} finally {
+			rmSync(tmp, { recursive: true, force: true });
+		}
+	});
+});
+
+// ---------------------------------------------------------------------------
+// runArchonStatus — success and error paths via execFile mock
+// ---------------------------------------------------------------------------
+
+vi.mock("node:child_process", () => ({
+	execFile: vi.fn(),
+}));
+
+describe("runArchonStatus", () => {
+	afterEach(() => {
+		vi.resetAllMocks();
+	});
+
+	it("resolves with parsed runs on success", async () => {
+		const childProcess = await import("node:child_process");
+		const execFileMock = vi.mocked(childProcess.execFile);
+		const stdout = JSON.stringify({ runs: [{ id: "r1", status: "running" }] });
+		execFileMock.mockImplementation(
+			((_cmd: string, _args: readonly string[], cb: (err: null, stdout: string, stderr: string) => void) => {
+				cb(null, stdout, "");
+			}) as typeof childProcess.execFile,
+		);
+		const runs = await runArchonStatus();
+		expect(runs).toHaveLength(1);
+		expect(runs[0]!.id).toBe("r1");
+	});
+
+	it("rejects with ArchonCliError when execFile errors", async () => {
+		const childProcess = await import("node:child_process");
+		const execFileMock = vi.mocked(childProcess.execFile);
+		const fakeErr = Object.assign(new Error("archon crashed"), { code: 1 });
+		execFileMock.mockImplementation(
+			((_cmd: string, _args: readonly string[], cb: (err: Error, stdout: string, stderr: string) => void) => {
+				cb(fakeErr, "", "stderr output");
+			}) as typeof childProcess.execFile,
+		);
+		await expect(runArchonStatus()).rejects.toBeInstanceOf(ArchonCliError);
+	});
+
+	it("appends --cwd when a cwd argument is provided", async () => {
+		const childProcess = await import("node:child_process");
+		const execFileMock = vi.mocked(childProcess.execFile);
+		let capturedArgs: readonly string[] = [];
+		execFileMock.mockImplementation(
+			((_cmd: string, args: readonly string[], cb: (err: null, stdout: string, stderr: string) => void) => {
+				capturedArgs = args;
+				cb(null, JSON.stringify({ runs: [] }), "");
+			}) as typeof childProcess.execFile,
+		);
+		await runArchonStatus("/my/cwd");
+		expect(capturedArgs).toContain("--cwd");
+		expect(capturedArgs).toContain("/my/cwd");
+	});
+});
+
+// ---------------------------------------------------------------------------
+// createArchonClient — getWorkflowStatus branches (lines 155-197)
+// ---------------------------------------------------------------------------
+
+import { createArchonClient } from "../src/archon-client.js";
+
+describe("createArchonClient — getWorkflowStatus", () => {
+	afterEach(() => {
+		vi.restoreAllMocks();
+		vi.resetAllMocks();
+	});
+
+	it("returns parsed runs on success", async () => {
+		const childProcess = await import("node:child_process");
+		const execFileMock = vi.mocked(childProcess.execFile);
+		const stdout = JSON.stringify({ runs: [{ id: "r2", status: "running" }] });
+		execFileMock.mockImplementation(
+			((_cmd: string, _args: readonly string[], cb: (err: null, stdout: string, stderr: string) => void) => {
+				cb(null, stdout, "");
+			}) as typeof childProcess.execFile,
+		);
+		const client = createArchonClient();
+		const runs = await client.getWorkflowStatus();
+		expect(runs[0]!.id).toBe("r2");
+	});
+
+	it("returns empty array when NOT_IN_GIT_REPO and fallback workspace exists", async () => {
+		const childProcess = await import("node:child_process");
+		const execFileMock = vi.mocked(childProcess.execFile);
+		let callCount = 0;
+		execFileMock.mockImplementation(
+			((_cmd: string, _args: readonly string[], cb: (err: Error | null, stdout: string, stderr: string) => void) => {
+				callCount++;
+				if (callCount === 1) {
+					cb(Object.assign(new Error("Not in a git repository"), { code: 128 }), "", "");
+				} else {
+					cb(null, JSON.stringify({ runs: [] }), "");
+				}
+			}) as typeof childProcess.execFile,
+		);
+
+		const fakeHome = pathJoin(tmpdir(), "archon-client-home-" + Date.now());
+		const repoPath = pathJoin(fakeHome, ".archon", "workspaces", "owner", "repo");
+		mkdirSync(pathJoin(repoPath, ".git"), { recursive: true });
+		vi.mocked(homedir).mockReturnValue(fakeHome);
+
+		try {
+			const client = createArchonClient();
+			const runs = await client.getWorkflowStatus();
+			expect(runs).toEqual([]);
+			expect(callCount).toBe(2);
+		} finally {
+			rmSync(fakeHome, { recursive: true, force: true });
+		}
+	});
+
+	it("returns empty array when NOT_IN_GIT_REPO and no workspace exists", async () => {
+		const childProcess = await import("node:child_process");
+		const execFileMock = vi.mocked(childProcess.execFile);
+		execFileMock.mockImplementation(
+			((_cmd: string, _args: readonly string[], cb: (err: Error, stdout: string, stderr: string) => void) => {
+				cb(Object.assign(new Error("Not in a git repository"), { code: 128 }), "", "");
+			}) as typeof childProcess.execFile,
+		);
+		vi.mocked(homedir).mockReturnValue("/nonexistent-home-xyz-abc");
+
+		const client = createArchonClient();
+		const runs = await client.getWorkflowStatus();
+		expect(runs).toEqual([]);
+	});
+
+	it("rethrows errors that are not NOT_IN_GIT_REPO", async () => {
+		const childProcess = await import("node:child_process");
+		const execFileMock = vi.mocked(childProcess.execFile);
+		execFileMock.mockImplementation(
+			((_cmd: string, _args: readonly string[], cb: (err: Error, stdout: string, stderr: string) => void) => {
+				cb(new Error("permission denied"), "", "");
+			}) as typeof childProcess.execFile,
+		);
+		const client = createArchonClient();
+		await expect(client.getWorkflowStatus()).rejects.toThrow("permission denied");
+	});
+});
+
+// ---------------------------------------------------------------------------
+// parseStatusOutput — partial approval fields (lines 83-84 FALSE branches)
+// ---------------------------------------------------------------------------
+
+describe("parseStatusOutput — partial approval fields (lines 83-84-85 FALSE branches)", () => {
+	it("handles approval object with no nodeId (line 83 FALSE — typeof nodeId !== 'string')", () => {
+		const raw = JSON.stringify({
+			runs: [{ id: "r1", status: "paused", metadata: { approval: { message: "msg", type: "approval" } } }],
+		});
+		const runs = parseStatusOutput(raw);
+		expect(runs[0]!.approvalNodeId).toBeUndefined();
+		expect(runs[0]!.approvalMessage).toBe("msg");
+	});
+
+	it("handles approval object with no message (line 84 FALSE — typeof message !== 'string')", () => {
+		const raw = JSON.stringify({
+			runs: [{ id: "r1", status: "paused", metadata: { approval: { nodeId: "gate", type: "approval" } } }],
+		});
+		const runs = parseStatusOutput(raw);
+		expect(runs[0]!.approvalNodeId).toBe("gate");
+		expect(runs[0]!.approvalMessage).toBeUndefined();
+	});
+
+	it("handles approval object with no type (line 85 FALSE — typeof type !== 'string')", () => {
+		const raw = JSON.stringify({
+			runs: [{ id: "r1", status: "paused", metadata: { approval: { nodeId: "gate", message: "msg" } } }],
+		});
+		const runs = parseStatusOutput(raw);
+		expect(runs[0]!.approvalType).toBeUndefined();
 	});
 });

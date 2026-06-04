@@ -83,15 +83,6 @@ archon_watcher({"action": "poll"})
 
 Useful for a one-off check without waiting for the next scheduled poll.
 
-### pause / resume — toggle background polling
-
-```
-archon_watcher({"action": "pause"})
-archon_watcher({"action": "resume"})
-```
-
-Global toggle, persisted across session reload.
-
 ## Error handling
 
 | Error | Cause | What to do |
@@ -99,7 +90,7 @@ Global toggle, persisted across session reload.
 | `manage_tools` not found | `pi-tools-management-tool` not installed | Ask the user to install the extension, then restart pi |
 | `archon: command not found` on `add` | `archon` CLI not in `PATH` | Verify archon is installed and in PATH; the watcher still adds the run ID but cannot seed the baseline |
 | Run ID not in active list at `add` time | Run already completed or ID is wrong | Verify with `archon workflow status --json`; the run may have already finished |
-| Watch added but no notification | Polling paused, or run hasn't changed state yet | Call `archon_watcher({action:"status"})` to check; `archon_watcher({action:"poll"})` to check immediately |
+| Watch added but no notification | Run hasn't changed state yet | Call `archon_watcher({action:"status"})` to check; `archon_watcher({action:"poll"})` to check immediately |
 
 CLI errors during polling are back-off'd silently and do not emit chat
 notifications. Call `status` or `poll` if a watch seems stale.

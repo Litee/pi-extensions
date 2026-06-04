@@ -117,7 +117,6 @@ export interface Runtime {
 	 * all other active archon runs are ignored.
 	 */
 	watchedIds: Set<string>;
-	paused: boolean;
 	/**
 	 * Back-off-aware poll scheduler (pi-watcher-core). Owns the timer,
 	 * effective interval, and idle-doubling state machine. Replaces the
@@ -136,7 +135,6 @@ export function makeRuntime(pi: Runtime["pi"], client: ArchonClient): Runtime {
 		client,
 		snapshot: {},
 		watchedIds: new Set(),
-		paused: false,
 		scheduler: new PollScheduler({
 			baseMs: POLL_INTERVAL_MS,
 			maxMs: POLL_INTERVAL_MAX_MS,
@@ -171,7 +169,7 @@ export function refreshStatus(rt: Runtime): void {
 		rt.ui?.setStatus?.(STATUS_KEY, undefined);
 		return;
 	}
-	const result = buildStatusLine({ paused: rt.paused, runCount: watchedCount, activeCount });
+	const result = buildStatusLine({ runCount: watchedCount, activeCount });
 	rt.ui?.setStatus?.(STATUS_KEY, colorize(rt.ui.theme, result.colorAlias, result.text));
 }
 
@@ -333,7 +331,6 @@ export function stopPolling(rt: Runtime): void {
  * 7. Update rt.snapshot, persist, refresh status.
  */
 export async function pollOnce(rt: Runtime): Promise<void> {
-	if (rt.paused) return;
 	if (rt.watchedIds.size === 0) return; // nothing to watch
 
 	let allRuns: ArchonRun[];
@@ -431,7 +428,7 @@ export async function pollOnce(rt: Runtime): Promise<void> {
 	}
 
 	rt.snapshot = current;
-	writeState(rt.pi, { snapshot: current, watchedIds: rt.watchedIds, paused: rt.paused });
+	writeState(rt.pi, { snapshot: current, watchedIds: rt.watchedIds });
 	refreshStatus(rt);
 
 	// Stop polling once nothing remains to watch.

@@ -302,3 +302,27 @@ describe("detectChanges", () => {
 		expect(events[0]!.formatted).not.toContain("gate");
 	});
 });
+
+// ---------------------------------------------------------------------------
+// poller.ts line 55 FALSE — empty firstLine (whitespace-only approvalMessage)
+// ---------------------------------------------------------------------------
+
+describe("detectChanges — whitespace approvalMessage (line 55 FALSE branch)", () => {
+	it("does not append message when approvalMessage first line is all whitespace (line 55 FALSE)", () => {
+		const events = detectChanges(
+			{ r1: run({ id: "r1", status: "running" }) },
+			{
+				r1: {
+					id: "r1", status: "paused",
+					approvalNodeId: "gate",
+					// First line is whitespace → trim → "" → if(firstLine) is FALSE
+					approvalMessage: "   \nSecond line with actual content",
+				},
+			},
+		);
+		// pauseCtx has the gate marker but no message since firstLine was empty
+		expect(events[0]!.formatted).toContain("gate");
+		// No colon-separated message appended
+		expect(events[0]!.formatted).not.toContain(": Second");
+	});
+});

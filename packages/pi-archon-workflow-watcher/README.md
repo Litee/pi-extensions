@@ -45,8 +45,6 @@ Each entry has an `id` field — pass that to `archon_watcher add`.
 | `remove` | `runId`         | Stop watching this run. |
 | `status` | —               | Shows each watched run ID, workflow name, and current status. |
 | `poll`   | —               | Trigger an immediate poll cycle right now. |
-| `pause`  | —               | Suspend background polling globally. Persisted. |
-| `resume` | —               | Resume polling. Restarts iff at least one non-terminal watch exists. |
 
 ### Status changes that fire a notification
 

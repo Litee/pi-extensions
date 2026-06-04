@@ -10,8 +10,6 @@
  *   list   — fetch the global archon active runs (for run ID discovery)
  *   status — show current state of watched runs only
  *   poll   — trigger an immediate poll cycle of watched runs
- *   pause  — suspend background polling (persisted)
- *   resume — resume background polling (persisted)
  */
 
 import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
@@ -40,17 +38,13 @@ export const ArchonWatcherParams = Type.Object({
 			Type.Literal("remove"),
 			Type.Literal("status"),
 			Type.Literal("poll"),
-			Type.Literal("pause"),
-			Type.Literal("resume"),
 		],
 		{
 			description:
 				"add: start watching a specific run ID — required before the watcher tracks anything. " +
 				"remove: stop watching a run ID. " +
 				"status: show current state of watched runs only. " +
-				"poll: trigger an immediate poll of watched runs now. " +
-				"pause: suspend background polling (persisted across sessions). " +
-				"resume: resume background polling (persisted).",
+				"poll: trigger an immediate poll of watched runs now.",
 		},
 	),
 	runId: Type.Optional(
@@ -87,9 +81,9 @@ export function registerToolIfNeeded(pi: ExtensionAPI, rt: Runtime): void {
 			"The watcher will automatically notify you when the run's status changes " +
 			"(paused = waiting for input, disappeared = completed or failed). " +
 			"Use 'status' to see watched runs, 'remove' to stop watching, " +
-			"'poll' to check immediately, 'pause'/'resume' to control polling.",
+			"'poll' to check immediately.",
 		promptSnippet:
-			"archon_watcher({action, runId?}) — add | remove | status | poll | pause | resume",
+			"archon_watcher({action, runId?}) — add | remove | status | poll",
 		parameters: ArchonWatcherParams,
 		async execute(_toolCallId, params) {
 			return handleToolAction(rt, params, pi);
@@ -145,8 +139,8 @@ export async function handleToolAction(
 			}
 			rt.watchedIds.add(runId);
 			if (match) rt.snapshot[runId] = match;
-			writeState(pi, { snapshot: rt.snapshot, watchedIds: rt.watchedIds, paused: rt.paused });
-			if (!rt.paused && !rt.scheduler.isRunning) startPolling(rt);
+			writeState(pi, { snapshot: rt.snapshot, watchedIds: rt.watchedIds });
+			if (!rt.scheduler.isRunning) startPolling(rt);
 			refreshStatus(rt);
 			const label = match?.workflowName ?? runId;
 			const state = match?.status ?? "unknown (run not found in active list)";
@@ -167,7 +161,7 @@ export async function handleToolAction(
 			rt.watchedIds.delete(runId);
 			delete rt.snapshot[runId];
 			if (rt.watchedIds.size === 0) stopPolling(rt);
-			writeState(pi, { snapshot: rt.snapshot, watchedIds: rt.watchedIds, paused: rt.paused });
+			writeState(pi, { snapshot: rt.snapshot, watchedIds: rt.watchedIds });
 			refreshStatus(rt);
 			return ok("remove",
 				`archon-watcher: stopped watching '${runId}'. ` +
@@ -201,28 +195,6 @@ export async function handleToolAction(
 				{ deliverAs: "followUp", triggerTurn: false },
 			);
 			return ok("poll", message);
-		}
-
-		case "pause": {
-			rt.paused = true;
-			stopPolling(rt);
-			writeState(pi, { snapshot: rt.snapshot, watchedIds: rt.watchedIds, paused: true });
-			refreshStatus(rt);
-			return ok("pause",
-				"archon-watcher: paused. Background polling suspended. " +
-				"Call archon_watcher({action:'resume'}) to re-enable.",
-			);
-		}
-
-		case "resume": {
-			rt.paused = false;
-			writeState(pi, { snapshot: rt.snapshot, watchedIds: rt.watchedIds, paused: false });
-			if (rt.watchedIds.size > 0 && !rt.scheduler.isRunning) startPolling(rt);
-			refreshStatus(rt);
-			return ok("resume",
-				`archon-watcher: resumed. Polling every ${Math.round(rt.scheduler.intervalMs / 1000)}s. ` +
-				`Watching ${rt.watchedIds.size} run(s).`,
-			);
 		}
 
 		default: {
