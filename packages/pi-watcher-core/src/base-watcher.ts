@@ -484,7 +484,7 @@ export abstract class BaseWatcher<
         return {
           content: [{ type: 'text' as const, text: entries.length === 0
             ? `${this.statusLabel}: no active watches.`
-            : entries.map((e) => `• ${e.row}${e.terminal ? ' (done)' : ''}${e.errors > 0 ? ` (${e.errors} errors)` : ''}`).join('\n')
+            : entries.map((e) => `• [${e.key}] ${e.row}${e.terminal ? ' (done)' : ''}${e.errors > 0 ? ` (${e.errors} errors)` : ''}`).join('\n')
           }],
           details: { action: 'list', watches: entries },
         }
