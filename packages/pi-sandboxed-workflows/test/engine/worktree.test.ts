@@ -1,5 +1,5 @@
 /**
- * Tests for createWorktree — slim git-worktree wrapper.
+ * Tests for createWorktree - slim git-worktree wrapper.
  *
  * Uses a real temp git repo so git commands run against actual state.
  * Verifies:
@@ -48,7 +48,7 @@ afterAll(() => {
 
 // ── type:"branch" ─────────────────────────────────────────────────────────────
 
-describe("createWorktree — type:'branch'", () => {
+describe("createWorktree - type:'branch'", () => {
 	it("creates a worktree at .pi-workflows/worktrees/<branch>", async () => {
 		const wt = await createWorktree({
 			cwd: repoDir,
@@ -94,7 +94,7 @@ describe("createWorktree — type:'branch'", () => {
 
 // ── type:"head" ───────────────────────────────────────────────────────────────
 
-describe("createWorktree — type:'head'", () => {
+describe("createWorktree - type:'head'", () => {
 	it("returns worktreePath === cwd", async () => {
 		const wt = await createWorktree({
 			cwd: repoDir,
@@ -115,7 +115,7 @@ describe("createWorktree — type:'head'", () => {
 
 // ── type:"merge-to-head" ──────────────────────────────────────────────────────
 
-describe("createWorktree — type:'merge-to-head'", () => {
+describe("createWorktree - type:'merge-to-head'", () => {
 	it("creates a worktree on a pi-sw/merge-* temp branch", async () => {
 		const wt = await createWorktree({
 			cwd: repoDir,
@@ -141,7 +141,7 @@ describe("createWorktree — type:'merge-to-head'", () => {
 
 // ── Abort ─────────────────────────────────────────────────────────────────────
 
-describe("createWorktree — abort signal", () => {
+describe("createWorktree - abort signal", () => {
 	it("throws when signal is already aborted", async () => {
 		const ac = new AbortController();
 		ac.abort();
@@ -157,7 +157,7 @@ describe("createWorktree — abort signal", () => {
 
 // ── Regression: orphaned directory on git failure (Bug 10) ─────────────────
 
-describe("createWorktree — no orphan on failure (regression: Bug 10)", () => {
+describe("createWorktree - no orphan on failure (regression: Bug 10)", () => {
 	// Strategy: pre-create .pi-workflows/worktrees as a read-only directory.
 	// mkdirSync({ recursive: true }) succeeds (dir already exists).
 	// git worktree add fails because it can't create inside a 500 dir.
@@ -213,8 +213,10 @@ describe("createWorktree — merge-to-head failure (regression: Bug #8)", () => 
 		// can contaminate the shared repoDir or the actual worktree.
 		const isolatedRepo = mkdtempSync(join(tmpdir(), "pi-sw-merge-test-"));
 		try {
-			// Bootstrap: init + initial commit so the repo has a HEAD.
+			// Bootstrap: init + identity + initial commit.
 			execFileSync("git", ["init", isolatedRepo], { stdio: "ignore" });
+			execFileSync("git", ["-C", isolatedRepo, "config", "user.email", "test@test.com"], { stdio: "ignore" });
+			execFileSync("git", ["-C", isolatedRepo, "config", "user.name", "Test"], { stdio: "ignore" });
 			execFileSync("git", ["-C", isolatedRepo, "commit", "--allow-empty", "-m", "init"], { stdio: "ignore" });
 
 			const mergeFailures: string[] = [];
@@ -225,13 +227,24 @@ describe("createWorktree — merge-to-head failure (regression: Bug #8)", () => 
 			});
 			const tempBranch = wt.branch;
 
-			// Add a commit in the worktree so tempBranch advances.
+			// Commit in the worktree so tempBranch advances past init.
 			execFileSync("git", ["-C", wt.worktreePath, "commit", "--allow-empty", "-m", "wt commit"], { stdio: "ignore" });
-			// Diverge main by creating a new branch and committing on it.
-			// Use a detached branch so we don’t need ‘checkout -’ to undo.
-			const divergeBranch = `test/diverge-${Date.now().toString(36)}`;
-			execFileSync("git", ["-C", isolatedRepo, "checkout", "-b", divergeBranch], { stdio: "ignore" });
-			execFileSync("git", ["-C", isolatedRepo, "commit", "--allow-empty", "-m", "main diverge"], { stdio: "ignore" });
+
+			// Diverge the main branch WITHOUT 'git checkout' (which mutates HEAD
+			// and can contaminate the actual worktree in parallel vitest runs).
+			// commit-tree writes a commit object; branch -f moves the ref.
+			const gitEnv = { ...process.env, GIT_AUTHOR_NAME: "Test", GIT_AUTHOR_EMAIL: "test@test.com", GIT_COMMITTER_NAME: "Test", GIT_COMMITTER_EMAIL: "test@test.com" };
+			const headTree = execFileSync("git", ["-C", isolatedRepo, "rev-parse", "HEAD^{tree}"], { encoding: "utf8" }).trim();
+			const headSha  = execFileSync("git", ["-C", isolatedRepo, "rev-parse", "HEAD"],         { encoding: "utf8" }).trim();
+			const divergeCommit = execFileSync(
+				"git", ["-C", isolatedRepo, "commit-tree", headTree, "-p", headSha, "-m", "main diverge"],
+				{ encoding: "utf8", env: gitEnv },
+			).trim();
+			const currentBranch = execFileSync(
+				"git", ["-C", isolatedRepo, "rev-parse", "--abbrev-ref", "HEAD"],
+				{ encoding: "utf8" },
+			).trim();
+			execFileSync("git", ["-C", isolatedRepo, "update-ref", `refs/heads/${currentBranch}`, divergeCommit], { stdio: "ignore" });
 
 			await wt.dispose();
 
