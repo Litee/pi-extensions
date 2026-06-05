@@ -89,13 +89,20 @@ function makeFakePi(initial: { all: ToolInfo[]; active: string[] }) {
 	};
 }
 
-function makeCtx(opts?: { isIdle?: boolean }) {
-	return {
+function makeCtx(opts?: { isIdle?: boolean; selectedTools?: string[]; noGetSystemPromptOptions?: boolean }) {
+	const base: Record<string, unknown> = {
 		hasUI: true,
 		ui: { notify: vi.fn() },
 		cwd: "/tmp",
 		isIdle: vi.fn(() => opts?.isIdle ?? true),
-	} as unknown as ExtensionContext;
+	};
+	if (!opts?.noGetSystemPromptOptions) {
+		base["getSystemPromptOptions"] = vi.fn(() => ({
+			selectedTools: opts?.selectedTools ?? [],
+			cwd: "/tmp",
+		}));
+	}
+	return base as unknown as ExtensionContext;
 }
 
 const BASE_TOOLS: ToolInfo[] = [
@@ -163,8 +170,8 @@ describe("extension registration", () => {
 	});
 });
 
-async function exec(tool: ToolDefinition, params: unknown) {
-	return tool.execute("tc", params, undefined, undefined, makeCtx());
+async function exec(tool: ToolDefinition, params: unknown, ctx?: ExtensionContext) {
+	return tool.execute("tc", params, undefined, undefined, ctx ?? makeCtx());
 }
 
 function textOf(result: { content: { type: string; text?: string }[] }): string {
@@ -300,7 +307,7 @@ interface DetailsShape {
 	action: string;
 	active: string[];
 	total: number;
-	rows: { name: string; active: boolean; description: string }[];
+	rows: { name: string; active: boolean; inPrompt: boolean; description: string }[];
 	changed: { activated: string[]; deactivated: string[] };
 	ignoredUnknown: string[];
 	ignoredProtected: string[];
@@ -982,5 +989,108 @@ describe("auto-continue — session_start resets state", () => {
 		await pi.fireAgentEnd([asstWithToolCall("manage_tools")]);
 		vi.runAllTimers();
 		expect(pi.sendMessage).toHaveBeenCalledTimes(4);
+	});
+});
+
+// ===========================================================================
+// prompt-diff markers ([x] / [~] / [ ]) — issue #0002
+// ===========================================================================
+
+describe("list — prompt-diff markers (#0002)", () => {
+	it("fires error notification and returns error when getSystemPromptOptions is absent", async () => {
+		const pi = makeFakePi({ all: [...BASE_TOOLS], active: ["read", "bash"] });
+		createExtension(pi.api);
+		await pi.fireSessionStart();
+		const ctx = makeCtx({ noGetSystemPromptOptions: true });
+		const res = await exec(pi.tool, { action: "list" }, ctx);
+		expect((res as { ok?: boolean }).ok).toBe(false);
+		const notify = (ctx as unknown as { ui: { notify: ReturnType<typeof vi.fn> } }).ui.notify;
+		expect(notify).toHaveBeenCalledTimes(1);
+		expect(notify.mock.calls[0]?.[0]).toMatch(/0\.78\.0/);
+	});
+
+	it("active-in-registry but missing from selectedTools shows [~] in text output", async () => {
+		const pi = makeFakePi({ all: [...BASE_TOOLS], active: ["read", "bash"] });
+		createExtension(pi.api);
+		await pi.fireSessionStart();
+		// read is in registry + in prompt, bash is active but NOT in prompt
+		const ctx = makeCtx({ selectedTools: ["read", "manage_tools"] });
+		const res = await exec(pi.tool, { action: "list" }, ctx);
+		const txt = textOf(res);
+		expect(txt).toContain("[x] read");
+		expect(txt).toContain("[~] bash");
+		expect(txt).toContain("[ ] edit");
+	});
+
+	it("details.rows carries inPrompt flag correctly", async () => {
+		const pi = makeFakePi({ all: [...BASE_TOOLS], active: ["read", "bash"] });
+		createExtension(pi.api);
+		await pi.fireSessionStart();
+		const ctx = makeCtx({ selectedTools: ["read"] });
+		const res = await exec(pi.tool, { action: "list" }, ctx);
+		const d = detailsOf(res);
+		expect(d.rows.find((r) => r.name === "read")?.inPrompt).toBe(true);
+		expect(d.rows.find((r) => r.name === "bash")?.inPrompt).toBe(false);
+		expect(d.rows.find((r) => r.name === "edit")?.inPrompt).toBe(false);
+	});
+
+	it("when selectedTools is empty array, all active tools show [~]", async () => {
+		const pi = makeFakePi({ all: [...BASE_TOOLS], active: ["read", "bash"] });
+		createExtension(pi.api);
+		await pi.fireSessionStart();
+		const ctx = makeCtx({ selectedTools: [] });
+		const res = await exec(pi.tool, { action: "list" }, ctx);
+		const txt = textOf(res);
+		expect(txt).toContain("[~] bash");
+		expect(txt).toContain("[~] read");
+		expect(txt).not.toContain("[x]");
+	});
+
+	it("when all active tools are in selectedTools, all show [x] (no [~])", async () => {
+		const pi = makeFakePi({ all: [...BASE_TOOLS], active: ["read", "bash"] });
+		createExtension(pi.api);
+		await pi.fireSessionStart();
+		const ctx = makeCtx({ selectedTools: ["read", "bash", "manage_tools"] });
+		const res = await exec(pi.tool, { action: "list" }, ctx);
+		const txt = textOf(res);
+		expect(txt).toContain("[x] bash");
+		expect(txt).toContain("[x] read");
+		expect(txt).not.toContain("[~]");
+	});
+});
+
+describe("renderResult — prompt-diff markers in TUI (#0002)", () => {
+	it("shows [~] for tool active in registry but not in system prompt", async () => {
+		const pi = makeFakePi({ all: [...BASE_TOOLS], active: ["read", "bash"] });
+		createExtension(pi.api);
+		await pi.fireSessionStart();
+		// bash is active but not in selectedTools
+		const ctx = makeCtx({ selectedTools: ["read", "manage_tools"] });
+		const res = await exec(pi.tool, { action: "list" }, ctx);
+		const out = renderText(pi.tool, res, { expanded: true });
+		expect(out).toContain("[x]"); // at least read
+		expect(out).toContain("[~]"); // bash
+		expect(out).toContain("bash");
+	});
+
+	it("shows [x] for tool active in registry AND in system prompt", async () => {
+		const pi = makeFakePi({ all: [...BASE_TOOLS], active: ["read", "bash"] });
+		createExtension(pi.api);
+		await pi.fireSessionStart();
+		const ctx = makeCtx({ selectedTools: ["read", "bash", "manage_tools"] });
+		const res = await exec(pi.tool, { action: "list" }, ctx);
+		const out = renderText(pi.tool, res, { expanded: true });
+		expect(out).toContain("[x]");
+		expect(out).not.toContain("[~]");
+	});
+
+	it("returns error when getSystemPromptOptions is absent", async () => {
+		const pi = makeFakePi({ all: [...BASE_TOOLS], active: ["read", "bash"] });
+		createExtension(pi.api);
+		await pi.fireSessionStart();
+		const ctx = makeCtx({ noGetSystemPromptOptions: true });
+		const res = await exec(pi.tool, { action: "list" }, ctx);
+		expect((res as { ok?: boolean }).ok).toBe(false);
+		expect((res as { error?: string }).error).toMatch(/getSystemPromptOptions/);
 	});
 });
