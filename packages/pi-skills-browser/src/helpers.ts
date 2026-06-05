@@ -15,6 +15,8 @@ export interface SkillEntry {
 	/** Pre-computed description token estimate. */
 	tokens: number;
 	path: string;
+	/** True when this skill appears in the current system prompt. */
+	inPrompt: boolean;
 }
 
 /**

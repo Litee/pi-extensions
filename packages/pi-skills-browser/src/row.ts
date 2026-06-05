@@ -19,6 +19,11 @@ export interface RowTheme {
 
 /** Arrow + space prefix per row ("  " or "> "). */
 export const ARROW_COL_WIDTH = 2;
+/**
+ * Prompt-status indicator column: "● " when the skill is active in the
+ * current system prompt, "  " otherwise.
+ */
+export const PROMPT_INDICATOR_WIDTH = 2;
 /** Token badge column: wide enough for "[9.9k tok]" plus a leading space. */
 export const TOKEN_COL_WIDTH = 12;
 
@@ -28,7 +33,7 @@ export const TOKEN_COL_WIDTH = 12;
  * always produces a non-empty truncated label.
  */
 export function computeNameColWidth(width: number): number {
-	return Math.max(4, width - ARROW_COL_WIDTH - TOKEN_COL_WIDTH);
+	return Math.max(4, width - ARROW_COL_WIDTH - PROMPT_INDICATOR_WIDTH - TOKEN_COL_WIDTH);
 }
 
 /**
@@ -57,11 +62,16 @@ export function buildRowLine(
 	const padding = " ".repeat(Math.max(0, nameColWidth - plainName.length));
 	const styledName = isSelected ? theme.fg("accent", plainName) : plainName;
 
+	// Prompt-status indicator: "● " when the skill is in the system prompt.
+	const promptIndicator = skill.inPrompt
+		? theme.fg("success", "● ")
+		: "  ";
+
 	const badge = `[${formatTokens(skill.tokens)} tok]`;
 	const paddedBadge = badge.padStart(tokenColWidth);
 	const styledBadge = isSelected
 		? theme.fg("accent", paddedBadge)
 		: theme.fg("dim", paddedBadge);
 
-	return `${arrow}${styledName}${padding}${styledBadge}`;
+	return `${arrow}${styledName}${padding}${promptIndicator}${styledBadge}`;
 }
