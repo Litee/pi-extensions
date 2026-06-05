@@ -115,7 +115,7 @@ export function buildWidgetEntries(watchMap: WatchMap): WidgetEntry[] {
 				for (const node of uniqueNodes) {
 					const nodeStyle = stateStyle(node.state);
 					entries.push({
-						displayName: `${watch.name}/${node.name}`,
+						displayName: `${watch.runId ? `${watch.name} [${watch.runId.slice(-4)}]` : watch.name}/${node.name}`,
 						state: node.state,
 						...(node.startedOn !== undefined ? { startedOn: node.startedOn } : {}),
 						...(node.completedOn !== undefined ? { completedOn: node.completedOn } : {}),
@@ -126,7 +126,7 @@ export function buildWidgetEntries(watchMap: WatchMap): WidgetEntry[] {
 					});
 				}
 			} else {
-				entries.push({ displayName: watch.name, state: b?.state ?? "", ...pollIntervalSpread(watch), isTerminal: watch.terminal });
+				entries.push({ displayName: watch.runId ? `${watch.name} [${watch.runId.slice(-4)}]` : watch.name, state: b?.state ?? "", ...pollIntervalSpread(watch), isTerminal: watch.terminal });
 			}
 		}
 	}

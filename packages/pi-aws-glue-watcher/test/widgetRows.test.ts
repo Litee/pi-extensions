@@ -129,7 +129,7 @@ describe("buildWidgetEntries", () => {
 				},
 			}),
 		});
-		expect(entries.map((e) => e.displayName)).toEqual(["wf/n1", "wf/n2"]);
+		expect(entries.map((e) => e.displayName)).toEqual(["wf [wr]/n1", "wf [wr]/n2"]);
 	});
 
 	it("emits a fallback entry for a workflow with no graph nodes", () => {
@@ -147,7 +147,7 @@ describe("buildWidgetEntries", () => {
 				},
 			}),
 		});
-		expect(entries).toEqual([expect.objectContaining({ displayName: "wf", state: "RUNNING", isTerminal: false })]);
+		expect(entries).toEqual([expect.objectContaining({ displayName: "wf [wr]", state: "RUNNING", isTerminal: false })]);
 	});
 
 	it("deduplicates entries that share a displayName", () => {
@@ -177,6 +177,33 @@ describe("buildWidgetEntries", () => {
 		const names = entries.map((e) => e.displayName);
 		expect(names).toContain("my-job [aa01]");
 		expect(names).toContain("my-job [bb02]");
+	});
+
+	it("does NOT deduplicate workflow watches with the same name but different runIds (node entries)", () => {
+		const nodes = [
+			{ name: "step-1", state: "SUCCEEDED" },
+			{ name: "step-2", state: "RUNNING" },
+		];
+		const entries = buildWidgetEntries({
+			a: workflow({ watchId: "a", name: "my-wf", runId: "wr_aaaaaa01", baseline: { state: "RUNNING", totalActions: 2, succeededActions: 1, failedActions: 0, runningActions: 1, reportedFailedNodes: [], nodes } }),
+			b: workflow({ watchId: "b", name: "my-wf", runId: "wr_bbbbbb02", baseline: { state: "RUNNING", totalActions: 2, succeededActions: 0, failedActions: 0, runningActions: 2, reportedFailedNodes: [], nodes } }),
+		});
+		expect(entries).toHaveLength(4); // 2 runs × 2 nodes
+		const names = entries.map((e) => e.displayName);
+		expect(names).toContain("my-wf [aa01]/step-1");
+		expect(names).toContain("my-wf [bb02]/step-1");
+	});
+
+	it("does NOT deduplicate workflow fallback entries with the same name but different runIds", () => {
+		const baseline = { state: "RUNNING", totalActions: 0, succeededActions: 0, failedActions: 0, runningActions: 0, reportedFailedNodes: [] };
+		const entries = buildWidgetEntries({
+			a: workflow({ watchId: "a", name: "my-wf", runId: "wr_aaaaaa01", baseline }),
+			b: workflow({ watchId: "b", name: "my-wf", runId: "wr_bbbbbb02", baseline }),
+		});
+		expect(entries).toHaveLength(2);
+		const names = entries.map((e) => e.displayName);
+		expect(names).toContain("my-wf [aa01]");
+		expect(names).toContain("my-wf [bb02]");
 	});
 
 	// -------------------------------------------------------------------------
@@ -214,7 +241,7 @@ describe("buildWidgetEntries", () => {
 		});
 		const names = entries.map((e) => e.displayName);
 		// RUNNING (non-terminal) before SUCCEEDED (terminal)
-		expect(names.indexOf("wf/step-2")).toBeLessThan(names.indexOf("wf/step-1"));
+		expect(names.indexOf("wf [wr]/step-2")).toBeLessThan(names.indexOf("wf [wr]/step-1"));
 	});
 
 	it("orders entries: non-terminal (RUNNING/PENDING) before terminal (FAILED/SUCCEEDED)", () => {
@@ -240,10 +267,10 @@ describe("buildWidgetEntries", () => {
 		});
 		const names = entries.map((e) => e.displayName);
 		// Non-terminal first (RUNNING=warning rank1, PENDING=none rank1), then terminal (FAILED, SUCCEEDED)
-		expect(names.indexOf("wf/r")).toBeLessThan(names.indexOf("wf/f"));
-		expect(names.indexOf("wf/r")).toBeLessThan(names.indexOf("wf/s"));
-		expect(names.indexOf("wf/p")).toBeLessThan(names.indexOf("wf/f"));
-		expect(names.indexOf("wf/p")).toBeLessThan(names.indexOf("wf/s"));
+		expect(names.indexOf("wf [wr]/r")).toBeLessThan(names.indexOf("wf [wr]/f"));
+		expect(names.indexOf("wf [wr]/r")).toBeLessThan(names.indexOf("wf [wr]/s"));
+		expect(names.indexOf("wf [wr]/p")).toBeLessThan(names.indexOf("wf [wr]/f"));
+		expect(names.indexOf("wf [wr]/p")).toBeLessThan(names.indexOf("wf [wr]/s"));
 	});
 
 	it("within the same priority, sorts by startedOn descending (newest first)", () => {
@@ -299,9 +326,9 @@ describe("buildWidgetEntries", () => {
 			}),
 		});
 		const byName = Object.fromEntries(entries.map((e) => [e.displayName, e]));
-		expect(byName["wf/running-node"]?.isTerminal).toBe(false);
-		expect(byName["wf/succeeded-node"]?.isTerminal).toBe(true);
-		expect(byName["wf/failed-node"]?.isTerminal).toBe(true);
+		expect(byName["wf [wr]/running-node"]?.isTerminal).toBe(false);
+		expect(byName["wf [wr]/succeeded-node"]?.isTerminal).toBe(true);
+		expect(byName["wf [wr]/failed-node"]?.isTerminal).toBe(true);
 	});
 
 	it("workflow fallback entry (no nodes) uses watch.terminal for isTerminal", () => {
@@ -456,7 +483,7 @@ describe("renderEntryLine + completedOn", () => {
 	it("renders frozen elapsed for terminal nodes (completedOn set)", () => {
 		const line = renderEntryLine(
 			{
-				displayName: "wf/n1",
+				displayName: "wf [wr]/n1",
 				state: "SUCCEEDED",
 				startedOn: "2000-01-01T00:00:00Z",
 				completedOn: "2000-01-01T00:02:00Z",
@@ -516,8 +543,8 @@ describe("buildWidgetEntries + completedOn", () => {
 				},
 			}),
 		});
-		const done = entries.find((e) => e.displayName === "wf/done");
-		const live = entries.find((e) => e.displayName === "wf/live");
+		const done = entries.find((e) => e.displayName === "wf [wr]/done");
+		const live = entries.find((e) => e.displayName === "wf [wr]/live");
 		expect(done?.completedOn).toBe("2024-01-01T00:01:30Z");
 		expect(live?.completedOn).toBeUndefined();
 	});
@@ -634,7 +661,7 @@ describe("buildWidgetEntries — workflow node optional fields", () => {
 				},
 			}),
 		});
-		const entry = entries.find((e) => e.displayName === "wf/step");
+		const entry = entries.find((e) => e.displayName === "wf [wr]/step");
 		expect(entry?.numberOfWorkers).toBe(5);
 		expect(entry?.workerType).toBe("G.2X");
 	});
