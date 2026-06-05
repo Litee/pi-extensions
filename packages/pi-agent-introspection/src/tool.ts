@@ -2,13 +2,14 @@
  * get_session_debug_info tool
  *
  * Lets the agent introspect the current session in configurable detail:
- * metadata, token usage, extension entries by customType, or the full
- * assembled system prompt.
+ * metadata, token usage, extension entries by customType, the full
+ * assembled system prompt, or the structured system prompt inputs.
  */
 
 import type {
 	AgentToolResult,
 	AgentToolUpdateCallback,
+	BuildSystemPromptOptions,
 	ExtensionAPI,
 	ExtensionContext,
 } from "@earendil-works/pi-coding-agent";
@@ -40,6 +41,13 @@ export const ParamsSchema = Type.Object({
 		Type.Boolean({
 			description:
 				"Include the full assembled system prompt. Potentially large — default false.",
+		}),
+	),
+	system_prompt_options: Type.Optional(
+		Type.Boolean({
+			description:
+				"Include structured system prompt inputs: skill names/paths, context file paths, " +
+				"selected tools, appendSystemPrompt length, and guidelines count. Default false.",
 		}),
 	),
 	filter: Type.Optional(
@@ -76,11 +84,14 @@ export interface FormatSessionDebugInfoOpts {
 	entries: readonly SessionEntry[];
 	/** System prompt text, or undefined if not fetched. */
 	systemPrompt: string | undefined;
+	/** Structured system prompt inputs, or undefined if not fetched / API unavailable. */
+	systemPromptOptions: BuildSystemPromptOptions | undefined;
 	// Section flags
 	metadata: boolean;
 	usage: boolean;
 	showEntries: boolean;
 	showSystemPrompt: boolean;
+	showSystemPromptOptions: boolean;
 	filter?: string | undefined;
 }
 
@@ -97,18 +108,20 @@ export function formatSessionDebugInfo(opts: FormatSessionDebugInfoOpts): string
 		contextUsage,
 		entries,
 		systemPrompt,
+		systemPromptOptions,
 		metadata,
 		usage,
 		showEntries,
 		showSystemPrompt,
+		showSystemPromptOptions,
 		filter,
 	} = opts;
 
 	// Guard: if nothing requested, return helpful hint
-	if (!metadata && !usage && !showEntries && !showSystemPrompt && !filter) {
+	if (!metadata && !usage && !showEntries && !showSystemPrompt && !showSystemPromptOptions && !filter) {
 		return (
 			"No sections requested. Pass one or more flags to select what to include.\n" +
-			"Available sections: metadata, usage, entries, system_prompt."
+			"Available sections: metadata, usage, entries, system_prompt, system_prompt_options."
 		);
 	}
 
@@ -210,6 +223,58 @@ export function formatSessionDebugInfo(opts: FormatSessionDebugInfoOpts): string
 		lines.push("");
 	}
 
+	// ── System Prompt Inputs ──────────────────────────────────────────────────
+	if (showSystemPromptOptions) {
+		lines.push("## System Prompt Inputs");
+		lines.push("");
+
+		if (!systemPromptOptions) {
+			lines.push("- Not available (ctx.getSystemPromptOptions() is not supported by this version of pi)");
+		} else {
+			const skills = systemPromptOptions.skills ?? [];
+			const contextFiles = systemPromptOptions.contextFiles ?? [];
+			const selectedTools = systemPromptOptions.selectedTools ?? [];
+			const appendLen = systemPromptOptions.appendSystemPrompt?.length ?? 0;
+			const guidelinesCount = systemPromptOptions.promptGuidelines?.length ?? 0;
+
+			// Skills
+			lines.push(`**Skills:** ${skills.length}`);
+			if (skills.length > 0) {
+				for (const skill of skills) {
+					// Skill type from system-prompt.d.ts has `name` and `filePath`
+					const skillPath = (skill as { name: string; filePath?: string; path?: string }).filePath
+						?? (skill as { name: string; filePath?: string; path?: string }).path
+						?? "(unknown path)";
+					lines.push(`- ${skill.name} (${skillPath})`);
+				}
+			}
+			lines.push("");
+
+			// Context files (paths only — not content)
+			lines.push(`**Context files:** ${contextFiles.length}`);
+			if (contextFiles.length > 0) {
+				for (const cf of contextFiles) {
+					lines.push(`- ${cf.path}`);
+				}
+			}
+			lines.push("");
+
+			// Selected tools
+			lines.push(`**Selected tools:** ${selectedTools.length > 0 ? selectedTools.join(", ") : "(none)"}`);
+			lines.push("");
+
+			// Append system prompt
+			lines.push(
+				`**Append system prompt:** ${appendLen > 0 ? `${appendLen.toLocaleString()} chars` : "(none)"}`,
+			);
+			lines.push("");
+
+			// Prompt guidelines
+			lines.push(`**Prompt guidelines:** ${guidelinesCount}`);
+		}
+		lines.push("");
+	}
+
 	return lines.join("\n").trimEnd();
 }
 
@@ -223,11 +288,12 @@ export function registerSessionDebugInfoTool(pi: ExtensionAPI): void {
 		label: "Get Session Debug Info",
 		description:
 			"Get debug info about the current pi agent session. Pick which details to include: metadata, " +
-			"token usage, session entries grouped by customType, or the assembled system prompt. " +
+			"token usage, session entries grouped by customType, the assembled system prompt, or " +
+			"structured system prompt inputs (skills, context files, selected tools, guidelines). " +
 			"Use this for debugging extension behavior, checking what extensions wrote into the " +
 			"session, or seeing what instructions the agent is running with.",
 		promptSnippet:
-			"get_session_debug_info: view session metadata, token usage, extension entries, or system prompt",
+			"get_session_debug_info: view session metadata, token usage, extension entries, system prompt, or system prompt inputs",
 		parameters: ParamsSchema,
 		// eslint-disable-next-line @typescript-eslint/require-await -- Tool execute() must return a Promise; the work itself is synchronous.
 		async execute(
@@ -237,11 +303,25 @@ export function registerSessionDebugInfoTool(pi: ExtensionAPI): void {
 			_onUpdate: AgentToolUpdateCallback | undefined,
 			ctx: ExtensionContext,
 		): Promise<AgentToolResult<{ debugInfo: string }>> {
-			// Resolve section flags (defaults: metadata/usage/entries = true, system_prompt = false)
+			// Resolve section flags (defaults: metadata/usage/entries = true, system_prompt/system_prompt_options = false)
 			const wantMetadata = params.metadata ?? true;
 			const wantUsage = params.usage ?? true;
 			const wantEntries = params.entries ?? true;
 			const wantSystemPrompt = params.system_prompt ?? false;
+			const wantSystemPromptOptions = params.system_prompt_options ?? false;
+
+			// getSystemPromptOptions() is a new API (pi 0.78.0) — fall back gracefully
+			let systemPromptOptions: BuildSystemPromptOptions | undefined;
+			if (wantSystemPromptOptions) {
+				try {
+					const ctxAny = ctx as unknown as Record<string, unknown>;
+					if (typeof ctxAny["getSystemPromptOptions"] === "function") {
+						systemPromptOptions = (ctxAny["getSystemPromptOptions"] as () => BuildSystemPromptOptions)();
+					}
+				} catch {
+					// API unavailable — leave undefined
+				}
+			}
 
 			const text = formatSessionDebugInfo({
 				sessionId: ctx.sessionManager.getSessionId(),
@@ -251,10 +331,12 @@ export function registerSessionDebugInfoTool(pi: ExtensionAPI): void {
 				contextUsage: ctx.getContextUsage(),
 				entries: wantEntries ? ctx.sessionManager.getEntries() : [],
 				systemPrompt: wantSystemPrompt ? ctx.getSystemPrompt() : undefined,
+				systemPromptOptions,
 				metadata: wantMetadata,
 				usage: wantUsage,
 				showEntries: wantEntries,
 				showSystemPrompt: wantSystemPrompt,
+				showSystemPromptOptions: wantSystemPromptOptions,
 				filter: params.filter,
 			});
 

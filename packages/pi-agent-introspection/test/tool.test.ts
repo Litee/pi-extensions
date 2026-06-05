@@ -52,10 +52,12 @@ function baseOpts(overrides: Partial<FormatSessionDebugInfoOpts> = {}): FormatSe
 		contextUsage: MOCK_CONTEXT_USAGE,
 		entries: [],
 		systemPrompt: undefined,
+		systemPromptOptions: undefined,
 		metadata: true,
 		usage: true,
 		showEntries: true,
 		showSystemPrompt: false,
+		showSystemPromptOptions: false,
 		...overrides,
 	};
 }
@@ -219,6 +221,7 @@ describe("formatSessionDebugInfo", () => {
 				usage: false,
 				showEntries: false,
 				showSystemPrompt: false,
+				showSystemPromptOptions: false,
 				// filter omitted (not passed) → no filter
 			}),
 		);
@@ -228,6 +231,7 @@ describe("formatSessionDebugInfo", () => {
 		expect(result).toContain("usage");
 		expect(result).toContain("entries");
 		expect(result).toContain("system_prompt");
+		expect(result).toContain("system_prompt_options");
 	});
 
 	it("metadata-only request omits usage and entries sections", () => {
@@ -262,6 +266,185 @@ describe("formatSessionDebugInfo", () => {
 		expect(result).toContain("## Session Entries");
 		expect(result).not.toContain("## Metadata");
 		expect(result).not.toContain("## Token Usage");
+	});
+
+	// ---------------------------------------------------------------------------
+	// System Prompt Inputs section
+	// ---------------------------------------------------------------------------
+
+	it("system_prompt_options section absent when showSystemPromptOptions: false (default)", () => {
+		const result = formatSessionDebugInfo(
+			baseOpts({ showSystemPromptOptions: false }),
+		);
+
+		expect(result).not.toContain("## System Prompt Inputs");
+	});
+
+	it("system_prompt_options section shows fallback when systemPromptOptions is undefined", () => {
+		const result = formatSessionDebugInfo(
+			baseOpts({
+				metadata: false,
+				usage: false,
+				showEntries: false,
+				showSystemPromptOptions: true,
+				systemPromptOptions: undefined,
+			}),
+		);
+
+		expect(result).toContain("## System Prompt Inputs");
+		expect(result).toContain("Not available");
+	});
+
+	it("system_prompt_options section shows skill names and paths", () => {
+		const result = formatSessionDebugInfo(
+			baseOpts({
+				metadata: false,
+				usage: false,
+				showEntries: false,
+				showSystemPromptOptions: true,
+				systemPromptOptions: {
+					cwd: "/home/user/project",
+					skills: [
+						{ name: "my-skill", filePath: "/path/to/my-skill/SKILL.md" } as never,
+						{ name: "other-skill", filePath: "/path/to/other-skill/SKILL.md" } as never,
+					],
+					contextFiles: [],
+					selectedTools: [],
+				},
+			}),
+		);
+
+		expect(result).toContain("## System Prompt Inputs");
+		expect(result).toContain("**Skills:** 2");
+		expect(result).toContain("my-skill");
+		expect(result).toContain("/path/to/my-skill/SKILL.md");
+		expect(result).toContain("other-skill");
+	});
+
+	it("system_prompt_options section shows context file paths (not content)", () => {
+		const result = formatSessionDebugInfo(
+			baseOpts({
+				metadata: false,
+				usage: false,
+				showEntries: false,
+				showSystemPromptOptions: true,
+				systemPromptOptions: {
+					cwd: "/home/user/project",
+					contextFiles: [
+						{ path: "/home/user/project/AGENTS.md", content: "secret content" },
+						{ path: "/home/user/.pi/AGENTS.md", content: "more secrets" },
+					],
+				},
+			}),
+		);
+
+		expect(result).toContain("**Context files:** 2");
+		expect(result).toContain("/home/user/project/AGENTS.md");
+		expect(result).toContain("/home/user/.pi/AGENTS.md");
+		expect(result).not.toContain("secret content");
+		expect(result).not.toContain("more secrets");
+	});
+
+	it("system_prompt_options section shows selected tools", () => {
+		const result = formatSessionDebugInfo(
+			baseOpts({
+				metadata: false,
+				usage: false,
+				showEntries: false,
+				showSystemPromptOptions: true,
+				systemPromptOptions: {
+					cwd: "/home/user/project",
+					selectedTools: ["bash", "read", "edit", "write"],
+				},
+			}),
+		);
+
+		expect(result).toContain("**Selected tools:** bash, read, edit, write");
+	});
+
+	it("system_prompt_options section shows selected tools (none) when empty", () => {
+		const result = formatSessionDebugInfo(
+			baseOpts({
+				metadata: false,
+				usage: false,
+				showEntries: false,
+				showSystemPromptOptions: true,
+				systemPromptOptions: {
+					cwd: "/home/user/project",
+					selectedTools: [],
+				},
+			}),
+		);
+
+		expect(result).toContain("**Selected tools:** (none)");
+	});
+
+	it("system_prompt_options section shows appendSystemPrompt length", () => {
+		const appendText = "Always respond in JSON.";
+		const result = formatSessionDebugInfo(
+			baseOpts({
+				metadata: false,
+				usage: false,
+				showEntries: false,
+				showSystemPromptOptions: true,
+				systemPromptOptions: {
+					cwd: "/home/user/project",
+					appendSystemPrompt: appendText,
+				},
+			}),
+		);
+
+		expect(result).toContain(`${appendText.length.toLocaleString()} chars`);
+		expect(result).not.toContain(appendText); // content must NOT appear
+	});
+
+	it("system_prompt_options section shows appendSystemPrompt as (none) when absent", () => {
+		const result = formatSessionDebugInfo(
+			baseOpts({
+				metadata: false,
+				usage: false,
+				showEntries: false,
+				showSystemPromptOptions: true,
+				systemPromptOptions: {
+					cwd: "/home/user/project",
+				},
+			}),
+		);
+
+		expect(result).toContain("**Append system prompt:** (none)");
+	});
+
+	it("system_prompt_options section shows prompt guidelines count", () => {
+		const result = formatSessionDebugInfo(
+			baseOpts({
+				metadata: false,
+				usage: false,
+				showEntries: false,
+				showSystemPromptOptions: true,
+				systemPromptOptions: {
+					cwd: "/home/user/project",
+					promptGuidelines: ["Be concise.", "Use TypeScript.", "Prefer functional style."],
+				},
+			}),
+		);
+
+		expect(result).toContain("**Prompt guidelines:** 3");
+	});
+
+	it("system_prompt_options section shows prompt guidelines count 0 when absent", () => {
+		const result = formatSessionDebugInfo(
+			baseOpts({
+				metadata: false,
+				usage: false,
+				showEntries: false,
+				showSystemPromptOptions: true,
+				systemPromptOptions: {
+					cwd: "/home/user/project",
+				},
+			}),
+		);
+
+		expect(result).toContain("**Prompt guidelines:** 0");
 	});
 });
 
@@ -298,6 +481,7 @@ describe("registerSessionDebugInfoTool — execute() handler", () => {
 		entries: unknown[];
 		contextUsage: { tokens: number; contextWindow: number; percent: number } | null;
 		systemPrompt: string;
+		getSystemPromptOptions: (() => unknown) | undefined;
 	}> = {}) {
 		return {
 			sessionManager: {
@@ -309,6 +493,11 @@ describe("registerSessionDebugInfoTool — execute() handler", () => {
 			cwd: overrides.cwd ?? "/tmp/project",
 			getContextUsage: vi.fn(() => overrides.contextUsage ?? { tokens: 1000, contextWindow: 100000, percent: 1.0 }),
 			getSystemPrompt: vi.fn(() => overrides.systemPrompt ?? "You are helpful."),
+			...("getSystemPromptOptions" in overrides
+				? overrides.getSystemPromptOptions !== undefined
+					? { getSystemPromptOptions: vi.fn(overrides.getSystemPromptOptions) }
+					: {}
+				: {}),
 		};
 	}
 
@@ -353,5 +542,49 @@ describe("registerSessionDebugInfoTool — execute() handler", () => {
 
 		const result = await getExecute()("call-4", { metadata: false, usage: false, entries: false }, undefined, undefined, ctx);
 		expect(result.details.debugInfo).toContain("No sections requested");
+	});
+
+	it("execute() includes system_prompt_options section when system_prompt_options=true and API available", async () => {
+		const { pi, getExecute } = makeMockPi();
+		registerSessionDebugInfoTool(pi as never);
+		const opts = {
+			cwd: "/tmp/project",
+			skills: [{ name: "cool-skill", filePath: "/path/to/SKILL.md" }],
+			contextFiles: [{ path: "/tmp/project/AGENTS.md", content: "..." }],
+			selectedTools: ["bash", "read"],
+			appendSystemPrompt: "Be concise.",
+			promptGuidelines: ["guideline one"],
+		};
+		const ctx = makeCtx({ getSystemPromptOptions: () => opts });
+
+		const result = await getExecute()("call-5", { system_prompt_options: true }, undefined, undefined, ctx);
+		expect(result.details.debugInfo).toContain("## System Prompt Inputs");
+		expect(result.details.debugInfo).toContain("cool-skill");
+		expect(result.details.debugInfo).toContain("/path/to/SKILL.md");
+		expect(result.details.debugInfo).toContain("/tmp/project/AGENTS.md");
+		expect(result.details.debugInfo).not.toContain("..."); // content hidden
+		expect(result.details.debugInfo).toContain("bash, read");
+		expect(result.details.debugInfo).toContain("**Prompt guidelines:** 1");
+	});
+
+	it("execute() shows fallback when system_prompt_options=true but API unavailable", async () => {
+		const { pi, getExecute } = makeMockPi();
+		registerSessionDebugInfoTool(pi as never);
+		// ctx has NO getSystemPromptOptions method
+		const ctx = makeCtx();
+
+		const result = await getExecute()("call-6", { system_prompt_options: true }, undefined, undefined, ctx);
+		expect(result.details.debugInfo).toContain("## System Prompt Inputs");
+		expect(result.details.debugInfo).toContain("Not available");
+	});
+
+	it("execute() does not call getSystemPromptOptions when system_prompt_options=false", async () => {
+		const { pi, getExecute } = makeMockPi();
+		registerSessionDebugInfoTool(pi as never);
+		const getSystemPromptOptions = vi.fn(() => ({ cwd: "/tmp" }));
+		const ctx = makeCtx({ getSystemPromptOptions });
+
+		await getExecute()("call-7", { system_prompt_options: false }, undefined, undefined, ctx);
+		expect(getSystemPromptOptions).not.toHaveBeenCalled();
 	});
 });
