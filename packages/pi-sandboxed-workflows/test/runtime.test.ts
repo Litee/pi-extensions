@@ -88,7 +88,7 @@ describe("runWorkflow", () => {
 				script: { name: "throws", path: join(FIX, "throws.ts") },
 				args: "",
 			}),
-		).resolves.toBeUndefined();
+		).resolves.toBe("error");
 		const errEvents = sent.filter((m) => m.details?.["kind"] === "error");
 		expect(errEvents).toHaveLength(1);
 		expect(String(errEvents[0]?.content)).toContain("boom");

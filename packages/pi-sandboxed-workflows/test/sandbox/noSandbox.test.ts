@@ -78,4 +78,45 @@ describe("noSandbox provider", () => {
 		});
 		expect(result.stdout.trim()).toBe("hello stdin");
 	});
+
+	it("exec: abort sends SIGTERM and then SIGKILL after forceKillAfterMs", async () => {
+		// Spawn a process that ignores SIGTERM but exits on SIGKILL.
+		// We use a shell script that traps SIGTERM (no-op) and sleeps forever.
+		// With forceKillAfterMs=100ms the test completes quickly.
+		const ac = new AbortController();
+		const provider = noSandbox();
+
+		const execPromise = provider.exec({
+			// trap SIGTERM; sleep indefinitely so only SIGKILL terminates us
+			command: "trap '' TERM; sleep 60",
+			cwd: tmpdir(),
+			signal: ac.signal,
+			forceKillAfterMs: 200, // short grace period for the test
+		});
+
+		// Give the process a moment to start, then abort.
+		await new Promise<void>((r) => setTimeout(r, 50));
+		ac.abort(new Error("test abort"));
+
+		// The promise must reject (SIGKILL terminates the process after 200 ms).
+		await expect(execPromise).rejects.toThrow();
+	}, 3_000);
+
+	it("exec: SIGKILL timer is cancelled when process exits before grace period", async () => {
+		// A fast-exiting process should cancel the SIGKILL timer without error.
+		const ac = new AbortController();
+		const provider = noSandbox();
+
+		const execPromise = provider.exec({
+			command: "echo done",
+			cwd: tmpdir(),
+			signal: ac.signal,
+			forceKillAfterMs: 5_000,
+		});
+
+		// Let the process finish naturally; the SIGKILL timer must not fire.
+		const result = await execPromise;
+		expect(result.stdout.trim()).toBe("done");
+		expect(result.exitCode).toBe(0);
+	});
 });

@@ -33,6 +33,12 @@ export interface ExecOpts {
 	 * after a grace period) and rejects the returned Promise.
 	 */
 	readonly signal?: AbortSignal;
+	/**
+	 * Milliseconds after SIGTERM to send SIGKILL when the abort signal fires.
+	 * Prevents a subprocess that ignores SIGTERM (e.g. blocked on a long
+	 * network call) from hanging indefinitely. Default: 5000.
+	 */
+	readonly forceKillAfterMs?: number;
 }
 
 /** Result of a completed exec. */

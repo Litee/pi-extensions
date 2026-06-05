@@ -8,6 +8,7 @@ import {
 	PI_SW_BLOCKER_TAG,
 	TagNotFoundError,
 	ValidationError,
+	SchemaCompileError,
 	extractTaggedJson,
 	extractBlocker,
 	buildStructuredOutputInstruction,
@@ -164,6 +165,44 @@ describe("extractBlocker", () => {
 
 	it("returns undefined for an empty string", () => {
 		expect(extractBlocker("")).toBeUndefined();
+	});
+});
+
+// ── validateJson — SchemaCompileError ──────────────────────────────────────
+
+describe("validateJson — SchemaCompileError (bad schema)", () => {
+	it("throws SchemaCompileError when given a non-object schema (runtime cast)", () => {
+		// AJV throws synchronously when given a non-object/non-boolean schema.
+		// At runtime a caller could pass a bogus value despite the TypeScript type.
+		expect(() =>
+			validateJson({}, 42 as unknown as Record<string, unknown>),
+		).toThrow(SchemaCompileError);
+	});
+
+	it("SchemaCompileError.name is 'SchemaCompileError'", () => {
+		try {
+			validateJson({}, null as unknown as Record<string, unknown>);
+		} catch (e) {
+			expect(e).toBeInstanceOf(SchemaCompileError);
+			expect((e as Error).name).toBe("SchemaCompileError");
+		}
+	});
+
+	it("SchemaCompileError message contains the AJV error detail", () => {
+		try {
+			validateJson({}, 42 as unknown as Record<string, unknown>);
+		} catch (e) {
+			expect((e as Error).message).toMatch(/schema/i);
+		}
+	});
+
+	it("does NOT throw SchemaCompileError for a well-formed schema", () => {
+		expect(() =>
+			validateJson(
+				{ name: "alice" },
+				{ type: "object", properties: { name: { type: "string" } } },
+			),
+		).not.toThrow(SchemaCompileError);
 	});
 });
 

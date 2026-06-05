@@ -23,6 +23,11 @@ workflows and inspecting past runs.
    Add more directories to that file. `~` is expanded to your home directory;
    relative paths are not supported.
 
+   > **Project-local workflows**: drop a `*.workflow.ts` file into
+   > `.pi/sandboxed-workflows/` at your project root. These are discovered
+   > automatically — no config edit needed. Project-local workflows shadow
+   > global ones of the same name.
+
 2. **Drop a `*.workflow.ts` file** into any configured directory. The part before
    `.workflow.ts` becomes the command suffix — `triage.workflow.ts` registers
    `/workflow:triage`. Names must match `^[a-z][a-z0-9-]*$`.
@@ -351,16 +356,26 @@ hermetic, cost-free tests for workflow logic. See "Testing your workflow" below.
 
 ### Discovery rules
 
-The extension scans every directory listed in
-`~/.pi/agent/pi-sandboxed-workflows.json` (non-recursive) at factory load time and
-again on every `/reload`. A file is registered if and only if:
+The extension scans every directory at factory load time and again on every
+`/reload`. The scan list is built as follows:
+
+1. **Project-local directory** — `<cwd>/.pi/sandboxed-workflows/` is always
+   prepended automatically (no config edit required). The directory does not
+   need to exist; a missing directory is silently treated as empty.
+2. **Global config directories** — every path listed in
+   `~/.pi/agent/pi-sandboxed-workflows.json`, in the order listed.
+
+Because the project-local directory comes first, a workflow there **shadows** a
+same-named workflow in any global directory.
+
+A file is registered if and only if:
 
 - its name ends with `.workflow.ts`;
 - the stem (the part before `.workflow.ts`) matches `^[a-z][a-z0-9-]*$`.
 
 Plain `.ts` files, `.d.ts` declarations, and any other extensions are ignored
 silently. Duplicate names (same stem in two directories) emit a `startup-warning`
-event; the last-listed directory wins.
+event; the first-listed directory wins.
 
 ---
 

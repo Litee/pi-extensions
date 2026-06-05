@@ -40,11 +40,24 @@ export interface LoadOptions {
 	readonly homedir?: string;
 	/** Override the resolved file path. Tests rarely need this. */
 	readonly path?: string;
+	/** Override process.cwd() for tests. When provided, the project-local
+	 *  `.pi/sandboxed-workflows` directory for this cwd is prepended to the
+	 *  directories list (higher priority than the global config). */
+	readonly cwd?: string;
 }
 
 /** Compute `<home>/.pi/agent/<file>` for the given home dir. */
 export function defaultConfigPath(homedir: string): string {
 	return join(homedir, ".pi", "agent", CONFIG_FILE_NAME);
+}
+
+/**
+ * Returns the project-local workflow directory for a given working directory.
+ * Conventionally `<cwd>/.pi/sandboxed-workflows`. The directory does not need
+ * to exist — callers treat a missing directory as "no scripts".
+ */
+export function projectWorkflowsDir(cwd: string): string {
+	return join(cwd, ".pi", "sandboxed-workflows");
 }
 
 /**
@@ -124,6 +137,12 @@ export function loadOrInitConfig(opts: LoadOptions = {}): ResolvedConfig {
 			);
 		}
 		expanded.push(expandTilde(entry, home));
+	}
+	const projectDir = opts.cwd !== undefined
+		? projectWorkflowsDir(opts.cwd)
+		: undefined;
+	if (projectDir !== undefined && !expanded.includes(projectDir)) {
+		return { directories: [projectDir, ...expanded] };
 	}
 	return { directories: expanded };
 }

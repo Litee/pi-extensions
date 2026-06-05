@@ -11,6 +11,7 @@ import { join, sep } from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 
 import { findWorkflowScripts, discoverWorkflows } from "../src/discovery.js";
+import { loadOrInitConfig, projectWorkflowsDir } from "../src/config.js";
 
 describe("findWorkflowScripts", () => {
 	let dir: string;
@@ -180,5 +181,64 @@ describe("discoverWorkflows (multi-directory)", () => {
 		const r2 = discoverWorkflows([a, b, c]);
 		expect(r1.scripts.map((s) => s.name)).toEqual(["alpha", "middle", "zeta"]);
 		expect(r1.scripts.map((s) => s.name)).toEqual(r2.scripts.map((s) => s.name));
+	});
+});
+
+describe("project-local workflow discovery integration", () => {
+	let home: string;
+	let project: string;
+	let globalDir: string;
+
+	beforeEach(() => {
+		home = mkdtempSync(join(tmpdir(), "pi-sw-proj-home-"));
+		project = mkdtempSync(join(tmpdir(), "pi-sw-proj-cwd-"));
+		globalDir = join(home, ".pi", "agent", "sandboxed-workflows");
+		mkdirSync(globalDir, { recursive: true });
+	});
+
+	afterEach(() => {
+		rmSync(home, { recursive: true, force: true });
+		rmSync(project, { recursive: true, force: true });
+	});
+
+	it("discovers workflows in <cwd>/.pi/sandboxed-workflows without config edit", () => {
+		const localDir = projectWorkflowsDir(project);
+		mkdirSync(localDir, { recursive: true });
+		writeFileSync(join(localDir, "my-local.workflow.ts"), "export default async () => {};\n");
+
+		const cfg = loadOrInitConfig({ homedir: home, cwd: project });
+		const result = discoverWorkflows(cfg.directories);
+
+		const names = result.scripts.map((s) => s.name);
+		expect(names).toContain("my-local");
+	});
+
+	it("project-local workflow shadows a same-named global workflow", () => {
+		const localDir = projectWorkflowsDir(project);
+		mkdirSync(localDir, { recursive: true });
+		writeFileSync(join(localDir, "shared.workflow.ts"), "export default async () => {}; // local\n");
+		writeFileSync(join(globalDir, "shared.workflow.ts"), "export default async () => {}; // global\n");
+
+		const cfg = loadOrInitConfig({ homedir: home, cwd: project });
+		const result = discoverWorkflows(cfg.directories);
+
+		// Only one script with that name
+		const shared = result.scripts.filter((s) => s.name === "shared");
+		expect(shared).toHaveLength(1);
+		// Sourced from the project-local dir (higher priority)
+		expect(shared[0]?.sourceDir).toBe(localDir);
+	});
+
+	it("global-only workflow still discovered when no project-local dir exists", () => {
+		writeFileSync(
+			join(globalDir, "global-only.workflow.ts"),
+			"export default async () => {};\n",
+		);
+
+		const cfg = loadOrInitConfig({ homedir: home, cwd: project });
+		const result = discoverWorkflows(cfg.directories);
+
+		const names = result.scripts.map((s) => s.name);
+		expect(names).toContain("global-only");
 	});
 });
