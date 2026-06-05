@@ -53,8 +53,8 @@ export interface HandleCcSkillsOptions {
 export async function handleCcSkills(opts: HandleCcSkillsOptions): Promise<void> {
 	const skills = discoverAllSkills(
 		opts.cwd === undefined
-			? { claudeDir: opts.claudeDir }
-			: { claudeDir: opts.claudeDir, cwd: opts.cwd },
+			? { claudeDir: opts.claudeDir, alreadyLoadedSkills: [] }
+			: { claudeDir: opts.claudeDir, cwd: opts.cwd, alreadyLoadedSkills: [] },
 	);
 	const disabled = readDisabled(opts.stateFile);
 	const collisions = computeCollisions(skills);
@@ -97,7 +97,19 @@ export default function (pi: ExtensionAPI): void {
 		const claudeDir = resolveClaudeDir(process.env, homedir());
 		const stateFile = defaultStateFile(process.env, homedir());
 
-		const all = discoverAllSkills({ claudeDir, cwd: event.cwd });
+		// Require pi 0.78.0+ API — no heuristic fallback.
+		const ctxWithOpts = ctx as {
+			getSystemPromptOptions?: () => {
+				skills?: Array<{ name: string; path: string; content: string }>;
+			};
+		};
+		if (typeof ctxWithOpts.getSystemPromptOptions !== "function") {
+			ctx.ui.notify("Skill discovery requires pi 0.78.0 or later", "error");
+			return { skillPaths: [] };
+		}
+		const alreadyLoadedSkills = ctxWithOpts.getSystemPromptOptions().skills ?? [];
+
+		const all = discoverAllSkills({ claudeDir, cwd: event.cwd, alreadyLoadedSkills });
 		const disabled = readDisabled(stateFile);
 		const collisions = computeCollisions(all);
 
