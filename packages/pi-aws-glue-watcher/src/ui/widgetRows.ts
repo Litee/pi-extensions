@@ -96,7 +96,7 @@ export function buildWidgetEntries(watchMap: WatchMap): WidgetEntry[] {
 		if (watch.type === "job") {
 			const b = watch.baseline as JobBaseline | undefined;
 			entries.push({
-				displayName: watch.runId ? `${watch.name} (${watch.runId.slice(-8)})` : watch.name,
+				displayName: watch.runId ? `${watch.name} [${watch.runId.slice(-4)}]` : watch.name,
 				state: b?.state ?? "",
 				...(b?.startedOn !== undefined ? { startedOn: b.startedOn } : {}),
 				...(b?.completedOn !== undefined ? { completedOn: b.completedOn } : {}),
