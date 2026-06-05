@@ -71,6 +71,7 @@ import type {
 	AgentEndEvent,
 	AgentStartEvent,
 	AgentToolResult,
+	BuildSystemPromptOptions,
 	ExtensionAPI,
 	ExtensionContext,
 	ToolInfo,
@@ -136,15 +137,33 @@ const ParamsSchema = Type.Object({
 interface ListingRow {
 	name: string;
 	active: boolean;
+	/**
+	 * Whether this tool appears in the system prompt's selectedTools list.
+	 * `true` = in prompt, `false` = active in registry but missing from the
+	 * prompt (shown as `[~]`).
+	 */
+	inPrompt: boolean;
 	description: string;
 }
 
-function buildListing(all: readonly ToolInfo[], active: ReadonlySet<string>): ListingRow[] {
+/**
+ * Augmented ExtensionContext that includes the pi 0.78.0 `getSystemPromptOptions()` API.
+ */
+type ExtensionContextWithPromptOptions = ExtensionContext & {
+	getSystemPromptOptions: () => BuildSystemPromptOptions;
+};
+
+function buildListing(
+	all: readonly ToolInfo[],
+	active: ReadonlySet<string>,
+	promptTools: ReadonlySet<string>,
+): ListingRow[] {
 	return [...all]
 		.sort((a, b) => a.name.localeCompare(b.name))
 		.map((t) => ({
 			name: t.name,
 			active: active.has(t.name),
+			inPrompt: promptTools.has(t.name),
 			description: typeof t.description === "string" ? t.description : "",
 		}));
 }
@@ -152,7 +171,12 @@ function buildListing(all: readonly ToolInfo[], active: ReadonlySet<string>): Li
 function renderListing(rows: ListingRow[]): string {
 	const header = `tools (${rows.filter((r) => r.active).length} active / ${rows.length} total):`;
 	const lines = rows.map((r) => {
-		const mark = r.active ? "[x]" : "[ ]";
+		let mark: string;
+		if (!r.active) {
+			mark = "[ ]";
+		} else {
+			mark = r.inPrompt ? "[x]" : "[~]";
+		}
 		const desc = r.description ? ` — ${r.description.split("\n")[0]}` : "";
 		return `  ${mark} ${r.name}${desc}`;
 	});
@@ -431,9 +455,15 @@ export default function manageToolsExtension(pi: ExtensionAPI): void {
 				// branch with no `changed` data and render "No changes." (#0003).
 				const rows = d?.rows ?? [];
 				for (const row of rows) {
-					const mark = row.active
-						? theme.fg("success", "[x]")
-						: theme.fg("dim", "[ ]");
+					let mark: string;
+					if (!row.active) {
+						mark = theme.fg("dim", "[ ]");
+					} else if (row.inPrompt) {
+						mark = theme.fg("success", "[x]");
+					} else {
+						// Active in registry but absent from the system prompt
+						mark = theme.fg("warning", "[~]");
+					}
 					const desc = row.description
 						? theme.fg("dim", ` — ${row.description.split("\n")[0]}`)
 						: "";
@@ -454,7 +484,15 @@ export default function manageToolsExtension(pi: ExtensionAPI): void {
 			return new Text(text, 0, 0);
 		},
 
-		execute(_toolCallId, params, _signal, _onUpdate, _ctx) {
+		execute(_toolCallId, params, _signal, _onUpdate, ctx) {
+			const ctxWithOpts = ctx as ExtensionContextWithPromptOptions;
+			if (typeof ctxWithOpts.getSystemPromptOptions !== "function") {
+				ctx.ui?.notify?.("manage_tools requires pi 0.78.0 or later", "error");
+				return { ok: false, error: "getSystemPromptOptions() not available" };
+			}
+			const promptOptions = ctxWithOpts.getSystemPromptOptions();
+			const promptTools = new Set(promptOptions.selectedTools ?? []);
+
 			const all = pi.getAllTools();
 			const knownTools = new Set(all.map((t) => t.name));
 			const currentActive = new Set(pi.getActiveTools());
@@ -490,6 +528,7 @@ export default function manageToolsExtension(pi: ExtensionAPI): void {
 			const listing = buildListing(
 				pi.getAllTools(),
 				new Set(pi.getActiveTools()),
+				promptTools,
 			);
 
 			const parts: string[] = [];
