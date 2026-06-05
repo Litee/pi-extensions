@@ -47,12 +47,12 @@ describe("discoverAllSkills", () => {
 	afterEach(() => {});
 
 	it("returns [] when claudeDir is empty and no cwd is given", () => {
-		expect(discoverAllSkills({ claudeDir })).toEqual([]);
+		expect(discoverAllSkills({ claudeDir, alreadyLoadedSkills: [] })).toEqual([]);
 	});
 
 	it("discovers user-level skills under <claudeDir>/skills with pluginId '@user'", () => {
 		writeSkill(join(claudeDir, "skills", "alpha"), "alpha");
-		const result = discoverAllSkills({ claudeDir });
+		const result = discoverAllSkills({ claudeDir, alreadyLoadedSkills: [] });
 		expect(result).toEqual([
 			{
 				qualifiedName: "@user/alpha",
@@ -71,7 +71,7 @@ describe("discoverAllSkills", () => {
 			join(dir, "SKILL.md"),
 			"---\nname: frontmatter-name\ndescription: x\n---\n",
 		);
-		const result = discoverAllSkills({ claudeDir });
+		const result = discoverAllSkills({ claudeDir, alreadyLoadedSkills: [] });
 		expect(result[0]?.skillName).toBe("frontmatter-name");
 		expect(result[0]?.qualifiedName).toBe("@user/frontmatter-name");
 	});
@@ -80,7 +80,7 @@ describe("discoverAllSkills", () => {
 		const dir = join(claudeDir, "skills", "fallback-dir");
 		mkdirSync(dir, { recursive: true });
 		writeFileSync(join(dir, "SKILL.md"), "---\ndescription: x\n---\n");
-		expect(discoverAllSkills({ claudeDir })[0]?.skillName).toBe("fallback-dir");
+		expect(discoverAllSkills({ claudeDir, alreadyLoadedSkills: [] })[0]?.skillName).toBe("fallback-dir");
 	});
 
 	it("only includes plugins listed as active in installed_plugins.json (ignores fan-out versions)", () => {
@@ -105,7 +105,7 @@ describe("discoverAllSkills", () => {
 			},
 		});
 
-		const result = discoverAllSkills({ claudeDir });
+		const result = discoverAllSkills({ claudeDir, alreadyLoadedSkills: [] });
 		expect(result.map((s) => s.skillName)).toEqual(["new-skill"]);
 		expect(result[0]?.qualifiedName).toBe("alpha/new-skill");
 		expect(result[0]?.pluginId).toBe("alpha");
@@ -120,14 +120,14 @@ describe("discoverAllSkills", () => {
 				"p@owner": [{ scope: "user", installPath, lastUpdated: "2025-01-01T00:00:00Z" }],
 			},
 		});
-		const result = discoverAllSkills({ claudeDir });
+		const result = discoverAllSkills({ claudeDir, alreadyLoadedSkills: [] });
 		expect(result.map((s) => s.qualifiedName).sort()).toEqual(["p/one", "p/two"]);
 	});
 
 	it("includes <cwd>/.claude/skills with pluginId '@project' when cwd is supplied", () => {
 		const cwd = mkdir(tmpRoot, "project");
 		writeSkill(join(cwd, ".claude", "skills", "local"), "local");
-		const result = discoverAllSkills({ claudeDir, cwd });
+		const result = discoverAllSkills({ claudeDir, cwd, alreadyLoadedSkills: [] });
 		const local = result.find((s) => s.skillName === "local");
 		expect(local).toMatchObject({
 			qualifiedName: "@project/local",
@@ -140,7 +140,7 @@ describe("discoverAllSkills", () => {
 	it("does not consider cwd when cwd is omitted", () => {
 		const cwd = mkdir(tmpRoot, "project");
 		writeSkill(join(cwd, ".claude", "skills", "local"), "local");
-		expect(discoverAllSkills({ claudeDir })).toEqual([]);
+		expect(discoverAllSkills({ claudeDir, alreadyLoadedSkills: [] })).toEqual([]);
 	});
 
 	it("returns results sorted by qualifiedName", () => {
@@ -153,40 +153,18 @@ describe("discoverAllSkills", () => {
 				"beta@o": [{ scope: "user", installPath, lastUpdated: "2025-01-01T00:00:00Z" }],
 			},
 		});
-		const names = discoverAllSkills({ claudeDir }).map((s) => s.qualifiedName);
+		const names = discoverAllSkills({ claudeDir, alreadyLoadedSkills: [] }).map((s) => s.qualifiedName);
 		expect(names).toEqual([...names].sort());
 		expect(names).toEqual(["@user/alpha", "@user/zulu", "beta/mid"]);
 	});
 
 	it("returns [] when claudeDir does not exist entirely", () => {
-		expect(discoverAllSkills({ claudeDir: join(tmpRoot, "nope") })).toEqual([]);
-	});
-
-	it("excludes a user-level skill that is a symlink into ~/.agents/skills (pi core auto-loads it)", () => {
-		// Real skill lives under tmpRoot/home/.agents/skills/archon;
-		// claudeDir/skills/archon is a symlink to it. pi core would pick up
-		// the real path via its own .agents/skills scan, so cc-skills-import
-		// must skip the symlinked view to avoid duplicate qualified names.
-		const agentsSkills = mkdir(tmpRoot, "home/.agents/skills");
-		writeSkill(join(agentsSkills, "archon"), "archon");
-		mkdir(claudeDir, "skills");
-		symlinkSync(join(agentsSkills, "archon"), join(claudeDir, "skills", "archon"));
-		expect(discoverAllSkills({ claudeDir })).toEqual([]);
-	});
-
-	it("still excludes when the agents/skills directory is a project-local .agents/skills", () => {
-		// Mirror of pi core's ancestor-walk case: the real path has a
-		// `.agents/skills` segment anywhere, not just a user-level one.
-		const projectAgents = mkdir(tmpRoot, "repo/.agents/skills");
-		writeSkill(join(projectAgents, "myskill"), "myskill");
-		mkdir(claudeDir, "skills");
-		symlinkSync(join(projectAgents, "myskill"), join(claudeDir, "skills", "myskill"));
-		expect(discoverAllSkills({ claudeDir })).toEqual([]);
+		expect(discoverAllSkills({ claudeDir: join(tmpRoot, "nope"), alreadyLoadedSkills: [] })).toEqual([]);
 	});
 
 	it("keeps non-symlinked skills that happen to live next to an unrelated directory", () => {
 		writeSkill(join(claudeDir, "skills", "kept"), "kept");
-		const result = discoverAllSkills({ claudeDir });
+		const result = discoverAllSkills({ claudeDir, alreadyLoadedSkills: [] });
 		expect(result.map((s) => s.qualifiedName)).toEqual(["@user/kept"]);
 	});
 
@@ -196,33 +174,18 @@ describe("discoverAllSkills", () => {
 		writeSkill(join(elsewhere, "tool"), "tool");
 		mkdir(claudeDir, "skills");
 		symlinkSync(join(elsewhere, "tool"), join(claudeDir, "skills", "tool"));
-		const names = discoverAllSkills({ claudeDir }).map((s) => s.qualifiedName);
+		const names = discoverAllSkills({ claudeDir, alreadyLoadedSkills: [] }).map((s) => s.qualifiedName);
 		expect(names).toEqual(["@user/tool"]);
-	});
-
-	it("excludes a plugin-level skill whose installPath/skills/<name> is a symlink into .agents/skills", () => {
-		// Guard the other code path: the filter runs for active plugins too,
-		// not just @user.
-		const plugin = mkdir(tmpRoot, "plugin/1.0.0");
-		mkdir(plugin, "skills");
-		const agentsSkills = mkdir(tmpRoot, "home/.agents/skills");
-		writeSkill(join(agentsSkills, "duped"), "duped");
-		symlinkSync(join(agentsSkills, "duped"), join(plugin, "skills", "duped"));
-		writeManifest(claudeDir, {
-			version: 2,
-			plugins: {
-				"plugin@scope": [{ scope: "user", installPath: plugin, version: "1.0.0" }],
-			},
-		});
-		expect(discoverAllSkills({ claudeDir })).toEqual([]);
 	});
 });
 
-describe("resolvesIntoAgentsSkills", () => {
+
+describe("discoverAllSkills with alreadyLoadedSkills (issue #0007)", () => {
 	let tmpRoot: string;
+	let claudeDir: string;
 
 	beforeAll(() => {
-		tmpRoot = mkdtempSync(join(tmpdir(), "pi-ccsi-agentsfilter-"));
+		tmpRoot = mkdtempSync(join(tmpdir(), "pi-ccsi-dedup-"));
 	});
 
 	afterAll(() => {
@@ -233,39 +196,82 @@ describe("resolvesIntoAgentsSkills", () => {
 		for (const entry of readdirSync(tmpRoot)) {
 			rmSync(join(tmpRoot, entry), { recursive: true, force: true });
 		}
+		claudeDir = mkdir(tmpRoot, "claude");
 	});
 
-	it("returns true for a path whose realpath lies under a .agents/skills directory", () => {
-		const skillDir = join(tmpRoot, ".agents", "skills", "foo");
-		mkdirSync(skillDir, { recursive: true });
-		expect(resolvesIntoAgentsSkills(skillDir)).toBe(true);
+	it("excludes a skill whose skillDir matches an alreadyLoadedSkills entry's path", () => {
+		writeSkill(join(claudeDir, "skills", "alpha"), "alpha");
+		writeSkill(join(claudeDir, "skills", "beta"), "beta");
+		const alphaDir = join(claudeDir, "skills", "alpha");
+		const result = discoverAllSkills({
+			claudeDir,
+			alreadyLoadedSkills: [{ name: "other-name", path: alphaDir }],
+		});
+		expect(result.map((s) => s.skillName)).toEqual(["beta"]);
 	});
 
-	it("returns true when the input is a symlink resolving into .agents/skills", () => {
-		const real = join(tmpRoot, ".agents", "skills", "target");
-		mkdirSync(real, { recursive: true });
-		const link = join(tmpRoot, "link");
-		symlinkSync(real, link);
-		expect(resolvesIntoAgentsSkills(link)).toBe(true);
+	it("excludes a skill whose skillName matches an alreadyLoadedSkills entry's name", () => {
+		writeSkill(join(claudeDir, "skills", "alpha"), "alpha");
+		writeSkill(join(claudeDir, "skills", "beta"), "beta");
+		const result = discoverAllSkills({
+			claudeDir,
+			// path does not match any skill dir — only the name triggers exclusion
+			alreadyLoadedSkills: [{ name: "alpha", path: "/some/unrelated/path" }],
+		});
+		expect(result.map((s) => s.skillName)).toEqual(["beta"]);
 	});
 
-	it("returns false for a path outside any .agents/skills directory", () => {
-		const other = join(tmpRoot, "claude", "skills", "bar");
-		mkdirSync(other, { recursive: true });
-		expect(resolvesIntoAgentsSkills(other)).toBe(false);
+	it("does NOT use the heuristic when alreadyLoadedSkills is provided (empty list keeps symlinked skill)", () => {
+		// Even if the skill's realpath resolves into .agents/skills, it should
+		// NOT be excluded when alreadyLoadedSkills is given but does not
+		// mention it — the API is authoritative, not the heuristic.
+		const agentsSkills = mkdir(tmpRoot, "home/.agents/skills");
+		writeSkill(join(agentsSkills, "archon"), "archon");
+		mkdir(claudeDir, "skills");
+		symlinkSync(join(agentsSkills, "archon"), join(claudeDir, "skills", "archon"));
+		const result = discoverAllSkills({
+			claudeDir,
+			alreadyLoadedSkills: [], // API says nothing is already loaded
+		});
+		// Heuristic would exclude this; API-mode with an empty list does not
+		expect(result.map((s) => s.skillName)).toEqual(["archon"]);
 	});
 
-	it("returns false for a broken symlink (realpath throws)", () => {
-		const link = join(tmpRoot, "dangling");
-		symlinkSync(join(tmpRoot, "missing-target"), link);
-		expect(resolvesIntoAgentsSkills(link)).toBe(false);
+	it("returns all skills when alreadyLoadedSkills is an empty array", () => {
+		writeSkill(join(claudeDir, "skills", "x"), "x");
+		writeSkill(join(claudeDir, "skills", "y"), "y");
+		const result = discoverAllSkills({ claudeDir, alreadyLoadedSkills: [] });
+		expect(result.map((s) => s.skillName).sort()).toEqual(["x", "y"]);
 	});
 
-	it("does not match 'agents/skills' without the leading dot ('my-agents/skills/x')", () => {
-		// Guard against over-eager substring matching: only the literal
-		// `.agents/skills` pair counts.
-		const dir = join(tmpRoot, "my-agents", "skills", "x");
-		mkdirSync(dir, { recursive: true });
-		expect(resolvesIntoAgentsSkills(dir)).toBe(false);
+	it("excludes plugin skills matched by name in alreadyLoadedSkills", () => {
+		const installPath = mkdir(tmpRoot, "claude/plugins/cache/owner/p/1.0.0");
+		writeSkill(join(installPath, "skills", "one"), "one");
+		writeSkill(join(installPath, "skills", "two"), "two");
+		writeFileSync(
+			join(claudeDir, "plugins", "installed_plugins.json"),
+			JSON.stringify({
+				plugins: {
+					"p@owner": [{ scope: "user", installPath, lastUpdated: "2025-01-01T00:00:00Z" }],
+				},
+			}),
+		);
+		const result = discoverAllSkills({
+			claudeDir,
+			alreadyLoadedSkills: [{ name: "one", path: "/unrelated" }],
+		});
+		expect(result.map((s) => s.skillName)).toEqual(["two"]);
+	});
+
+	it("excludes project-local skills matched by path in alreadyLoadedSkills", () => {
+		const cwd = mkdir(tmpRoot, "project");
+		const localDir = join(cwd, ".claude", "skills", "local");
+		writeSkill(localDir, "local");
+		const result = discoverAllSkills({
+			claudeDir,
+			cwd,
+			alreadyLoadedSkills: [{ name: "unrelated", path: localDir }],
+		});
+		expect(result).toEqual([]);
 	});
 });

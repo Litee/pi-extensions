@@ -30,7 +30,11 @@ function makeFakePi() {
 	};
 }
 
-function makeCtx(cwd: string, reload = vi.fn()) {
+function makeCtx(
+	cwd: string,
+	reload = vi.fn(),
+	getSystemPromptOptions: (() => { skills?: Array<{ name: string; path: string; content: string }> }) | undefined = () => ({ skills: [] }),
+) {
 	const notify = vi.fn();
 	return {
 		cwd,
@@ -40,6 +44,7 @@ function makeCtx(cwd: string, reload = vi.fn()) {
 			custom: vi.fn(),
 		},
 		reload,
+		getSystemPromptOptions,
 		_notify: notify,
 		_reload: reload,
 	};
@@ -460,5 +465,115 @@ describe("handleCcSkills (injectable picker)", () => {
 		});
 
 		expect(persist).not.toHaveBeenCalled();
+	});
+});
+
+// -- issue #0007: replace heuristic dedup with ctx.getSystemPromptOptions() ----
+
+describe("resources_discover dedup via ctx.getSystemPromptOptions() (issue #0007)", () => {
+	let tmpRoot: string;
+	let claudeDir: string;
+	let stateFile: string;
+	const origClaude = process.env["CLAUDE_CONFIG_DIR"];
+	const origState = process.env["PI_CLAUDE_SKILLS_STATE"];
+
+	beforeEach(() => {
+		tmpRoot = mkdtempSync(join(tmpdir(), "pi-ccsi-dedup7-"));
+		claudeDir = mkdir(tmpRoot, "claude");
+		stateFile = join(tmpRoot, "state.json");
+		process.env["CLAUDE_CONFIG_DIR"] = claudeDir;
+		process.env["PI_CLAUDE_SKILLS_STATE"] = stateFile;
+	});
+
+	afterEach(() => {
+		if (origClaude === undefined) delete process.env["CLAUDE_CONFIG_DIR"];
+		else process.env["CLAUDE_CONFIG_DIR"] = origClaude;
+		if (origState === undefined) delete process.env["PI_CLAUDE_SKILLS_STATE"];
+		else process.env["PI_CLAUDE_SKILLS_STATE"] = origState;
+		rmSync(tmpRoot, { recursive: true, force: true });
+	});
+
+	it("excludes skills whose path is in ctx.getSystemPromptOptions().skills", async () => {
+		writeSkill(join(claudeDir, "skills", "alpha"), "alpha");
+		writeSkill(join(claudeDir, "skills", "beta"), "beta");
+		const alphaDir = join(claudeDir, "skills", "alpha");
+		const pi = makeFakePi();
+		 
+		createExtension(pi as unknown as ExtensionAPI);
+		const ctx = makeCtx(mkdir(tmpRoot, "project"), vi.fn(), () => ({
+			skills: [{ name: "other-name", path: alphaDir, content: "" }],
+			cwd: tmpRoot,
+		}));
+		const handler = pi.handlers.get("resources_discover")!;
+		const result = (await handler({ cwd: ctx.cwd, reason: "startup" }, ctx)) as {
+			skillPaths: string[];
+		};
+		// alpha's dir is reported as already loaded → must be excluded
+		expect(result.skillPaths).toEqual([join(claudeDir, "skills", "beta")]);
+	});
+
+	it("excludes skills whose name is in ctx.getSystemPromptOptions().skills", async () => {
+		writeSkill(join(claudeDir, "skills", "alpha"), "alpha");
+		writeSkill(join(claudeDir, "skills", "beta"), "beta");
+		const pi = makeFakePi();
+		 
+		createExtension(pi as unknown as ExtensionAPI);
+		const ctx = makeCtx(mkdir(tmpRoot, "project"), vi.fn(), () => ({
+			// path does not match any skill dir — only name match matters
+			skills: [{ name: "alpha", path: "/no/such/path", content: "" }],
+			cwd: tmpRoot,
+		}));
+		const handler = pi.handlers.get("resources_discover")!;
+		const result = (await handler({ cwd: ctx.cwd, reason: "startup" }, ctx)) as {
+			skillPaths: string[];
+		};
+		expect(result.skillPaths).toEqual([join(claudeDir, "skills", "beta")]);
+	});
+
+	it("notifies error and returns empty skillPaths when ctx.getSystemPromptOptions is absent (requires pi 0.78.0+)", async () => {
+		writeSkill(join(claudeDir, "skills", "alpha"), "alpha");
+		const pi = makeFakePi();
+		 
+		createExtension(pi as unknown as ExtensionAPI);
+		// Manually construct a ctx with no getSystemPromptOptions to simulate an old pi runtime.
+		const notify = vi.fn();
+		const ctx = {
+			cwd: mkdir(tmpRoot, "project"),
+			ui: {
+				notify,
+				theme: { fg: (_c: string, t: string) => t, bold: (t: string) => t },
+				custom: vi.fn(),
+			},
+			reload: vi.fn(),
+		};
+		const handler = pi.handlers.get("resources_discover")!;
+		const result = (await handler({ cwd: ctx.cwd, reason: "startup" }, ctx)) as {
+			skillPaths: string[];
+		};
+		expect(result.skillPaths).toEqual([]);
+		expect(notify).toHaveBeenCalledWith(
+			"Skill discovery requires pi 0.78.0 or later",
+			"error",
+		);
+	});
+
+	it("returns all skills when getSystemPromptOptions returns an empty skills array", async () => {
+		writeSkill(join(claudeDir, "skills", "alpha"), "alpha");
+		writeSkill(join(claudeDir, "skills", "beta"), "beta");
+		const pi = makeFakePi();
+		 
+		createExtension(pi as unknown as ExtensionAPI);
+		const ctx = makeCtx(mkdir(tmpRoot, "project"), vi.fn(), () => ({
+			skills: [],
+			cwd: tmpRoot,
+		}));
+		const handler = pi.handlers.get("resources_discover")!;
+		const result = (await handler({ cwd: ctx.cwd, reason: "startup" }, ctx)) as {
+			skillPaths: string[];
+		};
+		expect(result.skillPaths.sort()).toEqual([
+			join(claudeDir, "skills", "alpha"),
+			join(claudeDir, "skills", "beta"),
+		]);
 	});
 });

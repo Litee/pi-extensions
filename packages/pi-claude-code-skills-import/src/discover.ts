@@ -1,16 +1,29 @@
-import { realpathSync } from "node:fs";
-import { basename, join, sep } from "node:path";
+import { basename, join } from "node:path";
 
 import { readActivePlugins } from "./activePlugins.js";
 import { findSkillDirs } from "./findSkillDirs.js";
 import { extractSkillName } from "./frontmatter.js";
 import type { DiscoveredSkill } from "./types.js";
 
+/** A minimal skill descriptor as returned by `ctx.getSystemPromptOptions().skills`. */
+export interface AlreadyLoadedSkill {
+	name: string;
+	path: string;
+}
+
 export interface DiscoverOptions {
 	/** Claude Code home directory (e.g. ~/.claude or $CLAUDE_CONFIG_DIR). */
 	claudeDir: string;
 	/** Current working directory. When provided, <cwd>/.claude/skills is also scanned. */
 	cwd?: string;
+	/**
+	 * Skills already loaded by pi core, as returned by
+	 * `ctx.getSystemPromptOptions().skills` (pi 0.78.0+).
+	 *
+	 * A discovered skill is excluded when its `skillDir` matches an entry's
+	 * `path` **or** its `skillName` matches an entry's `name`.
+	 */
+	alreadyLoadedSkills: ReadonlyArray<AlreadyLoadedSkill>;
 }
 
 /**
@@ -24,40 +37,54 @@ export interface DiscoverOptions {
  *     (active-version selection per {@link readActivePlugins})
  *   - `<cwd>/.claude/skills`                           → pluginId "@project"
  *
- * Skills whose real path resolves into a `.agents/skills/` directory are
- * excluded — pi core already auto-loads those via its own skills-discovery
- * pass (user-level `~/.agents/skills/` and project-ancestor
- * `<dir>/.agents/skills/`), so surfacing them again here would produce a
- * duplicate entry with a different qualified name (e.g. `@user/archon` and
- * `agents/archon` for the same underlying directory). The typical trigger
- * is a symlink from `~/.claude/skills/<name>` into `~/.agents/skills/<name>`.
+ * **Deduplication against pi-core skills:**
+ * A skill is excluded if its `skillDir` matches an entry in
+ * `opts.alreadyLoadedSkills[].path` or its `skillName` matches an entry's
+ * `name`. Pass an empty array to skip deduplication.
  *
  * No external IO beyond readdir / readFile on the supplied roots. Missing
  * roots are treated as "nothing to contribute" rather than errors.
  */
 export function discoverAllSkills(opts: DiscoverOptions): DiscoveredSkill[] {
-	const { claudeDir, cwd } = opts;
+	const { claudeDir, cwd, alreadyLoadedSkills } = opts;
 	const out: DiscoveredSkill[] = [];
+
+	const alreadyLoadedPaths = new Set(alreadyLoadedSkills.map((s) => s.path));
+	const alreadyLoadedNames = new Set(alreadyLoadedSkills.map((s) => s.name));
+
+	function excludedByDir(dir: string): boolean {
+		return alreadyLoadedPaths.has(dir);
+	}
+
+	function excludedByName(skillName: string): boolean {
+		return alreadyLoadedNames.has(skillName);
+	}
 
 	// 1. User-level skills.
 	for (const dir of findSkillDirs(join(claudeDir, "skills"))) {
-		if (resolvesIntoAgentsSkills(dir)) continue;
-		out.push(makeSkill(dir, "@user"));
+		if (excludedByDir(dir)) continue;
+		const skill = makeSkill(dir, "@user");
+		if (excludedByName(skill.skillName)) continue;
+		out.push(skill);
 	}
 
 	// 2. Plugin skills — only versions listed as active in installed_plugins.json.
 	for (const plugin of readActivePlugins(claudeDir)) {
 		for (const dir of findSkillDirs(join(plugin.installPath, "skills"))) {
-			if (resolvesIntoAgentsSkills(dir)) continue;
-			out.push(makeSkill(dir, plugin.pluginName));
+			if (excludedByDir(dir)) continue;
+			const skill = makeSkill(dir, plugin.pluginName);
+			if (excludedByName(skill.skillName)) continue;
+			out.push(skill);
 		}
 	}
 
 	// 3. Project-local skills.
 	if (cwd !== undefined) {
 		for (const dir of findSkillDirs(join(cwd, ".claude", "skills"))) {
-			if (resolvesIntoAgentsSkills(dir)) continue;
-			out.push(makeSkill(dir, "@project"));
+			if (excludedByDir(dir)) continue;
+			const skill = makeSkill(dir, "@project");
+			if (excludedByName(skill.skillName)) continue;
+			out.push(skill);
 		}
 	}
 
@@ -75,35 +102,4 @@ function makeSkill(skillDir: string, pluginId: string): DiscoveredSkill {
 		skillDir,
 		skillFile,
 	};
-}
-
-/**
- * Return true when the realpath of `skillDir` lies under a `.agents/skills/`
- * directory — the canonical auto-load root for pi core's own skills pass.
- *
- * Match rule: the realpath contains the segment `.agents/skills` (OS-agnostic:
- * `path.sep` used for split). Matches both `~/.agents/skills/<name>` and any
- * project-ancestor `<dir>/.agents/skills/<name>` without having to replicate
- * pi core's ancestor-walk — any `.agents/skills` anywhere in the resolved
- * path is treated as a pi-core-owned skill.
- *
- * If realpath fails (broken symlink, ENOENT, permission error), returns
- * false — be permissive rather than silently dropping a legitimate skill.
- * A broken symlink almost certainly fails the later SKILL.md existence
- * check anyway, so this does not produce spurious entries in practice.
- *
- * Exported for unit testing.
- */
-export function resolvesIntoAgentsSkills(skillDir: string): boolean {
-	let real: string;
-	try {
-		real = realpathSync(skillDir);
-	} catch {
-		return false;
-	}
-	const segments = real.split(sep);
-	for (let i = 0; i + 1 < segments.length; i++) {
-		if (segments[i] === ".agents" && segments[i + 1] === "skills") return true;
-	}
-	return false;
 }
