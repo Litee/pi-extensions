@@ -95,6 +95,19 @@ export interface RunWorkflowDeps {
 			bold(text: string): string;
 		}) => { render(width: number): string[]; invalidate(): void; dispose?(): void }) | undefined,
 	) => void;
+	/**
+	 * Called whenever a lifecycle event is published for a run.
+	 * Receives the event kind ("started" | "completed" | "error"), the
+	 * human-readable message, the run's unique ID, and any extra details.
+	 * Used by `index.ts` to populate the in-memory `RunHistory` store that
+	 * backs the runs/run-detail TUI screens.
+	 */
+	readonly onLifecycleEvent?: (
+		kind: string,
+		message: string,
+		runId: string,
+		details: Record<string, unknown>,
+	) => void;
 }
 
 export interface RunWorkflowParams {
@@ -119,7 +132,7 @@ export function isWorkflowActive(): boolean {
 /**
  * Load and run a workflow file. Always resolves (errors become events).
  */
-export async function runWorkflow(params: RunWorkflowParams): Promise<void> {
+export async function runWorkflow(params: RunWorkflowParams): Promise<"completed" | "error" | "concurrent-rejected"> {
 	const { deps, script, args } = params;
 
 	if (activeRunId !== undefined) {
@@ -145,7 +158,7 @@ export async function runWorkflow(params: RunWorkflowParams): Promise<void> {
 			/* swallow — sendMessage failures must not block toast/return */
 		}
 		deps.notify(rejection, "error");
-		return;
+		return "concurrent-rejected";
 	}
 
 	const runId = makeRunId();
@@ -191,6 +204,12 @@ export async function runWorkflow(params: RunWorkflowParams): Promise<void> {
 		} catch {
 			// Swallow — UI failures must not break run cleanup.
 		}
+		// Notify the run-history store so the TUI screens can display real data.
+		try {
+			deps.onLifecycleEvent?.(kind, message, runId, details);
+		} catch {
+			/* swallow — history store errors must not break run cleanup */
+		}
 		// Lifecycle errors also fire a toast for immediate UX. The sendMessage
 		// above is the LLM-visible channel; this notify is purely the user-
 		// facing surface.
@@ -218,7 +237,7 @@ export async function runWorkflow(params: RunWorkflowParams): Promise<void> {
 				"error",
 				`Workflow ${script.path} has no default export.`,
 			);
-			return;
+			return "error";
 		}
 		const fn = mod.default;
 		if (typeof fn !== "function") {
@@ -226,7 +245,7 @@ export async function runWorkflow(params: RunWorkflowParams): Promise<void> {
 				"error",
 				`Workflow ${script.path} default export is not a function (got ${typeof fn}).`,
 			);
-			return;
+			return "error";
 		}
 
 		const host = buildWorkflowHost({
@@ -248,7 +267,14 @@ export async function runWorkflow(params: RunWorkflowParams): Promise<void> {
 			`Completed /workflow:${script.name}`,
 			result === undefined ? {} : { result },
 		);
+		return "completed";
 	} catch (err) {
+		// Re-throw abort/cancellation errors so the outer handler (index.ts)
+		// can classify them as ⏹️ stopped rather than ❌ failed.  A plain
+		// workflow error should still be published and swallowed here.
+		if (err instanceof Error && err.name === "AbortError") {
+			throw err;
+		}
 		const message = err instanceof Error ? err.message : String(err);
 		publishLifecycle(
 			"error",
@@ -257,6 +283,7 @@ export async function runWorkflow(params: RunWorkflowParams): Promise<void> {
 				? { stack: err.stack }
 				: {},
 		);
+		return "error";
 	} finally {
 		activeRunId = undefined;
 		if (deps.signal !== undefined) {

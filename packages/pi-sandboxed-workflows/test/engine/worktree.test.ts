@@ -7,13 +7,18 @@
  *   - type:"head" returns a no-op handle pointing at cwd.
  *   - type:"merge-to-head" creates a temp branch; dispose merges and cleans up.
  */
-import { describe, expect, it, beforeAll, afterAll } from "vitest";
-import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { describe, expect, it, beforeAll, afterAll, vi } from "vitest";
+import { mkdtempSync, rmSync, writeFileSync, mkdirSync, chmodSync } from "node:fs";
 import { execFileSync } from "node:child_process";
 import { tmpdir } from "node:os";
 import { join } from "path";
 import { existsSync } from "node:fs";
 import { createWorktree } from "../../src/engine/worktree.js";
+
+// git worktree operations (git init, worktree add, worktree remove, merge)
+// can take several seconds on loaded CI / developer machines. The default
+// 5 000 ms vitest timeout is too tight for this file; raise it file-wide.
+vi.setConfig({ testTimeout: 30_000 });
 
 // ── Test repo setup ───────────────────────────────────────────────────────────
 
@@ -147,5 +152,89 @@ describe("createWorktree — abort signal", () => {
 				signal: ac.signal,
 			}),
 		).rejects.toThrow();
+	});
+});
+
+// ── Regression: orphaned directory on git failure (Bug 10) ─────────────────
+
+describe("createWorktree — no orphan on failure (regression: Bug 10)", () => {
+	// Strategy: pre-create .pi-workflows/worktrees as a read-only directory.
+	// mkdirSync({ recursive: true }) succeeds (dir already exists).
+	// git worktree add fails because it can't create inside a 500 dir.
+	// Cleanup code must then remove .pi-workflows entirely.
+	function setupReadonlyWorktreesDir(cwd: string): string {
+		const piDir = join(cwd, ".pi-workflows");
+		const wDir = join(piDir, "worktrees");
+		mkdirSync(wDir, { recursive: true });
+		chmodSync(wDir, 0o500); // read + exec, no write → git can't create inside
+		return piDir;
+	}
+
+	it("leaves no .pi-workflows/worktrees directory behind when git worktree add fails", async () => {
+		const piDir = setupReadonlyWorktreesDir(repoDir);
+		const wDir = join(repoDir, ".pi-workflows", "worktrees");
+		try {
+			await expect(
+				createWorktree({
+					cwd: repoDir,
+					branchStrategy: { type: "branch", branch: "test/cleanup" },
+				}),
+			).rejects.toThrow();
+			expect(existsSync(piDir)).toBe(false);
+		} finally {
+			// Restore write permission so rmSync can clean up if test failed.
+			try { chmodSync(wDir, 0o755); } catch { /* already gone */ }
+			rmSync(piDir, { recursive: true, force: true });
+		}
+	});
+
+	it("leaves no .pi-workflows directory behind when merge-to-head git worktree add fails", async () => {
+		const piDir = setupReadonlyWorktreesDir(repoDir);
+		const wDir = join(repoDir, ".pi-workflows", "worktrees");
+		try {
+			await expect(
+				createWorktree({
+					cwd: repoDir,
+					branchStrategy: { type: "merge-to-head" },
+				}),
+			).rejects.toThrow();
+			expect(existsSync(piDir)).toBe(false);
+		} finally {
+			try { chmodSync(wDir, 0o755); } catch { /* already gone */ }
+			rmSync(piDir, { recursive: true, force: true });
+		}
+	});
+});
+// ── Bug 8: merge failure emits warning, keeps temp branch ─────────────────────
+
+describe("createWorktree — merge-to-head failure (regression: Bug #8)", () => {
+	it("calls onMergeFailure and keeps temp branch when --ff-only fails", async () => {
+		// Create a worktree on a temp branch, add a commit, then diverge main
+		// so --ff-only fails on dispose.
+		const divergeBranch = `test/diverged-${Date.now().toString(36)}`;
+		const mergeFailures: string[] = [];
+		const wt = await createWorktree({
+			cwd: repoDir,
+			branchStrategy: { type: "merge-to-head" },
+			onMergeFailure: (branch) => { mergeFailures.push(branch); },
+		});
+		const tempBranch = wt.branch;
+		execFileSync("git", ["-C", wt.worktreePath, "commit", "--allow-empty", "-m", "wt commit"], { stdio: "ignore" });
+		// Diverge HEAD so --ff-only will fail.
+		execFileSync("git", ["-C", repoDir, "checkout", "-b", divergeBranch], { stdio: "ignore" });
+		execFileSync("git", ["-C", repoDir, "commit", "--allow-empty", "-m", "main diverge"], { stdio: "ignore" });
+
+		await wt.dispose();
+
+		// onMergeFailure must have been called with the temp branch name.
+		expect(mergeFailures).toContain(tempBranch);
+		// Temp branch must still exist so the user can recover.
+		const branches = execFileSync("git", ["-C", repoDir, "branch", "--list", tempBranch], { encoding: "utf8" });
+		expect(branches.trim()).toContain(tempBranch);
+
+		// Cleanup.
+		execFileSync("git", ["-C", repoDir, "branch", "-D", tempBranch], { stdio: "ignore" });
+		execFileSync("git", ["-C", repoDir, "checkout", "-"], { stdio: "ignore" });
+		execFileSync("git", ["-C", repoDir, "branch", "-D", divergeBranch], { stdio: "ignore" });
 	});
 });

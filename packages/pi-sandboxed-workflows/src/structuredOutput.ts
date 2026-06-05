@@ -49,6 +49,20 @@ export class ValidationError extends Error {
 	}
 }
 
+/**
+ * Thrown when AJV cannot compile the JSON schema (malformed schema —
+ * invalid $ref, bad keyword value, etc.). This is a programmer error,
+ * NOT a transient failure, so the retry loop must not retry on it.
+ */
+export class SchemaCompileError extends Error {
+	override readonly cause: unknown;
+	constructor(message: string, cause?: unknown) {
+		super(message);
+		this.name = "SchemaCompileError";
+		this.cause = cause;
+	}
+}
+
 // ── Public API ─────────────────────────────────────────────────────────────
 
 /**
@@ -142,7 +156,15 @@ export function extractBlocker(stdout: string): string | undefined {
  * instancePath) when validation fails.
  */
 export function validateJson(parsed: unknown, schema: JsonSchema): void {
-	const validate = _ajv.compile(schema);
+	let validate: ReturnType<typeof _ajv.compile>;
+	try {
+		validate = _ajv.compile(schema);
+	} catch (err) {
+		throw new SchemaCompileError(
+			`Schema compile error: ${err instanceof Error ? err.message : String(err)}`,
+			err,
+		);
+	}
 	if (!validate(parsed)) {
 		const msg = _ajv
 			.errorsText(validate.errors, { separator: "; " })

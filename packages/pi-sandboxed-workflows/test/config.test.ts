@@ -18,6 +18,7 @@ import {
 	defaultConfigPath,
 	expandTilde,
 	loadOrInitConfig,
+	projectWorkflowsDir,
 } from "../src/config.js";
 
 describe("expandTilde", () => {
@@ -130,5 +131,69 @@ describe("loadOrInitConfig", () => {
 			JSON.stringify({ directories: ["/ok", 42] }),
 		);
 		expect(() => loadOrInitConfig({ homedir: home })).toThrow(/string/i);
+	});
+});
+
+describe("projectWorkflowsDir", () => {
+	it("returns <cwd>/.pi/sandboxed-workflows", () => {
+		expect(projectWorkflowsDir("/my/project")).toBe(
+			"/my/project/.pi/sandboxed-workflows",
+		);
+	});
+
+	it("works with an arbitrary tmpdir path", () => {
+		const cwd = join(tmpdir(), "some-project");
+		expect(projectWorkflowsDir(cwd)).toBe(join(cwd, ".pi", "sandboxed-workflows"));
+	});
+});
+
+describe("loadOrInitConfig — cwd option (project-local dir)", () => {
+	let home: string;
+	let cwd: string;
+
+	beforeEach(() => {
+		home = mkdtempSync(join(tmpdir(), "pi-sw-cfg-cwd-"));
+		cwd = mkdtempSync(join(tmpdir(), "pi-sw-project-"));
+	});
+	afterEach(() => {
+		rmSync(home, { recursive: true, force: true });
+		rmSync(cwd, { recursive: true, force: true });
+	});
+
+	it("prepends the project-local dir to the directories list", () => {
+		const out = loadOrInitConfig({ homedir: home, cwd });
+		const projectDir = join(cwd, ".pi", "sandboxed-workflows");
+		expect(out.directories[0]).toBe(projectDir);
+	});
+
+	it("project-local dir comes before the global default dir (higher priority)", () => {
+		const out = loadOrInitConfig({ homedir: home, cwd });
+		const projectDir = join(cwd, ".pi", "sandboxed-workflows");
+		const globalDir = join(home, ".pi", "agent", "sandboxed-workflows");
+		expect(out.directories.indexOf(projectDir)).toBeLessThan(
+			out.directories.indexOf(globalDir),
+		);
+	});
+
+	it("does NOT duplicate the project-local dir if it is already listed in the JSON", () => {
+		const projectDir = join(cwd, ".pi", "sandboxed-workflows");
+		const agentDir = join(home, ".pi", "agent");
+		mkdirSync(agentDir, { recursive: true });
+		writeFileSync(
+			join(agentDir, CONFIG_FILE_NAME),
+			JSON.stringify({ directories: [projectDir, "/abs/extra"] }),
+		);
+		const out = loadOrInitConfig({ homedir: home, cwd });
+		const count = out.directories.filter((d) => d === projectDir).length;
+		expect(count).toBe(1);
+		// And it must still be first.
+		expect(out.directories[0]).toBe(projectDir);
+	});
+
+	it("without cwd the project-local dir is NOT prepended (legacy behaviour)", () => {
+		const out = loadOrInitConfig({ homedir: home });
+		const projectDir = join(cwd, ".pi", "sandboxed-workflows");
+		expect(out.directories).not.toContain(projectDir);
+		expect(out.directories).toHaveLength(1);
 	});
 });

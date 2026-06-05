@@ -18,6 +18,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import piSandboxedWorkflows from "../src/index.js";
 import { EVENT_CUSTOM_TYPE } from "../src/host.js";
+import { Key } from "@earendil-works/pi-tui";
 
 interface RegisteredCommand {
 	readonly description: string;
@@ -27,6 +28,7 @@ interface RegisteredCommand {
 interface StubPi {
 	readonly registerCommand: ReturnType<typeof vi.fn>;
 	readonly registerMessageRenderer: ReturnType<typeof vi.fn>;
+	readonly registerShortcut: ReturnType<typeof vi.fn>;
 	readonly on: ReturnType<typeof vi.fn>;
 	readonly sendMessage: ReturnType<typeof vi.fn>;
 	readonly commands: Map<string, RegisteredCommand>;
@@ -43,6 +45,7 @@ function makePi(): StubPi {
 		registerMessageRenderer: vi.fn((customType: string, renderer: unknown) => {
 			renderers.set(customType, renderer);
 		}),
+		registerShortcut: vi.fn(),
 		on: vi.fn(),
 		sendMessage: vi.fn(),
 		commands,
@@ -202,5 +205,14 @@ describe("piSandboxedWorkflows factory", () => {
 		const [msg, level] = notify.mock.calls[0] as [string, string];
 		expect(msg).toMatch(/pi-sandboxed-workflows\.json/);
 		expect(level).toBe("error");
+	});
+
+	it("registers Ctrl+Alt+C shortcut to cancel running workflows", () => {
+		writeWorkflow("do-stuff.workflow.ts");
+		const pi = makePi();
+		piSandboxedWorkflows(pi as never, { homedir: home });
+		const calls = pi.registerShortcut.mock.calls as Array<[unknown, unknown]>;
+		const keys = calls.map(([k]) => k);
+		expect(keys).toContainEqual(Key.ctrlAlt("c"));
 	});
 });

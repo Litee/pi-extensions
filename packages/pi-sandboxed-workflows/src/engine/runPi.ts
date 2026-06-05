@@ -426,6 +426,7 @@ export async function runPi(opts: RunPiOptions): Promise<RunPiResult> {
 		stdin: prompt,
 		onLine,
 		signal: innerAc.signal,
+		forceKillAfterMs: 5_000,
 	};
 
 	let execResult: import("./sandboxProvider.js").ExecResult | undefined;

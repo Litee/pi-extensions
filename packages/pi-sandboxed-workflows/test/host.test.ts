@@ -59,11 +59,12 @@ function baseOpts(
 }
 
 describe("buildWorkflowHost", () => {
-	it("exposes createWorktree as the in-package createWorktree function", () => {
+	it("exposes a createWorktree wrapper that injects onMergeFailure", () => {
 		const { sendMessage } = makeSendMessage();
 		const host = buildWorkflowHost(baseOpts(sendMessage));
-		// host.createWorktree must be our own createWorktree function.
-		expect(host.createWorktree).toBe(createWorktree);
+		// Must be a wrapper function (not the raw import) so it can inject onMergeFailure.
+		expect(typeof host.createWorktree).toBe("function");
+		expect(host.createWorktree).not.toBe(createWorktree);
 	});
 
 	it("exposes the standard runtime fields", () => {
@@ -281,5 +282,82 @@ describe("WorkflowContext.askUser", () => {
 		await expect(
 			host.askUser({ kind: "confirm", text: "?" }),
 		).rejects.toThrow(/Abort/i);
+	});
+});
+
+describe("WorkflowContext.askUser — Esc cancel (regression: Bug 11)", () => {
+	it("throws an AbortError (not a plain Error) when ui.select returns null (Esc)", async () => {
+		const { sendMessage } = makeSendMessage();
+		const host = buildWorkflowHost({
+			...baseOpts(sendMessage),
+			ui: {
+				hasUI: true,
+				input: vi.fn(),
+				// Simulate Esc: return null from select
+				select: vi.fn().mockResolvedValue(null),
+				confirm: vi.fn(),
+			},
+		});
+
+		let caught: unknown;
+		try {
+			await host.askUser({ kind: "select", text: "Pick one:", options: ["a", "b"] });
+		} catch (err) {
+			caught = err;
+		}
+
+		expect(caught).toBeDefined();
+		expect((caught as Error).name).toBe("AbortError");
+	});
+
+	it("uses the select default when ui.select returns null and a default is provided", async () => {
+		const { sendMessage } = makeSendMessage();
+		const host = buildWorkflowHost({
+			...baseOpts(sendMessage),
+			ui: {
+				hasUI: true,
+				input: vi.fn(),
+				select: vi.fn().mockResolvedValue(null),
+				confirm: vi.fn(),
+			},
+		});
+
+		const answer = await host.askUser({
+			kind: "select",
+			text: "Pick one:",
+			options: ["a", "b"],
+			default: "a",
+		});
+		expect(answer).toEqual({ kind: "select", value: "a" });
+	});
+
+	it("uses q.default when ui.input returns null (Esc on input question, Bug #10)", async () => {
+		const { sendMessage } = makeSendMessage();
+		const host = buildWorkflowHost({
+			...baseOpts(sendMessage),
+			ui: {
+				hasUI: true,
+				input: vi.fn().mockResolvedValue(null),
+				select: vi.fn(),
+				confirm: vi.fn(),
+			},
+		});
+		const answer = await host.askUser({ kind: "input", text: "Branch?", default: "main" });
+		expect(answer).toEqual({ kind: "input", value: "main" });
+	});
+
+	it("returns empty string when ui.input returns null and no default (Bug #10)", async () => {
+		const { sendMessage } = makeSendMessage();
+		const host = buildWorkflowHost({
+			...baseOpts(sendMessage),
+			ui: {
+				hasUI: true,
+				input: vi.fn().mockResolvedValue(null),
+				select: vi.fn(),
+				confirm: vi.fn(),
+			},
+		});
+		const answer = await host.askUser({ kind: "input", text: "Branch?" });
+		expect(answer).toEqual({ kind: "input", value: "" });
 	});
 });

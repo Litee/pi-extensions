@@ -16,7 +16,7 @@
  *                                      fast-forward merges back to HEAD.
  */
 import { execFileSync } from "node:child_process";
-import { mkdirSync, existsSync } from "node:fs";
+import { mkdirSync, existsSync, rmdirSync } from "node:fs";
 import { join } from "node:path";
 
 export type BranchStrategy =
@@ -29,6 +29,11 @@ export interface CreateWorktreeOptions {
 	readonly cwd: string;
 	readonly branchStrategy: BranchStrategy;
 	readonly signal?: AbortSignal;
+	/**
+	 * Called when a merge-to-head dispose() fails (e.g. --ff-only conflict).
+	 * Receives the temp branch name so the caller can surface a warning.
+	 */
+	readonly onMergeFailure?: (tempBranch: string, error: unknown) => void;
 }
 
 export interface Worktree {
@@ -65,7 +70,7 @@ function currentBranch(cwd: string): string {
 export function createWorktree(
 	opts: CreateWorktreeOptions,
 ): Promise<Worktree> {
-	const { cwd, branchStrategy, signal } = opts;
+	const { cwd, branchStrategy, signal, onMergeFailure } = opts;
 
 	if (signal?.aborted) {
 		const abortReason: unknown = signal.reason;
@@ -96,16 +101,24 @@ export function createWorktree(
 		mkdirSync(worktreesDir, { recursive: true });
 		const worktreePath = join(worktreesDir, sanitized);
 
-		// Remove any stale worktree at this path.
-		if (existsSync(worktreePath)) {
-			try {
-				git(cwd, "worktree", "remove", worktreePath, "--force");
-			} catch {
-				/* already gone */
+		try {
+			// Remove any stale worktree at this path.
+			if (existsSync(worktreePath)) {
+				try {
+					git(cwd, "worktree", "remove", worktreePath, "--force");
+				} catch {
+					/* already gone */
+				}
 			}
-		}
 
-		git(cwd, "worktree", "add", worktreePath, "-b", branch);
+			git(cwd, "worktree", "add", worktreePath, "-b", branch);
+		} catch (err) {
+			// Clean up the empty directories we just created so they don't
+			// linger on disk when git worktree add fails (e.g. not a git repo).
+			try { rmdirSync(worktreesDir); } catch { /* not empty */ }
+			try { rmdirSync(join(cwd, ".pi-workflows")); } catch { /* not empty */ }
+			return Promise.reject(err instanceof Error ? err : new Error(String(err)));
+		}
 
 		const branchWorktree: Worktree = {
 			worktreePath,
@@ -138,7 +151,13 @@ export function createWorktree(
 	mkdirSync(worktreesDir, { recursive: true });
 	const worktreePath = join(worktreesDir, sanitized);
 
-	git(cwd, "worktree", "add", worktreePath, "-b", tempBranch);
+	try {
+		git(cwd, "worktree", "add", worktreePath, "-b", tempBranch);
+	} catch (err) {
+		try { rmdirSync(worktreesDir); } catch { /* not empty */ }
+		try { rmdirSync(join(cwd, ".pi-workflows")); } catch { /* not empty */ }
+		return Promise.reject(err instanceof Error ? err : new Error(String(err)));
+	}
 
 	const mergeWorktree: Worktree = {
 		worktreePath,
@@ -151,16 +170,23 @@ export function createWorktree(
 				/* best-effort */
 			}
 			// Fast-forward merge to original HEAD branch.
+			let mergeOk = false;
 			try {
 				git(cwd, "merge", "--ff-only", tempBranch);
-			} catch {
-				/* non-fast-forward or no commits — leave it for the user */
+				mergeOk = true;
+			} catch (mergeErr) {
+				// --ff-only failed (diverged, conflicts, no commits, etc.).
+				// Surface via callback so the caller can emit a warning; leave the
+				// temp branch in place so the user can recover the work.
+				onMergeFailure?.(tempBranch, mergeErr);
 			}
-			// Clean up temp branch.
-			try {
-				git(cwd, "branch", "-d", tempBranch);
-			} catch {
-				/* ignore */
+			// Clean up temp branch only on successful merge.
+			if (mergeOk) {
+				try {
+					git(cwd, "branch", "-d", tempBranch);
+				} catch {
+					/* ignore */
+				}
 			}
 			return Promise.resolve();
 		},

@@ -30,6 +30,7 @@ import {
 	extractBlocker,
 	validateJson,
 	PI_SW_RESULT_TAG,
+	SchemaCompileError,
 	type JsonSchema,
 } from "./structuredOutput.js";
 // Re-export so types.ts can forward them without knowing the module layout.
@@ -621,6 +622,18 @@ export function createAgentFn(deps: AgentFnDeps): AgentFn {
 						ts: Date.now(),
 					});
 					throw err instanceof Error ? err : new Error(String(err));
+				}
+
+				// SchemaCompileError: the schema is malformed — no retry can fix it.
+				if (err instanceof SchemaCompileError) {
+					deps.onEvent?.({
+						kind: "agent.failed",
+						agentRunId,
+						attempt,
+						error: err.message,
+						ts: Date.now(),
+					});
+					throw err;
 				}
 
 				// AgentBlockedError: propagate immediately — never retry.

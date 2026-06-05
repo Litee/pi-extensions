@@ -60,6 +60,9 @@ export interface BrowseState {
 	readonly runsIndex: number;
 	/** Scroll offset in the flat agent-event list (run-detail screen). */
 	readonly runDetailIndex: number;
+	/** Run ID of the run currently being viewed in run-detail screen.
+	 *  Set by `handleInput` when navigating from runs → run-detail. */
+	readonly currentRunId?: string;
 }
 
 export const initialBrowseState: BrowseState = {

@@ -165,3 +165,35 @@ describe("reduceBrowse — run-detail screen", () => {
 		expect(step.state.runDetailIndex).toBe(0);
 	});
 });
+
+// ── Regression: r key on runs/run-detail screens ─────────────────────────────
+// Bug 9: r was a no-op on runs and run-detail screens because those screens
+// had no dedicated renderers — they fell through to renderList. The fix adds
+// renderRuns/renderRunDetail to index.ts; the reducer behaviour (render, no
+// state change) was already correct.
+
+describe("reduceBrowse — 'r' key on runs screen (regression: Bug 9)", () => {
+	it("stays on runs screen and returns render effect", () => {
+		const step = reduceBrowse(runsScreen, { kind: "runs" }, 3, 5);
+		expect(step.state.screen).toBe("runs");
+		expect(step.effect.kind).toBe("render");
+	});
+
+	it("does not change runsIndex", () => {
+		const step = reduceBrowse(runsScreen, { kind: "runs" }, 3, 5);
+		expect(step.state.runsIndex).toBe(runsScreen.runsIndex);
+	});
+});
+
+describe("reduceBrowse — 'r' key on run-detail screen (regression: Bug 9)", () => {
+	it("stays on run-detail screen and returns render effect", () => {
+		const step = reduceBrowse(runDetailScreen, { kind: "runs" }, 3, 5);
+		expect(step.state.screen).toBe("run-detail");
+		expect(step.effect.kind).toBe("render");
+	});
+
+	it("does not change runDetailIndex", () => {
+		const step = reduceBrowse(runDetailScreen, { kind: "runs" }, 3, 5);
+		expect(step.state.runDetailIndex).toBe(runDetailScreen.runDetailIndex);
+	});
+});

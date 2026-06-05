@@ -330,7 +330,7 @@ export function buildWorkflowHost(deps: BuildHostDeps): WorkflowContext {
 			return {
 				...(id !== undefined ? { id } : {}),
 				kind: "input",
-				value: rawValue ?? "",
+				value: rawValue ?? q.default ?? "",
 			};
 		}
 
@@ -343,7 +343,9 @@ export function buildWorkflowHost(deps: BuildHostDeps): WorkflowContext {
 				if (q.default !== undefined) {
 					return { ...(id !== undefined ? { id } : {}), kind: "select", value: q.default };
 				}
-				throw new Error("host.askUser: user cancelled selection with no default");
+				// Esc cancel — throw as AbortError so the workflow runner shows ⏹️
+				// stopped instead of ❌ failed.
+				throw new DOMException("User cancelled", "AbortError");
 			}
 			return { ...(id !== undefined ? { id } : {}), kind: "select", value: rawValue };
 		}
@@ -365,7 +367,16 @@ export function buildWorkflowHost(deps: BuildHostDeps): WorkflowContext {
 		publishStatusUpdate,
 		runAgent: agent,
 		askUser,
-		createWorktree,
+		createWorktree: (opts) => createWorktree({
+			...opts,
+			onMergeFailure: (tempBranch, err) => {
+				const msg = err instanceof Error ? err.message : String(err);
+				publishStatusUpdate({
+					kind: "warning",
+					message: `merge-to-head failed (--ff-only): branch '${tempBranch}' kept for recovery. ${msg}`,
+				});
+			},
+		}),
 		createSandbox,
 		createNoOpSandbox: noSandbox,
 		createFakeSandbox: fake,

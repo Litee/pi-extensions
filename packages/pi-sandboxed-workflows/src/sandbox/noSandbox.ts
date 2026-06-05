@@ -57,12 +57,20 @@ export const noSandbox = (options?: NoSandboxOptions): SandboxProvider => {
 				const proc = spawn(program, args, {
 					cwd: opts.cwd,
 					env: mergedEnv,
+					// detached=true makes the subprocess a process-group leader
+					// (PGID = proc.pid) so we can reliably kill the whole group —
+					// including any node child spawned by a shell wrapper — with
+					// process.kill(-proc.pid, signal).
+					detached: true,
 					stdio: [
 						opts.stdin !== undefined ? "pipe" : "ignore",
 						"pipe",
 						"pipe",
 					],
 				});
+				// unref so the group doesn't prevent the parent from exiting
+				// if the caller forgets to await.
+				proc.unref();
 
 				// Feed stdin if provided.
 				if (opts.stdin !== undefined && proc.stdin !== null) {
@@ -72,16 +80,20 @@ export const noSandbox = (options?: NoSandboxOptions): SandboxProvider => {
 
 				// Abort: kill the subprocess.
 				const onAbort = (): void => {
+					const killDelay = opts.forceKillAfterMs ?? 5_000;
 					try {
-						proc.kill("SIGTERM");
-						// SIGKILL after 5 s grace period if still alive.
-						setTimeout(() => {
-							try {
-								proc.kill("SIGKILL");
-							} catch {
-								/* already exited */
+						// Kill the entire process group so the real node child
+						// isn't orphaned when the shell wrapper exits first.
+						try { process.kill(-proc.pid!, "SIGTERM"); } catch { proc.kill("SIGTERM"); }
+						// SIGKILL the process group after grace period if still alive.
+						const killTimer = setTimeout(() => {
+							try { process.kill(-proc.pid!, "SIGKILL"); } catch {
+								try { proc.kill("SIGKILL"); } catch { /* already gone */ }
 							}
-						}, 5_000).unref();
+						}, killDelay);
+						killTimer.unref();
+						// Cancel the SIGKILL timer if the process group exits.
+						proc.once("exit", () => clearTimeout(killTimer));
 					} catch {
 						/* already exited */
 					}
@@ -98,17 +110,23 @@ export const noSandbox = (options?: NoSandboxOptions): SandboxProvider => {
 
 				if (onLine !== undefined && proc.stdout !== null) {
 					const rl = createInterface({ input: proc.stdout });
+					// Swallow readline/stream errors on abrupt SIGKILL teardown so
+					// they don't become unhandled rejections.
+					rl.on("error", () => { /* swallow pipe-closed errors on SIGKILL */ });
+					proc.stdout.on("error", () => { /* swallow pipe-closed errors on SIGKILL */ });
 					rl.on("line", (line) => {
 						outChunks.push(line);
 						onLine(line);
 					});
 				} else if (proc.stdout !== null) {
+					proc.stdout.on("error", () => { /* swallow pipe-closed errors on SIGKILL */ });
 					proc.stdout.on("data", (c: Buffer) => {
 						outChunks.push(c.toString("utf8"));
 					});
 				}
 
 				if (proc.stderr !== null) {
+					proc.stderr.on("error", () => { /* swallow pipe-closed errors on SIGKILL */ });
 					proc.stderr.on("data", (c: Buffer) => {
 						errChunks.push(c.toString("utf8"));
 					});
