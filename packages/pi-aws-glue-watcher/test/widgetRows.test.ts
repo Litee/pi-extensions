@@ -75,11 +75,11 @@ describe("buildWidgetEntries", () => {
 			a: job({ watchId: "a", name: "live" }),
 			b: job({ watchId: "b", name: "done", terminal: true }),
 		});
-		expect(entries.map((e) => e.displayName)).toContain("live");
-		expect(entries.map((e) => e.displayName)).toContain("done");
-		const doneEntry = entries.find((e) => e.displayName === "done");
+		expect(entries.map((e) => e.displayName)).toContain("live (jr)");
+		expect(entries.map((e) => e.displayName)).toContain("done (jr)");
+		const doneEntry = entries.find((e) => e.displayName === "done (jr)");
 		expect(doneEntry?.isTerminal).toBe(true);
-		const liveEntry = entries.find((e) => e.displayName === "live");
+		const liveEntry = entries.find((e) => e.displayName === "live (jr)");
 		expect(liveEntry?.isTerminal).toBe(false);
 	});
 
@@ -99,7 +99,7 @@ describe("buildWidgetEntries", () => {
 		});
 		expect(entries).toEqual([
 			expect.objectContaining({
-				displayName: "j",
+				displayName: "j (jr)",
 				state: "RUNNING",
 				startedOn: "2024-01-01T00:00:00Z",
 				numberOfWorkers: 2,
@@ -158,6 +158,27 @@ describe("buildWidgetEntries", () => {
 		expect(entries).toHaveLength(1);
 	});
 
+	it("falls back to bare watch.name when runId is empty string", () => {
+		const entries = buildWidgetEntries({
+			a: job({ watchId: "a", name: "my-job", runId: "" }),
+		});
+		expect(entries).toHaveLength(1);
+		expect(entries[0]!.displayName).toBe("my-job");
+	});
+
+	it("does NOT deduplicate job watches with the same name but different runIds", () => {
+		// Regression: re-running the same job produced two watches that were
+		// silently collapsed into one because displayName was just watch.name.
+		const entries = buildWidgetEntries({
+			a: job({ watchId: "a", name: "my-job", runId: "jr_aaaaaa01" }),
+			b: job({ watchId: "b", name: "my-job", runId: "jr_bbbbbb02" }),
+		});
+		expect(entries).toHaveLength(2);
+		const names = entries.map((e) => e.displayName);
+		expect(names).toContain("my-job (aaaaaa01)");
+		expect(names).toContain("my-job (bbbbbb02)");
+	});
+
 	// -------------------------------------------------------------------------
 	// Sorting: terminal entries always after non-terminal
 	// -------------------------------------------------------------------------
@@ -169,7 +190,7 @@ describe("buildWidgetEntries", () => {
 			b: job({ watchId: "b", name: "failed-done", terminal: true, baseline: { state: "FAILED", errorMessage: "" } }),
 		});
 		const names = entries.map((e) => e.displayName);
-		expect(names.indexOf("running-active")).toBeLessThan(names.indexOf("failed-done"));
+		expect(names.indexOf("running-active (jr)")).toBeLessThan(names.indexOf("failed-done (jr)"));
 	});
 
 	it("sorts workflow nodes so RUNNING appears before SUCCEEDED", () => {
@@ -238,7 +259,7 @@ describe("buildWidgetEntries", () => {
 				baseline: { state: "RUNNING", errorMessage: "", startedOn: "2024-01-01T01:00:00Z" },
 			}),
 		});
-		expect(entries.map((e) => e.displayName)).toEqual(["newer", "older"]);
+		expect(entries.map((e) => e.displayName)).toEqual(["newer (jr)", "older (jr)"]);
 	});
 
 	it("within the same priority, entries without startedOn trail those with startedOn", () => {
@@ -250,7 +271,7 @@ describe("buildWidgetEntries", () => {
 				baseline: { state: "RUNNING", errorMessage: "", startedOn: "2024-01-01T01:00:00Z" },
 			}),
 		});
-		expect(entries.map((e) => e.displayName)).toEqual(["has-start", "no-start"]);
+		expect(entries.map((e) => e.displayName)).toEqual(["has-start (jr)", "no-start (jr)"]);
 	});
 
 	// -------------------------------------------------------------------------
