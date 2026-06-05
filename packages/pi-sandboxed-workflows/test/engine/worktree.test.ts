@@ -209,32 +209,40 @@ describe("createWorktree — no orphan on failure (regression: Bug 10)", () => {
 
 describe("createWorktree — merge-to-head failure (regression: Bug #8)", () => {
 	it("calls onMergeFailure and keeps temp branch when --ff-only fails", async () => {
-		// Create a worktree on a temp branch, add a commit, then diverge main
-		// so --ff-only fails on dispose.
-		const divergeBranch = `test/diverged-${Date.now().toString(36)}`;
-		const mergeFailures: string[] = [];
-		const wt = await createWorktree({
-			cwd: repoDir,
-			branchStrategy: { type: "merge-to-head" },
-			onMergeFailure: (branch) => { mergeFailures.push(branch); },
-		});
-		const tempBranch = wt.branch;
-		execFileSync("git", ["-C", wt.worktreePath, "commit", "--allow-empty", "-m", "wt commit"], { stdio: "ignore" });
-		// Diverge HEAD so --ff-only will fail.
-		execFileSync("git", ["-C", repoDir, "checkout", "-b", divergeBranch], { stdio: "ignore" });
-		execFileSync("git", ["-C", repoDir, "commit", "--allow-empty", "-m", "main diverge"], { stdio: "ignore" });
+		// Use a completely isolated git repo so no git operations here
+		// can contaminate the shared repoDir or the actual worktree.
+		const isolatedRepo = mkdtempSync(join(tmpdir(), "pi-sw-merge-test-"));
+		try {
+			// Bootstrap: init + initial commit so the repo has a HEAD.
+			execFileSync("git", ["init", isolatedRepo], { stdio: "ignore" });
+			execFileSync("git", ["-C", isolatedRepo, "commit", "--allow-empty", "-m", "init"], { stdio: "ignore" });
 
-		await wt.dispose();
+			const mergeFailures: string[] = [];
+			const wt = await createWorktree({
+				cwd: isolatedRepo,
+				branchStrategy: { type: "merge-to-head" },
+				onMergeFailure: (branch) => { mergeFailures.push(branch); },
+			});
+			const tempBranch = wt.branch;
 
-		// onMergeFailure must have been called with the temp branch name.
-		expect(mergeFailures).toContain(tempBranch);
-		// Temp branch must still exist so the user can recover.
-		const branches = execFileSync("git", ["-C", repoDir, "branch", "--list", tempBranch], { encoding: "utf8" });
-		expect(branches.trim()).toContain(tempBranch);
+			// Add a commit in the worktree so tempBranch advances.
+			execFileSync("git", ["-C", wt.worktreePath, "commit", "--allow-empty", "-m", "wt commit"], { stdio: "ignore" });
+			// Diverge main by creating a new branch and committing on it.
+			// Use a detached branch so we don’t need ‘checkout -’ to undo.
+			const divergeBranch = `test/diverge-${Date.now().toString(36)}`;
+			execFileSync("git", ["-C", isolatedRepo, "checkout", "-b", divergeBranch], { stdio: "ignore" });
+			execFileSync("git", ["-C", isolatedRepo, "commit", "--allow-empty", "-m", "main diverge"], { stdio: "ignore" });
 
-		// Cleanup.
-		execFileSync("git", ["-C", repoDir, "branch", "-D", tempBranch], { stdio: "ignore" });
-		execFileSync("git", ["-C", repoDir, "checkout", "-"], { stdio: "ignore" });
-		execFileSync("git", ["-C", repoDir, "branch", "-D", divergeBranch], { stdio: "ignore" });
+			await wt.dispose();
+
+			// onMergeFailure must have been called with the temp branch name.
+			expect(mergeFailures).toContain(tempBranch);
+			// Temp branch must still exist so the user can recover.
+			const branches = execFileSync("git", ["-C", isolatedRepo, "branch", "--list", tempBranch], { encoding: "utf8" });
+			expect(branches.trim()).toContain(tempBranch);
+		} finally {
+			// Entire isolated repo is disposable — no shared state to restore.
+			rmSync(isolatedRepo, { recursive: true, force: true });
+		}
 	});
 });
