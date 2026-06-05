@@ -38,12 +38,18 @@ const SOURCE_ORDER: readonly string[] = ["builtin", "sdk", "extension", "skill",
  *
  * Layout math is parameterised so tests can exercise edge cases (tiny row
  * widths, generous `minDescWidth` floors) without patching module globals.
+ *
+ * @param inPrompt  Optional set of tool names that are currently included in the
+ *                  system prompt (from `ctx.getSystemPromptOptions().selectedTools`).
+ *                  When provided, tools in the set receive a `◈` badge.
+ *                  Defaults to an empty set (no badges shown).
  */
 export function buildToolRows(
 	tools: ToolInfo[],
 	active: Set<string>,
 	theme: RowTheme,
 	layout: RowLayout,
+	inPrompt: Set<string> = new Set(),
 ): Row[] {
 	const grouped = new Map<string, ToolInfo[]>();
 	for (const tool of tools) {
@@ -63,14 +69,22 @@ export function buildToolRows(
 		const list = grouped.get(key)!.slice().sort((a, b) => a.name.localeCompare(b.name));
 		rows.push({ label: theme.fg("dim", `── ${key} (${list.length}) ──`) });
 		for (const tool of list) {
-			rows.push(buildToolRow(tool, active, theme, layout));
+			rows.push(buildToolRow(tool, active, theme, layout, inPrompt));
 		}
 	}
 	return rows;
 }
 
-function buildToolRow(tool: ToolInfo, active: Set<string>, theme: RowTheme, layout: RowLayout): Row {
+function buildToolRow(
+	tool: ToolInfo,
+	active: Set<string>,
+	theme: RowTheme,
+	layout: RowLayout,
+	inPrompt: Set<string>,
+): Row {
 	const mark = active.has(tool.name) ? theme.fg("accent", "●") : theme.fg("dim", "○");
+	// ◈ badge for tools currently included in the system prompt; space for alignment otherwise.
+	const promptMark = inPrompt.has(tool.name) ? theme.fg("accent", "◈") : " ";
 	const tokenPlain = `[${formatTokens(estimateToolTokens(tool))} tok]`;
 	const name = theme.bold(tool.name);
 	const tokens = theme.fg("dim", tokenPlain);
@@ -78,10 +92,10 @@ function buildToolRow(tool: ToolInfo, active: Set<string>, theme: RowTheme, layo
 	const firstLine = tool.description?.split("\n")[0]?.trim() ?? "";
 	let desc = "";
 	if (firstLine) {
-		// Fixed visible-width chunks: mark(1) + 2sp + name + 1sp + tokenPlain + " — " (3).
-		const fixed = 1 + 2 + tool.name.length + 1 + tokenPlain.length + 3;
+		// Fixed visible-width chunks: mark(1) + promptMark(1) + 2sp + name + 1sp + tokenPlain + " — " (3).
+		const fixed = 1 + 1 + 2 + tool.name.length + 1 + tokenPlain.length + 3;
 		const budget = Math.max(layout.minDescWidth, layout.listRowWidth - fixed);
 		desc = ` ${theme.fg("dim", `— ${truncate(firstLine, budget)}`)}`;
 	}
-	return { label: `${mark}  ${name} ${tokens}${desc}`, toolName: tool.name };
+	return { label: `${mark}${promptMark}  ${name} ${tokens}${desc}`, toolName: tool.name };
 }

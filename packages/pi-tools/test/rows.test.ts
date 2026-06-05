@@ -100,6 +100,52 @@ describe("buildToolRows", () => {
 		expect(rowOff.label).toContain("<dim>○</dim>");
 	});
 
+	it("shows no ◈ badge when inPrompt is omitted (default)", () => {
+		const tools = [mkTool("alpha", "builtin"), mkTool("beta", "builtin")];
+		const rows = buildToolRows(tools, new Set(["alpha"]), theme, layout);
+		for (const row of rows.filter((r) => r.toolName)) {
+			expect(row.label).not.toContain("◈");
+		}
+	});
+
+	it("shows no ◈ badge when inPrompt is empty", () => {
+		const tools = [mkTool("alpha", "builtin"), mkTool("beta", "builtin")];
+		const rows = buildToolRows(tools, new Set(["alpha"]), theme, layout, new Set());
+		for (const row of rows.filter((r) => r.toolName)) {
+			expect(row.label).not.toContain("◈");
+		}
+	});
+
+	it("annotates tools in inPrompt with ◈ (accent) badge", () => {
+		const tools = [mkTool("alpha", "builtin"), mkTool("beta", "builtin")];
+		const rows = buildToolRows(tools, new Set(), theme, layout, new Set(["alpha"]));
+		const rowAlpha = rows.find((r) => r.toolName === "alpha")!;
+		const rowBeta = rows.find((r) => r.toolName === "beta")!;
+		expect(rowAlpha.label).toContain("<accent>◈</accent>");
+		expect(rowBeta.label).not.toContain("◈");
+	});
+
+	it("◈ badge is independent of the active/inactive mark", () => {
+		const tools = [
+			mkTool("active-in-prompt", "builtin"),
+			mkTool("inactive-in-prompt", "builtin"),
+			mkTool("active-not-in-prompt", "builtin"),
+			mkTool("inactive-not-in-prompt", "builtin"),
+		];
+		const active = new Set(["active-in-prompt", "active-not-in-prompt"]);
+		const inPrompt = new Set(["active-in-prompt", "inactive-in-prompt"]);
+		const rows = buildToolRows(tools, active, theme, layout, inPrompt);
+		const get = (name: string) => rows.find((r) => r.toolName === name)!.label;
+		expect(get("active-in-prompt")).toContain("<accent>●</accent>");
+		expect(get("active-in-prompt")).toContain("<accent>◈</accent>");
+		expect(get("inactive-in-prompt")).toContain("<dim>○</dim>");
+		expect(get("inactive-in-prompt")).toContain("<accent>◈</accent>");
+		expect(get("active-not-in-prompt")).toContain("<accent>●</accent>");
+		expect(get("active-not-in-prompt")).not.toContain("◈");
+		expect(get("inactive-not-in-prompt")).toContain("<dim>○</dim>");
+		expect(get("inactive-not-in-prompt")).not.toContain("◈");
+	});
+
 	it("appends the first description line with ' — ' and truncates to the width budget", () => {
 		const desc = "x".repeat(500);
 		const tools = [mkTool("wide", "builtin", `${desc}\nSecond line ignored`)];

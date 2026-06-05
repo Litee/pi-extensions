@@ -39,7 +39,11 @@
  *     `pi.setActiveTools`, `pi.appendEntry`, `pi.on`, and the `ctx.ui.*` dialog helpers.
  */
 
-import type { ExtensionAPI, ExtensionCommandContext, ExtensionContext, ToolInfo } from "@earendil-works/pi-coding-agent";
+import type { BuildSystemPromptOptions, ExtensionAPI, ExtensionCommandContext, ExtensionContext, ToolInfo } from "@earendil-works/pi-coding-agent";
+
+type ExtensionCommandContextWithPromptOptions = ExtensionCommandContext & {
+	getSystemPromptOptions(): BuildSystemPromptOptions;
+};
 import { DynamicBorder, getMarkdownTheme, getSelectListTheme } from "@earendil-works/pi-coding-agent";
 import { Container, Markdown, matchesKey, type SelectItem, SelectList, Text } from "@earendil-works/pi-tui";
 
@@ -182,6 +186,15 @@ export default function toolInfoExtension(pi: ExtensionAPI) {
 				return;
 			}
 
+			// Resolve which tools are currently included in the system prompt.
+			const ctxWithOpts = ctx as ExtensionCommandContextWithPromptOptions;
+			if (typeof ctxWithOpts.getSystemPromptOptions !== "function") {
+				ctx.ui.notify("This command requires pi 0.78.0 or later", "error");
+				return;
+			}
+			const promptOptions = ctxWithOpts.getSystemPromptOptions();
+			const inPrompt = new Set(promptOptions.selectedTools ?? []);
+
 			// Use the live enabledTools set so the selector reflects real-time toggles.
 			const active = enabledTools;
 			const arg = args.trim();
@@ -196,7 +209,7 @@ export default function toolInfoExtension(pi: ExtensionAPI) {
 				const body = [
 					`_${tools.length} tool(s) · ${active.size} active · ~${activeTokens()} active tokens (${totalTokens} total)_`,
 					"",
-					...byName.map((t) => renderToolMarkdown(t, active)),
+					...byName.map((t) => renderToolMarkdown(t, active, inPrompt)),
 				].join("\n\n");
 				await showMarkdown("All Tools", body, ctx, false);
 				return;
@@ -217,7 +230,7 @@ export default function toolInfoExtension(pi: ExtensionAPI) {
 					ctx.ui.notify(`Unknown tool: ${arg}`, "warning");
 					return;
 				}
-				await showMarkdown(`Tool: ${tool.name}`, renderToolMarkdown(tool, active), ctx, false, { tool, active, onToggle });
+				await showMarkdown(`Tool: ${tool.name}`, renderToolMarkdown(tool, active, inPrompt), ctx, false, { tool, active, onToggle });
 				return;
 			}
 
@@ -227,7 +240,7 @@ export default function toolInfoExtension(pi: ExtensionAPI) {
 			const selectListTheme = getSelectListTheme();
 
 			const buildRowsWithActions = () => {
-				const rows = buildToolRows(tools, active, theme, LIST_LAYOUT);
+				const rows = buildToolRows(tools, active, theme, LIST_LAYOUT, inPrompt);
 				rows.push({ label: theme.fg("dim", "── actions ──") });
 				rows.push({
 					label: `${theme.fg("accent", "»")}  ${theme.bold("show all tools in one view")}`,
@@ -300,7 +313,7 @@ export default function toolInfoExtension(pi: ExtensionAPI) {
 
 				if (selectedToolName === "__ALL__") {
 					const byName = [...tools].sort((a, b) => a.name.localeCompare(b.name));
-					const body = byName.map((t) => renderToolMarkdown(t, active)).join("\n\n");
+					const body = byName.map((t) => renderToolMarkdown(t, active, inPrompt)).join("\n\n");
 					const reason = await showMarkdown("All Tools", body, ctx, true);
 					if (reason === "back") continue;
 					return;
@@ -311,7 +324,7 @@ export default function toolInfoExtension(pi: ExtensionAPI) {
 
 				const reason = await showMarkdown(
 					`Tool: ${tool.name}`,
-					renderToolMarkdown(tool, active),
+					renderToolMarkdown(tool, active, inPrompt),
 					ctx,
 					true,
 					{ tool, active, onToggle },
