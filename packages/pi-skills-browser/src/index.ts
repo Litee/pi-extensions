@@ -42,6 +42,14 @@ export default function skillsBrowserExtension(pi: ExtensionAPI) {
 				return;
 			}
 
+			const ctxWithOpts = ctx as { getSystemPromptOptions?: () => { skills?: Array<{ name: string; path: string }> } };
+			if (typeof ctxWithOpts.getSystemPromptOptions !== "function") {
+				ctx.ui?.notify?.("This feature requires pi 0.78.0 or later", "error");
+				return;
+			}
+			const opts = ctxWithOpts.getSystemPromptOptions();
+			const skillsInPrompt = new Set((opts.skills ?? []).map((s) => s.name));
+
 			// Collect all skill commands registered in this session.
 			const skills: SkillEntry[] = pi
 				.getCommands()
@@ -51,6 +59,7 @@ export default function skillsBrowserExtension(pi: ExtensionAPI) {
 					description: c.description ?? "",
 					tokens: estimateDescriptionTokens(c.description ?? ""),
 					path: c.sourceInfo.path,
+					inPrompt: skillsInPrompt.has(c.name),
 				}));
 
 			if (skills.length === 0) {
@@ -175,7 +184,10 @@ export default function skillsBrowserExtension(pi: ExtensionAPI) {
 							theme.fg(
 								"dim",
 								`↑↓ navigate · Ctrl-S sort · type to filter · ⌫ clear · esc close   ${pos}`,
-							),
+							) +
+								" " +
+								theme.fg("success", "●") +
+								theme.fg("dim", " in prompt"),
 							width,
 						),
 					);

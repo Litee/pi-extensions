@@ -20,6 +20,7 @@ function mkSkill(name: string, description: string): SkillEntry {
 		description,
 		tokens: estimateDescriptionTokens(description),
 		path: `/path/to/${name}`,
+		inPrompt: false,
 	};
 }
 
@@ -150,9 +151,9 @@ describe("applySortMode", () => {
 
 	it("uses name as a tiebreaker when token counts are equal in 'tokens' mode", () => {
 		const equal: SkillEntry[] = [
-			{ name: "zeta", description: "abcd", tokens: 1, path: "" },
-			{ name: "alpha", description: "abcd", tokens: 1, path: "" },
-			{ name: "mango", description: "abcd", tokens: 1, path: "" },
+			{ name: "zeta", description: "abcd", tokens: 1, path: "", inPrompt: false },
+			{ name: "alpha", description: "abcd", tokens: 1, path: "", inPrompt: false },
+			{ name: "mango", description: "abcd", tokens: 1, path: "", inPrompt: false },
 		];
 		const sorted = applySortMode(equal, "tokens");
 		expect(sorted.map((s) => s.name)).toEqual(["alpha", "mango", "zeta"]);
@@ -185,10 +186,10 @@ describe("filterAndSort", () => {
 	it("filters then sorts — query restricts results, mode orders them", () => {
 		// Two skills contain "s": "brainstorming", "use-pyspark", "skill-creator", "write-well" ... actually let's be specific
 		const subset: SkillEntry[] = [
-			{ name: "beta", description: "x".repeat(20), tokens: 5, path: "" },
-			{ name: "alpha", description: "x".repeat(40), tokens: 10, path: "" },
-			{ name: "gamma", description: "x".repeat(8), tokens: 2, path: "" },
-			{ name: "delta-extra", description: "x".repeat(16), tokens: 4, path: "" },
+			{ name: "beta", description: "x".repeat(20), tokens: 5, path: "", inPrompt: false },
+			{ name: "alpha", description: "x".repeat(40), tokens: 10, path: "", inPrompt: false },
+			{ name: "gamma", description: "x".repeat(8), tokens: 2, path: "", inPrompt: false },
+			{ name: "delta-extra", description: "x".repeat(16), tokens: 4, path: "", inPrompt: false },
 		];
 		// Filter: "a" matches all four entries (beta/alpha/gamma/delta-extra all contain "a").
 		const result = filterAndSort(subset, "a", "tokens");

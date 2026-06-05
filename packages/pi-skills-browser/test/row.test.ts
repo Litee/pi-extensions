@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 
 import {
 	ARROW_COL_WIDTH,
+	PROMPT_INDICATOR_WIDTH,
 	TOKEN_COL_WIDTH,
 	buildRowLine,
 	computeNameColWidth,
@@ -15,8 +16,8 @@ const markerTheme: RowTheme = {
 	fg: (color, text) => `<${color}>${text}</>`,
 };
 
-function mkSkill(name: string, tokens: number): SkillEntry {
-	return { name, description: "", tokens, path: "" };
+function mkSkill(name: string, tokens: number, inPrompt = false): SkillEntry {
+	return { name, description: "", tokens, path: "", inPrompt };
 }
 
 // ---------------------------------------------------------------------------
@@ -24,8 +25,8 @@ function mkSkill(name: string, tokens: number): SkillEntry {
 // ---------------------------------------------------------------------------
 
 describe("computeNameColWidth", () => {
-	it("returns width minus arrow and badge columns for normal widths", () => {
-		expect(computeNameColWidth(80)).toBe(80 - ARROW_COL_WIDTH - TOKEN_COL_WIDTH);
+	it("returns width minus arrow, prompt indicator, and badge columns for normal widths", () => {
+		expect(computeNameColWidth(80)).toBe(80 - ARROW_COL_WIDTH - PROMPT_INDICATOR_WIDTH - TOKEN_COL_WIDTH);
 	});
 
 	it("clamps to a minimum of 4 when the terminal is very narrow", () => {
@@ -94,8 +95,8 @@ describe("buildRowLine", () => {
 		// Strip marker tags to measure raw character positions.
 		const raw = buildRowLine(mkSkill("ab", 5), false, 10, 12, markerTheme)
 			.replace(/<[^>]+>/g, "");
-		// "  " + "ab" + 8 spaces + 12-wide badge = 24 chars total
-		expect(raw.length).toBe(ARROW_COL_WIDTH + 10 + 12);
+		// "  " + "ab" + 8 spaces + "  " (indicator) + 12-wide badge = 26 chars total
+		expect(raw.length).toBe(ARROW_COL_WIDTH + 10 + PROMPT_INDICATOR_WIDTH + 12);
 		// Badge is `[5 tok]` padStart(12) → 5 leading spaces.
 		expect(raw).toMatch(/ {5}\[5 tok]$/);
 	});
@@ -104,5 +105,49 @@ describe("buildRowLine", () => {
 		const line = buildRowLine(mkSkill("x", 12345), false, 20, 12, markerTheme);
 		// 12345 → "12k"
 		expect(line).toContain("[12k tok]");
+	});
+});
+
+// ---------------------------------------------------------------------------
+// buildRowLine — prompt-status indicator
+// ---------------------------------------------------------------------------
+
+describe("buildRowLine inPrompt indicator", () => {
+	it("shows no indicator text for skills not in the system prompt", () => {
+		const raw = buildRowLine(mkSkill("alpha", 10, false), false, 20, 12, markerTheme)
+			.replace(/<[^>]+>/g, "");
+		// The two indicator chars should be spaces, not ●
+		expect(raw).not.toContain("●");
+	});
+
+	it("renders ● for skills active in the system prompt", () => {
+		const line = buildRowLine(mkSkill("alpha", 10, true), false, 20, 12, markerTheme);
+		expect(line).toContain("●");
+	});
+
+	it("colours the indicator with 'success' theme colour", () => {
+		const line = buildRowLine(mkSkill("alpha", 10, true), false, 20, 12, markerTheme);
+		expect(line).toContain("<success>\u25cf </>");
+	});
+
+	it("indicator is present between name column and token badge", () => {
+		// Strip tags and verify layout order: arrow → name+pad → indicator → badge
+		const withIndicator = buildRowLine(mkSkill("ab", 5, true), false, 10, 12, markerTheme)
+			.replace(/<[^>]+>/g, "");
+		const withoutIndicator = buildRowLine(mkSkill("ab", 5, false), false, 10, 12, markerTheme)
+			.replace(/<[^>]+>/g, "");
+		// Both must be the same total length
+		expect(withIndicator.length).toBe(withoutIndicator.length);
+		// The indicator row must contain ● at position ARROW_COL_WIDTH + nameColWidth
+		const indicatorStart = ARROW_COL_WIDTH + 10;
+		expect(withIndicator[indicatorStart]).toBe("●");
+		expect(withoutIndicator[indicatorStart]).toBe(" ");
+	});
+
+	it("inPrompt indicator is unaffected by selection state", () => {
+		const selectedInPrompt = buildRowLine(mkSkill("alpha", 10, true), true, 20, 12, markerTheme);
+		// Selected + inPrompt: both accent arrow and success indicator appear
+		expect(selectedInPrompt).toContain("<accent>> </>");
+		expect(selectedInPrompt).toContain("<success>\u25cf </>");
 	});
 });
