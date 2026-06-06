@@ -617,6 +617,7 @@ export class GlueWatcher extends BaseWatcher<GlueWatch, WatchBaseline, GlueEvent
   // ── Browse options ────────────────────────────────────────────────────────
   protected override browseOptions(): Partial<BrowseViewOptions<GlueWatch>> {
     return {
+      searchable: false,
       rowActions: [
         {
           id: 'stop',
