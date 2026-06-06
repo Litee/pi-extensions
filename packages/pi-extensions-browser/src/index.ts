@@ -22,6 +22,7 @@ import { homedir } from "node:os";
 import { join } from "node:path";
 
 import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
+import type { ThemeColor } from "@earendil-works/pi-coding-agent";
 import { matchesKey, truncateToWidth } from "@earendil-works/pi-tui";
 
 // ---------------------------------------------------------------------------
@@ -182,13 +183,13 @@ const HEALTH_ICON: Record<ExtPackageEntry["health"], string> = {
 	unverified: "~",
 };
 
-const HEALTH_COLOR: Record<ExtPackageEntry["health"], string> = {
+const HEALTH_COLOR: Record<ExtPackageEntry["health"], ThemeColor> = {
 	ok: "success",
 	missing: "error",
 	unverified: "dim",
 };
 
-type Theme = { fg: (color: string, text: string) => string; bold: (text: string) => string };
+type Theme = { fg: (color: ThemeColor, text: string) => string; bold: (text: string) => string };
 
 function renderEntry(
 	entry: ExtPackageEntry,
