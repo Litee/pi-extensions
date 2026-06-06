@@ -1278,17 +1278,21 @@ export abstract class BaseWatcher<
 
   /** Seed baselines for watches that lack one. */
   private async _seedMissingBaselines(): Promise<void> {
-    for (const [key, watch] of this.watches) {
-      if (watch.terminal || this.baselines.has(key)) continue
-      try {
-        const baseline = await this.snapshot(watch)
-        this.baselines.set(key, baseline)
-      } catch (err) {
-        this._pi.appendEntry(`${this.extensionName}:seed-error`, {
-          watchKey: key,
-          message: (err as Error)?.message ?? String(err),
-        })
-      }
-    }
+    const pending = Array.from(this.watches.entries()).filter(
+      ([key, watch]) => !watch.terminal && !this.baselines.has(key),
+    )
+    await Promise.all(
+      pending.map(async ([key, watch]) => {
+        try {
+          const baseline = await this.snapshot(watch)
+          this.baselines.set(key, baseline)
+        } catch (err) {
+          this._pi.appendEntry(`${this.extensionName}:seed-error`, {
+            watchKey: key,
+            message: (err as Error)?.message ?? String(err),
+          })
+        }
+      }),
+    )
   }
 }

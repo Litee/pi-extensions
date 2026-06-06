@@ -75,4 +75,30 @@ describe("seedMissingBaselines", () => {
 		await seedMissingBaselines(watches, { snapshot, onError: vi.fn() });
 		expect(order).toEqual(watches.map((w) => w.id));
 	});
+
+	it("launches all snapshots concurrently — all calls start before any resolves", async () => {
+		const resolvers: Array<() => void> = [];
+		const startOrder: number[] = [];
+
+		const watches = [makeWatch(), makeWatch(), makeWatch()];
+		const snapshot = vi.fn().mockImplementation((w: (typeof watches)[0]) => {
+			startOrder.push(w.id);
+			return new Promise<{ exists: boolean }>((resolve) => {
+				resolvers.push(() => resolve({ exists: true }));
+			});
+		});
+
+		const done = seedMissingBaselines(watches, { snapshot, onError: vi.fn() });
+
+		// All three snapshot calls must have been initiated before any resolved.
+		expect(startOrder).toEqual(watches.map((w) => w.id));
+
+		// Resolve all and await completion.
+		resolvers.forEach((r) => r());
+		await done;
+
+		for (const w of watches) {
+			expect(w.baseline).toEqual({ exists: true });
+		}
+	});
 });
