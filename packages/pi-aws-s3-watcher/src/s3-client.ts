@@ -12,10 +12,7 @@
  * `"profile:region"` so we don't recreate them on every poll.
  */
 
-import {
-	HeadObjectCommand,
-	S3Client as AwsS3Client,
-} from "@aws-sdk/client-s3";
+import type { S3Client as AwsS3Client } from "@aws-sdk/client-s3";
 import { fromIni } from "@aws-sdk/credential-providers";
 
 // ---------------------------------------------------------------------------
@@ -79,11 +76,12 @@ export function isNotFoundError(err: unknown): boolean {
 export function createS3Client(): S3Client {
 	const clientCache = new Map<string, AwsS3Client>();
 
-	function getSdkClient(profile: string, region: string | undefined): AwsS3Client {
+	async function getSdkClient(profile: string, region: string | undefined): Promise<AwsS3Client> {
 		const key = `${profile}:${region ?? "<default>"}`;
 		let c = clientCache.get(key);
 		if (!c) {
-			c = new AwsS3Client({
+			const { S3Client } = await import("@aws-sdk/client-s3");
+			c = new S3Client({
 				credentials: fromIni({ profile }),
 				...(region !== undefined ? { region } : {}),
 			});
@@ -94,8 +92,9 @@ export function createS3Client(): S3Client {
 
 	return {
 		async headObject(bucket, key, profile, region) {
+			const { HeadObjectCommand } = await import("@aws-sdk/client-s3");
 			try {
-				const out = await getSdkClient(profile, region).send(
+				const out = await (await getSdkClient(profile, region)).send(
 					new HeadObjectCommand({ Bucket: bucket, Key: key }),
 				);
 				const result: HeadObjectResult = { exists: true };
