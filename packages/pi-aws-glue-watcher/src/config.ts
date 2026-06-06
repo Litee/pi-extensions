@@ -82,7 +82,7 @@ export function loadConfig(): GlueWatcherConfig {
  * preserved on disk when an older build writes back. Returns `true`
  * on success, `false` if anything threw — callers surface a toast.
  */
-export function saveConfig(change: Partial<GlueWatcherConfig>): boolean {
+export function saveConfig(change: { [K in keyof GlueWatcherConfig]?: GlueWatcherConfig[K] | undefined }): boolean {
 	const path = configFilePath();
 	try {
 		let existing: Record<string, unknown> = {};

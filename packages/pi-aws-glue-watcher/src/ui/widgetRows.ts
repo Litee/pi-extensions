@@ -95,6 +95,7 @@ export function buildWidgetEntries(watchMap: WatchMap): WidgetEntry[] {
 	for (const watch of watches) {
 		if (watch.type === "job") {
 			const b = watch.baseline as JobBaseline | undefined;
+			const bStyle = stateStyle(b?.state ?? "");
 			entries.push({
 				displayName: watch.runId ? `${watch.name} [${watch.runId.slice(-4)}]` : watch.name,
 				state: b?.state ?? "",
@@ -103,7 +104,11 @@ export function buildWidgetEntries(watchMap: WatchMap): WidgetEntry[] {
 				...(b?.numberOfWorkers !== undefined ? { numberOfWorkers: b.numberOfWorkers } : {}),
 				...(b?.workerType !== undefined ? { workerType: b.workerType } : {}),
 				...pollIntervalSpread(watch),
-				isTerminal: watch.terminal,
+				// Dim based on the known state in the baseline, not only on watch.terminal.
+				// watch.terminal requires observing a state-transition event; baseline-based
+				// dimming ensures already-completed runs are dimmed immediately without waiting
+				// for a poll that would see prevState === nextState and emit no event.
+				isTerminal: watch.terminal || bStyle === "success" || bStyle === "error",
 			});
 		} else {
 			const b = watch.baseline as WorkflowBaseline | undefined;
@@ -126,7 +131,14 @@ export function buildWidgetEntries(watchMap: WatchMap): WidgetEntry[] {
 					});
 				}
 			} else {
-				entries.push({ displayName: watch.runId ? `${watch.name} [${watch.runId.slice(-4)}]` : watch.name, state: b?.state ?? "", ...pollIntervalSpread(watch), isTerminal: watch.terminal });
+				// Fallback when the workflow graph has no JOB nodes yet.
+				const bStyle = stateStyle(b?.state ?? "");
+				entries.push({
+					displayName: watch.runId ? `${watch.name} [${watch.runId.slice(-4)}]` : watch.name,
+					state: b?.state ?? "",
+					...pollIntervalSpread(watch),
+					isTerminal: watch.terminal || bStyle === "success" || bStyle === "error",
+				});
 			}
 		}
 	}
