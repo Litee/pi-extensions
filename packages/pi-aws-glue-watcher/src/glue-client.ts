@@ -18,15 +18,7 @@
  * the poll loop never touches this module directly.
  */
 
-import {
-	BatchStopJobRunCommand,
-	GlueClient as AwsGlueClient,
-	GetJobRunCommand,
-	GetJobRunsCommand,
-	GetWorkflowRunCommand,
-	GetWorkflowRunsCommand,
-	StopWorkflowRunCommand,
-} from "@aws-sdk/client-glue";
+import type { GlueClient as AwsGlueClient } from "@aws-sdk/client-glue";
 import { fromIni } from "@aws-sdk/credential-providers";
 
 // ---------------------------------------------------------------------------
@@ -147,11 +139,12 @@ export interface GlueClient {
 export function createGlueClient(): GlueClient {
 	const clientCache = new Map<string, AwsGlueClient>();
 
-	function getSdkClient(profile: string, region: string | undefined): AwsGlueClient {
+	async function getSdkClient(profile: string, region: string | undefined): Promise<AwsGlueClient> {
 		const key = `${profile}:${region ?? "<default>"}`;
 		let c = clientCache.get(key);
 		if (!c) {
-			c = new AwsGlueClient({
+			const { GlueClient } = await import("@aws-sdk/client-glue");
+			c = new GlueClient({
 				credentials: fromIni({ profile }),
 				...(region !== undefined ? { region } : {}),
 			});
@@ -162,7 +155,8 @@ export function createGlueClient(): GlueClient {
 
 	return {
 		async getJobRun(jobName, runId, profile, region) {
-			const out = await getSdkClient(profile, region).send(
+			const { GetJobRunCommand } = await import("@aws-sdk/client-glue");
+			const out = await (await getSdkClient(profile, region)).send(
 				new GetJobRunCommand({ JobName: jobName, RunId: runId }),
 			);
 			const jr = out.JobRun;
@@ -180,7 +174,8 @@ export function createGlueClient(): GlueClient {
 		},
 
 		async getWorkflowRun(workflowName, runId, profile, region) {
-			const out = await getSdkClient(profile, region).send(
+			const { GetWorkflowRunCommand } = await import("@aws-sdk/client-glue");
+			const out = await (await getSdkClient(profile, region)).send(
 				new GetWorkflowRunCommand({ Name: workflowName, RunId: runId, IncludeGraph: true }),
 			);
 			const run = out.Run;
@@ -228,7 +223,8 @@ export function createGlueClient(): GlueClient {
 		},
 
 		async getLatestJobRunId(jobName, profile, region) {
-			const out = await getSdkClient(profile, region).send(
+			const { GetJobRunsCommand } = await import("@aws-sdk/client-glue");
+			const out = await (await getSdkClient(profile, region)).send(
 				new GetJobRunsCommand({ JobName: jobName, MaxResults: 1 }),
 			);
 			const id = out.JobRuns?.[0]?.Id;
@@ -237,7 +233,8 @@ export function createGlueClient(): GlueClient {
 		},
 
 		async getLatestWorkflowRunId(workflowName, profile, region) {
-			const out = await getSdkClient(profile, region).send(
+			const { GetWorkflowRunsCommand } = await import("@aws-sdk/client-glue");
+			const out = await (await getSdkClient(profile, region)).send(
 				new GetWorkflowRunsCommand({ Name: workflowName, MaxResults: 1 }),
 			);
 			const wfRunId = out.Runs?.[0]?.WorkflowRunId;
@@ -246,13 +243,15 @@ export function createGlueClient(): GlueClient {
 		},
 
 		async stopJobRun(jobName, runId, profile, region) {
-			await getSdkClient(profile, region).send(
+			const { BatchStopJobRunCommand } = await import("@aws-sdk/client-glue");
+			await (await getSdkClient(profile, region)).send(
 				new BatchStopJobRunCommand({ JobName: jobName, JobRunIds: [runId] }),
 			);
 		},
 
 		async stopWorkflowRun(workflowName, runId, profile, region) {
-			await getSdkClient(profile, region).send(
+			const { StopWorkflowRunCommand } = await import("@aws-sdk/client-glue");
+			await (await getSdkClient(profile, region)).send(
 				new StopWorkflowRunCommand({ Name: workflowName, RunId: runId }),
 			);
 		},

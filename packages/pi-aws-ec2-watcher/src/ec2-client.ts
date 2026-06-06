@@ -6,12 +6,7 @@
  * on every poll.
  */
 
-import {
-	DescribeInstancesCommand,
-	EC2Client as AwsEc2Client,
-	StartInstancesCommand,
-	StopInstancesCommand,
-} from "@aws-sdk/client-ec2";
+import type { EC2Client as AwsEc2Client } from "@aws-sdk/client-ec2";
 import { fromIni } from "@aws-sdk/credential-providers";
 import type { Ec2InstanceState } from "./types.js";
 
@@ -77,11 +72,12 @@ export function isNotFoundError(err: unknown): boolean {
 export function createEc2Client(): Ec2Client {
 	const clientCache = new Map<string, AwsEc2Client>();
 
-	function getSdkClient(profile: string, region: string | undefined): AwsEc2Client {
+	async function getSdkClient(profile: string, region: string | undefined): Promise<AwsEc2Client> {
 		const key = `${profile}:${region ?? "<default>"}`;
 		let c = clientCache.get(key);
 		if (!c) {
-			c = new AwsEc2Client({
+			const { EC2Client } = await import("@aws-sdk/client-ec2");
+			c = new EC2Client({
 				credentials: fromIni({ profile }),
 				...(region !== undefined ? { region } : {}),
 			});
@@ -92,16 +88,19 @@ export function createEc2Client(): Ec2Client {
 
 	return {
 		stopInstance: async (instanceId, profile, region) => {
-			const sdk = getSdkClient(profile, region);
+			const { StopInstancesCommand } = await import("@aws-sdk/client-ec2");
+			const sdk = await getSdkClient(profile, region);
 			await sdk.send(new StopInstancesCommand({ InstanceIds: [instanceId] }));
 		},
 		startInstance: async (instanceId, profile, region) => {
-			const sdk = getSdkClient(profile, region);
+			const { StartInstancesCommand } = await import("@aws-sdk/client-ec2");
+			const sdk = await getSdkClient(profile, region);
 			await sdk.send(new StartInstancesCommand({ InstanceIds: [instanceId] }));
 		},
 		async describeInstance(instanceId, profile, region) {
+			const { DescribeInstancesCommand } = await import("@aws-sdk/client-ec2");
 			try {
-				const out = await getSdkClient(profile, region).send(
+				const out = await (await getSdkClient(profile, region)).send(
 					new DescribeInstancesCommand({ InstanceIds: [instanceId] }),
 				);
 				const instance = out.Reservations?.[0]?.Instances?.[0];
