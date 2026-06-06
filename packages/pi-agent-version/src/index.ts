@@ -63,7 +63,7 @@ export default function versionExtension(pi: ExtensionAPI): void {
 		// eslint-disable-next-line @typescript-eslint/require-await
 		handler: async (_args, ctx) => {
 			const version = readAgentVersion();
-			ctx.ui.notify(`pi-coding-agent v${version}`, "info");
+			ctx.ui.notify(`@earendil-works/pi-coding-agent v${version}`, "info");
 		},
 	});
 }
