@@ -118,7 +118,12 @@ export default defineConfig({
 				// pi-coding-agent runtime. The pure logic (checker, helpers,
 				// prompt, state) is 100% covered by the other four test files.
 				"**/pi-goal/src/index.ts",
-				// pi-agent-introspection/src/index.ts wires two lifecycle calls:
+				// pi-extensions-browser/src/index.ts is the TUI shell that wires
+				// ctx.ui.custom() to the pure helper functions (detectKind, checkHealth,
+				// deriveName, loadEntries, filterEntries) which are 100% covered in
+				// helpers.test.ts. The TUI shell itself requires a live pi-tui runtime.
+				"**/pi-extensions-browser/src/index.ts",
+								// pi-agent-introspection/src/index.ts wires two lifecycle calls:
 				// registerSessionDebugInfoTool(pi) and registerCommandsTool(pi)
 				// (both fully covered in tool.ts / commandsTool.ts), then filters
 				// the active-tool set on session_start via pi.setActiveTools. Pure
