@@ -486,12 +486,14 @@ export default function manageToolsExtension(pi: ExtensionAPI): void {
 
 		execute(_toolCallId, params, _signal, _onUpdate, ctx) {
 			const ctxWithOpts = ctx as ExtensionContextWithPromptOptions;
-			if (typeof ctxWithOpts.getSystemPromptOptions !== "function") {
-				ctx.ui?.notify?.("manage_tools requires pi 0.78.0 or later", "error");
-				return { ok: false, error: "getSystemPromptOptions() not available" };
-			}
-			const promptOptions = ctxWithOpts.getSystemPromptOptions();
-			const promptTools = new Set(promptOptions.selectedTools ?? []);
+			// getSystemPromptOptions() is only available in createCommandContext(),
+			// not in createContext() used for tool execution. Degrade gracefully:
+			// promptTools is only used for the [x] vs [~] display marker, so an
+			// empty set is safe.
+			const promptTools =
+				typeof ctxWithOpts.getSystemPromptOptions === "function"
+					? new Set(ctxWithOpts.getSystemPromptOptions().selectedTools ?? [])
+					: new Set<string>();
 
 			const all = pi.getAllTools();
 			const knownTools = new Set(all.map((t) => t.name));
