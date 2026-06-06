@@ -997,16 +997,19 @@ describe("auto-continue — session_start resets state", () => {
 // ===========================================================================
 
 describe("list — prompt-diff markers (#0002)", () => {
-	it("fires error notification and returns error when getSystemPromptOptions is absent", async () => {
+	it("degrades gracefully when getSystemPromptOptions is absent (all active tools show [~])", async () => {
 		const pi = makeFakePi({ all: [...BASE_TOOLS], active: ["read", "bash"] });
 		createExtension(pi.api);
 		await pi.fireSessionStart();
 		const ctx = makeCtx({ noGetSystemPromptOptions: true });
 		const res = await exec(pi.tool, { action: "list" }, ctx);
-		expect((res as { ok?: boolean }).ok).toBe(false);
-		const notify = (ctx as unknown as { ui: { notify: ReturnType<typeof vi.fn> } }).ui.notify;
-		expect(notify).toHaveBeenCalledTimes(1);
-		expect(notify.mock.calls[0]?.[0]).toMatch(/0\.78\.0/);
+		// Must return a valid AgentToolResult (no crash, no malformed result)
+		const txt = textOf(res);
+		expect(txt).toBeTruthy();
+		// Active tools show [~] (in registry, not in prompt) rather than erroring
+		expect(txt).toContain("[~] read");
+		expect(txt).toContain("[~] bash");
+		expect(txt).toContain("[ ] edit");
 	});
 
 	it("active-in-registry but missing from selectedTools shows [~] in text output", async () => {
@@ -1084,13 +1087,17 @@ describe("renderResult — prompt-diff markers in TUI (#0002)", () => {
 		expect(out).not.toContain("[~]");
 	});
 
-	it("returns error when getSystemPromptOptions is absent", async () => {
+	it("degrades gracefully when getSystemPromptOptions is absent", async () => {
 		const pi = makeFakePi({ all: [...BASE_TOOLS], active: ["read", "bash"] });
 		createExtension(pi.api);
 		await pi.fireSessionStart();
 		const ctx = makeCtx({ noGetSystemPromptOptions: true });
 		const res = await exec(pi.tool, { action: "list" }, ctx);
-		expect((res as { ok?: boolean }).ok).toBe(false);
-		expect((res as { error?: string }).error).toMatch(/getSystemPromptOptions/);
+		// Must return a valid AgentToolResult with content — no crash
+		const out = renderText(pi.tool, res, { expanded: true });
+		expect(out).toBeTruthy();
+		// All active tools show [~] (no prompt snapshot available)
+		expect(out).toContain("[~]");
+		expect(out).not.toContain("[x]");
 	});
 });
