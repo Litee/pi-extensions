@@ -97,7 +97,7 @@ describe("pi-tools /tools command — getSystemPromptOptions guard", () => {
 		expect(toolsCmd).toBeDefined();
 
 		const getSystemPromptOptions = vi.fn(
-			(): BuildSystemPromptOptions => ({ selectedTools: ["read"] }),
+			(): BuildSystemPromptOptions => ({ cwd: "/", selectedTools: ["read"] }),
 		);
 		const ctx = makeFakeCtx({ getSystemPromptOptions });
 

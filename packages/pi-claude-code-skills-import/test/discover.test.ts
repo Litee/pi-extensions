@@ -3,7 +3,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it } from "vitest";
 
-import { discoverAllSkills, resolvesIntoAgentsSkills } from "../src/discover.js";
+import { discoverAllSkills } from "../src/discover.js";
 
 function mkdir(root: string, rel: string): string {
 	const p = join(root, rel);
