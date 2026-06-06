@@ -338,6 +338,39 @@ describe('onSessionStart', () => {
     expect(snapshotFn).toHaveBeenCalledOnce()
     expect(watcher.testBaselines.get('w1')).toEqual({ seenAt: 1_000_000 })
   })
+
+  it('seeds missing baselines concurrently — all snapshots start before any resolves', async () => {
+    const resolvers: Array<() => void> = []
+    const startOrder: string[] = []
+
+    const { watcher } = makeWatcher()
+    watcher.snapshotFn = vi.fn().mockImplementation((w: StubWatch) => {
+      startOrder.push(w.id)
+      return new Promise<StubBaseline>((resolve) => {
+        resolvers.push(() => resolve({ seenAt: 1_000_000 }))
+      })
+    })
+
+    const ctx = makeCtxWithState({
+      watches: [
+        { id: 'w1', label: 'Watch 1', terminal: false, consecutiveErrors: 0 },
+        { id: 'w2', label: 'Watch 2', terminal: false, consecutiveErrors: 0 },
+        { id: 'w3', label: 'Watch 3', terminal: false, consecutiveErrors: 0 },
+      ],
+    })
+
+    const done = watcher.onSessionStart(ctx)
+
+    // All three snapshot calls must have been initiated before any resolved.
+    expect(startOrder).toEqual(['w1', 'w2', 'w3'])
+
+    resolvers.forEach((r) => r())
+    await done
+
+    expect(watcher.testBaselines.get('w1')).toEqual({ seenAt: 1_000_000 })
+    expect(watcher.testBaselines.get('w2')).toEqual({ seenAt: 1_000_000 })
+    expect(watcher.testBaselines.get('w3')).toEqual({ seenAt: 1_000_000 })
+  })
 })
 
 // ---------------------------------------------------------------------------

@@ -35,12 +35,14 @@ export async function seedMissingBaselines<W extends SeedableWatch>(
 	watches: W[],
 	opts: SeedBaselinesOpts<W>,
 ): Promise<void> {
-	for (const watch of watches) {
-		if (watch.terminal || watch.baseline !== undefined) continue;
-		try {
-			watch.baseline = await opts.snapshot(watch);
-		} catch (err) {
-			opts.onError(watch, err);
-		}
-	}
+	const pending = watches.filter((w) => !w.terminal && w.baseline === undefined);
+	await Promise.all(
+		pending.map(async (watch) => {
+			try {
+				watch.baseline = await opts.snapshot(watch);
+			} catch (err) {
+				opts.onError(watch, err);
+			}
+		}),
+	);
 }
