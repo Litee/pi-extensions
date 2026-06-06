@@ -530,12 +530,13 @@ describe("resources_discover dedup via ctx.getSystemPromptOptions() (issue #0007
 		expect(result.skillPaths).toEqual([join(claudeDir, "skills", "beta")]);
 	});
 
-	it("notifies error and returns empty skillPaths when ctx.getSystemPromptOptions is absent (requires pi 0.78.0+)", async () => {
+	it("proceeds with empty alreadyLoadedSkills when getSystemPromptOptions is absent (event context never has it)", async () => {
 		writeSkill(join(claudeDir, "skills", "alpha"), "alpha");
 		const pi = makeFakePi();
 		 
 		createExtension(pi as unknown as ExtensionAPI);
-		// Manually construct a ctx with no getSystemPromptOptions to simulate an old pi runtime.
+		// Manually construct a ctx with no getSystemPromptOptions — this is what the pi
+		// runtime passes for event-handler contexts (createContext, not createCommandContext).
 		const notify = vi.fn();
 		const ctx = {
 			cwd: mkdir(tmpRoot, "project"),
@@ -550,9 +551,10 @@ describe("resources_discover dedup via ctx.getSystemPromptOptions() (issue #0007
 		const result = (await handler({ cwd: ctx.cwd, reason: "startup" }, ctx)) as {
 			skillPaths: string[];
 		};
-		expect(result.skillPaths).toEqual([]);
-		expect(notify).toHaveBeenCalledWith(
-			"Skill discovery requires pi 0.78.0 or later",
+		// Should succeed and return the discovered skill — not block with an error.
+		expect(result.skillPaths).toEqual([join(claudeDir, "skills", "alpha")]);
+		expect(notify).not.toHaveBeenCalledWith(
+			expect.stringContaining("requires pi"),
 			"error",
 		);
 	});
