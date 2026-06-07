@@ -16,17 +16,19 @@ import { POLL_ERROR_THRESHOLD } from 'pi-watcher-core/base-watcher'
 // Helpers
 // ---------------------------------------------------------------------------
 
-vi.mock('../src/config.js', () => ({
-  loadConfig: vi.fn(() => ({})),
-  saveConfig: vi.fn(() => true),
+vi.mock('node:fs', () => ({
+  readFileSync: vi.fn().mockImplementation(() => {
+    throw Object.assign(new Error('ENOENT: no such file or directory'), { code: 'ENOENT' })
+  }),
+  writeFileSync: vi.fn(),
+  mkdirSync: vi.fn(),
 }))
 
 vi.mock('pi-watcher-core/validate-aws-profile', () => ({
   validateAwsProfile: vi.fn().mockReturnValue(null),
 }))
 import { validateAwsProfile } from 'pi-watcher-core/validate-aws-profile'
-import * as configModule from '../src/config.js'
-import { loadConfig } from '../src/config.js'
+import { readFileSync } from 'node:fs'
 
 function makePi() {
   return {
@@ -716,14 +718,14 @@ describe('S3Watcher view', () => {
 // ---------------------------------------------------------------------------
 
 describe('S3Watcher constructor defaultDisplayMode', () => {
-  it('sets defaultDisplayMode from loadConfig when provided', () => {
-    vi.mocked(loadConfig).mockReturnValue({ defaultDisplayMode: 'statusline' })
+  it('sets defaultDisplayMode from readFileSync when provided', () => {
+    vi.mocked(readFileSync).mockReturnValueOnce(JSON.stringify({ defaultDisplayMode: 'statusline' }))
     const { watcher } = makeWatcher()
     expect(watcher['defaultDisplayMode']).toBe('statusline')
   })
 
   it('does not set defaultDisplayMode when config has no value', () => {
-    vi.mocked(loadConfig).mockReturnValue({})
+    // readFileSync throws ENOENT by default — loadWatcherConfig() returns {}
     const { watcher } = makeWatcher()
     expect(watcher['defaultDisplayMode']).toBeUndefined()
   })
@@ -735,7 +737,7 @@ describe('S3Watcher constructor defaultDisplayMode', () => {
 
 describe('S3Watcher.onSessionStart config integration', () => {
   it('applies defaultDisplayMode=statusline from config when no persisted state', async () => {
-    vi.mocked(loadConfig).mockReturnValue({ defaultDisplayMode: 'statusline' })
+    vi.mocked(readFileSync).mockReturnValueOnce(JSON.stringify({ defaultDisplayMode: 'statusline' }))
     const { watcher } = makeWatcher()
     const setStatus = vi.fn()
     const ctx = {
@@ -747,7 +749,7 @@ describe('S3Watcher.onSessionStart config integration', () => {
   })
 
   it('persisted displayMode overrides user config', async () => {
-    vi.mocked(loadConfig).mockReturnValue({ defaultDisplayMode: 'statusline' })
+    vi.mocked(readFileSync).mockReturnValueOnce(JSON.stringify({ defaultDisplayMode: 'statusline' }))
     const { watcher } = makeWatcher()
     const ctx = {
       ui: { setStatus: vi.fn(), theme: { fg: (_c: string, t: string) => t } },
@@ -772,7 +774,7 @@ describe('S3Watcher.onSessionStart config integration', () => {
   })
 
   it('does not change displayMode when config has no defaultDisplayMode', async () => {
-    vi.mocked(loadConfig).mockReturnValue({})
+    // readFileSync throws ENOENT by default — loadWatcherConfig() returns {}
     const { watcher } = makeWatcher()
     const ctx = {
       ui: { setStatus: vi.fn(), theme: { fg: (_c: string, t: string) => t } },
@@ -932,43 +934,6 @@ describe('S3Watcher view.compressColumns', () => {
 })
 
 // ---------------------------------------------------------------------------
-// userDefaultDisplayMode — S3Watcher overrides
-// ---------------------------------------------------------------------------
-
-describe('userDefaultDisplayMode', () => {
-  let testableWatcher: TestableS3Watcher
-
-  beforeEach(() => {
-    vi.mocked(configModule.loadConfig).mockReturnValue({})
-    const pi = makePi()
-    const client = makeClient({ exists: false })
-    testableWatcher = new TestableS3Watcher({ pi: pi as never, client, now: Date.now })
-  })
-
-  it('reads from loadConfig', () => {
-    vi.mocked(configModule.loadConfig).mockReturnValue({ defaultDisplayMode: 'statusline' })
-    expect(testableWatcher.userDefaultDisplayMode_pub).toBe('statusline')
-  })
-
-  it('returns undefined when config has no defaultDisplayMode', () => {
-    vi.mocked(configModule.loadConfig).mockReturnValue({})
-    expect(testableWatcher.userDefaultDisplayMode_pub).toBeUndefined()
-  })
-
-  it('saveUserDefaultDisplayMode writes via saveConfig', () => {
-    const spy = vi.spyOn(configModule, 'saveConfig')
-    testableWatcher.saveUserDefaultDisplayMode_pub('widget')
-    expect(spy).toHaveBeenCalledWith({ defaultDisplayMode: 'widget' })
-  })
-
-  it('saveUserDefaultDisplayMode(undefined) clears the preference', () => {
-    const spy = vi.spyOn(configModule, 'saveConfig')
-    testableWatcher.saveUserDefaultDisplayMode_pub(undefined)
-    expect(spy).toHaveBeenCalledWith({ defaultDisplayMode: undefined })
-  })
-})
-
-// ---------------------------------------------------------------------------
 // browseOptions (Fix 3 + Fix 4)
 // ---------------------------------------------------------------------------
 
@@ -976,7 +941,6 @@ describe('S3Watcher.browseOptions', () => {
   let watcher: S3Watcher
 
   beforeEach(() => {
-    vi.mocked(configModule.loadConfig).mockReturnValue({})
     const pi = makePi()
     const client = makeClient({ exists: false })
     watcher = new S3Watcher({ pi: pi as never, client, now: Date.now })
@@ -1160,3 +1124,4 @@ describe('commandName', () => {
     expect(widgetOpts?.commandName).toBe('aws-s3-watcher')
   })
 })
+

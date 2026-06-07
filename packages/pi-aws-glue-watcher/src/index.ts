@@ -38,8 +38,7 @@ export {
   buildStatusLine,
   buildWatchEntry,
 } from './format.js'
-export { configFilePath, loadConfig, saveConfig } from './config.js'
-export type { DisplayMode, GlueWatcherConfig } from './config.js'
+
 export { GlueWatcherParams } from './toolParams.js'
 export type {
   GlueWatch,

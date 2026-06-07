@@ -12,6 +12,18 @@ import type { ExtensionAPI } from '@earendil-works/pi-coding-agent'
 import type { UiSurface } from './ui-surface.js'
 
 // ---------------------------------------------------------------------------
+// Config types (shared across all watcher packages)
+// ---------------------------------------------------------------------------
+
+/** Valid display modes for watcher widgets / status rows. */
+export type DisplayMode = 'widget' | 'statusline'
+
+/** Shape of the per-watcher user-level config JSON. */
+export interface WatcherConfig {
+  defaultDisplayMode?: DisplayMode
+}
+
+// ---------------------------------------------------------------------------
 // Capability flags
 // ---------------------------------------------------------------------------
 
@@ -57,7 +69,7 @@ export interface WatcherState {
   pollIntervalMs: number
   /** Whether the LLM tool is active in the current session (user-tool only). */
   enabled: boolean
-  displayMode: 'widget' | 'statusline'
+  displayMode: DisplayMode
   /** Total watches (including terminal). */
   watchCount: number
   /** Non-terminal watches. */
@@ -65,7 +77,7 @@ export interface WatcherState {
   /** Any watch is at or above the error threshold. */
   hasErrors: boolean
   /** User-persisted default display mode preference. `undefined` = no preference saved. */
-  userDefaultDisplayMode?: 'widget' | 'statusline'
+  userDefaultDisplayMode?: DisplayMode
 }
 
 // ---------------------------------------------------------------------------

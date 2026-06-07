@@ -17,12 +17,14 @@ import type { FsBaseline } from "../src/types.js";
 // Module mocks
 // ---------------------------------------------------------------------------
 
-vi.mock("../src/config.js", () => ({
-  loadConfig: vi.fn(() => ({})),
-  saveConfig: vi.fn(() => true),
+vi.mock("node:fs", () => ({
+  readFileSync: vi.fn().mockImplementation(() => {
+    throw Object.assign(new Error("ENOENT: no such file or directory"), { code: "ENOENT" });
+  }),
+  writeFileSync: vi.fn(),
+  mkdirSync: vi.fn(),
 }));
-import * as configModule from "../src/config.js";
-import { loadConfig } from "../src/config.js";
+import { readFileSync } from "node:fs";
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -1012,14 +1014,14 @@ describe("FsWatcher per-watch schedulers", () => {
 // ---------------------------------------------------------------------------
 
 describe("FsWatcher constructor defaultDisplayMode", () => {
-  it("sets defaultDisplayMode from loadConfig when provided", () => {
-    vi.mocked(loadConfig).mockReturnValue({ defaultDisplayMode: "statusline" });
+  it("sets defaultDisplayMode from config when provided", () => {
+    vi.mocked(readFileSync).mockReturnValueOnce(JSON.stringify({ defaultDisplayMode: "statusline" }));
     const { watcher } = makeWatcher();
     expect(watcher["defaultDisplayMode"]).toBe("statusline");
   });
 
   it("does not set defaultDisplayMode when config has no value", () => {
-    vi.mocked(loadConfig).mockReturnValue({});
+    // readFileSync throws ENOENT by default — loadWatcherConfig() returns {}
     const { watcher } = makeWatcher();
     expect(watcher["defaultDisplayMode"]).toBeUndefined();
   });
@@ -1031,7 +1033,7 @@ describe("FsWatcher constructor defaultDisplayMode", () => {
 
 describe("FsWatcher.onSessionStart config integration", () => {
   it("applies defaultDisplayMode=statusline from config when no persisted state", async () => {
-    vi.mocked(loadConfig).mockReturnValue({ defaultDisplayMode: "statusline" });
+    vi.mocked(readFileSync).mockReturnValueOnce(JSON.stringify({ defaultDisplayMode: "statusline" }));
     const { watcher } = makeWatcher();
     const ctx = {
       ui: {
@@ -1045,7 +1047,7 @@ describe("FsWatcher.onSessionStart config integration", () => {
   });
 
   it("persisted displayMode overrides user config", async () => {
-    vi.mocked(loadConfig).mockReturnValue({ defaultDisplayMode: "statusline" });
+    vi.mocked(readFileSync).mockReturnValueOnce(JSON.stringify({ defaultDisplayMode: "statusline" }));
     const { watcher } = makeWatcher();
     const ctx = {
       ui: {
@@ -1074,7 +1076,7 @@ describe("FsWatcher.onSessionStart config integration", () => {
   });
 
   it("defaults to widget when config has no defaultDisplayMode", async () => {
-    vi.mocked(loadConfig).mockReturnValue({});
+    // readFileSync throws ENOENT by default — loadWatcherConfig() returns {}
     const { watcher } = makeWatcher();
     const ctx = {
       ui: {
@@ -1116,7 +1118,6 @@ describe("FsWatcher identity", () => {
   let watcher: TestableFsWatcher;
 
   beforeEach(() => {
-    vi.mocked(loadConfig).mockReturnValue({});
     const pi = makePi();
     const client = makeClient({ exists: false });
     watcher = new TestableFsWatcher({ pi: pi as never, client, now: Date.now });
@@ -1136,45 +1137,6 @@ describe("FsWatcher identity", () => {
 });
 
 // ---------------------------------------------------------------------------
-// userDefaultDisplayMode
-// ---------------------------------------------------------------------------
-
-describe("FsWatcher userDefaultDisplayMode", () => {
-  let watcher: TestableFsWatcher;
-
-  beforeEach(() => {
-    vi.mocked(configModule.loadConfig).mockReturnValue({});
-    const pi = makePi();
-    const client = makeClient({ exists: false });
-    watcher = new TestableFsWatcher({ pi: pi as never, client, now: Date.now });
-  });
-
-  it("reads from loadConfig", () => {
-    vi.mocked(configModule.loadConfig).mockReturnValue({
-      defaultDisplayMode: "statusline",
-    });
-    expect(watcher.userDefaultDisplayMode_pub).toBe("statusline");
-  });
-
-  it("returns undefined when config has no defaultDisplayMode", () => {
-    vi.mocked(configModule.loadConfig).mockReturnValue({});
-    expect(watcher.userDefaultDisplayMode_pub).toBeUndefined();
-  });
-
-  it("saveUserDefaultDisplayMode writes via saveConfig", () => {
-    const spy = vi.spyOn(configModule, "saveConfig");
-    watcher.saveUserDefaultDisplayMode_pub("widget");
-    expect(spy).toHaveBeenCalledWith({ defaultDisplayMode: "widget" });
-  });
-
-  it("saveUserDefaultDisplayMode(undefined) clears preference", () => {
-    const spy = vi.spyOn(configModule, "saveConfig");
-    watcher.saveUserDefaultDisplayMode_pub(undefined);
-    expect(spy).toHaveBeenCalledWith({ defaultDisplayMode: undefined });
-  });
-});
-
-// ---------------------------------------------------------------------------
 // browseOptions
 // ---------------------------------------------------------------------------
 
@@ -1182,7 +1144,6 @@ describe("FsWatcher.browseOptions", () => {
   let watcher: FsWatcher;
 
   beforeEach(() => {
-    vi.mocked(configModule.loadConfig).mockReturnValue({});
     const pi = makePi();
     const client = makeClient({ exists: false });
     watcher = new FsWatcher({ pi: pi as never, client, now: Date.now });
@@ -1310,7 +1271,6 @@ describe("compressPath", () => {
 
 describe("FsWatcher.addWatch sets enabled=true [#0002]", () => {
   it("sets enabled=true on the watcher after a successful addWatch", async () => {
-    vi.mocked(loadConfig).mockReturnValue({});
     const { watcher } = makeWatcher({ exists: false });
     // enabled starts false (base-class default)
     expect((watcher as unknown as { enabled: boolean }).enabled).toBe(false);
@@ -1329,7 +1289,6 @@ describe("FsWatcher.addWatch sets enabled=true [#0002]", () => {
 
   it("notification fired after addWatch does NOT include reactivation hint [#0002]", async () => {
     vi.useFakeTimers();
-    vi.mocked(loadConfig).mockReturnValue({});
     const pi = makePi();
     // Snapshot: absent first, then present after 65 s → triggers 'exists' event
     const client: FsClient = {
@@ -1357,3 +1316,5 @@ describe("FsWatcher.addWatch sets enabled=true [#0002]", () => {
     vi.useRealTimers();
   });
 });
+
+

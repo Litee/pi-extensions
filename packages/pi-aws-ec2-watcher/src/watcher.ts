@@ -21,7 +21,6 @@ import type {
   WatcherView,
 } from 'pi-watcher-core/base-watcher-types'
 
-import { loadConfig, saveConfig } from './config.js'
 import { buildChangeChatMessage as formatChangeChatMessage } from './format.js'
 import { buildTimeoutEvent, detectChanges as pollerDetectChanges, snapshotInstance } from './poller.js'
 import type { Ec2Client } from './ec2-client.js'
@@ -216,15 +215,7 @@ export class Ec2Watcher extends BaseWatcher<Ec2Watch, Ec2Baseline, Ec2Event> {
   protected override get displayName(): string { return 'AWS EC2 Instance Watcher' }
   protected override get commandName(): string { return 'aws-ec2-watcher' }
 
-  protected override get userDefaultDisplayMode(): 'widget' | 'statusline' | undefined {
-    return loadConfig().defaultDisplayMode
-  }
-
-  protected override saveUserDefaultDisplayMode(mode: 'widget' | 'statusline' | undefined): void {
-    saveConfig({ defaultDisplayMode: mode })
-  }
-
-  // ── Constructor ────────────────────────────────────────────────────────────
+  // ── Constructor ────────────────────────────────────────────────────────────────────────
   constructor(opts: BaseWatcherOptions & { client: Ec2Client }) {
     super({ ...opts, client: opts.client })
     this.widget = createWatcherWidget(opts.pi.events, this.view, {
@@ -233,7 +224,7 @@ export class Ec2Watcher extends BaseWatcher<Ec2Watch, Ec2Baseline, Ec2Event> {
       commandName: this.commandName,
       getWatches: () => Array.from(this.watches.values()),
     })
-    const { defaultDisplayMode } = loadConfig()
+    const { defaultDisplayMode } = this.loadWatcherConfig()
     if (defaultDisplayMode !== undefined) {
       this.defaultDisplayMode = defaultDisplayMode
     }

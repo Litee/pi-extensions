@@ -18,6 +18,10 @@
  *                 diffs against the previous scan.
  */
 
+import { mkdirSync, readFileSync, writeFileSync } from 'node:fs'
+import { dirname, join } from 'node:path'
+
+import { getAgentDir } from '@earendil-works/pi-coding-agent'
 import type { ExtensionAPI } from '@earendil-works/pi-coding-agent'
 
 import { DEFAULT_POLL_ERROR_THRESHOLD } from './error-tracker.js'
@@ -31,9 +35,11 @@ import type {
   BaseWatcherOptions,
   BrowseViewOptions,
   CommandCtx,
+  DisplayMode,
   MenuItem,
   MenuResult,
   ToolResult,
+  WatcherConfig,
   WatcherItemSource,
   WatcherState,
   WatcherView,
@@ -41,7 +47,7 @@ import type {
   WatchLike,
 } from './base-watcher-types.js'
 
-export type { WatcherItemSource, WatcherState, WatcherView, WatcherWidgetLike, WatchLike } from './base-watcher-types.js'
+export type { DisplayMode, WatcherConfig, WatcherItemSource, WatcherState, WatcherView, WatcherWidgetLike, WatchLike } from './base-watcher-types.js'
 export type { ClassifiedWatcherError }
 
 // ---------------------------------------------------------------------------
@@ -243,23 +249,79 @@ export abstract class BaseWatcher<
     this.sharedScheduler.noteSuccess(anyChange)
   }
 
-  /**
-   * Current user-persisted default display mode.
-   * `undefined` means "no preference saved — use session default".
-   * Scan watchers and watchers without widgets always return undefined.
-   * Override to read from your config source.
-   */
-  protected get userDefaultDisplayMode(): 'widget' | 'statusline' | undefined {
-    return undefined
+  // -------------------------------------------------------------------------
+  // Config helpers — file-backed user settings
+  // -------------------------------------------------------------------------
+
+  /** Path to the user-level config JSON for this extension. */
+  protected configFilePath(): string {
+    return join(getAgentDir(), `${this.extensionName}.json`)
   }
 
   /**
-   * Persist a new user-default display mode preference.
-   * Called by the userDefaultDisplayMode menu item. No-op by default.
-   * Override to write to your config source.
+   * Read and validate the user config from disk.
+   * Swallows all errors (missing file, invalid JSON, wrong types) → returns `{}`.
    */
-  protected saveUserDefaultDisplayMode(_mode: 'widget' | 'statusline' | undefined): void {
-    // no-op in base class
+  protected loadWatcherConfig(): WatcherConfig {
+    try {
+      const raw: unknown = JSON.parse(readFileSync(this.configFilePath(), 'utf-8'))
+      if (!raw || typeof raw !== 'object' || Array.isArray(raw)) return {}
+      const r = raw as Record<string, unknown>
+      const mode = r['defaultDisplayMode']
+      if (mode === 'widget' || mode === 'statusline') return { defaultDisplayMode: mode }
+      return {}
+    } catch {
+      return {}
+    }
+  }
+
+  /**
+   * Merge `change` into the on-disk config, preserving unknown keys.
+   * Returns `true` on success, `false` on any error.
+   */
+  protected saveWatcherConfig(change: { [K in keyof WatcherConfig]?: WatcherConfig[K] | undefined }): boolean {
+    const path = this.configFilePath()
+    try {
+      let existing: Record<string, unknown> = {}
+      try {
+        const parsed: unknown = JSON.parse(readFileSync(path, 'utf-8'))
+        if (parsed && typeof parsed === 'object' && !Array.isArray(parsed)) {
+          existing = parsed as Record<string, unknown>
+        }
+      } catch { /* missing/unreadable → start from {} */ }
+      const merged = { ...existing, ...change }
+      mkdirSync(dirname(path), { recursive: true })
+      writeFileSync(path, `${JSON.stringify(merged, null, 2)}\n`, 'utf-8')
+      return true
+    } catch {
+      return false
+    }
+  }
+
+  /**
+   * Current user-persisted default display mode.
+   * `undefined` means "no preference saved — use session default".
+   * Reads from `~/.pi/agent/<extensionName>.json` on each call.
+   * Scan watchers and watchers without widgets always return undefined.
+   */
+  protected get userDefaultDisplayMode(): DisplayMode | undefined {
+    return this.loadWatcherConfig().defaultDisplayMode
+  }
+
+  /**
+   * Persist a new user-default display mode preference to
+   * `~/.pi/agent/<extensionName>.json`.
+   */
+  protected saveUserDefaultDisplayMode(mode: DisplayMode | undefined): void {
+    this.saveWatcherConfig({ defaultDisplayMode: mode })
+  }
+
+  /**
+   * Delete the package-level JSON config file. No-op by default.
+   * Subclasses may override if they need to wipe local config on reset.
+   */
+  protected resetUserSettings(): void {
+    // no-op
   }
 
   /**

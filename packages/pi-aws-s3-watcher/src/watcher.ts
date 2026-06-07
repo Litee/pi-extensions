@@ -21,7 +21,6 @@ import type {
   WatcherView,
 } from 'pi-watcher-core/base-watcher-types'
 
-import { loadConfig, saveConfig } from './config.js'
 import {
   buildChangeChatMessage as formatChangeChatMessage,
 } from './format.js'
@@ -202,14 +201,6 @@ export class S3Watcher extends BaseWatcher<S3Watch, S3Baseline, S3Event> {
   protected override get displayName(): string { return 'AWS S3 Watcher' }
   protected override get commandName(): string { return 'aws-s3-watcher' }
 
-  protected override get userDefaultDisplayMode(): 'widget' | 'statusline' | undefined {
-    return loadConfig().defaultDisplayMode
-  }
-
-  protected override saveUserDefaultDisplayMode(mode: 'widget' | 'statusline' | undefined): void {
-    saveConfig({ defaultDisplayMode: mode })
-  }
-
   // ── Constructor ────────────────────────────────────────────────────────────
   constructor(opts: BaseWatcherOptions & { client: S3Client }) {
     super({ ...opts, client: opts.client })
@@ -219,7 +210,7 @@ export class S3Watcher extends BaseWatcher<S3Watch, S3Baseline, S3Event> {
       commandName: this.commandName,
       getWatches: () => Array.from(this.watches.values()),
     })
-    const { defaultDisplayMode } = loadConfig()
+    const { defaultDisplayMode } = this.loadWatcherConfig()
     if (defaultDisplayMode !== undefined) {
       this.defaultDisplayMode = defaultDisplayMode
     }

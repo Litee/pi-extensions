@@ -28,7 +28,6 @@ import type {
   WatcherView,
 } from "pi-watcher-core/base-watcher-types";
 
-import { loadConfig, saveConfig } from "./config.js";
 import { buildChangeChatMessage as formatChangeChatMessage } from "./format.js";
 import { buildTimeoutEvent, detectChanges as pollerDetectChanges } from "./poller.js";
 import { MAX_TIMEOUT_SECONDS, FsWatcherParams } from "./toolAction.js";
@@ -217,19 +216,6 @@ export class FsWatcher extends BaseWatcher<FsWatch, FsBaseline, FsEvent> {
     return "file-system-watcher";
   }
 
-  protected override get userDefaultDisplayMode():
-    | "widget"
-    | "statusline"
-    | undefined {
-    return loadConfig().defaultDisplayMode;
-  }
-
-  protected override saveUserDefaultDisplayMode(
-    mode: "widget" | "statusline" | undefined,
-  ): void {
-    saveConfig({ defaultDisplayMode: mode });
-  }
-
   // ── Constructor ────────────────────────────────────────────────────────────
   constructor(opts: BaseWatcherOptions & { client: FsClient }) {
     super({ ...opts, client: opts.client });
@@ -239,7 +225,7 @@ export class FsWatcher extends BaseWatcher<FsWatch, FsBaseline, FsEvent> {
       commandName: this.commandName,
       getWatches: () => Array.from(this.watches.values()),
     });
-    const { defaultDisplayMode } = loadConfig();
+    const { defaultDisplayMode } = this.loadWatcherConfig();
     if (defaultDisplayMode !== undefined) {
       this.defaultDisplayMode = defaultDisplayMode;
     }

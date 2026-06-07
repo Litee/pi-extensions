@@ -21,12 +21,14 @@ vi.mock('pi-watcher-core/validate-aws-profile', () => ({
 }))
 import { validateAwsProfile } from 'pi-watcher-core/validate-aws-profile'
 
-vi.mock('../src/config.js', () => ({
-  loadConfig: vi.fn(() => ({})),
-  saveConfig: vi.fn(() => true),
+vi.mock('node:fs', () => ({
+  readFileSync: vi.fn().mockImplementation(() => {
+    throw Object.assign(new Error('ENOENT: no such file or directory'), { code: 'ENOENT' })
+  }),
+  writeFileSync: vi.fn(),
+  mkdirSync: vi.fn(),
 }))
-import * as configModule from '../src/config.js'
-import { loadConfig } from '../src/config.js'
+import { readFileSync } from 'node:fs'
 
 function makePi() {
   return {
@@ -763,14 +765,14 @@ describe('view.isRowDimmed', () => {
 // ---------------------------------------------------------------------------
 
 describe('Ec2Watcher constructor defaultDisplayMode', () => {
-  it('sets defaultDisplayMode from loadConfig when provided', () => {
-    vi.mocked(loadConfig).mockReturnValue({ defaultDisplayMode: 'statusline' })
+  it('sets defaultDisplayMode from config when provided', () => {
+    vi.mocked(readFileSync).mockReturnValueOnce(JSON.stringify({ defaultDisplayMode: 'statusline' }))
     const { watcher } = makeWatcher()
     expect(watcher['defaultDisplayMode']).toBe('statusline')
   })
 
   it('does not set defaultDisplayMode when config has no value', () => {
-    vi.mocked(loadConfig).mockReturnValue({})
+    // readFileSync throws ENOENT by default — loadWatcherConfig() returns {}
     const { watcher } = makeWatcher()
     expect(watcher['defaultDisplayMode']).toBeUndefined()
   })
@@ -782,7 +784,6 @@ describe('Ec2Watcher constructor defaultDisplayMode', () => {
 
 describe('Ec2Watcher.onSessionStart', () => {
   it('does NOT emit a startup chat message when watches are restored (#0001 — add should be silent)', async () => {
-    vi.mocked(loadConfig).mockReturnValue({})
     const { watcher, pi } = makeWatcher({ state: 'running' })
 
     const ctx = {
@@ -825,7 +826,6 @@ describe('Ec2Watcher.onSessionStart', () => {
   })
 
   it('does NOT emit startup message when no watches', async () => {
-    vi.mocked(loadConfig).mockReturnValue({})
     const { watcher, pi } = makeWatcher({ state: 'running' })
 
     const ctx = {
@@ -912,43 +912,6 @@ describe('Ec2Watcher statusLabel / displayName', () => {
 })
 
 // ---------------------------------------------------------------------------
-// userDefaultDisplayMode
-// ---------------------------------------------------------------------------
-
-describe('userDefaultDisplayMode', () => {
-  let testableWatcher: TestableEc2Watcher
-
-  beforeEach(() => {
-    vi.mocked(configModule.loadConfig).mockReturnValue({})
-    const pi = makePi()
-    const client = makeClient({ state: 'running' })
-    testableWatcher = new TestableEc2Watcher({ pi: pi as never, client, now: Date.now })
-  })
-
-  it('reads from loadConfig', () => {
-    vi.mocked(configModule.loadConfig).mockReturnValue({ defaultDisplayMode: 'statusline' })
-    expect(testableWatcher.userDefaultDisplayMode_pub).toBe('statusline')
-  })
-
-  it('returns undefined when config has no defaultDisplayMode', () => {
-    vi.mocked(configModule.loadConfig).mockReturnValue({})
-    expect(testableWatcher.userDefaultDisplayMode_pub).toBeUndefined()
-  })
-
-  it('saveUserDefaultDisplayMode writes via saveConfig', () => {
-    const spy = vi.spyOn(configModule, 'saveConfig')
-    testableWatcher.saveUserDefaultDisplayMode_pub('widget')
-    expect(spy).toHaveBeenCalledWith({ defaultDisplayMode: 'widget' })
-  })
-
-  it('saveUserDefaultDisplayMode(undefined) clears the preference', () => {
-    const spy = vi.spyOn(configModule, 'saveConfig')
-    testableWatcher.saveUserDefaultDisplayMode_pub(undefined)
-    expect(spy).toHaveBeenCalledWith({ defaultDisplayMode: undefined })
-  })
-})
-
-// ---------------------------------------------------------------------------
 // browseOptions
 // ---------------------------------------------------------------------------
 
@@ -956,7 +919,6 @@ describe('Ec2Watcher.browseOptions', () => {
   let watcher: Ec2Watcher
 
   beforeEach(() => {
-    vi.mocked(configModule.loadConfig).mockReturnValue({})
     const pi = makePi()
     const client = makeClient({ state: 'running' })
     watcher = new Ec2Watcher({ pi: pi as never, client, now: Date.now })
@@ -1017,7 +979,6 @@ describe('Ec2Watcher.browseOptions', () => {
     let watch: Ec2Watch
 
     beforeEach(async () => {
-      vi.mocked(configModule.loadConfig).mockReturnValue({})
       ;({ watcher: actionWatcher, client: actionClient } = makeWatcher({ state: 'running' }))
       const result = await actionWatcher.executeTool({
         action: 'add',
@@ -1207,8 +1168,6 @@ describe('commandName', () => {
   })
 })
 
-// ---------------------------------------------------------------------------
-// Ec2Watcher — profile validation (via BaseWatcher)
 // ---------------------------------------------------------------------------
 
 describe('Ec2Watcher — profile validation (via BaseWatcher)', () => {
@@ -1432,7 +1391,6 @@ describe('browseOptions rowAction visible callbacks (lines 490, 503, 516)', () =
 describe('Ec2Watcher.noteSchedulerSuccess (line 545)', () => {
   it('noteSchedulerSuccess calls noteSuccess on the per-watch scheduler', async () => {
     const { watcher, client } = makeWatcher({ state: 'running' })
-    vi.mocked(configModule.loadConfig).mockReturnValue({})
     // Add a watch so pollOnce has something to poll
     await watcher.executeTool({
       action: 'add',
