@@ -32,7 +32,31 @@ import {
 } from './poller.js'
 import { GlueWatcherParams } from './toolParams.js'
 import type { GlueEvent, GlueWatch, JobBaseline, WatchBaseline, WatchMap, WorkflowBaseline } from './types.js'
-import { GlueWidget } from './ui/glue-widget.js'
+import { formatElapsed, GlueWidget } from './ui/glue-widget.js'
+
+// ---------------------------------------------------------------------------
+// State colour helper
+// ---------------------------------------------------------------------------
+
+/**
+ * Map a Glue run state string to a TUI colour token.
+ * Mirrors the stateStyle() mapping in widgetRows.ts but returns 'dim' for
+ * the "none" bucket so browse-mode rows use the same semantic colours as
+ * the widget.
+ */
+export function stateColor(state: string): string {
+  if (state === 'RUNNING' || state === 'STARTING') return 'warning'
+  if (state === 'SUCCEEDED' || state === 'COMPLETED') return 'success'
+  if (
+    state === 'FAILED' ||
+    state === 'ERROR' ||
+    state === 'TIMEOUT' ||
+    state === 'STOPPED'
+  ) {
+    return 'error'
+  }
+  return 'dim'
+}
 
 // ---------------------------------------------------------------------------
 // Poll interval constants
@@ -131,7 +155,7 @@ export class GlueWatcher extends BaseWatcher<GlueWatch, WatchBaseline, GlueEvent
         : w.consecutiveErrors >= POLL_ERROR_THRESHOLD
           ? 'ERROR'
           : 'WATCHING'
-      return `${w.type} ${w.name} (${w.runId})  ${state}  ${status}`
+      return `${w.type} ${w.name} [${w.runId.slice(-4)}]  ${state}  ${status}`
     },
 
     renderItemRowTUI(w, _ctx): RowColumn[] {
@@ -141,9 +165,22 @@ export class GlueWatcher extends BaseWatcher<GlueWatch, WatchBaseline, GlueEvent
         : w.consecutiveErrors >= POLL_ERROR_THRESHOLD
           ? 'ERROR'
           : 'WATCHING'
+
+      let elapsed = '-'
+      let workers = '-'
+      if (w.type === 'job') {
+        const b = w.baseline as JobBaseline | undefined
+        elapsed = formatElapsed(b?.startedOn, b?.completedOn)
+        if (b?.numberOfWorkers != null && b.workerType != null) {
+          workers = `${b.numberOfWorkers}\u00d7${b.workerType}`
+        }
+      }
+
       return [
-        { name: 'name', text: `${w.type} ${w.name} (${w.runId})`, color: 'accent' },
-        { name: 'state', text: state, width: 14, color: 'dim' },
+        { name: 'name', text: `${w.type} ${w.name} [${w.runId.slice(-4)}]`, color: 'accent' },
+        { name: 'state', text: state, width: 14, color: stateColor(state) },
+        { name: 'elapsed', text: elapsed, width: 7 },
+        { name: 'workers', text: workers, width: 10 },
         {
           name: 'status',
           text: status,
