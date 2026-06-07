@@ -6,8 +6,8 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
 import type { JobRunResponse, WorkflowRunResponse } from '../src/glue-client.js'
 import type { GlueClient } from '../src/glue-client.js'
-import { GlueWatcher } from '../src/watcher.js'
-import type { GlueWatch, WatchBaseline } from '../src/types.js'
+import { GlueWatcher, stateColor } from '../src/watcher.js'
+import type { GlueWatch, JobBaseline, WatchBaseline, WorkflowBaseline } from '../src/types.js'
 
 vi.mock('../src/config.js', () => ({
   loadConfig: vi.fn(() => ({})),
@@ -774,6 +774,183 @@ describe('GlueWatcher startPolling stagger', () => {
 
     watcher.stopPolling()
     vi.useRealTimers()
+  })
+})
+
+// ---------------------------------------------------------------------------
+// view rendering
+// ---------------------------------------------------------------------------
+
+describe('stateColor helper', () => {
+  it.each([
+    ['RUNNING', 'warning'],
+    ['STARTING', 'warning'],
+    ['SUCCEEDED', 'success'],
+    ['COMPLETED', 'success'],
+    ['FAILED', 'error'],
+    ['ERROR', 'error'],
+    ['TIMEOUT', 'error'],
+    ['STOPPED', 'error'],
+    ['PENDING', 'dim'],
+    ['', 'dim'],
+    ['UNKNOWN', 'dim'],
+  ] as [string, string][])('stateColor(%s) === %s', (state, expected) => {
+    expect(stateColor(state)).toBe(expected)
+  })
+})
+
+describe('renderItemRowTUI — job watch', () => {
+  let watcher: GlueWatcher
+
+  beforeEach(() => {
+    ;({ watcher } = makeWatcher())
+  })
+
+  function makeJobWatch(overrides: Partial<GlueWatch> = {}): GlueWatch {
+    return {
+      watchId: 'w1',
+      type: 'job',
+      name: 'my-etl-job',
+      runId: 'jr_abcd1234',
+      profile: 'dev',
+      region: undefined,
+      addedAt: 0,
+      lastPolledAt: undefined,
+      baseline: undefined,
+      terminal: false,
+      consecutiveErrors: 0,
+      ...overrides,
+    }
+  }
+
+  it('name column uses [last4] format', () => {
+    const w = makeJobWatch()
+    const cols = watcher.view.renderItemRowTUI(w, { theme: {} as never, width: 120 })
+    const name = cols.find((c) => c.name === 'name')
+    expect(name?.text).toBe('job my-etl-job [1234]')
+  })
+
+  it('state column color is warning for RUNNING', () => {
+    const baseline: JobBaseline = { state: 'RUNNING', errorMessage: '' }
+    const w = makeJobWatch({ baseline })
+    const cols = watcher.view.renderItemRowTUI(w, { theme: {} as never, width: 120 })
+    const state = cols.find((c) => c.name === 'state')
+    expect(state?.color).toBe('warning')
+  })
+
+  it('state column color is success for SUCCEEDED', () => {
+    const baseline: JobBaseline = { state: 'SUCCEEDED', errorMessage: '' }
+    const w = makeJobWatch({ baseline })
+    const cols = watcher.view.renderItemRowTUI(w, { theme: {} as never, width: 120 })
+    const state = cols.find((c) => c.name === 'state')
+    expect(state?.color).toBe('success')
+  })
+
+  it('state column color is error for FAILED', () => {
+    const baseline: JobBaseline = { state: 'FAILED', errorMessage: 'oops' }
+    const w = makeJobWatch({ baseline })
+    const cols = watcher.view.renderItemRowTUI(w, { theme: {} as never, width: 120 })
+    const state = cols.find((c) => c.name === 'state')
+    expect(state?.color).toBe('error')
+  })
+
+  it('state column color is dim for unknown state', () => {
+    const baseline: JobBaseline = { state: 'PENDING', errorMessage: '' }
+    const w = makeJobWatch({ baseline })
+    const cols = watcher.view.renderItemRowTUI(w, { theme: {} as never, width: 120 })
+    const state = cols.find((c) => c.name === 'state')
+    expect(state?.color).toBe('dim')
+  })
+
+  it('elapsed column is present with width 7', () => {
+    const w = makeJobWatch()
+    const cols = watcher.view.renderItemRowTUI(w, { theme: {} as never, width: 120 })
+    const elapsed = cols.find((c) => c.name === 'elapsed')
+    expect(elapsed).toBeDefined()
+    expect(elapsed?.width).toBe(7)
+  })
+
+  it('workers column is present with width 10', () => {
+    const w = makeJobWatch()
+    const cols = watcher.view.renderItemRowTUI(w, { theme: {} as never, width: 120 })
+    const workers = cols.find((c) => c.name === 'workers')
+    expect(workers).toBeDefined()
+    expect(workers?.width).toBe(10)
+  })
+
+  it('workers column shows N×Type when baseline has workers', () => {
+    const baseline: JobBaseline = {
+      state: 'RUNNING',
+      errorMessage: '',
+      numberOfWorkers: 10,
+      workerType: 'G.2X',
+    }
+    const w = makeJobWatch({ baseline })
+    const cols = watcher.view.renderItemRowTUI(w, { theme: {} as never, width: 120 })
+    const workers = cols.find((c) => c.name === 'workers')
+    expect(workers?.text).toBe('10\u00d7G.2X')
+  })
+
+  it('workers column shows "-" when no worker info in baseline', () => {
+    const baseline: JobBaseline = { state: 'RUNNING', errorMessage: '' }
+    const w = makeJobWatch({ baseline })
+    const cols = watcher.view.renderItemRowTUI(w, { theme: {} as never, width: 120 })
+    const workers = cols.find((c) => c.name === 'workers')
+    expect(workers?.text).toBe('-')
+  })
+
+  it('workers column shows "-" when baseline is absent', () => {
+    const w = makeJobWatch()
+    const cols = watcher.view.renderItemRowTUI(w, { theme: {} as never, width: 120 })
+    const workers = cols.find((c) => c.name === 'workers')
+    expect(workers?.text).toBe('-')
+  })
+})
+
+describe('renderItemRowTUI — workflow watch', () => {
+  let watcher: GlueWatcher
+
+  beforeEach(() => {
+    ;({ watcher } = makeWatcher())
+  })
+
+  function makeWorkflowWatch(overrides: Partial<GlueWatch> = {}): GlueWatch {
+    return {
+      watchId: 'w2',
+      type: 'workflow',
+      name: 'my-workflow',
+      runId: 'wr_abcd5678',
+      profile: 'dev',
+      region: undefined,
+      addedAt: 0,
+      lastPolledAt: undefined,
+      baseline: undefined,
+      terminal: false,
+      consecutiveErrors: 0,
+      ...overrides,
+    }
+  }
+
+  it('elapsed shows "-" for workflow watch', () => {
+    const baseline: WorkflowBaseline = {
+      state: 'RUNNING',
+      totalActions: 2,
+      succeededActions: 0,
+      failedActions: 0,
+      runningActions: 2,
+      reportedFailedNodes: [],
+    }
+    const w = makeWorkflowWatch({ baseline })
+    const cols = watcher.view.renderItemRowTUI(w, { theme: {} as never, width: 120 })
+    const elapsed = cols.find((c) => c.name === 'elapsed')
+    expect(elapsed?.text).toBe('-')
+  })
+
+  it('workers shows "-" for workflow watch', () => {
+    const w = makeWorkflowWatch()
+    const cols = watcher.view.renderItemRowTUI(w, { theme: {} as never, width: 120 })
+    const workers = cols.find((c) => c.name === 'workers')
+    expect(workers?.text).toBe('-')
   })
 })
 
