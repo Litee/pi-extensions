@@ -29,7 +29,6 @@ import type {
   WatcherView,
 } from "pi-watcher-core/base-watcher-types";
 
-import { loadConfig, saveConfig } from "./config.js";
 import { buildChangeChatMessage as formatChangeChatMessage } from "./format.js";
 import {
   buildTimeoutEvent,
@@ -215,19 +214,6 @@ export class GitWatcher extends BaseWatcher<GitWatch, GitBaseline, GitEvent> {
     return "git-watcher";
   }
 
-  protected override get userDefaultDisplayMode():
-    | "widget"
-    | "statusline"
-    | undefined {
-    return loadConfig().defaultDisplayMode;
-  }
-
-  protected override saveUserDefaultDisplayMode(
-    mode: "widget" | "statusline" | undefined,
-  ): void {
-    saveConfig({ defaultDisplayMode: mode });
-  }
-
   // ── Constructor ────────────────────────────────────────────────────────────
   constructor(opts: BaseWatcherOptions & { client: GitClient }) {
     super({ ...opts, client: opts.client });
@@ -237,7 +223,7 @@ export class GitWatcher extends BaseWatcher<GitWatch, GitBaseline, GitEvent> {
       commandName: this.commandName,
       getWatches: () => Array.from(this.watches.values()),
     });
-    const { defaultDisplayMode } = loadConfig();
+    const { defaultDisplayMode } = this.loadWatcherConfig();
     if (defaultDisplayMode !== undefined) {
       this.defaultDisplayMode = defaultDisplayMode;
     }

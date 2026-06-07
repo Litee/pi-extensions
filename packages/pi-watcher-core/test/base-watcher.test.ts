@@ -18,9 +18,21 @@ vi.mock('../src/browse-view.js', async (importOriginal) => {
     openMenuView: vi.fn().mockResolvedValue(undefined),
   }
 })
+
+vi.mock('node:fs', () => ({
+  readFileSync: vi.fn().mockImplementation(() => {
+    throw Object.assign(new Error('ENOENT: no such file or directory'), { code: 'ENOENT' })
+  }),
+  writeFileSync: vi.fn(),
+  mkdirSync: vi.fn(),
+}))
+
 import type { CommandCtx, DetailField, RowColumn, ToolResult, WatcherItemSource, WatcherState, WatcherView, WatchLike } from '../src/base-watcher-types.js'
 import type { ClassifiedWatcherError } from '../src/classify-error.js'
 import type { ExtensionAPI } from '@earendil-works/pi-coding-agent'
+import { getAgentDir } from '@earendil-works/pi-coding-agent'
+import { readFileSync, writeFileSync, mkdirSync } from 'node:fs'
+import { dirname, join } from 'node:path'
 
 // ---------------------------------------------------------------------------
 // Stub domain types
@@ -2233,5 +2245,142 @@ describe('purge menu item', () => {
     const item = stub.buildMenu().find(i => i.id === 'purge')!
     await item.run(ctx)
     expect(notify).toHaveBeenCalledWith(expect.stringContaining('purged 1 completed watch'), 'info')
+  })
+})
+
+// ---------------------------------------------------------------------------
+// config methods
+// ---------------------------------------------------------------------------
+
+class ConfigStub extends StubWatcher {
+  callConfigFilePath(): string {
+    return this.configFilePath()
+  }
+  callLoadWatcherConfig() {
+    return this.loadWatcherConfig()
+  }
+  callSaveWatcherConfig(change: { defaultDisplayMode?: 'widget' | 'statusline' | undefined }): boolean {
+    return this.saveWatcherConfig(change)
+  }
+}
+
+function makeConfigStub() {
+  return new ConfigStub({ pi: makePi(), now: () => 0 })
+}
+
+describe('config methods', () => {
+  beforeEach(() => {
+    vi.mocked(readFileSync).mockImplementation(() => {
+      throw Object.assign(new Error('ENOENT: no such file or directory'), { code: 'ENOENT' })
+    })
+    vi.mocked(writeFileSync).mockReset()
+    vi.mocked(mkdirSync).mockReset()
+  })
+
+  // ── configFilePath ──────────────────────────────────────────────────────
+
+  describe('configFilePath', () => {
+    it('returns join(getAgentDir(), extensionName + ".json")', () => {
+      const stub = makeConfigStub()
+      expect(stub.callConfigFilePath()).toBe(join(getAgentDir(), 'stub-watcher.json'))
+    })
+  })
+
+  // ── loadWatcherConfig ───────────────────────────────────────────────────
+
+  describe('loadWatcherConfig', () => {
+    it('returns { defaultDisplayMode: "widget" } when file contains valid JSON', () => {
+      vi.mocked(readFileSync).mockReturnValue(JSON.stringify({ defaultDisplayMode: 'widget' }) as never)
+      expect(makeConfigStub().callLoadWatcherConfig()).toEqual({ defaultDisplayMode: 'widget' })
+    })
+
+    it('returns { defaultDisplayMode: "statusline" } for statusline', () => {
+      vi.mocked(readFileSync).mockReturnValue(JSON.stringify({ defaultDisplayMode: 'statusline' }) as never)
+      expect(makeConfigStub().callLoadWatcherConfig()).toEqual({ defaultDisplayMode: 'statusline' })
+    })
+
+    it('returns {} when file not found (ENOENT)', () => {
+      // default beforeEach mock throws ENOENT
+      expect(makeConfigStub().callLoadWatcherConfig()).toEqual({})
+    })
+
+    it('returns {} on invalid JSON', () => {
+      vi.mocked(readFileSync).mockReturnValue('not-valid-json{' as never)
+      expect(makeConfigStub().callLoadWatcherConfig()).toEqual({})
+    })
+
+    it('returns {} when root is an array', () => {
+      vi.mocked(readFileSync).mockReturnValue(JSON.stringify([{ defaultDisplayMode: 'widget' }]) as never)
+      expect(makeConfigStub().callLoadWatcherConfig()).toEqual({})
+    })
+
+    it('returns {} when root is null', () => {
+      vi.mocked(readFileSync).mockReturnValue('null' as never)
+      expect(makeConfigStub().callLoadWatcherConfig()).toEqual({})
+    })
+
+    it('returns {} when root is a number', () => {
+      vi.mocked(readFileSync).mockReturnValue('42' as never)
+      expect(makeConfigStub().callLoadWatcherConfig()).toEqual({})
+    })
+
+    it('strips invalid defaultDisplayMode value ("inline") → {}', () => {
+      vi.mocked(readFileSync).mockReturnValue(JSON.stringify({ defaultDisplayMode: 'inline' }) as never)
+      expect(makeConfigStub().callLoadWatcherConfig()).toEqual({})
+    })
+
+    it('strips non-string defaultDisplayMode → {}', () => {
+      vi.mocked(readFileSync).mockReturnValue(JSON.stringify({ defaultDisplayMode: 42 }) as never)
+      expect(makeConfigStub().callLoadWatcherConfig()).toEqual({})
+    })
+  })
+
+  // ── saveWatcherConfig ───────────────────────────────────────────────────
+
+  describe('saveWatcherConfig', () => {
+    it('writes correct JSON (2-space indent + trailing newline)', () => {
+      const stub = makeConfigStub()
+      stub.callSaveWatcherConfig({ defaultDisplayMode: 'widget' })
+      expect(vi.mocked(writeFileSync)).toHaveBeenCalledOnce()
+      const args = vi.mocked(writeFileSync).mock.calls[0] as [string, string, string]
+      expect(args[1]).toBe('{\n  "defaultDisplayMode": "widget"\n}\n')
+    })
+
+    it('merges over existing file, preserving unknown keys', () => {
+      vi.mocked(readFileSync).mockReturnValue(
+        JSON.stringify({ unknownKey: 'preserved', defaultDisplayMode: 'widget' }) as never,
+      )
+      const stub = makeConfigStub()
+      stub.callSaveWatcherConfig({ defaultDisplayMode: 'statusline' })
+      const args = vi.mocked(writeFileSync).mock.calls[0] as [string, string, string]
+      const written = JSON.parse(args[1]) as Record<string, unknown>
+      expect(written['unknownKey']).toBe('preserved')
+      expect(written['defaultDisplayMode']).toBe('statusline')
+    })
+
+    it('undefined values are omitted from output', () => {
+      vi.mocked(readFileSync).mockReturnValue(
+        JSON.stringify({ defaultDisplayMode: 'widget' }) as never,
+      )
+      const stub = makeConfigStub()
+      stub.callSaveWatcherConfig({ defaultDisplayMode: undefined })
+      const args = vi.mocked(writeFileSync).mock.calls[0] as [string, string, string]
+      const written = JSON.parse(args[1]) as Record<string, unknown>
+      expect('defaultDisplayMode' in written).toBe(false)
+    })
+
+    it('returns false when writeFileSync throws', () => {
+      vi.mocked(writeFileSync).mockImplementation(() => { throw new Error('disk full') })
+      expect(makeConfigStub().callSaveWatcherConfig({ defaultDisplayMode: 'widget' })).toBe(false)
+    })
+
+    it('creates the directory via mkdirSync before writing', () => {
+      const stub = makeConfigStub()
+      stub.callSaveWatcherConfig({ defaultDisplayMode: 'widget' })
+      expect(vi.mocked(mkdirSync)).toHaveBeenCalledOnce()
+      const args = vi.mocked(mkdirSync).mock.calls[0] as [string, { recursive: boolean }]
+      expect(args[0]).toBe(dirname(stub.callConfigFilePath()))
+      expect(args[1]).toEqual({ recursive: true })
+    })
   })
 })

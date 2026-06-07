@@ -2,11 +2,14 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
 import type { ExtensionAPI } from '@earendil-works/pi-coding-agent'
 
-vi.mock('../src/config.js', () => ({
-  loadConfig: vi.fn(() => ({})),
-  saveConfig: vi.fn(() => true),
+vi.mock('node:fs', () => ({
+  readFileSync: vi.fn().mockImplementation(() => {
+    throw Object.assign(new Error('ENOENT: no such file or directory'), { code: 'ENOENT' })
+  }),
+  writeFileSync: vi.fn(),
+  mkdirSync: vi.fn(),
 }))
-import { loadConfig } from '../src/config.js'
+import { readFileSync } from 'node:fs'
 
 vi.mock('pi-watcher-core/browse-view', async (importOriginal) => {
   const actual = await importOriginal<Record<string, unknown>>()
@@ -112,7 +115,9 @@ function makeStateEntry(data: {
 }
 
 beforeEach(() => {
-  vi.mocked(loadConfig).mockReturnValue({})
+  vi.mocked(readFileSync).mockImplementation(() => {
+    throw Object.assign(new Error('ENOENT'), { code: 'ENOENT' })
+  })
 })
 
 afterEach(() => {
@@ -463,7 +468,7 @@ describe('user config: defaultDisplayMode (#0005)', () => {
   }
 
   it('uses defaultDisplayMode=statusline from user config when no persisted state — clears when idle', async () => {
-    vi.mocked(loadConfig).mockReturnValue({ defaultDisplayMode: 'statusline' })
+    vi.mocked(readFileSync).mockReturnValueOnce(JSON.stringify({ defaultDisplayMode: 'statusline' }))
     const setStatus = vi.fn()
     const { pi, handlers } = makePi({ activeTools: () => ['read'] })
     createExtensionWithClient(pi, makeClient())
@@ -477,7 +482,7 @@ describe('user config: defaultDisplayMode (#0005)', () => {
   })
 
   it('uses defaultDisplayMode=statusline from user config — shows status when there are active watches', async () => {
-    vi.mocked(loadConfig).mockReturnValue({ defaultDisplayMode: 'statusline' })
+    vi.mocked(readFileSync).mockReturnValueOnce(JSON.stringify({ defaultDisplayMode: 'statusline' }))
     const setStatus = vi.fn()
     const { pi, handlers } = makePi({ activeTools: () => ['read'] })
     createExtensionWithClient(pi, makeClient())
@@ -498,7 +503,7 @@ describe('user config: defaultDisplayMode (#0005)', () => {
   })
 
   it('falls back to widget when user config has no defaultDisplayMode', async () => {
-    vi.mocked(loadConfig).mockReturnValue({})
+    // readFileSync throws ENOENT by default — loadWatcherConfig() returns {}
     const setStatus = vi.fn()
     const { pi, handlers } = makePi({ activeTools: () => ['read'] })
     createExtensionWithClient(pi, makeClient())
@@ -510,7 +515,7 @@ describe('user config: defaultDisplayMode (#0005)', () => {
   })
 
   it('persisted displayMode wins over user config', async () => {
-    vi.mocked(loadConfig).mockReturnValue({ defaultDisplayMode: 'statusline' })
+    vi.mocked(readFileSync).mockReturnValueOnce(JSON.stringify({ defaultDisplayMode: 'statusline' }))
     const setStatus = vi.fn()
     const { pi, handlers } = makePi({ activeTools: () => ['read'] })
     createExtensionWithClient(pi, makeClient())

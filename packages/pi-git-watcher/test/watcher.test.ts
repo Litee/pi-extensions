@@ -17,12 +17,14 @@ import type { GitEvent, GitWatch } from "../src/types.js";
 // Module mocks
 // ---------------------------------------------------------------------------
 
-vi.mock("../src/config.js", () => ({
-  loadConfig: vi.fn(() => ({})),
-  saveConfig: vi.fn(() => true),
+vi.mock("node:fs", () => ({
+  readFileSync: vi.fn().mockImplementation(() => {
+    throw Object.assign(new Error("ENOENT: no such file or directory"), { code: "ENOENT" });
+  }),
+  writeFileSync: vi.fn(),
+  mkdirSync: vi.fn(),
 }));
-import * as configModule from "../src/config.js";
-import { loadConfig } from "../src/config.js";
+import { readFileSync } from "node:fs";
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -66,7 +68,9 @@ function makeWatcher(clientOverrides: Partial<GitClient> = {}, nowMs?: number): 
 }
 
 beforeEach(() => {
-  vi.mocked(loadConfig).mockReturnValue({});
+  vi.mocked(readFileSync).mockImplementation(() => {
+    throw Object.assign(new Error("ENOENT"), { code: "ENOENT" });
+  });
 });
 
 afterEach(() => {
@@ -632,14 +636,14 @@ describe("GitWatcher per-watch schedulers", () => {
 // ---------------------------------------------------------------------------
 
 describe("GitWatcher constructor defaultDisplayMode", () => {
-  it("sets defaultDisplayMode from loadConfig when provided", () => {
-    vi.mocked(loadConfig).mockReturnValue({ defaultDisplayMode: "statusline" });
+  it("sets defaultDisplayMode from config when provided", () => {
+    vi.mocked(readFileSync).mockReturnValueOnce(JSON.stringify({ defaultDisplayMode: "statusline" }));
     const { watcher } = makeWatcher();
     expect((watcher as unknown as { defaultDisplayMode: string | undefined }).defaultDisplayMode).toBe("statusline");
   });
 
   it("does not set defaultDisplayMode when config has no value", () => {
-    vi.mocked(loadConfig).mockReturnValue({});
+    // readFileSync throws ENOENT by default — loadWatcherConfig() returns {}
     const { watcher } = makeWatcher();
     expect((watcher as unknown as { defaultDisplayMode: string | undefined }).defaultDisplayMode).toBeUndefined();
   });
@@ -663,36 +667,6 @@ describe("GitWatcher identity", () => {
   it("statusLabel is 'git'", () => {
     const { watcher } = makeWatcher();
     expect((watcher as unknown as { statusLabel: string }).statusLabel).toBe("git");
-  });
-});
-
-// ---------------------------------------------------------------------------
-// userDefaultDisplayMode
-// ---------------------------------------------------------------------------
-
-describe("GitWatcher userDefaultDisplayMode", () => {
-  it("reads from loadConfig", () => {
-    vi.mocked(configModule.loadConfig).mockReturnValue({ defaultDisplayMode: "statusline" });
-    const { watcher } = makeWatcher();
-    expect(
-      (watcher as unknown as { userDefaultDisplayMode: string | undefined }).userDefaultDisplayMode,
-    ).toBe("statusline");
-  });
-
-  it("returns undefined when config has no defaultDisplayMode", () => {
-    vi.mocked(configModule.loadConfig).mockReturnValue({});
-    const { watcher } = makeWatcher();
-    expect(
-      (watcher as unknown as { userDefaultDisplayMode: string | undefined }).userDefaultDisplayMode,
-    ).toBeUndefined();
-  });
-
-  it("saveUserDefaultDisplayMode writes via saveConfig", () => {
-    const spy = vi.spyOn(configModule, "saveConfig");
-    const { watcher } = makeWatcher();
-    (watcher as unknown as { saveUserDefaultDisplayMode(m: "widget" | "statusline" | undefined): void })
-      .saveUserDefaultDisplayMode("widget");
-    expect(spy).toHaveBeenCalledWith({ defaultDisplayMode: "widget" });
   });
 });
 
