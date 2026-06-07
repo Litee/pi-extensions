@@ -30,8 +30,8 @@ beforeAll(() => {
 		execFileSync("git", ["-C", repoDir, ...args], { encoding: "utf8" });
 
 	g("init");
-	g("config", "user.email", "test@example.com");
-	g("config", "user.name", "Test");
+	g("config", "--local", "user.email", "test@example.com");
+	g("config", "--local", "user.name", "Test");
 	// Create initial commit so we have a HEAD.
 	writeFileSync(join(repoDir, "README.md"), "# Test repo\n");
 	g("add", "README.md");
@@ -215,8 +215,8 @@ describe("createWorktree — merge-to-head failure (regression: Bug #8)", () => 
 		try {
 			// Bootstrap: init + identity + initial commit.
 			execFileSync("git", ["init", isolatedRepo], { stdio: "ignore" });
-			execFileSync("git", ["-C", isolatedRepo, "config", "user.email", "test@test.com"], { stdio: "ignore" });
-			execFileSync("git", ["-C", isolatedRepo, "config", "user.name", "Test"], { stdio: "ignore" });
+			execFileSync("git", ["-C", isolatedRepo, "config", "--local", "user.email", "test@test.com"], { stdio: "ignore" });
+			execFileSync("git", ["-C", isolatedRepo, "config", "--local", "user.name", "Test"], { stdio: "ignore" });
 			execFileSync("git", ["-C", isolatedRepo, "commit", "--allow-empty", "-m", "init"], { stdio: "ignore" });
 
 			const mergeFailures: string[] = [];
