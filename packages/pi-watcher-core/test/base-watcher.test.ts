@@ -2290,12 +2290,12 @@ describe('config methods', () => {
 
   describe('loadWatcherConfig', () => {
     it('returns { defaultDisplayMode: "widget" } when file contains valid JSON', () => {
-      vi.mocked(readFileSync).mockReturnValue(JSON.stringify({ defaultDisplayMode: 'widget' }) as never)
+      vi.mocked(readFileSync).mockReturnValue(JSON.stringify({ defaultDisplayMode: 'widget' }))
       expect(makeConfigStub().callLoadWatcherConfig()).toEqual({ defaultDisplayMode: 'widget' })
     })
 
     it('returns { defaultDisplayMode: "statusline" } for statusline', () => {
-      vi.mocked(readFileSync).mockReturnValue(JSON.stringify({ defaultDisplayMode: 'statusline' }) as never)
+      vi.mocked(readFileSync).mockReturnValue(JSON.stringify({ defaultDisplayMode: 'statusline' }))
       expect(makeConfigStub().callLoadWatcherConfig()).toEqual({ defaultDisplayMode: 'statusline' })
     })
 
@@ -2305,32 +2305,32 @@ describe('config methods', () => {
     })
 
     it('returns {} on invalid JSON', () => {
-      vi.mocked(readFileSync).mockReturnValue('not-valid-json{' as never)
+      vi.mocked(readFileSync).mockReturnValue('not-valid-json{')
       expect(makeConfigStub().callLoadWatcherConfig()).toEqual({})
     })
 
     it('returns {} when root is an array', () => {
-      vi.mocked(readFileSync).mockReturnValue(JSON.stringify([{ defaultDisplayMode: 'widget' }]) as never)
+      vi.mocked(readFileSync).mockReturnValue(JSON.stringify([{ defaultDisplayMode: 'widget' }]))
       expect(makeConfigStub().callLoadWatcherConfig()).toEqual({})
     })
 
     it('returns {} when root is null', () => {
-      vi.mocked(readFileSync).mockReturnValue('null' as never)
+      vi.mocked(readFileSync).mockReturnValue('null')
       expect(makeConfigStub().callLoadWatcherConfig()).toEqual({})
     })
 
     it('returns {} when root is a number', () => {
-      vi.mocked(readFileSync).mockReturnValue('42' as never)
+      vi.mocked(readFileSync).mockReturnValue('42')
       expect(makeConfigStub().callLoadWatcherConfig()).toEqual({})
     })
 
     it('strips invalid defaultDisplayMode value ("inline") → {}', () => {
-      vi.mocked(readFileSync).mockReturnValue(JSON.stringify({ defaultDisplayMode: 'inline' }) as never)
+      vi.mocked(readFileSync).mockReturnValue(JSON.stringify({ defaultDisplayMode: 'inline' }))
       expect(makeConfigStub().callLoadWatcherConfig()).toEqual({})
     })
 
     it('strips non-string defaultDisplayMode → {}', () => {
-      vi.mocked(readFileSync).mockReturnValue(JSON.stringify({ defaultDisplayMode: 42 }) as never)
+      vi.mocked(readFileSync).mockReturnValue(JSON.stringify({ defaultDisplayMode: 42 }))
       expect(makeConfigStub().callLoadWatcherConfig()).toEqual({})
     })
   })
@@ -2348,7 +2348,7 @@ describe('config methods', () => {
 
     it('merges over existing file, preserving unknown keys', () => {
       vi.mocked(readFileSync).mockReturnValue(
-        JSON.stringify({ unknownKey: 'preserved', defaultDisplayMode: 'widget' }) as never,
+        JSON.stringify({ unknownKey: 'preserved', defaultDisplayMode: 'widget' }),
       )
       const stub = makeConfigStub()
       stub.callSaveWatcherConfig({ defaultDisplayMode: 'statusline' })
@@ -2360,7 +2360,7 @@ describe('config methods', () => {
 
     it('undefined values are omitted from output', () => {
       vi.mocked(readFileSync).mockReturnValue(
-        JSON.stringify({ defaultDisplayMode: 'widget' }) as never,
+        JSON.stringify({ defaultDisplayMode: 'widget' }),
       )
       const stub = makeConfigStub()
       stub.callSaveWatcherConfig({ defaultDisplayMode: undefined })
