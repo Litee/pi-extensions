@@ -4,11 +4,15 @@
   "private": true,
   "description": "Pi extension that imports Claude Code installed skills (~/.claude/skills, plugin cache, and project-local .claude/skills) into pi via resources_discover.",
   "type": "module",
-  "keywords": ["pi-package"],
+  "keywords": [
+    "pi-package"
+  ],
   "pi": {
-    "extensions": ["./src/index.ts"]
+    "extensions": [
+      "./src/index.ts"
+    ]
   },
   "peerDependencies": {
-    "@earendil-works/pi-coding-agent": "*"
+    "@earendil-works/pi-coding-agent": "^0.79.1"
   }
 }

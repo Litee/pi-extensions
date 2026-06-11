@@ -4,7 +4,9 @@
   "private": true,
   "description": "Generic polling, back-off, persistence, and error-taxonomy primitives for pi watcher extensions.",
   "type": "module",
-  "keywords": ["pi-package"],
+  "keywords": [
+    "pi-package"
+  ],
   "exports": {
     "./poll-scheduler": "./src/poll-scheduler.ts",
     "./persistence": "./src/persistence.ts",
@@ -26,8 +28,8 @@
     ".": "./src/lib.ts"
   },
   "peerDependencies": {
-    "@earendil-works/pi-coding-agent": "*",
-    "@earendil-works/pi-tui": "*"
+    "@earendil-works/pi-coding-agent": "^0.79.1",
+    "@earendil-works/pi-tui": "^0.79.1"
   },
   "scripts": {
     "clean": "echo 'nothing to clean'",

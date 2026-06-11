@@ -5,9 +5,13 @@
   "description": "Pi extension that adds a Codex-style /goal command: set an objective and pi works autonomously across turns until the agent calls update_goal, with token budgeting and a strict completion-audit prompt ported from openai/codex.",
   "license": "MIT AND Apache-2.0",
   "type": "module",
-  "keywords": ["pi-package"],
+  "keywords": [
+    "pi-package"
+  ],
   "pi": {
-    "extensions": ["./src/index.ts"]
+    "extensions": [
+      "./src/index.ts"
+    ]
   },
   "files": [
     "src/**",
@@ -18,8 +22,8 @@
     "README.md"
   ],
   "peerDependencies": {
-    "@earendil-works/pi-coding-agent": "*",
-    "@earendil-works/pi-tui": "*",
-    "typebox": "*"
+    "@earendil-works/pi-coding-agent": "^0.79.1",
+    "@earendil-works/pi-tui": "^0.79.1",
+    "typebox": "^1.2.8"
   }
 }

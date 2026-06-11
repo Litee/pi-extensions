@@ -4,16 +4,22 @@
   "private": true,
   "description": "Pi extension that registers the browser_control tool — talks to a local Firefox add-on via native messaging + a shared daemon.",
   "type": "module",
-  "keywords": ["pi-package"],
+  "keywords": [
+    "pi-package"
+  ],
   "pi": {
-    "extensions": ["./src/index.ts"],
-    "skills": ["./skills"]
+    "extensions": [
+      "./src/index.ts"
+    ],
+    "skills": [
+      "./skills"
+    ]
   },
   "peerDependencies": {
-    "@earendil-works/pi-coding-agent": "*",
-    "typebox": "*"
+    "@earendil-works/pi-coding-agent": "^0.79.1",
+    "typebox": "^1.2.8"
   },
   "devDependencies": {
-    "web-ext": "^8.0.0"
+    "web-ext": "^8.10.0"
   }
 }

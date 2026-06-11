@@ -4,19 +4,25 @@
   "private": true,
   "description": "Pi extension that watches an AWS EC2 instance by ID for state transitions, injecting state-change notifications into chat.",
   "type": "module",
-  "keywords": ["pi-package"],
+  "keywords": [
+    "pi-package"
+  ],
   "pi": {
-    "extensions": ["./src/index.ts"],
-    "skills": ["./skills"]
+    "extensions": [
+      "./src/index.ts"
+    ],
+    "skills": [
+      "./skills"
+    ]
   },
   "peerDependencies": {
-    "@earendil-works/pi-coding-agent": "*",
-    "pi-tools-management-tool": "*",
-    "typebox": "*"
+    "@earendil-works/pi-coding-agent": "^0.79.1",
+    "pi-tools-management-tool": "^0.1.0",
+    "typebox": "^1.2.8"
   },
   "dependencies": {
-    "@aws-sdk/client-ec2": "^3.1045.0",
-    "@aws-sdk/credential-providers": "^3.1045.0",
-    "pi-watcher-core": "*"
+    "@aws-sdk/client-ec2": "^3.1066.0",
+    "@aws-sdk/credential-providers": "^3.1066.0",
+    "pi-watcher-core": "^0.1.0"
   }
 }

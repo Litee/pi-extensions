@@ -4,17 +4,23 @@
   "private": true,
   "description": "Pi extension — watches a local Git repository for new commits, branch creation/deletion, and tag creation.",
   "type": "module",
-  "keywords": ["pi-package"],
+  "keywords": [
+    "pi-package"
+  ],
   "pi": {
-    "extensions": ["./src/index.ts"],
-    "skills": ["./skills"]
+    "extensions": [
+      "./src/index.ts"
+    ],
+    "skills": [
+      "./skills"
+    ]
   },
   "peerDependencies": {
-    "@earendil-works/pi-coding-agent": "*",
-    "pi-tools-management-tool": "*",
-    "typebox": "*"
+    "@earendil-works/pi-coding-agent": "^0.79.1",
+    "pi-tools-management-tool": "^0.1.0",
+    "typebox": "^1.2.8"
   },
   "dependencies": {
-    "pi-watcher-core": "*"
+    "pi-watcher-core": "^0.1.0"
   }
 }

@@ -4,11 +4,15 @@
   "private": true,
   "description": "Pi extension that imports Claude Code slash commands (~/.claude/commands and project-local .claude/commands) into pi as prompt templates.",
   "type": "module",
-  "keywords": ["pi-package"],
+  "keywords": [
+    "pi-package"
+  ],
   "pi": {
-    "extensions": ["./src/index.ts"]
+    "extensions": [
+      "./src/index.ts"
+    ]
   },
   "peerDependencies": {
-    "@earendil-works/pi-coding-agent": "*"
+    "@earendil-works/pi-coding-agent": "^0.79.1"
   }
 }
