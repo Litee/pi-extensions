@@ -57,13 +57,7 @@ export async function playAudioFile(filePath: string, signal?: AbortSignal): Pro
   }
 
   if (os === 'win32') {
-    const escaped = filePath.replace(/'/g, "''");
-    await execFileAsync('powershell', [
-      '-NoProfile',
-      '-Command',
-      `(New-Object Media.SoundPlayer '${escaped}').PlaySync()`,
-    ], opts);
-    return;
+    throw new Error('Windows is not supported. pi-speak requires a Unix-like OS.');
   }
 }
 

@@ -141,13 +141,9 @@ describe("playAudioFile — win32", () => {
 		mockPlatform.mockReturnValue("win32");
 	});
 
-	it("calls PowerShell SoundPlayer", async () => {
-		mockExecSuccess();
-		await playAudioFile("C:\\test.wav");
-
-		const psCalls = mockExecFile.mock.calls.filter((c) => c[0] === "powershell");
-		expect(psCalls.length).toBeGreaterThan(0);
-		const psArgs = psCalls[0]![1] as string[];
-		expect(psArgs.join(" ")).toContain("SoundPlayer");
+	it("throws unsupported-platform error", async () => {
+		await expect(playAudioFile("C:\\test.wav")).rejects.toThrow(
+			/Windows is not supported/,
+		);
 	});
 });
