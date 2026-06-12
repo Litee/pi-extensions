@@ -42,7 +42,7 @@ export default function skillsBrowserExtension(pi: ExtensionAPI) {
 				return;
 			}
 
-			const ctxWithOpts = ctx as { getSystemPromptOptions?: () => { skills?: Array<{ name: string; path: string }> } };
+			const ctxWithOpts = ctx as { getSystemPromptOptions?: () => { skills?: Array<{ name: string }> } };
 			if (typeof ctxWithOpts.getSystemPromptOptions !== "function") {
 				ctx.ui?.notify?.("This feature requires pi 0.78.0 or later", "error");
 				return;
