@@ -7,28 +7,29 @@
  *
  * Keybindings inside the browser:
  *   ↑ / ↓          Navigate the list
- *   Ctrl-S          Toggle sort: name (alphabetical) ↔ tokens desc
+ *   ctrl-s          Toggle sort: name (alphabetical) ↔ tokens desc
  *   type anything   Filter by skill name (case-insensitive substring)
  *   ⌫ Backspace     Remove last character from the filter query
  *   Esc             Close
  *
  * This file is intentionally a thin shell — all testable logic lives in
- * `helpers.ts` (filter/sort/token estimate), `viewport.ts` (window + scroll
- * percent), `row.ts` (row rendering), and `keys.ts` (keypress dispatch).
+ * `helpers.ts` (filter/sort/token estimate), `row.ts` (row rendering), and
+ * `keys.ts` (keypress dispatch).
  */
 
 import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
 import { matchesKey, truncateToWidth } from "@earendil-works/pi-tui";
 
 import {
+	detectPathDisplay,
+	detectScope,
 	estimateDescriptionTokens,
 	filterAndSort,
 	type SkillEntry,
 	type SortMode,
 } from "./helpers.js";
 import { dispatchKey } from "./keys.js";
-import { TOKEN_COL_WIDTH, buildRowLine, computeNameColWidth } from "./row.js";
-import { computeScrollPercent, computeWindow } from "./viewport.js";
+import { TOKEN_COL_WIDTH, buildRowLine, computeNameColWidth, computePathColWidth } from "./row.js";
 
 const MAX_VISIBLE_ROWS = 15;
 
@@ -55,10 +56,12 @@ export default function skillsBrowserExtension(pi: ExtensionAPI) {
 				.getCommands()
 				.filter((c) => c.source === "skill")
 				.map((c) => ({
-					name: c.name,
+						name: `${c.name}  ${detectPathDisplay(c.sourceInfo.path, process.cwd())}`,
 					description: c.description ?? "",
 					tokens: estimateDescriptionTokens(c.description ?? ""),
 					path: c.sourceInfo.path,
+					pathDisplay: detectPathDisplay(c.sourceInfo.path, process.cwd()),
+					scope: detectScope(c.sourceInfo.path),
 					inPrompt: skillsInPrompt.has(c.name),
 				}));
 
@@ -133,44 +136,92 @@ export default function skillsBrowserExtension(pi: ExtensionAPI) {
 					);
 					lines.push("");
 
-					// ── Skill list ──
+					// ── Skill list (grouped by source directory) ──
 					const nameColWidth = computeNameColWidth(width);
+
+					function renderSection(
+						sectionItems: SkillEntry[],
+						title: string,
+						globalOffset: number,
+					): void {
+						if (sectionItems.length === 0) return;
+						const bar = "─".repeat(Math.max(0, width - title.length - 7));
+						lines.push(
+							truncateToWidth(
+								theme.fg("dim", `── ${title} (${sectionItems.length}) `) +
+									theme.fg("accent", bar),
+								width,
+							),
+						);
+
+						const selInSection =
+							selectedIndex >= globalOffset &&
+							selectedIndex < globalOffset + sectionItems.length
+								? selectedIndex - globalOffset
+								: -1;
+
+						const visStart =
+							selInSection < 0
+								? 0
+								: Math.max(
+										0,
+										Math.min(
+											selInSection - Math.floor(MAX_VISIBLE_ROWS / 2),
+											sectionItems.length - MAX_VISIBLE_ROWS,
+										),
+									);
+						const visEnd = Math.min(sectionItems.length, visStart + MAX_VISIBLE_ROWS);
+
+						for (let i = visStart; i < visEnd; i++) {
+							lines.push(
+								truncateToWidth(
+									buildRowLine(
+										sectionItems[i]!,
+										globalOffset + i === selectedIndex,
+										nameColWidth,
+														computePathColWidth(width, nameColWidth),
+										TOKEN_COL_WIDTH,
+										theme,
+									),
+									width,
+								),
+							);
+						}
+
+						if (sectionItems.length > MAX_VISIBLE_ROWS) {
+							lines.push(
+								truncateToWidth(
+									theme.fg("dim", `  ··· ${sectionItems.length - MAX_VISIBLE_ROWS} more`),
+									width,
+								),
+							);
+						}
+					}
 
 					if (filtered.length === 0) {
 						lines.push(
 							truncateToWidth(theme.fg("warning", "  No skills match your filter"), width),
 						);
 					} else {
-						const { start, end } = computeWindow(
-							selectedIndex,
-							filtered.length,
-							MAX_VISIBLE_ROWS,
-						);
+						// Group by scope: user-agents first, then user-skills, then project
+						const userAgents = filtered.filter((s) => s.scope === "user-agents");
+						const userSkills = filtered.filter((s) => s.scope === "user-skills");
+						const projectSkills = filtered.filter((s) => s.scope === "project");
 
-						for (let i = start; i < end; i++) {
-							const skill = filtered[i]!;
-							const isSelected = i === selectedIndex;
-							lines.push(
-								truncateToWidth(
-									buildRowLine(skill, isSelected, nameColWidth, TOKEN_COL_WIDTH, theme),
-									width,
-								),
-							);
+						let offset = 0;
+
+						if (userAgents.length > 0) {
+							renderSection(userAgents, "USER-AGENTS", offset);
+							offset += userAgents.length;
 						}
-
-						// Show a scroll hint when the list is taller than the viewport.
-						if (filtered.length > MAX_VISIBLE_ROWS) {
-							const pct = computeScrollPercent(selectedIndex, filtered.length);
-							const pctLabel = pct === null ? "" : `  (${pct}%)`;
-							lines.push(
-								truncateToWidth(
-									theme.fg(
-										"dim",
-										`  ··· ${filtered.length - MAX_VISIBLE_ROWS} more${pctLabel}`,
-									),
-									width,
-								),
-							);
+						if (userSkills.length > 0) {
+							if (offset > 0) lines.push("");
+							renderSection(userSkills, "USER-SKILLS", offset);
+							offset += userSkills.length;
+						}
+						if (projectSkills.length > 0) {
+							if (offset > 0) lines.push("");
+							renderSection(projectSkills, "PROJECT", offset);
 						}
 					}
 
@@ -183,7 +234,7 @@ export default function skillsBrowserExtension(pi: ExtensionAPI) {
 						truncateToWidth(
 							theme.fg(
 								"dim",
-								`↑↓ navigate · Ctrl-S sort · type to filter · ⌫ clear · esc close   ${pos}`,
+								`↑↓ navigate · ctrl-s sort · type to filter · ⌫ clear · esc close   ${pos}`,
 							) +
 								" " +
 								theme.fg("success", "●") +

@@ -5,8 +5,14 @@
  * without pulling in the pi-tui / pi-coding-agent runtime.
  */
 
+import { homedir } from "node:os";
+import { join } from "node:path";
+
 /** Sort order for the skills list. */
 export type SortMode = "name" | "tokens";
+
+/** Source directory from which a skill was loaded. */
+export type SkillScope = "project" | "user-skills" | "user-agents";
 
 /** A resolved skill entry ready for display. */
 export interface SkillEntry {
@@ -14,9 +20,78 @@ export interface SkillEntry {
 	description: string;
 	/** Pre-computed description token estimate. */
 	tokens: number;
+	/** Absolute path to the SKILL.md file (used for scope detection). */
 	path: string;
+	/** Displayable relative path to the skill's root directory. */
+	pathDisplay: string;
 	/** True when this skill appears in the current system prompt. */
 	inPrompt: boolean;
+	/** Source directory from which this skill was loaded. */
+	scope: SkillScope;
+}
+
+/**
+ * Classify a skill's source directory from its file path.
+ *
+ * - `user-agents` — `~/.pi/agent/agents/` (user-level agent skills)
+ * - `user-skills` — `~/.pi/agent/skills/` (user-level skills)
+ * - `project`     — any other location (typically `.pi/skills/`)
+ */
+export function detectScope(path: string): SkillScope {
+	// Expand ~ to the user's home directory
+	let normalized = path;
+	if (normalized.startsWith("~/")) {
+		normalized = join(homedir(), normalized.slice(2));
+	}
+	// Check for user-agents first (more specific)
+	if (
+		normalized.includes("/.pi/agent/agents/") ||
+		normalized.includes(".pi\\agent\\agents")
+	) {
+		return "user-agents";
+	}
+	// Check for user-skills
+	if (
+		normalized.includes("/.pi/agent/skills/") ||
+		normalized.includes(".pi\\agent\\skills")
+	) {
+		return "user-skills";
+	}
+	// Everything else defaults to project scope
+	return "project";
+}
+
+/**
+ * Produce a displayable relative path to the skill's root directory.
+ *
+ * Strips the project home or user home prefix, keeping the meaningful
+ * portion (`.pi/skills/…`, `~/.pi/agent/…`).
+ */
+export function detectPathDisplay(path: string, cwd: string): string {
+	// Expand ~ in the input path
+	let normalized = path;
+	if (normalized.startsWith("~/")) {
+		normalized = join(homedir(), normalized.slice(2));
+	}
+
+	// Try to strip the project cwd first (project skills)
+	const cwdNorm = join(cwd, "");
+	if (normalized.startsWith(cwdNorm)) {
+		const relative = normalized.slice(cwdNorm.length).replace(/^[/\\]/, "");
+		// Remove the SKILL.md file name to get the directory
+		const dir = relative.replace(/[/\\]SKILL\.md$/i, "");
+		return dir || relative;
+	}
+
+	// Fall back to showing the path as-is (user-level skills)
+	// Restore ~ for user-level paths
+	const home = homedir();
+	if (normalized.startsWith(home)) {
+		const relative = normalized.slice(home.length).replace(/^[/\\]/, "");
+		return `~/${relative}`;
+	}
+
+	return normalized;
 }
 
 /**

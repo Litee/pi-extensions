@@ -4,10 +4,11 @@ Pi extension that registers a `/skills` command for interactively browsing every
 
 ## Features
 
+- **Scope grouping** — skills are grouped by source directory: `USER-AGENTS` (`~/.pi/agent/agents/`), `USER-SKILLS` (`~/.pi/agent/skills/`), and `PROJECT` (`.pi/skills/`).
 - **Name + token count** — shows each skill's name alongside a compact description token estimate (`chars/4` heuristic)
 - **Two sort modes** — press `Ctrl-S` to toggle between alphabetical by name (default) and descending by description token count
 - **Filter as you type** — any printable character narrows the list by case-insensitive substring match on the skill name
-- **Windowed scrolling** — handles large skill sets (100+ skills) with viewport-clamped rendering and a scroll-position indicator
+- **Windowed scrolling** — handles large skill sets (100+ skills) with viewport-clamped rendering and section headers
 
 ## Usage
 

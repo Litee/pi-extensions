@@ -3,6 +3,7 @@ import { describe, expect, it } from "vitest";
 import {
 	applyFilter,
 	applySortMode,
+	detectScope,
 	estimateDescriptionTokens,
 	filterAndSort,
 	formatTokens,
@@ -14,13 +15,20 @@ import {
 // Fixtures
 // ---------------------------------------------------------------------------
 
-function mkSkill(name: string, description: string): SkillEntry {
+function mkSkill(
+	name: string,
+	description: string,
+	overrides?: Partial<SkillEntry>,
+): SkillEntry {
 	return {
 		name,
 		description,
 		tokens: estimateDescriptionTokens(description),
 		path: `/path/to/${name}`,
 		inPrompt: false,
+		pathDisplay: "",
+		scope: "project",
+		...overrides,
 	};
 }
 
@@ -151,9 +159,9 @@ describe("applySortMode", () => {
 
 	it("uses name as a tiebreaker when token counts are equal in 'tokens' mode", () => {
 		const equal: SkillEntry[] = [
-			{ name: "zeta", description: "abcd", tokens: 1, path: "", inPrompt: false },
-			{ name: "alpha", description: "abcd", tokens: 1, path: "", inPrompt: false },
-			{ name: "mango", description: "abcd", tokens: 1, path: "", inPrompt: false },
+			{ name: "zeta", description: "abcd", tokens: 1, path: "", inPrompt: false, scope: "project", pathDisplay: "" },
+			{ name: "alpha", description: "abcd", tokens: 1, path: "", inPrompt: false, scope: "project", pathDisplay: "" },
+			{ name: "mango", description: "abcd", tokens: 1, path: "", inPrompt: false, scope: "project", pathDisplay: "" },
 		];
 		const sorted = applySortMode(equal, "tokens");
 		expect(sorted.map((s) => s.name)).toEqual(["alpha", "mango", "zeta"]);
@@ -172,6 +180,56 @@ describe("applySortMode", () => {
 });
 
 // ---------------------------------------------------------------------------
+// detectScope
+// ---------------------------------------------------------------------------
+
+describe("detectScope", () => {
+	it("detects project scope from .pi/skills path", () => {
+		expect(
+			detectScope("/home/user/project/.pi/skills/my-skill/SKILL.md"),
+		).toBe("project");
+	});
+
+	it("detects user-skills scope from ~/.pi/agent/skills path", () => {
+		expect(
+			detectScope("/home/user/.pi/agent/skills/my-skill/SKILL.md"),
+		).toBe("user-skills");
+	});
+
+	it("detects user-agents scope from ~/.pi/agent/agents path", () => {
+		expect(
+			detectScope("/home/user/.pi/agent/agents/my-agent/SKILL.md"),
+		).toBe("user-agents");
+	});
+
+	it("handles tilde-prefixed paths", () => {
+		expect(detectScope("~/.pi/agent/skills/my-skill/SKILL.md")).toBe("user-skills");
+		expect(detectScope("~/.pi/agent/agents/my-agent/SKILL.md")).toBe("user-agents");
+	});
+
+	it("defaults to project for unknown paths", () => {
+		expect(detectScope("/some/random/path/SKILL.md")).toBe("project");
+	});
+
+	it("handles Windows-style backslashes", () => {
+		expect(
+			detectScope("C:\\Users\\user\\.pi\\agent\\skills\\my-skill\\SKILL.md"),
+		).toBe("user-skills");
+		expect(
+			detectScope("C:\\Users\\user\\.pi\\agent\\agents\\my-agent\\SKILL.md"),
+		).toBe("user-agents");
+	});
+
+	it("identifies skills in a directory named 'user-agents-extra' as user-skills", () => {
+		// The path is under .pi/agent/skills/, so it's user-skills regardless
+		// of the directory name.
+		expect(
+			detectScope("/home/user/.pi/agent/skills/user-agents-extra/SKILL.md"),
+		).toBe("user-skills");
+	});
+});
+
+// ---------------------------------------------------------------------------
 // filterAndSort
 // ---------------------------------------------------------------------------
 
@@ -186,10 +244,10 @@ describe("filterAndSort", () => {
 	it("filters then sorts — query restricts results, mode orders them", () => {
 		// Two skills contain "s": "brainstorming", "use-pyspark", "skill-creator", "write-well" ... actually let's be specific
 		const subset: SkillEntry[] = [
-			{ name: "beta", description: "x".repeat(20), tokens: 5, path: "", inPrompt: false },
-			{ name: "alpha", description: "x".repeat(40), tokens: 10, path: "", inPrompt: false },
-			{ name: "gamma", description: "x".repeat(8), tokens: 2, path: "", inPrompt: false },
-			{ name: "delta-extra", description: "x".repeat(16), tokens: 4, path: "", inPrompt: false },
+			{ name: "beta", description: "x".repeat(20), tokens: 5, path: "", inPrompt: false, scope: "project", pathDisplay: "" },
+			{ name: "alpha", description: "x".repeat(40), tokens: 10, path: "", inPrompt: false, scope: "project", pathDisplay: "" },
+			{ name: "gamma", description: "x".repeat(8), tokens: 2, path: "", inPrompt: false, scope: "project", pathDisplay: "" },
+			{ name: "delta-extra", description: "x".repeat(16), tokens: 4, path: "", inPrompt: false, scope: "project", pathDisplay: "" },
 		];
 		// Filter: "a" matches all four entries (beta/alpha/gamma/delta-extra all contain "a").
 		const result = filterAndSort(subset, "a", "tokens");

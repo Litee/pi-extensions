@@ -5,7 +5,7 @@
  * can be unit-tested without a live pi-tui runtime.
  *
  * NOTE: the caller is still responsible for outer `truncateToWidth` wrapping
- * — this module only produces the inner `arrow + name + padding + badge`
+ * — this module only produces the inner `arrow + name + path + padding + badge`
  * string.
  */
 
@@ -27,19 +27,40 @@ export const PROMPT_INDICATOR_WIDTH = 2;
 /** Token badge column: wide enough for "[9.9k tok]" plus a leading space. */
 export const TOKEN_COL_WIDTH = 12;
 
+/** Separator between skill name and embedded path display. */
+const NAME_PATH_SEP = "  ";
+
 /**
- * Compute the name column width given the total available width.
- * Guaranteed to be at least 4 so that `slice(0, nameColWidth - 1) + "…"`
- * always produces a non-empty truncated label.
+ * Name column width: fixed (30 — enough for "skill:" + ~24 char name with
+ * room to grow). Two spaces separate name and path columns.
+ * The path column takes all remaining space.
  */
-export function computeNameColWidth(width: number): number {
-	return Math.max(4, width - ARROW_COL_WIDTH - PROMPT_INDICATOR_WIDTH - TOKEN_COL_WIDTH);
+export function computeNameColWidth(_width: number): number {
+	return 40;
 }
 
 /**
- * Build a single list row: `"{arrow}{styledName}{padding}{styledBadge}"`.
+ * Compute the path column width: everything left after arrow, name, indicator,
+ * and badge columns.
+ */
+export function computePathColWidth(width: number, nameColWidth: number): number {
+	return width - ARROW_COL_WIDTH - nameColWidth - 2 - PROMPT_INDICATOR_WIDTH - TOKEN_COL_WIDTH;
+}
+
+/**
+ * Truncate a string to `maxLen` characters, appending "…" if truncated.
+ */
+function truncate(str: string, maxLen: number): string {
+	return str.length > maxLen ? `${str.slice(0, maxLen - 1)}…` : str;
+}
+
+/**
+ * Build a single list row:
+ * `"{arrow}{nameCol}{pathCol}{padding}{indicator}{badge}"`.
  *
- * - Name is truncated with a trailing `…` if it exceeds `nameColWidth`.
+ * - The name column is left-aligned, truncated at `nameColWidth`.
+ * - The path column is left-aligned, truncated at `pathColWidth`, dimmed.
+ * - Padding fills the gap between the path column and the indicator column.
  * - Selected rows get the `"accent"` colour; unselected badges get `"dim"`.
  * - The badge is `.padStart(tokenColWidth)` so badges right-align under the
  *   column.
@@ -48,19 +69,32 @@ export function buildRowLine(
 	skill: SkillEntry,
 	isSelected: boolean,
 	nameColWidth: number,
+	pathColWidth: number,
 	tokenColWidth: number,
 	theme: RowTheme,
 ): string {
 	const arrow = isSelected ? theme.fg("accent", "> ") : "  ";
 
-	// Truncate the plain name first so we can measure its visible width
-	// without ANSI codes, then apply colours.
-	const plainName =
-		skill.name.length > nameColWidth
-			? `${skill.name.slice(0, nameColWidth - 1)}…`
-			: skill.name;
-	const padding = " ".repeat(Math.max(0, nameColWidth - plainName.length));
-	const styledName = isSelected ? theme.fg("accent", plainName) : plainName;
+	// Split the combined name into skill-name and path-display parts.
+	const rawName = skill.name;
+	const sepIndex = rawName.indexOf(NAME_PATH_SEP);
+	const namePart = sepIndex !== -1 ? rawName.slice(0, sepIndex) : rawName;
+	const pathPart = sepIndex !== -1 ? rawName.slice(sepIndex + NAME_PATH_SEP.length) : "";
+
+	// Truncate each part to its column width.
+	const visibleName = truncate(namePart, nameColWidth);
+	const visiblePath = pathPart.length > 0 ? truncate(pathPart, pathColWidth) : "";
+
+	// Right-pad each column to its fixed width, then style.
+	const paddedName = visibleName + " ".repeat(Math.max(0, nameColWidth - visibleName.length));
+	const paddedPath = visiblePath + " ".repeat(Math.max(0, pathColWidth - visiblePath.length));
+
+	const styledName = isSelected
+		? theme.fg("accent", paddedName)
+		: paddedName;
+	const styledPath = pathPart.length > 0
+		? theme.fg("dim", paddedPath)
+		: paddedPath;
 
 	// Prompt-status indicator: "● " when the skill is in the system prompt.
 	const promptIndicator = skill.inPrompt
@@ -73,5 +107,5 @@ export function buildRowLine(
 		? theme.fg("accent", paddedBadge)
 		: theme.fg("dim", paddedBadge);
 
-	return `${arrow}${styledName}${padding}${promptIndicator}${styledBadge}`;
+	return `${arrow}${styledName}  ${styledPath}${promptIndicator}${styledBadge}`;
 }
