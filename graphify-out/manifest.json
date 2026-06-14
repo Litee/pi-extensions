@@ -1,0 +1,2622 @@
+{
+  "/Users/andrey/Projects/pi-extensions/.husky/_/applypatch-msg": {
+    "mtime": 1781185192.3177335,
+    "ast_hash": "0b71c2e7d39daa010985d529f1320b37",
+    "semantic_hash": "0b71c2e7d39daa010985d529f1320b37"
+  },
+  "/Users/andrey/Projects/pi-extensions/.husky/_/commit-msg": {
+    "mtime": 1781185192.3175945,
+    "ast_hash": "0b71c2e7d39daa010985d529f1320b37",
+    "semantic_hash": "0b71c2e7d39daa010985d529f1320b37"
+  },
+  "/Users/andrey/Projects/pi-extensions/.husky/_/h": {
+    "mtime": 1781185192.317242,
+    "ast_hash": "15239a01c5554e56ff745570fb583a91",
+    "semantic_hash": "15239a01c5554e56ff745570fb583a91"
+  },
+  "/Users/andrey/Projects/pi-extensions/.husky/_/husky.sh": {
+    "mtime": 1781185192.3185365,
+    "ast_hash": "13871d2ab13e8423790ecb2c01c78c18",
+    "semantic_hash": "13871d2ab13e8423790ecb2c01c78c18"
+  },
+  "/Users/andrey/Projects/pi-extensions/.husky/_/post-applypatch": {
+    "mtime": 1781185192.3179166,
+    "ast_hash": "0b71c2e7d39daa010985d529f1320b37",
+    "semantic_hash": "0b71c2e7d39daa010985d529f1320b37"
+  },
+  "/Users/andrey/Projects/pi-extensions/.husky/_/post-checkout": {
+    "mtime": 1781185192.318289,
+    "ast_hash": "0b71c2e7d39daa010985d529f1320b37",
+    "semantic_hash": "0b71c2e7d39daa010985d529f1320b37"
+  },
+  "/Users/andrey/Projects/pi-extensions/.husky/_/post-commit": {
+    "mtime": 1781185192.317656,
+    "ast_hash": "0b71c2e7d39daa010985d529f1320b37",
+    "semantic_hash": "0b71c2e7d39daa010985d529f1320b37"
+  },
+  "/Users/andrey/Projects/pi-extensions/.husky/_/post-merge": {
+    "mtime": 1781185192.3183458,
+    "ast_hash": "0b71c2e7d39daa010985d529f1320b37",
+    "semantic_hash": "0b71c2e7d39daa010985d529f1320b37"
+  },
+  "/Users/andrey/Projects/pi-extensions/.husky/_/post-rewrite": {
+    "mtime": 1781185192.3182166,
+    "ast_hash": "0b71c2e7d39daa010985d529f1320b37",
+    "semantic_hash": "0b71c2e7d39daa010985d529f1320b37"
+  },
+  "/Users/andrey/Projects/pi-extensions/.husky/_/pre-applypatch": {
+    "mtime": 1781185192.3178048,
+    "ast_hash": "0b71c2e7d39daa010985d529f1320b37",
+    "semantic_hash": "0b71c2e7d39daa010985d529f1320b37"
+  },
+  "/Users/andrey/Projects/pi-extensions/.husky/_/pre-auto-gc": {
+    "mtime": 1781185192.3184624,
+    "ast_hash": "0b71c2e7d39daa010985d529f1320b37",
+    "semantic_hash": "0b71c2e7d39daa010985d529f1320b37"
+  },
+  "/Users/andrey/Projects/pi-extensions/.husky/_/pre-commit": {
+    "mtime": 1781185192.3173876,
+    "ast_hash": "0b71c2e7d39daa010985d529f1320b37",
+    "semantic_hash": "0b71c2e7d39daa010985d529f1320b37"
+  },
+  "/Users/andrey/Projects/pi-extensions/.husky/_/pre-merge-commit": {
+    "mtime": 1781185192.3174639,
+    "ast_hash": "0b71c2e7d39daa010985d529f1320b37",
+    "semantic_hash": "0b71c2e7d39daa010985d529f1320b37"
+  },
+  "/Users/andrey/Projects/pi-extensions/.husky/_/pre-push": {
+    "mtime": 1781185192.3184052,
+    "ast_hash": "0b71c2e7d39daa010985d529f1320b37",
+    "semantic_hash": "0b71c2e7d39daa010985d529f1320b37"
+  },
+  "/Users/andrey/Projects/pi-extensions/.husky/_/pre-rebase": {
+    "mtime": 1781185192.3181376,
+    "ast_hash": "0b71c2e7d39daa010985d529f1320b37",
+    "semantic_hash": "0b71c2e7d39daa010985d529f1320b37"
+  },
+  "/Users/andrey/Projects/pi-extensions/.husky/_/prepare-commit-msg": {
+    "mtime": 1781185192.3175242,
+    "ast_hash": "0b71c2e7d39daa010985d529f1320b37",
+    "semantic_hash": "0b71c2e7d39daa010985d529f1320b37"
+  },
+  "/Users/andrey/Projects/pi-extensions/.husky/post-rewrite": {
+    "mtime": 1781021657.1905468,
+    "ast_hash": "d5bdaf8ba156fc3b9261be31c64852c5",
+    "semantic_hash": "d5bdaf8ba156fc3b9261be31c64852c5"
+  },
+  "/Users/andrey/Projects/pi-extensions/commitlint.config.js": {
+    "mtime": 1781021657.1913178,
+    "ast_hash": "72a283262afe4787bdd76fb3f50ba651",
+    "semantic_hash": "72a283262afe4787bdd76fb3f50ba651"
+  },
+  "/Users/andrey/Projects/pi-extensions/eslint.config.js": {
+    "mtime": 1781175202.6549606,
+    "ast_hash": "31d7ad56d22e027bfcc2b4322cbe50c8",
+    "semantic_hash": "31d7ad56d22e027bfcc2b4322cbe50c8"
+  },
+  "/Users/andrey/Projects/pi-extensions/package.json": {
+    "mtime": 1781387785.8513381,
+    "ast_hash": "e36aa51b57369ad3a238defdb8ff4f67",
+    "semantic_hash": "e36aa51b57369ad3a238defdb8ff4f67"
+  },
+  "/Users/andrey/Projects/pi-extensions/packages/pi-additional-system-prompt/package.json": {
+    "mtime": 1781185405.5799036,
+    "ast_hash": "0503e2df3095d711e1d7b876de62de41",
+    "semantic_hash": "0503e2df3095d711e1d7b876de62de41"
+  },
+  "/Users/andrey/Projects/pi-extensions/packages/pi-additional-system-prompt/src/index.ts": {
+    "mtime": 1781175202.6555846,
+    "ast_hash": "7b0cfc2dc770dd384d8d3fec418d5e4f",
+    "semantic_hash": "7b0cfc2dc770dd384d8d3fec418d5e4f"
+  },
+  "/Users/andrey/Projects/pi-extensions/packages/pi-additional-system-prompt/test/index.test.ts": {
+    "mtime": 1781175202.6556654,
+    "ast_hash": "429f44a00df139f70a61b84bd63510f8",
+    "semantic_hash": "429f44a00df139f70a61b84bd63510f8"
+  },
+  "/Users/andrey/Projects/pi-extensions/packages/pi-agent-introspection/package.json": {
+    "mtime": 1781185405.5801249,
+    "ast_hash": "69f3d0d7ca05c3a4734fa8aaae63c6c4",
+    "semantic_hash": "69f3d0d7ca05c3a4734fa8aaae63c6c4"
+  },
+  "/Users/andrey/Projects/pi-extensions/packages/pi-agent-introspection/src/commandsTool.ts": {
+    "mtime": 1781021657.1927388,
+    "ast_hash": "d527a2f2013526035bdb50b364d44265",
+    "semantic_hash": "d527a2f2013526035bdb50b364d44265"
+  },
+  "/Users/andrey/Projects/pi-extensions/packages/pi-agent-introspection/src/index.ts": {
+    "mtime": 1781021657.1927946,
+    "ast_hash": "b57bb4a82f085e1105c51aa20307ad3b",
+    "semantic_hash": "b57bb4a82f085e1105c51aa20307ad3b"
+  },
+  "/Users/andrey/Projects/pi-extensions/packages/pi-agent-introspection/src/tool.ts": {
+    "mtime": 1781175202.6557727,
+    "ast_hash": "00c85c6c4a8eb23739bbb203ee793979",
+    "semantic_hash": "00c85c6c4a8eb23739bbb203ee793979"
+  },
+  "/Users/andrey/Projects/pi-extensions/packages/pi-agent-introspection/test/commandsTool.test.ts": {
+    "mtime": 1781021657.19303,
+    "ast_hash": "06a9c2ead655fd03a36906115bdef220",
+    "semantic_hash": "06a9c2ead655fd03a36906115bdef220"
+  },
+  "/Users/andrey/Projects/pi-extensions/packages/pi-agent-introspection/test/tool.test.ts": {
+    "mtime": 1781175202.6558642,
+    "ast_hash": "310ce75ce4c47251ab10e56b4bc65de5",
+    "semantic_hash": "310ce75ce4c47251ab10e56b4bc65de5"
+  },
+  "/Users/andrey/Projects/pi-extensions/packages/pi-agent-version/package.json": {
+    "mtime": 1781185405.5803564,
+    "ast_hash": "4564a6452e69de061d2f19a0189d5577",
+    "semantic_hash": "4564a6452e69de061d2f19a0189d5577"
+  },
+  "/Users/andrey/Projects/pi-extensions/packages/pi-agent-version/src/index.ts": {
+    "mtime": 1781175202.656015,
+    "ast_hash": "c1f89b2f241a9b421d8e4ad0813263fe",
+    "semantic_hash": "c1f89b2f241a9b421d8e4ad0813263fe"
+  },
+  "/Users/andrey/Projects/pi-extensions/packages/pi-agent-version/test/index.test.ts": {
+    "mtime": 1781175202.656128,
+    "ast_hash": "583fbe4a3e6d3f287ae2b0040e7554e2",
+    "semantic_hash": "583fbe4a3e6d3f287ae2b0040e7554e2"
+  },
+  "/Users/andrey/Projects/pi-extensions/packages/pi-ask-user-question/package.json": {
+    "mtime": 1781185405.5805695,
+    "ast_hash": "a1e52fcaf32389f053f0395181f2071f",
+    "semantic_hash": "a1e52fcaf32389f053f0395181f2071f"
+  },
+  "/Users/andrey/Projects/pi-extensions/packages/pi-ask-user-question/src/constants.ts": {
+    "mtime": 1781021657.1933546,
+    "ast_hash": "37e640d4e6002fd3bc61f650fc32b7ba",
+    "semantic_hash": "37e640d4e6002fd3bc61f650fc32b7ba"
+  },
+  "/Users/andrey/Projects/pi-extensions/packages/pi-ask-user-question/src/controller.ts": {
+    "mtime": 1781021657.1934793,
+    "ast_hash": "f0a70d263983ca494315ddfb0ff1036d",
+    "semantic_hash": "f0a70d263983ca494315ddfb0ff1036d"
+  },
+  "/Users/andrey/Projects/pi-extensions/packages/pi-ask-user-question/src/dialog.ts": {
+    "mtime": 1781021657.1935792,
+    "ast_hash": "abbcdd01392231029d5c1d12b6aeaca7",
+    "semantic_hash": "abbcdd01392231029d5c1d12b6aeaca7"
+  },
+  "/Users/andrey/Projects/pi-extensions/packages/pi-ask-user-question/src/format.ts": {
+    "mtime": 1781021657.1936321,
+    "ast_hash": "884f342fe9efe477143a054f9832dbdb",
+    "semantic_hash": "884f342fe9efe477143a054f9832dbdb"
+  },
+  "/Users/andrey/Projects/pi-extensions/packages/pi-ask-user-question/src/index.ts": {
+    "mtime": 1781021657.1937072,
+    "ast_hash": "5e06adbe055a96d1929aeb4c3df16085",
+    "semantic_hash": "5e06adbe055a96d1929aeb4c3df16085"
+  },
+  "/Users/andrey/Projects/pi-extensions/packages/pi-ask-user-question/src/inputRouter.ts": {
+    "mtime": 1781021657.1937695,
+    "ast_hash": "a1bc4b976b9ab3c317572322b6b296b5",
+    "semantic_hash": "a1bc4b976b9ab3c317572322b6b296b5"
+  },
+  "/Users/andrey/Projects/pi-extensions/packages/pi-ask-user-question/src/render.ts": {
+    "mtime": 1781021657.1938307,
+    "ast_hash": "b4ddda2484b0b5c046597aebd9a7e0ce",
+    "semantic_hash": "b4ddda2484b0b5c046597aebd9a7e0ce"
+  },
+  "/Users/andrey/Projects/pi-extensions/packages/pi-ask-user-question/src/renderPanel.ts": {
+    "mtime": 1781021657.1939037,
+    "ast_hash": "52617dbdd6c7a16a851875b475aa78ed",
+    "semantic_hash": "52617dbdd6c7a16a851875b475aa78ed"
+  },
+  "/Users/andrey/Projects/pi-extensions/packages/pi-ask-user-question/src/rows.ts": {
+    "mtime": 1781021657.1939576,
+    "ast_hash": "4e1185fb0e68fa2655b97bb71b427201",
+    "semantic_hash": "4e1185fb0e68fa2655b97bb71b427201"
+  },
+  "/Users/andrey/Projects/pi-extensions/packages/pi-ask-user-question/src/schema.ts": {
+    "mtime": 1781021657.194016,
+    "ast_hash": "de93eb3e8c8caad3a40769f1a17009b0",
+    "semantic_hash": "de93eb3e8c8caad3a40769f1a17009b0"
+  },
+  "/Users/andrey/Projects/pi-extensions/packages/pi-ask-user-question/src/validate.ts": {
+    "mtime": 1781021657.1940768,
+    "ast_hash": "88293b3279165b60cd7185d80eb5cca4",
+    "semantic_hash": "88293b3279165b60cd7185d80eb5cca4"
+  },
+  "/Users/andrey/Projects/pi-extensions/packages/pi-ask-user-question/test/constants.test.ts": {
+    "mtime": 1781021657.1941676,
+    "ast_hash": "b76501279cbeb02e14c9355e5cd603b1",
+    "semantic_hash": "b76501279cbeb02e14c9355e5cd603b1"
+  },
+  "/Users/andrey/Projects/pi-extensions/packages/pi-ask-user-question/test/controller.test.ts": {
+    "mtime": 1781449165.8422909,
+    "ast_hash": "62da9f8b87e8abaf2b27bb0f76a5f1b2",
+    "semantic_hash": "62da9f8b87e8abaf2b27bb0f76a5f1b2"
+  },
+  "/Users/andrey/Projects/pi-extensions/packages/pi-ask-user-question/test/format.test.ts": {
+    "mtime": 1781021657.1943712,
+    "ast_hash": "df58fb387cb1fff368a0ba498e42e84c",
+    "semantic_hash": "df58fb387cb1fff368a0ba498e42e84c"
+  },
+  "/Users/andrey/Projects/pi-extensions/packages/pi-ask-user-question/test/index.test.ts": {
+    "mtime": 1781021657.1944773,
+    "ast_hash": "d724cf5778aa6f140510f5c58a91a3b9",
+    "semantic_hash": "d724cf5778aa6f140510f5c58a91a3b9"
+  },
+  "/Users/andrey/Projects/pi-extensions/packages/pi-ask-user-question/test/inputRouter.test.ts": {
+    "mtime": 1781021657.1945589,
+    "ast_hash": "ccda927e99d80842df8e4767f8c3c4ad",
+    "semantic_hash": "ccda927e99d80842df8e4767f8c3c4ad"
+  },
+  "/Users/andrey/Projects/pi-extensions/packages/pi-ask-user-question/test/render.test.ts": {
+    "mtime": 1781021657.1946497,
+    "ast_hash": "caef024a277c3611a80b1140e2bd5ef6",
+    "semantic_hash": "caef024a277c3611a80b1140e2bd5ef6"
+  },
+  "/Users/andrey/Projects/pi-extensions/packages/pi-ask-user-question/test/renderPanel.test.ts": {
+    "mtime": 1781021657.1947775,
+    "ast_hash": "7afc6ac18002f1d64b7f2a8aff23160b",
+    "semantic_hash": "7afc6ac18002f1d64b7f2a8aff23160b"
+  },
+  "/Users/andrey/Projects/pi-extensions/packages/pi-ask-user-question/test/rows.test.ts": {
+    "mtime": 1781021657.1948466,
+    "ast_hash": "f9d55f55fb95981e3e94b65783d234a7",
+    "semantic_hash": "f9d55f55fb95981e3e94b65783d234a7"
+  },
+  "/Users/andrey/Projects/pi-extensions/packages/pi-ask-user-question/test/validate.test.ts": {
+    "mtime": 1781021657.1949413,
+    "ast_hash": "dfc2257a53c49770ec0ef39e64fdc874",
+    "semantic_hash": "dfc2257a53c49770ec0ef39e64fdc874"
+  },
+  "/Users/andrey/Projects/pi-extensions/packages/pi-aws-ec2-watcher/package.json": {
+    "mtime": 1781185405.5808327,
+    "ast_hash": "136d6d2056b6a630363fe52590a5e507",
+    "semantic_hash": "136d6d2056b6a630363fe52590a5e507"
+  },
+  "/Users/andrey/Projects/pi-extensions/packages/pi-aws-ec2-watcher/src/ec2-client.ts": {
+    "mtime": 1781175202.6562533,
+    "ast_hash": "30af2b9cbbdc3dd84bd57e3a22a659a5",
+    "semantic_hash": "30af2b9cbbdc3dd84bd57e3a22a659a5"
+  },
+  "/Users/andrey/Projects/pi-extensions/packages/pi-aws-ec2-watcher/src/format.ts": {
+    "mtime": 1781021657.1955266,
+    "ast_hash": "f825953430bcce513575d075c2657449",
+    "semantic_hash": "f825953430bcce513575d075c2657449"
+  },
+  "/Users/andrey/Projects/pi-extensions/packages/pi-aws-ec2-watcher/src/index.ts": {
+    "mtime": 1781021657.1955843,
+    "ast_hash": "c632ee3ed7cfd14b181964ef2408cfb6",
+    "semantic_hash": "c632ee3ed7cfd14b181964ef2408cfb6"
+  },
+  "/Users/andrey/Projects/pi-extensions/packages/pi-aws-ec2-watcher/src/instanceId.ts": {
+    "mtime": 1781021657.1956596,
+    "ast_hash": "a2062cb9814e28b45d99ac0aab756d79",
+    "semantic_hash": "a2062cb9814e28b45d99ac0aab756d79"
+  },
+  "/Users/andrey/Projects/pi-extensions/packages/pi-aws-ec2-watcher/src/poller.ts": {
+    "mtime": 1781021657.195739,
+    "ast_hash": "bcfd833f7620ceb7036d3af8e1c32213",
+    "semantic_hash": "bcfd833f7620ceb7036d3af8e1c32213"
+  },
+  "/Users/andrey/Projects/pi-extensions/packages/pi-aws-ec2-watcher/src/toolAction.ts": {
+    "mtime": 1781021657.1958182,
+    "ast_hash": "63e5562bc186100d6312f3d59ebc7654",
+    "semantic_hash": "63e5562bc186100d6312f3d59ebc7654"
+  },
+  "/Users/andrey/Projects/pi-extensions/packages/pi-aws-ec2-watcher/src/types.ts": {
+    "mtime": 1781021657.195877,
+    "ast_hash": "42be35e4d8ff577374832128fe89ae26",
+    "semantic_hash": "42be35e4d8ff577374832128fe89ae26"
+  },
+  "/Users/andrey/Projects/pi-extensions/packages/pi-aws-ec2-watcher/src/watcher.ts": {
+    "mtime": 1781175202.6564,
+    "ast_hash": "fb2c6d65f1477ca6d1523488b2adaf75",
+    "semantic_hash": "fb2c6d65f1477ca6d1523488b2adaf75"
+  },
+  "/Users/andrey/Projects/pi-extensions/packages/pi-aws-ec2-watcher/test/format.test.ts": {
+    "mtime": 1781021657.1961884,
+    "ast_hash": "03e770bf730c1ef5a95980790d562df2",
+    "semantic_hash": "03e770bf730c1ef5a95980790d562df2"
+  },
+  "/Users/andrey/Projects/pi-extensions/packages/pi-aws-ec2-watcher/test/instanceId.test.ts": {
+    "mtime": 1781021657.1962519,
+    "ast_hash": "b74d11b880f64ca9e6b4d7e0eb09e000",
+    "semantic_hash": "b74d11b880f64ca9e6b4d7e0eb09e000"
+  },
+  "/Users/andrey/Projects/pi-extensions/packages/pi-aws-ec2-watcher/test/poller.test.ts": {
+    "mtime": 1781021657.196325,
+    "ast_hash": "ab442bc8f8fafe24fd4e3c7e7e5faaa0",
+    "semantic_hash": "ab442bc8f8fafe24fd4e3c7e7e5faaa0"
+  },
+  "/Users/andrey/Projects/pi-extensions/packages/pi-aws-ec2-watcher/test/sdk-client.test.ts": {
+    "mtime": 1781021657.196397,
+    "ast_hash": "8a3ebf05fc9958258529aa932dbd08c4",
+    "semantic_hash": "8a3ebf05fc9958258529aa932dbd08c4"
+  },
+  "/Users/andrey/Projects/pi-extensions/packages/pi-aws-ec2-watcher/test/watcher.test.ts": {
+    "mtime": 1781449165.8429043,
+    "ast_hash": "a5289fba9030427b2bfa4065ec62ad20",
+    "semantic_hash": "a5289fba9030427b2bfa4065ec62ad20"
+  },
+  "/Users/andrey/Projects/pi-extensions/packages/pi-aws-ec2-watcher/tsconfig.json": {
+    "mtime": 1781021657.1966608,
+    "ast_hash": "b4a271c0cba2a932a048224e6bf493a4",
+    "semantic_hash": "b4a271c0cba2a932a048224e6bf493a4"
+  },
+  "/Users/andrey/Projects/pi-extensions/packages/pi-aws-glue-watcher/package.json": {
+    "mtime": 1781185405.5810769,
+    "ast_hash": "fd5859993f8a7b678cedbe03fcef38d4",
+    "semantic_hash": "fd5859993f8a7b678cedbe03fcef38d4"
+  },
+  "/Users/andrey/Projects/pi-extensions/packages/pi-aws-glue-watcher/src/format.ts": {
+    "mtime": 1781021657.1974585,
+    "ast_hash": "553b494d73252e851da27a81469a674b",
+    "semantic_hash": "553b494d73252e851da27a81469a674b"
+  },
+  "/Users/andrey/Projects/pi-extensions/packages/pi-aws-glue-watcher/src/glue-client.ts": {
+    "mtime": 1781175202.656639,
+    "ast_hash": "b9e9dc380db5cf69085c1a8d84ac2122",
+    "semantic_hash": "b9e9dc380db5cf69085c1a8d84ac2122"
+  },
+  "/Users/andrey/Projects/pi-extensions/packages/pi-aws-glue-watcher/src/index.ts": {
+    "mtime": 1781175202.6567035,
+    "ast_hash": "e887dd93f9c30b60f71e4a0b006f153d",
+    "semantic_hash": "e887dd93f9c30b60f71e4a0b006f153d"
+  },
+  "/Users/andrey/Projects/pi-extensions/packages/pi-aws-glue-watcher/src/poller.ts": {
+    "mtime": 1781021657.1978946,
+    "ast_hash": "3e8bce1b286a33362e5f04006d8232d4",
+    "semantic_hash": "3e8bce1b286a33362e5f04006d8232d4"
+  },
+  "/Users/andrey/Projects/pi-extensions/packages/pi-aws-glue-watcher/src/toolParams.ts": {
+    "mtime": 1781175202.6567445,
+    "ast_hash": "a2d59b7f1bf45f4e94b848d532f3cdd2",
+    "semantic_hash": "a2d59b7f1bf45f4e94b848d532f3cdd2"
+  },
+  "/Users/andrey/Projects/pi-extensions/packages/pi-aws-glue-watcher/src/types.ts": {
+    "mtime": 1781021657.1982336,
+    "ast_hash": "1424c5433d147fabf6712a622feaae77",
+    "semantic_hash": "1424c5433d147fabf6712a622feaae77"
+  },
+  "/Users/andrey/Projects/pi-extensions/packages/pi-aws-glue-watcher/src/ui/glue-widget.ts": {
+    "mtime": 1781021657.1983602,
+    "ast_hash": "be3e9f7d7ab9e54411d1501297589887",
+    "semantic_hash": "be3e9f7d7ab9e54411d1501297589887"
+  },
+  "/Users/andrey/Projects/pi-extensions/packages/pi-aws-glue-watcher/src/ui/widgetRows.ts": {
+    "mtime": 1781175202.6570182,
+    "ast_hash": "45784e2befc7498cfe0469ca20bfd2c6",
+    "semantic_hash": "45784e2befc7498cfe0469ca20bfd2c6"
+  },
+  "/Users/andrey/Projects/pi-extensions/packages/pi-aws-glue-watcher/src/watcher.ts": {
+    "mtime": 1781175202.6570973,
+    "ast_hash": "e18c8872e35409012641150955373b77",
+    "semantic_hash": "e18c8872e35409012641150955373b77"
+  },
+  "/Users/andrey/Projects/pi-extensions/packages/pi-aws-glue-watcher/test/format.test.ts": {
+    "mtime": 1781021657.1989431,
+    "ast_hash": "a0b84454f4fcc8a07305e82d2528f1d3",
+    "semantic_hash": "a0b84454f4fcc8a07305e82d2528f1d3"
+  },
+  "/Users/andrey/Projects/pi-extensions/packages/pi-aws-glue-watcher/test/glue-widget.test.ts": {
+    "mtime": 1781021657.19901,
+    "ast_hash": "2e79ff74cc9e86a375666a01b51d4b47",
+    "semantic_hash": "2e79ff74cc9e86a375666a01b51d4b47"
+  },
+  "/Users/andrey/Projects/pi-extensions/packages/pi-aws-glue-watcher/test/index.test.ts": {
+    "mtime": 1781175202.657243,
+    "ast_hash": "8bf15c22716555bbdb23b103ef676c89",
+    "semantic_hash": "8bf15c22716555bbdb23b103ef676c89"
+  },
+  "/Users/andrey/Projects/pi-extensions/packages/pi-aws-glue-watcher/test/poller.test.ts": {
+    "mtime": 1781021657.199315,
+    "ast_hash": "fc951fa1a984c040bc02ada47cf5cd41",
+    "semantic_hash": "fc951fa1a984c040bc02ada47cf5cd41"
+  },
+  "/Users/andrey/Projects/pi-extensions/packages/pi-aws-glue-watcher/test/sdk-client.test.ts": {
+    "mtime": 1781021657.199532,
+    "ast_hash": "bcc5e82728aad794a9e7a679f1e3bc11",
+    "semantic_hash": "bcc5e82728aad794a9e7a679f1e3bc11"
+  },
+  "/Users/andrey/Projects/pi-extensions/packages/pi-aws-glue-watcher/test/watcher.test.ts": {
+    "mtime": 1781449165.843549,
+    "ast_hash": "9698a924e13955f2079c99f22caae2a5",
+    "semantic_hash": "9698a924e13955f2079c99f22caae2a5"
+  },
+  "/Users/andrey/Projects/pi-extensions/packages/pi-aws-glue-watcher/test/widgetRows.test.ts": {
+    "mtime": 1781021657.199738,
+    "ast_hash": "afd5635fee67eb45f1e97b54b122223c",
+    "semantic_hash": "afd5635fee67eb45f1e97b54b122223c"
+  },
+  "/Users/andrey/Projects/pi-extensions/packages/pi-aws-glue-watcher/tsconfig.json": {
+    "mtime": 1781175202.6574352,
+    "ast_hash": "b4a271c0cba2a932a048224e6bf493a4",
+    "semantic_hash": "b4a271c0cba2a932a048224e6bf493a4"
+  },
+  "/Users/andrey/Projects/pi-extensions/packages/pi-aws-s3-watcher/package.json": {
+    "mtime": 1781185405.5813627,
+    "ast_hash": "4b3ecdac177eaa23e8b266ec9db26aaa",
+    "semantic_hash": "4b3ecdac177eaa23e8b266ec9db26aaa"
+  },
+  "/Users/andrey/Projects/pi-extensions/packages/pi-aws-s3-watcher/src/format.ts": {
+    "mtime": 1781021657.2001963,
+    "ast_hash": "14df0929b2db1ed1a83d8d193c48d309",
+    "semantic_hash": "14df0929b2db1ed1a83d8d193c48d309"
+  },
+  "/Users/andrey/Projects/pi-extensions/packages/pi-aws-s3-watcher/src/index.ts": {
+    "mtime": 1781021657.2002544,
+    "ast_hash": "01047e6ea9abe8d7fcc5f897a1bf4b25",
+    "semantic_hash": "01047e6ea9abe8d7fcc5f897a1bf4b25"
+  },
+  "/Users/andrey/Projects/pi-extensions/packages/pi-aws-s3-watcher/src/poller.ts": {
+    "mtime": 1781021657.2003412,
+    "ast_hash": "81502afa7f30ff8f1db3355811b520de",
+    "semantic_hash": "81502afa7f30ff8f1db3355811b520de"
+  },
+  "/Users/andrey/Projects/pi-extensions/packages/pi-aws-s3-watcher/src/s3-client.ts": {
+    "mtime": 1781175202.6575906,
+    "ast_hash": "c05d45ef4f988e989a95ec46d9e8d6cb",
+    "semantic_hash": "c05d45ef4f988e989a95ec46d9e8d6cb"
+  },
+  "/Users/andrey/Projects/pi-extensions/packages/pi-aws-s3-watcher/src/toolAction.ts": {
+    "mtime": 1781021657.2004662,
+    "ast_hash": "d207828960e76c09d3291cd41cee8277",
+    "semantic_hash": "d207828960e76c09d3291cd41cee8277"
+  },
+  "/Users/andrey/Projects/pi-extensions/packages/pi-aws-s3-watcher/src/types.ts": {
+    "mtime": 1781021657.2005212,
+    "ast_hash": "ee987163bac9de09ed6f829c7fd5a655",
+    "semantic_hash": "ee987163bac9de09ed6f829c7fd5a655"
+  },
+  "/Users/andrey/Projects/pi-extensions/packages/pi-aws-s3-watcher/src/uri.ts": {
+    "mtime": 1781021657.2005699,
+    "ast_hash": "74939b762dcd7f0551c0b99603dad420",
+    "semantic_hash": "74939b762dcd7f0551c0b99603dad420"
+  },
+  "/Users/andrey/Projects/pi-extensions/packages/pi-aws-s3-watcher/src/watcher.ts": {
+    "mtime": 1781175202.6577017,
+    "ast_hash": "c1bef02d624193505e2b6766898d685a",
+    "semantic_hash": "c1bef02d624193505e2b6766898d685a"
+  },
+  "/Users/andrey/Projects/pi-extensions/packages/pi-aws-s3-watcher/test/format.test.ts": {
+    "mtime": 1781021657.2007957,
+    "ast_hash": "eedbca530c2ca04e19504da6a3ec5de4",
+    "semantic_hash": "eedbca530c2ca04e19504da6a3ec5de4"
+  },
+  "/Users/andrey/Projects/pi-extensions/packages/pi-aws-s3-watcher/test/index.test.ts": {
+    "mtime": 1781175202.6578164,
+    "ast_hash": "cd89a129ddfff93f4228f5bd4e3b7292",
+    "semantic_hash": "cd89a129ddfff93f4228f5bd4e3b7292"
+  },
+  "/Users/andrey/Projects/pi-extensions/packages/pi-aws-s3-watcher/test/poller.test.ts": {
+    "mtime": 1781021657.2009287,
+    "ast_hash": "b7ebb1a72d5351547bacce400f433c38",
+    "semantic_hash": "b7ebb1a72d5351547bacce400f433c38"
+  },
+  "/Users/andrey/Projects/pi-extensions/packages/pi-aws-s3-watcher/test/sdk-client.test.ts": {
+    "mtime": 1781021657.2010076,
+    "ast_hash": "8aec34be0995de2f4feb3dbd67f36fb6",
+    "semantic_hash": "8aec34be0995de2f4feb3dbd67f36fb6"
+  },
+  "/Users/andrey/Projects/pi-extensions/packages/pi-aws-s3-watcher/test/toolAction.test.ts": {
+    "mtime": 1781021657.2010598,
+    "ast_hash": "a867835aeadf02684fc1f4a56d4358c2",
+    "semantic_hash": "a867835aeadf02684fc1f4a56d4358c2"
+  },
+  "/Users/andrey/Projects/pi-extensions/packages/pi-aws-s3-watcher/test/uri.test.ts": {
+    "mtime": 1781021657.2011094,
+    "ast_hash": "1bf27b323dbff4ed818dee2098ee4c0d",
+    "semantic_hash": "1bf27b323dbff4ed818dee2098ee4c0d"
+  },
+  "/Users/andrey/Projects/pi-extensions/packages/pi-aws-s3-watcher/test/watcher.test.ts": {
+    "mtime": 1781449165.8439198,
+    "ast_hash": "e6a762338f3093d432f35163c9e1cdc3",
+    "semantic_hash": "e6a762338f3093d432f35163c9e1cdc3"
+  },
+  "/Users/andrey/Projects/pi-extensions/packages/pi-aws-s3-watcher/tsconfig.json": {
+    "mtime": 1781021657.201264,
+    "ast_hash": "b4a271c0cba2a932a048224e6bf493a4",
+    "semantic_hash": "b4a271c0cba2a932a048224e6bf493a4"
+  },
+  "/Users/andrey/Projects/pi-extensions/packages/pi-browser-control/firefox-addon/background.js": {
+    "mtime": 1781175202.6580796,
+    "ast_hash": "826d63fdbb551580adf8d9752e545083",
+    "semantic_hash": "826d63fdbb551580adf8d9752e545083"
+  },
+  "/Users/andrey/Projects/pi-extensions/packages/pi-browser-control/firefox-addon/content-extract.js": {
+    "mtime": 1781175202.658126,
+    "ast_hash": "527d825984788fb342846c74d342c765",
+    "semantic_hash": "527d825984788fb342846c74d342c765"
+  },
+  "/Users/andrey/Projects/pi-extensions/packages/pi-browser-control/firefox-addon/manifest.json": {
+    "mtime": 1781175202.6581647,
+    "ast_hash": "56c1991e499ca7ee9fabb1128f628e65",
+    "semantic_hash": "56c1991e499ca7ee9fabb1128f628e65"
+  },
+  "/Users/andrey/Projects/pi-extensions/packages/pi-browser-control/package.json": {
+    "mtime": 1781185405.5817223,
+    "ast_hash": "ead3c7ac64b69f43e05fe1138efc95c9",
+    "semantic_hash": "ead3c7ac64b69f43e05fe1138efc95c9"
+  },
+  "/Users/andrey/Projects/pi-extensions/packages/pi-browser-control/scripts/install.ts": {
+    "mtime": 1781175202.6582863,
+    "ast_hash": "b8e3f72f10d245003e782aff2daa3fe2",
+    "semantic_hash": "b8e3f72f10d245003e782aff2daa3fe2"
+  },
+  "/Users/andrey/Projects/pi-extensions/packages/pi-browser-control/src/command.ts": {
+    "mtime": 1781175202.6587029,
+    "ast_hash": "ab1a8a52216f8d98e837811f9c3750e8",
+    "semantic_hash": "ab1a8a52216f8d98e837811f9c3750e8"
+  },
+  "/Users/andrey/Projects/pi-extensions/packages/pi-browser-control/src/config.ts": {
+    "mtime": 1781175202.6587937,
+    "ast_hash": "ad3983d83072ca8c20286845786ee2d8",
+    "semantic_hash": "ad3983d83072ca8c20286845786ee2d8"
+  },
+  "/Users/andrey/Projects/pi-extensions/packages/pi-browser-control/src/daemon/daemon-core.ts": {
+    "mtime": 1781175202.6589122,
+    "ast_hash": "3c91628e06d0af188a0fa4db0a8f50a4",
+    "semantic_hash": "3c91628e06d0af188a0fa4db0a8f50a4"
+  },
+  "/Users/andrey/Projects/pi-extensions/packages/pi-browser-control/src/daemon/daemon-logger.ts": {
+    "mtime": 1781175202.6589766,
+    "ast_hash": "e43fb485f358819a6d527ba932e6719d",
+    "semantic_hash": "e43fb485f358819a6d527ba932e6719d"
+  },
+  "/Users/andrey/Projects/pi-extensions/packages/pi-browser-control/src/daemon/daemon.ts": {
+    "mtime": 1781175202.6590412,
+    "ast_hash": "67e9f7d8aa41ddbd5b4666cf45202edc",
+    "semantic_hash": "67e9f7d8aa41ddbd5b4666cf45202edc"
+  },
+  "/Users/andrey/Projects/pi-extensions/packages/pi-browser-control/src/daemon/nm-framing.ts": {
+    "mtime": 1781175202.6591043,
+    "ast_hash": "febdb825667ad082776ff20958d57824",
+    "semantic_hash": "febdb825667ad082776ff20958d57824"
+  },
+  "/Users/andrey/Projects/pi-extensions/packages/pi-browser-control/src/daemon/nm-protocol.ts": {
+    "mtime": 1781175202.6591697,
+    "ast_hash": "3d77d1ac844afff76790f0870ab1528e",
+    "semantic_hash": "3d77d1ac844afff76790f0870ab1528e"
+  },
+  "/Users/andrey/Projects/pi-extensions/packages/pi-browser-control/src/index.ts": {
+    "mtime": 1781352586.281808,
+    "ast_hash": "e3eb1f52eeda64df5e461b546eda8b20",
+    "semantic_hash": "e3eb1f52eeda64df5e461b546eda8b20"
+  },
+  "/Users/andrey/Projects/pi-extensions/packages/pi-browser-control/src/launcher-installer.ts": {
+    "mtime": 1781175202.659378,
+    "ast_hash": "8ed44eaa5a686f08737eba1158600ba8",
+    "semantic_hash": "8ed44eaa5a686f08737eba1158600ba8"
+  },
+  "/Users/andrey/Projects/pi-extensions/packages/pi-browser-control/src/manifest-installer.ts": {
+    "mtime": 1781175202.6594489,
+    "ast_hash": "10e0399f3d567f4f9f2e09e5d7b2deb4",
+    "semantic_hash": "10e0399f3d567f4f9f2e09e5d7b2deb4"
+  },
+  "/Users/andrey/Projects/pi-extensions/packages/pi-browser-control/src/normalize-url.ts": {
+    "mtime": 1781175202.6595109,
+    "ast_hash": "771410f54b1fcfb5fde82454ff317b0f",
+    "semantic_hash": "771410f54b1fcfb5fde82454ff317b0f"
+  },
+  "/Users/andrey/Projects/pi-extensions/packages/pi-browser-control/src/socket-client.ts": {
+    "mtime": 1781175202.6595566,
+    "ast_hash": "c8735ea36920a4b42f7200e504a3412b",
+    "semantic_hash": "c8735ea36920a4b42f7200e504a3412b"
+  },
+  "/Users/andrey/Projects/pi-extensions/packages/pi-browser-control/src/socket-paths.ts": {
+    "mtime": 1781175202.6596014,
+    "ast_hash": "b33742cea474f04a3bc5ad4e77ed1fdb",
+    "semantic_hash": "b33742cea474f04a3bc5ad4e77ed1fdb"
+  },
+  "/Users/andrey/Projects/pi-extensions/packages/pi-browser-control/src/socket-protocol.ts": {
+    "mtime": 1781175202.65964,
+    "ast_hash": "3b433f07d0a4089e7d382c371da48f32",
+    "semantic_hash": "3b433f07d0a4089e7d382c371da48f32"
+  },
+  "/Users/andrey/Projects/pi-extensions/packages/pi-browser-control/src/tool-format.ts": {
+    "mtime": 1781175202.6597729,
+    "ast_hash": "b0579ccb6b9816e3158e74afa8db1180",
+    "semantic_hash": "b0579ccb6b9816e3158e74afa8db1180"
+  },
+  "/Users/andrey/Projects/pi-extensions/packages/pi-browser-control/test/command.test.ts": {
+    "mtime": 1781175202.6599064,
+    "ast_hash": "c9f1695994b2d4465578e7d9d5f6f090",
+    "semantic_hash": "c9f1695994b2d4465578e7d9d5f6f090"
+  },
+  "/Users/andrey/Projects/pi-extensions/packages/pi-browser-control/test/config.test.ts": {
+    "mtime": 1781175202.6599593,
+    "ast_hash": "359b46f8b7932026264163b34b1d5160",
+    "semantic_hash": "359b46f8b7932026264163b34b1d5160"
+  },
+  "/Users/andrey/Projects/pi-extensions/packages/pi-browser-control/test/daemon-core.test.ts": {
+    "mtime": 1781175202.6600184,
+    "ast_hash": "470ba3d9a2e59c517c82d3b563148172",
+    "semantic_hash": "470ba3d9a2e59c517c82d3b563148172"
+  },
+  "/Users/andrey/Projects/pi-extensions/packages/pi-browser-control/test/daemon-logger.test.ts": {
+    "mtime": 1781175202.6600885,
+    "ast_hash": "7ccd4cafe02bfe10b829a9ec086b72c8",
+    "semantic_hash": "7ccd4cafe02bfe10b829a9ec086b72c8"
+  },
+  "/Users/andrey/Projects/pi-extensions/packages/pi-browser-control/test/index.test.ts": {
+    "mtime": 1781352586.2822628,
+    "ast_hash": "5dbb24a949b6c4f287fe3a6137f12724",
+    "semantic_hash": "5dbb24a949b6c4f287fe3a6137f12724"
+  },
+  "/Users/andrey/Projects/pi-extensions/packages/pi-browser-control/test/launcher-installer.test.ts": {
+    "mtime": 1781175202.6602526,
+    "ast_hash": "d9fa26ca90b3b793cd2591779e1c2275",
+    "semantic_hash": "d9fa26ca90b3b793cd2591779e1c2275"
+  },
+  "/Users/andrey/Projects/pi-extensions/packages/pi-browser-control/test/manifest-installer.test.ts": {
+    "mtime": 1781175202.6604273,
+    "ast_hash": "87a87b7f63a5ecf250f4bce937df49fe",
+    "semantic_hash": "87a87b7f63a5ecf250f4bce937df49fe"
+  },
+  "/Users/andrey/Projects/pi-extensions/packages/pi-browser-control/test/nm-framing.test.ts": {
+    "mtime": 1781175202.6605117,
+    "ast_hash": "db75d0c0c01d1ec43435ea22113d50e5",
+    "semantic_hash": "db75d0c0c01d1ec43435ea22113d50e5"
+  },
+  "/Users/andrey/Projects/pi-extensions/packages/pi-browser-control/test/nm-protocol.test.ts": {
+    "mtime": 1781175202.6605678,
+    "ast_hash": "a1131ecd4a2d5accae0a325635d343c9",
+    "semantic_hash": "a1131ecd4a2d5accae0a325635d343c9"
+  },
+  "/Users/andrey/Projects/pi-extensions/packages/pi-browser-control/test/normalize-url.test.ts": {
+    "mtime": 1781175202.6606236,
+    "ast_hash": "4d2eee21c7a2b4a2bf157c9dbefa4493",
+    "semantic_hash": "4d2eee21c7a2b4a2bf157c9dbefa4493"
+  },
+  "/Users/andrey/Projects/pi-extensions/packages/pi-browser-control/test/socket-client.test.ts": {
+    "mtime": 1781175202.6607041,
+    "ast_hash": "e87ce700a6550ed3da377c239befc32e",
+    "semantic_hash": "e87ce700a6550ed3da377c239befc32e"
+  },
+  "/Users/andrey/Projects/pi-extensions/packages/pi-browser-control/test/socket-paths.test.ts": {
+    "mtime": 1781175202.660798,
+    "ast_hash": "181eaba477575228581051cc1d53e4de",
+    "semantic_hash": "181eaba477575228581051cc1d53e4de"
+  },
+  "/Users/andrey/Projects/pi-extensions/packages/pi-browser-control/test/socket-protocol.test.ts": {
+    "mtime": 1781175202.6608698,
+    "ast_hash": "676954c8c3e6a80faf6d97a2e9e04fd4",
+    "semantic_hash": "676954c8c3e6a80faf6d97a2e9e04fd4"
+  },
+  "/Users/andrey/Projects/pi-extensions/packages/pi-browser-control/test/tool-format.test.ts": {
+    "mtime": 1781175202.6609237,
+    "ast_hash": "439bd963c1b45fb949536196e0172151",
+    "semantic_hash": "439bd963c1b45fb949536196e0172151"
+  },
+  "/Users/andrey/Projects/pi-extensions/packages/pi-btw/package.json": {
+    "mtime": 1781185405.578896,
+    "ast_hash": "bdcad6669422c8b9e138b645f8fdc5c1",
+    "semantic_hash": "bdcad6669422c8b9e138b645f8fdc5c1"
+  },
+  "/Users/andrey/Projects/pi-extensions/packages/pi-btw/src/index.ts": {
+    "mtime": 1781021657.2018793,
+    "ast_hash": "22f707abbc3499a679931dc76984de16",
+    "semantic_hash": "22f707abbc3499a679931dc76984de16"
+  },
+  "/Users/andrey/Projects/pi-extensions/packages/pi-btw/test/btw.runtime.test.ts": {
+    "mtime": 1781021657.202054,
+    "ast_hash": "2bbee6f982257c7018da6fda9175883f",
+    "semantic_hash": "2bbee6f982257c7018da6fda9175883f"
+  },
+  "/Users/andrey/Projects/pi-extensions/packages/pi-built-in-tool-renderer/package.json": {
+    "mtime": 1781185405.581894,
+    "ast_hash": "14f034a31dc87872b87d22ecda52c2ae",
+    "semantic_hash": "14f034a31dc87872b87d22ecda52c2ae"
+  },
+  "/Users/andrey/Projects/pi-extensions/packages/pi-built-in-tool-renderer/src/helpers.ts": {
+    "mtime": 1781021657.2025132,
+    "ast_hash": "de4830e26cc3db809ba794729085b1fc",
+    "semantic_hash": "de4830e26cc3db809ba794729085b1fc"
+  },
+  "/Users/andrey/Projects/pi-extensions/packages/pi-built-in-tool-renderer/src/index.ts": {
+    "mtime": 1781021657.2026486,
+    "ast_hash": "9a9d04dc812f640f59c0b7e85b2d271b",
+    "semantic_hash": "9a9d04dc812f640f59c0b7e85b2d271b"
+  },
+  "/Users/andrey/Projects/pi-extensions/packages/pi-built-in-tool-renderer/src/renderers.ts": {
+    "mtime": 1781021657.202722,
+    "ast_hash": "0700fd9976a961b0eb50f75e14b51a6b",
+    "semantic_hash": "0700fd9976a961b0eb50f75e14b51a6b"
+  },
+  "/Users/andrey/Projects/pi-extensions/packages/pi-built-in-tool-renderer/test/bashTimer.test.ts": {
+    "mtime": 1781021657.2028458,
+    "ast_hash": "dc4ab6e466be1b99025cbcc8f0858573",
+    "semantic_hash": "dc4ab6e466be1b99025cbcc8f0858573"
+  },
+  "/Users/andrey/Projects/pi-extensions/packages/pi-built-in-tool-renderer/test/helpers.test.ts": {
+    "mtime": 1781021657.2029157,
+    "ast_hash": "9bcccdbd4af185ddabee2a4cdc37db8c",
+    "semantic_hash": "9bcccdbd4af185ddabee2a4cdc37db8c"
+  },
+  "/Users/andrey/Projects/pi-extensions/packages/pi-built-in-tool-renderer/test/index.test.ts": {
+    "mtime": 1781021657.202975,
+    "ast_hash": "f90767bbcef80093ed83dab983710f19",
+    "semantic_hash": "f90767bbcef80093ed83dab983710f19"
+  },
+  "/Users/andrey/Projects/pi-extensions/packages/pi-built-in-tool-renderer/test/renderers.test.ts": {
+    "mtime": 1781021657.2030566,
+    "ast_hash": "8ac57f9294965927869095fb59916ea1",
+    "semantic_hash": "8ac57f9294965927869095fb59916ea1"
+  },
+  "/Users/andrey/Projects/pi-extensions/packages/pi-claude-code-import-commands/package.json": {
+    "mtime": 1781185405.582169,
+    "ast_hash": "7594b261ff7e1860c7d14bd40617eea8",
+    "semantic_hash": "7594b261ff7e1860c7d14bd40617eea8"
+  },
+  "/Users/andrey/Projects/pi-extensions/packages/pi-claude-code-import-commands/src/discover.ts": {
+    "mtime": 1781021657.203315,
+    "ast_hash": "d2ac1c8a32d37a449711eeee84bf9049",
+    "semantic_hash": "d2ac1c8a32d37a449711eeee84bf9049"
+  },
+  "/Users/andrey/Projects/pi-extensions/packages/pi-claude-code-import-commands/src/index.ts": {
+    "mtime": 1781021657.2033768,
+    "ast_hash": "5047b978f0bacb7c01a357d09396afca",
+    "semantic_hash": "5047b978f0bacb7c01a357d09396afca"
+  },
+  "/Users/andrey/Projects/pi-extensions/packages/pi-claude-code-import-commands/src/resolve.ts": {
+    "mtime": 1781021657.203438,
+    "ast_hash": "262069aabc4bd6ed8a211af5ce2e6e6a",
+    "semantic_hash": "262069aabc4bd6ed8a211af5ce2e6e6a"
+  },
+  "/Users/andrey/Projects/pi-extensions/packages/pi-claude-code-import-commands/test/discover.test.ts": {
+    "mtime": 1781021657.2035496,
+    "ast_hash": "940875992f2dceeb6e31a377db9f524e",
+    "semantic_hash": "940875992f2dceeb6e31a377db9f524e"
+  },
+  "/Users/andrey/Projects/pi-extensions/packages/pi-claude-code-import-commands/test/index.test.ts": {
+    "mtime": 1781021657.203634,
+    "ast_hash": "640631ad2f072bee0b8ec191a77abbaf",
+    "semantic_hash": "640631ad2f072bee0b8ec191a77abbaf"
+  },
+  "/Users/andrey/Projects/pi-extensions/packages/pi-claude-code-import-commands/test/resolve.test.ts": {
+    "mtime": 1781021657.2036884,
+    "ast_hash": "5e64fdb39cc2946ba1de2c0a68ae5dc1",
+    "semantic_hash": "5e64fdb39cc2946ba1de2c0a68ae5dc1"
+  },
+  "/Users/andrey/Projects/pi-extensions/packages/pi-claude-code-skills-import/package.json": {
+    "mtime": 1781185405.5823257,
+    "ast_hash": "42d7871265e5148973718d64f4704dfc",
+    "semantic_hash": "42d7871265e5148973718d64f4704dfc"
+  },
+  "/Users/andrey/Projects/pi-extensions/packages/pi-claude-code-skills-import/src/activePlugins.ts": {
+    "mtime": 1781021657.2039154,
+    "ast_hash": "486f0f31000cfb43021bf2c44e0c298f",
+    "semantic_hash": "486f0f31000cfb43021bf2c44e0c298f"
+  },
+  "/Users/andrey/Projects/pi-extensions/packages/pi-claude-code-skills-import/src/collisions.ts": {
+    "mtime": 1781021657.2039707,
+    "ast_hash": "a27ddbe69a157f76dbca5d286d7e2af7",
+    "semantic_hash": "a27ddbe69a157f76dbca5d286d7e2af7"
+  },
+  "/Users/andrey/Projects/pi-extensions/packages/pi-claude-code-skills-import/src/discover.ts": {
+    "mtime": 1781175202.6611333,
+    "ast_hash": "30de516c78aa205f61e27d80e15189d8",
+    "semantic_hash": "30de516c78aa205f61e27d80e15189d8"
+  },
+  "/Users/andrey/Projects/pi-extensions/packages/pi-claude-code-skills-import/src/discoverMessages.ts": {
+    "mtime": 1781021657.204083,
+    "ast_hash": "72b171e530af55d233de22ce849165ca",
+    "semantic_hash": "72b171e530af55d233de22ce849165ca"
+  },
+  "/Users/andrey/Projects/pi-extensions/packages/pi-claude-code-skills-import/src/findSkillDirs.ts": {
+    "mtime": 1781021657.2041266,
+    "ast_hash": "1db6ea5a3c28e6165aa52f34e5eae99e",
+    "semantic_hash": "1db6ea5a3c28e6165aa52f34e5eae99e"
+  },
+  "/Users/andrey/Projects/pi-extensions/packages/pi-claude-code-skills-import/src/frontmatter.ts": {
+    "mtime": 1781021657.2041762,
+    "ast_hash": "3365327d9d9c9106dfb219843663b303",
+    "semantic_hash": "3365327d9d9c9106dfb219843663b303"
+  },
+  "/Users/andrey/Projects/pi-extensions/packages/pi-claude-code-skills-import/src/index.ts": {
+    "mtime": 1781175202.6612225,
+    "ast_hash": "cb7b075dcdd14b82adee86f1c0e77807",
+    "semantic_hash": "cb7b075dcdd14b82adee86f1c0e77807"
+  },
+  "/Users/andrey/Projects/pi-extensions/packages/pi-claude-code-skills-import/src/persistence.ts": {
+    "mtime": 1781021657.2043042,
+    "ast_hash": "be99c0bd93c3a299ae745ad1fa8485ca",
+    "semantic_hash": "be99c0bd93c3a299ae745ad1fa8485ca"
+  },
+  "/Users/andrey/Projects/pi-extensions/packages/pi-claude-code-skills-import/src/pickerValue.ts": {
+    "mtime": 1781021657.204368,
+    "ast_hash": "518a0136b2ec68e69e4210228a9c1e6f",
+    "semantic_hash": "518a0136b2ec68e69e4210228a9c1e6f"
+  },
+  "/Users/andrey/Projects/pi-extensions/packages/pi-claude-code-skills-import/src/resolve.ts": {
+    "mtime": 1781021657.2044253,
+    "ast_hash": "262069aabc4bd6ed8a211af5ce2e6e6a",
+    "semantic_hash": "262069aabc4bd6ed8a211af5ce2e6e6a"
+  },
+  "/Users/andrey/Projects/pi-extensions/packages/pi-claude-code-skills-import/src/settingItems.ts": {
+    "mtime": 1781021657.2044914,
+    "ast_hash": "8239ef32defda9caf9d6566b45121bdc",
+    "semantic_hash": "8239ef32defda9caf9d6566b45121bdc"
+  },
+  "/Users/andrey/Projects/pi-extensions/packages/pi-claude-code-skills-import/src/toggle.ts": {
+    "mtime": 1781021657.2045724,
+    "ast_hash": "33188c152d2f9eeaba56ab76904bf5ef",
+    "semantic_hash": "33188c152d2f9eeaba56ab76904bf5ef"
+  },
+  "/Users/andrey/Projects/pi-extensions/packages/pi-claude-code-skills-import/src/tuiPicker.ts": {
+    "mtime": 1781021657.2046475,
+    "ast_hash": "50f3850bb23b08008cf077a4268b5333",
+    "semantic_hash": "50f3850bb23b08008cf077a4268b5333"
+  },
+  "/Users/andrey/Projects/pi-extensions/packages/pi-claude-code-skills-import/src/types.ts": {
+    "mtime": 1781021657.204702,
+    "ast_hash": "a014fdd05e625a7143d5e1d40a01e591",
+    "semantic_hash": "a014fdd05e625a7143d5e1d40a01e591"
+  },
+  "/Users/andrey/Projects/pi-extensions/packages/pi-claude-code-skills-import/test/activePlugins.test.ts": {
+    "mtime": 1781021657.2048068,
+    "ast_hash": "efd83c960ee1fcb9343a5921a9af7e39",
+    "semantic_hash": "efd83c960ee1fcb9343a5921a9af7e39"
+  },
+  "/Users/andrey/Projects/pi-extensions/packages/pi-claude-code-skills-import/test/collisions.test.ts": {
+    "mtime": 1781021657.2048604,
+    "ast_hash": "4328610bbf204b5491e07185e9dbd5ef",
+    "semantic_hash": "4328610bbf204b5491e07185e9dbd5ef"
+  },
+  "/Users/andrey/Projects/pi-extensions/packages/pi-claude-code-skills-import/test/discover.test.ts": {
+    "mtime": 1781175202.661318,
+    "ast_hash": "a203571ddec10ef5c1b8bf33a846dfcd",
+    "semantic_hash": "a203571ddec10ef5c1b8bf33a846dfcd"
+  },
+  "/Users/andrey/Projects/pi-extensions/packages/pi-claude-code-skills-import/test/discoverMessages.test.ts": {
+    "mtime": 1781021657.2050576,
+    "ast_hash": "3668be3ffdabad7053e8f647298d85ac",
+    "semantic_hash": "3668be3ffdabad7053e8f647298d85ac"
+  },
+  "/Users/andrey/Projects/pi-extensions/packages/pi-claude-code-skills-import/test/findSkillDirs.test.ts": {
+    "mtime": 1781021657.2051406,
+    "ast_hash": "8f64f16f95dbc2b279ca110612ff3c3d",
+    "semantic_hash": "8f64f16f95dbc2b279ca110612ff3c3d"
+  },
+  "/Users/andrey/Projects/pi-extensions/packages/pi-claude-code-skills-import/test/frontmatter.test.ts": {
+    "mtime": 1781021657.2052026,
+    "ast_hash": "fb42cf383cb49fec583c8e413df86d98",
+    "semantic_hash": "fb42cf383cb49fec583c8e413df86d98"
+  },
+  "/Users/andrey/Projects/pi-extensions/packages/pi-claude-code-skills-import/test/index.test.ts": {
+    "mtime": 1781175202.6614046,
+    "ast_hash": "ba35b2d8a0dd0d30d6244aad108d82c6",
+    "semantic_hash": "ba35b2d8a0dd0d30d6244aad108d82c6"
+  },
+  "/Users/andrey/Projects/pi-extensions/packages/pi-claude-code-skills-import/test/persistence.test.ts": {
+    "mtime": 1781021657.2053602,
+    "ast_hash": "00d69a2816b0eef5fb7d3978006b51da",
+    "semantic_hash": "00d69a2816b0eef5fb7d3978006b51da"
+  },
+  "/Users/andrey/Projects/pi-extensions/packages/pi-claude-code-skills-import/test/pickerValue.test.ts": {
+    "mtime": 1781021657.2054224,
+    "ast_hash": "7dbba5d0da896dc99f6bbc67714b565f",
+    "semantic_hash": "7dbba5d0da896dc99f6bbc67714b565f"
+  },
+  "/Users/andrey/Projects/pi-extensions/packages/pi-claude-code-skills-import/test/resolve.test.ts": {
+    "mtime": 1781021657.2054713,
+    "ast_hash": "42acc9ad41a0bda1ee1086900df4bdd2",
+    "semantic_hash": "42acc9ad41a0bda1ee1086900df4bdd2"
+  },
+  "/Users/andrey/Projects/pi-extensions/packages/pi-claude-code-skills-import/test/settingItems.test.ts": {
+    "mtime": 1781021657.2055268,
+    "ast_hash": "2100d4d072231a30625510ef40c17d81",
+    "semantic_hash": "2100d4d072231a30625510ef40c17d81"
+  },
+  "/Users/andrey/Projects/pi-extensions/packages/pi-claude-code-skills-import/test/toggle.test.ts": {
+    "mtime": 1781021657.2055812,
+    "ast_hash": "7b0bb963acba34318ca5b54ae431f54d",
+    "semantic_hash": "7b0bb963acba34318ca5b54ae431f54d"
+  },
+  "/Users/andrey/Projects/pi-extensions/packages/pi-custom-compaction/package.json": {
+    "mtime": 1781185405.578053,
+    "ast_hash": "74c4d9614854667204bb443a05efba84",
+    "semantic_hash": "74c4d9614854667204bb443a05efba84"
+  },
+  "/Users/andrey/Projects/pi-extensions/packages/pi-custom-compaction/src/commands/register-commands.ts": {
+    "mtime": 1781021657.2063136,
+    "ast_hash": "58a73a0487bb0de07cb760d0bded7bbd",
+    "semantic_hash": "58a73a0487bb0de07cb760d0bded7bbd"
+  },
+  "/Users/andrey/Projects/pi-extensions/packages/pi-custom-compaction/src/events/register-events.ts": {
+    "mtime": 1781021657.206475,
+    "ast_hash": "d66f37c116443ce59f979d5adc3e155f",
+    "semantic_hash": "d66f37c116443ce59f979d5adc3e155f"
+  },
+  "/Users/andrey/Projects/pi-extensions/packages/pi-custom-compaction/src/index.ts": {
+    "mtime": 1781021657.2065282,
+    "ast_hash": "046031793082528444fa696604fbdc2d",
+    "semantic_hash": "046031793082528444fa696604fbdc2d"
+  },
+  "/Users/andrey/Projects/pi-extensions/packages/pi-custom-compaction/src/policy/config.ts": {
+    "mtime": 1781021657.2066293,
+    "ast_hash": "a34d3075ec73d4ee48600957846bef23",
+    "semantic_hash": "a34d3075ec73d4ee48600957846bef23"
+  },
+  "/Users/andrey/Projects/pi-extensions/packages/pi-custom-compaction/src/policy/merge.ts": {
+    "mtime": 1781021657.2066927,
+    "ast_hash": "bdf089d13dad681f0d791427ba2c093b",
+    "semantic_hash": "bdf089d13dad681f0d791427ba2c093b"
+  },
+  "/Users/andrey/Projects/pi-extensions/packages/pi-custom-compaction/src/policy/parse.ts": {
+    "mtime": 1781021657.2067893,
+    "ast_hash": "7fa11d603a9bfb94306c50d5946fa954",
+    "semantic_hash": "7fa11d603a9bfb94306c50d5946fa954"
+  },
+  "/Users/andrey/Projects/pi-extensions/packages/pi-custom-compaction/src/policy/types.ts": {
+    "mtime": 1781021657.2068453,
+    "ast_hash": "e635f9b6dd29dfd9463a33a2c943da32",
+    "semantic_hash": "e635f9b6dd29dfd9463a33a2c943da32"
+  },
+  "/Users/andrey/Projects/pi-extensions/packages/pi-custom-compaction/src/runtime/model-resolution.ts": {
+    "mtime": 1781021657.2069454,
+    "ast_hash": "cd1a9978dd50959125ef53abfe345747",
+    "semantic_hash": "cd1a9978dd50959125ef53abfe345747"
+  },
+  "/Users/andrey/Projects/pi-extensions/packages/pi-custom-compaction/src/runtime/pure.ts": {
+    "mtime": 1781021657.2070098,
+    "ast_hash": "b3001dddbdc781ddbed66ee9cb8e719f",
+    "semantic_hash": "b3001dddbdc781ddbed66ee9cb8e719f"
+  },
+  "/Users/andrey/Projects/pi-extensions/packages/pi-custom-compaction/src/runtime/retention.ts": {
+    "mtime": 1781021657.2070942,
+    "ast_hash": "7bbfbba457bc9fdcb2d7c29962e98134",
+    "semantic_hash": "7bbfbba457bc9fdcb2d7c29962e98134"
+  },
+  "/Users/andrey/Projects/pi-extensions/packages/pi-custom-compaction/src/runtime/session-state.ts": {
+    "mtime": 1781021657.2071738,
+    "ast_hash": "5be684966d0f1dab38939b01767a5a1f",
+    "semantic_hash": "5be684966d0f1dab38939b01767a5a1f"
+  },
+  "/Users/andrey/Projects/pi-extensions/packages/pi-custom-compaction/src/runtime/status-format.ts": {
+    "mtime": 1781021657.2072299,
+    "ast_hash": "c38c65242009a216b9b0d93c6b22b7ce",
+    "semantic_hash": "c38c65242009a216b9b0d93c6b22b7ce"
+  },
+  "/Users/andrey/Projects/pi-extensions/packages/pi-custom-compaction/src/summary/generate.ts": {
+    "mtime": 1781021657.2073421,
+    "ast_hash": "163d75fd75182bbccfa105a1b0ebae22",
+    "semantic_hash": "163d75fd75182bbccfa105a1b0ebae22"
+  },
+  "/Users/andrey/Projects/pi-extensions/packages/pi-custom-compaction/src/summary/template.ts": {
+    "mtime": 1781021657.207427,
+    "ast_hash": "9a86ea4491b31780b70fa68fdc2ff943",
+    "semantic_hash": "9a86ea4491b31780b70fa68fdc2ff943"
+  },
+  "/Users/andrey/Projects/pi-extensions/packages/pi-custom-compaction/test/config.test.ts": {
+    "mtime": 1781021657.207524,
+    "ast_hash": "991b71141f0918d12a45e6ac08e1d0e8",
+    "semantic_hash": "991b71141f0918d12a45e6ac08e1d0e8"
+  },
+  "/Users/andrey/Projects/pi-extensions/packages/pi-custom-compaction/test/events.test.ts": {
+    "mtime": 1781021657.2075763,
+    "ast_hash": "d6b071e6637071e54f81274c6755f03e",
+    "semantic_hash": "d6b071e6637071e54f81274c6755f03e"
+  },
+  "/Users/andrey/Projects/pi-extensions/packages/pi-custom-compaction/test/generate.test.ts": {
+    "mtime": 1781021657.2076945,
+    "ast_hash": "f86c22aa5e084f3b967a278700c1ba2e",
+    "semantic_hash": "f86c22aa5e084f3b967a278700c1ba2e"
+  },
+  "/Users/andrey/Projects/pi-extensions/packages/pi-custom-compaction/test/merge.test.ts": {
+    "mtime": 1781021657.2077825,
+    "ast_hash": "c8b339ea171e96f2d6cfad92a60205bf",
+    "semantic_hash": "c8b339ea171e96f2d6cfad92a60205bf"
+  },
+  "/Users/andrey/Projects/pi-extensions/packages/pi-custom-compaction/test/model-resolution.test.ts": {
+    "mtime": 1781021657.2078657,
+    "ast_hash": "dcdbc556d6721c74c7b1ff5b86eafb3b",
+    "semantic_hash": "dcdbc556d6721c74c7b1ff5b86eafb3b"
+  },
+  "/Users/andrey/Projects/pi-extensions/packages/pi-custom-compaction/test/parse.test.ts": {
+    "mtime": 1781021657.2079353,
+    "ast_hash": "10816d5b62472da394fdaf3db1bc900b",
+    "semantic_hash": "10816d5b62472da394fdaf3db1bc900b"
+  },
+  "/Users/andrey/Projects/pi-extensions/packages/pi-custom-compaction/test/pure.test.ts": {
+    "mtime": 1781021657.2080631,
+    "ast_hash": "4da5003293445216795e2926956adf50",
+    "semantic_hash": "4da5003293445216795e2926956adf50"
+  },
+  "/Users/andrey/Projects/pi-extensions/packages/pi-custom-compaction/test/retention.test.ts": {
+    "mtime": 1781021657.2081614,
+    "ast_hash": "67cf106ea54635ab60d4aba512ebf40e",
+    "semantic_hash": "67cf106ea54635ab60d4aba512ebf40e"
+  },
+  "/Users/andrey/Projects/pi-extensions/packages/pi-custom-compaction/test/status-format.test.ts": {
+    "mtime": 1781021657.2082207,
+    "ast_hash": "179db6d0dd26d66d16686930dcc30492",
+    "semantic_hash": "179db6d0dd26d66d16686930dcc30492"
+  },
+  "/Users/andrey/Projects/pi-extensions/packages/pi-custom-compaction/test/status-tint.test.ts": {
+    "mtime": 1781021657.2082686,
+    "ast_hash": "e6a04f67b8184ac7cc47a63f49c170f8",
+    "semantic_hash": "e6a04f67b8184ac7cc47a63f49c170f8"
+  },
+  "/Users/andrey/Projects/pi-extensions/packages/pi-custom-compaction/test/template.test.ts": {
+    "mtime": 1781021657.2083786,
+    "ast_hash": "44a68d2d139bd083a35486fd57038b6b",
+    "semantic_hash": "44a68d2d139bd083a35486fd57038b6b"
+  },
+  "/Users/andrey/Projects/pi-extensions/packages/pi-extensions-browser/package.json": {
+    "mtime": 1781185405.582477,
+    "ast_hash": "69abf42df49a0f1ccc09133c8dab8330",
+    "semantic_hash": "69abf42df49a0f1ccc09133c8dab8330"
+  },
+  "/Users/andrey/Projects/pi-extensions/packages/pi-extensions-browser/src/index.ts": {
+    "mtime": 1781175202.6616557,
+    "ast_hash": "596cc44938623253e7578e64f9c13966",
+    "semantic_hash": "596cc44938623253e7578e64f9c13966"
+  },
+  "/Users/andrey/Projects/pi-extensions/packages/pi-extensions-browser/test/helpers.test.ts": {
+    "mtime": 1781175202.6617427,
+    "ast_hash": "3fd685f443c4c0ef7670d10f472cb848",
+    "semantic_hash": "3fd685f443c4c0ef7670d10f472cb848"
+  },
+  "/Users/andrey/Projects/pi-extensions/packages/pi-file-system-watcher/package.json": {
+    "mtime": 1781185405.5826359,
+    "ast_hash": "30bddafc5341c6d9381481ef6d07b217",
+    "semantic_hash": "30bddafc5341c6d9381481ef6d07b217"
+  },
+  "/Users/andrey/Projects/pi-extensions/packages/pi-file-system-watcher/src/format.ts": {
+    "mtime": 1781021657.208811,
+    "ast_hash": "9aaf5cec76b7d788bdee220a8ff096cd",
+    "semantic_hash": "9aaf5cec76b7d788bdee220a8ff096cd"
+  },
+  "/Users/andrey/Projects/pi-extensions/packages/pi-file-system-watcher/src/fs-client.ts": {
+    "mtime": 1781021657.2088625,
+    "ast_hash": "4f7f598b0adec041487d040c433c50bd",
+    "semantic_hash": "4f7f598b0adec041487d040c433c50bd"
+  },
+  "/Users/andrey/Projects/pi-extensions/packages/pi-file-system-watcher/src/index.ts": {
+    "mtime": 1781021657.2089148,
+    "ast_hash": "8465acedb31cad42e279653989ee9d86",
+    "semantic_hash": "8465acedb31cad42e279653989ee9d86"
+  },
+  "/Users/andrey/Projects/pi-extensions/packages/pi-file-system-watcher/src/poller.ts": {
+    "mtime": 1781021657.2089837,
+    "ast_hash": "874c85a9f3b7dfde2e3a02d48e19b3d6",
+    "semantic_hash": "874c85a9f3b7dfde2e3a02d48e19b3d6"
+  },
+  "/Users/andrey/Projects/pi-extensions/packages/pi-file-system-watcher/src/toolAction.ts": {
+    "mtime": 1781021657.2090352,
+    "ast_hash": "e976787dfed6d1849ada31a67169930c",
+    "semantic_hash": "e976787dfed6d1849ada31a67169930c"
+  },
+  "/Users/andrey/Projects/pi-extensions/packages/pi-file-system-watcher/src/types.ts": {
+    "mtime": 1781021657.20908,
+    "ast_hash": "f7affacdc5fd0563e092d3bfad2f0023",
+    "semantic_hash": "f7affacdc5fd0563e092d3bfad2f0023"
+  },
+  "/Users/andrey/Projects/pi-extensions/packages/pi-file-system-watcher/src/watcher.ts": {
+    "mtime": 1781175202.6618462,
+    "ast_hash": "0c90aa7ea944f189daf5f81d3d71e20c",
+    "semantic_hash": "0c90aa7ea944f189daf5f81d3d71e20c"
+  },
+  "/Users/andrey/Projects/pi-extensions/packages/pi-file-system-watcher/test/format.test.ts": {
+    "mtime": 1781021657.209287,
+    "ast_hash": "b5890c5639d82f62d57d467a2a37555a",
+    "semantic_hash": "b5890c5639d82f62d57d467a2a37555a"
+  },
+  "/Users/andrey/Projects/pi-extensions/packages/pi-file-system-watcher/test/poller.test.ts": {
+    "mtime": 1781021657.209381,
+    "ast_hash": "daa39b491c7feb1c964c85160412e47f",
+    "semantic_hash": "daa39b491c7feb1c964c85160412e47f"
+  },
+  "/Users/andrey/Projects/pi-extensions/packages/pi-file-system-watcher/test/watcher.test.ts": {
+    "mtime": 1781449165.8442402,
+    "ast_hash": "8fbf1f38e35270bc7b19ffc378f01ad4",
+    "semantic_hash": "8fbf1f38e35270bc7b19ffc378f01ad4"
+  },
+  "/Users/andrey/Projects/pi-extensions/packages/pi-file-system-watcher/tsconfig.json": {
+    "mtime": 1781021657.2095118,
+    "ast_hash": "b4a271c0cba2a932a048224e6bf493a4",
+    "semantic_hash": "b4a271c0cba2a932a048224e6bf493a4"
+  },
+  "/Users/andrey/Projects/pi-extensions/packages/pi-git-watcher/package.json": {
+    "mtime": 1781185405.5827901,
+    "ast_hash": "8802febef34d51fa493d5221cbd6813a",
+    "semantic_hash": "8802febef34d51fa493d5221cbd6813a"
+  },
+  "/Users/andrey/Projects/pi-extensions/packages/pi-git-watcher/src/format.ts": {
+    "mtime": 1781021657.2099266,
+    "ast_hash": "4e17223afbd7fecaadd43c0f85a8df47",
+    "semantic_hash": "4e17223afbd7fecaadd43c0f85a8df47"
+  },
+  "/Users/andrey/Projects/pi-extensions/packages/pi-git-watcher/src/git-client.ts": {
+    "mtime": 1781021657.2100036,
+    "ast_hash": "33ab13c6ab43a6c8d7f62e36e187030b",
+    "semantic_hash": "33ab13c6ab43a6c8d7f62e36e187030b"
+  },
+  "/Users/andrey/Projects/pi-extensions/packages/pi-git-watcher/src/index.ts": {
+    "mtime": 1781021657.210061,
+    "ast_hash": "2df6ded7f2bb43a213fa046bc8047cc1",
+    "semantic_hash": "2df6ded7f2bb43a213fa046bc8047cc1"
+  },
+  "/Users/andrey/Projects/pi-extensions/packages/pi-git-watcher/src/poller.ts": {
+    "mtime": 1781021657.2101262,
+    "ast_hash": "b88efdba586119830f6e675f5fb02a26",
+    "semantic_hash": "b88efdba586119830f6e675f5fb02a26"
+  },
+  "/Users/andrey/Projects/pi-extensions/packages/pi-git-watcher/src/toolAction.ts": {
+    "mtime": 1781021657.210173,
+    "ast_hash": "720079330d2df48013cd3ed075d310c2",
+    "semantic_hash": "720079330d2df48013cd3ed075d310c2"
+  },
+  "/Users/andrey/Projects/pi-extensions/packages/pi-git-watcher/src/types.ts": {
+    "mtime": 1781021657.2102194,
+    "ast_hash": "1dd493042984336a47cf991b451144ec",
+    "semantic_hash": "1dd493042984336a47cf991b451144ec"
+  },
+  "/Users/andrey/Projects/pi-extensions/packages/pi-git-watcher/src/watcher.ts": {
+    "mtime": 1781175202.6620803,
+    "ast_hash": "05cbe1c12f36a40e33df7dd7bf083081",
+    "semantic_hash": "05cbe1c12f36a40e33df7dd7bf083081"
+  },
+  "/Users/andrey/Projects/pi-extensions/packages/pi-git-watcher/test/format.test.ts": {
+    "mtime": 1781021657.2104533,
+    "ast_hash": "f436cf56d183b05faa15701b2b213dde",
+    "semantic_hash": "f436cf56d183b05faa15701b2b213dde"
+  },
+  "/Users/andrey/Projects/pi-extensions/packages/pi-git-watcher/test/git-client.test.ts": {
+    "mtime": 1781021657.2105157,
+    "ast_hash": "bd995303dfd26ec5a93b20d569b3a529",
+    "semantic_hash": "bd995303dfd26ec5a93b20d569b3a529"
+  },
+  "/Users/andrey/Projects/pi-extensions/packages/pi-git-watcher/test/index.test.ts": {
+    "mtime": 1781175202.662213,
+    "ast_hash": "10344abdc341c8549727c701319c7a49",
+    "semantic_hash": "10344abdc341c8549727c701319c7a49"
+  },
+  "/Users/andrey/Projects/pi-extensions/packages/pi-git-watcher/test/poller.test.ts": {
+    "mtime": 1781021657.2106931,
+    "ast_hash": "5d04938940e1a124c2bb123380c0cfe2",
+    "semantic_hash": "5d04938940e1a124c2bb123380c0cfe2"
+  },
+  "/Users/andrey/Projects/pi-extensions/packages/pi-git-watcher/test/toolAction.test.ts": {
+    "mtime": 1781021657.2108777,
+    "ast_hash": "1a7fd089b36d1e08d9c0cbdb5962fbbb",
+    "semantic_hash": "1a7fd089b36d1e08d9c0cbdb5962fbbb"
+  },
+  "/Users/andrey/Projects/pi-extensions/packages/pi-git-watcher/test/watcher.test.ts": {
+    "mtime": 1781449165.8446903,
+    "ast_hash": "1a19ef16d884188e66ad7554f1162566",
+    "semantic_hash": "1a19ef16d884188e66ad7554f1162566"
+  },
+  "/Users/andrey/Projects/pi-extensions/packages/pi-git-watcher/tsconfig.json": {
+    "mtime": 1781021657.211015,
+    "ast_hash": "b4a271c0cba2a932a048224e6bf493a4",
+    "semantic_hash": "b4a271c0cba2a932a048224e6bf493a4"
+  },
+  "/Users/andrey/Projects/pi-extensions/packages/pi-git-worktree-enforcer/package.json": {
+    "mtime": 1781185405.5829592,
+    "ast_hash": "77077f577e6eda404def83b4089e7059",
+    "semantic_hash": "77077f577e6eda404def83b4089e7059"
+  },
+  "/Users/andrey/Projects/pi-extensions/packages/pi-git-worktree-enforcer/src/index.ts": {
+    "mtime": 1781021657.2112608,
+    "ast_hash": "2a1c21299fba2f120d0012193ebf2077",
+    "semantic_hash": "2a1c21299fba2f120d0012193ebf2077"
+  },
+  "/Users/andrey/Projects/pi-extensions/packages/pi-git-worktree-enforcer/src/worktree.ts": {
+    "mtime": 1781021657.211327,
+    "ast_hash": "32af874e2a8de57b9863c422bd76077d",
+    "semantic_hash": "32af874e2a8de57b9863c422bd76077d"
+  },
+  "/Users/andrey/Projects/pi-extensions/packages/pi-git-worktree-enforcer/test/index.test.ts": {
+    "mtime": 1781021657.2114346,
+    "ast_hash": "6e2c4356e1ff2817b87f886a71d77287",
+    "semantic_hash": "6e2c4356e1ff2817b87f886a71d77287"
+  },
+  "/Users/andrey/Projects/pi-extensions/packages/pi-git-worktree-enforcer/test/worktree.test.ts": {
+    "mtime": 1781021657.2114997,
+    "ast_hash": "1d0dc8dd2cf31811281c7706b5756c27",
+    "semantic_hash": "1d0dc8dd2cf31811281c7706b5756c27"
+  },
+  "/Users/andrey/Projects/pi-extensions/packages/pi-goal/package.json": {
+    "mtime": 1781185405.5832276,
+    "ast_hash": "648b373393f59739aa3c3e39a3c56d87",
+    "semantic_hash": "648b373393f59739aa3c3e39a3c56d87"
+  },
+  "/Users/andrey/Projects/pi-extensions/packages/pi-goal/src/checker.ts": {
+    "mtime": 1781021657.2119746,
+    "ast_hash": "c0b2eae5d32f84ea3059e663522d1ff4",
+    "semantic_hash": "c0b2eae5d32f84ea3059e663522d1ff4"
+  },
+  "/Users/andrey/Projects/pi-extensions/packages/pi-goal/src/helpers.ts": {
+    "mtime": 1781021657.2120483,
+    "ast_hash": "d270940b8fe55a986304fb3db96200d0",
+    "semantic_hash": "d270940b8fe55a986304fb3db96200d0"
+  },
+  "/Users/andrey/Projects/pi-extensions/packages/pi-goal/src/index.ts": {
+    "mtime": 1781021657.2121322,
+    "ast_hash": "e23b83b14b1c22d4f1269f5dc48babef",
+    "semantic_hash": "e23b83b14b1c22d4f1269f5dc48babef"
+  },
+  "/Users/andrey/Projects/pi-extensions/packages/pi-goal/src/prompt.ts": {
+    "mtime": 1781021657.2122428,
+    "ast_hash": "d6d44a8567f4a1aa309dd21ade2d76ba",
+    "semantic_hash": "d6d44a8567f4a1aa309dd21ade2d76ba"
+  },
+  "/Users/andrey/Projects/pi-extensions/packages/pi-goal/src/state.ts": {
+    "mtime": 1781021657.2122967,
+    "ast_hash": "8593a632f004f8e200175b82dfd8f4a5",
+    "semantic_hash": "8593a632f004f8e200175b82dfd8f4a5"
+  },
+  "/Users/andrey/Projects/pi-extensions/packages/pi-goal/src/updateGoalTool.ts": {
+    "mtime": 1781021657.2123692,
+    "ast_hash": "a1fd7543d2d8ba2626bfbdb3a6d0ea4b",
+    "semantic_hash": "a1fd7543d2d8ba2626bfbdb3a6d0ea4b"
+  },
+  "/Users/andrey/Projects/pi-extensions/packages/pi-goal/test/checker.test.ts": {
+    "mtime": 1781021657.2125287,
+    "ast_hash": "6282c62c574f2baa1e01c9defbafc34e",
+    "semantic_hash": "6282c62c574f2baa1e01c9defbafc34e"
+  },
+  "/Users/andrey/Projects/pi-extensions/packages/pi-goal/test/helpers.test.ts": {
+    "mtime": 1781021657.2126408,
+    "ast_hash": "297463bff999705ab887f88c7d5e204c",
+    "semantic_hash": "297463bff999705ab887f88c7d5e204c"
+  },
+  "/Users/andrey/Projects/pi-extensions/packages/pi-goal/test/index.test.ts": {
+    "mtime": 1781021657.212745,
+    "ast_hash": "a5468438d321fc26266fbe745b387faf",
+    "semantic_hash": "a5468438d321fc26266fbe745b387faf"
+  },
+  "/Users/andrey/Projects/pi-extensions/packages/pi-goal/test/prompt.test.ts": {
+    "mtime": 1781021657.212812,
+    "ast_hash": "2e3309f56a6f0b1974035c2bc6a6e42e",
+    "semantic_hash": "2e3309f56a6f0b1974035c2bc6a6e42e"
+  },
+  "/Users/andrey/Projects/pi-extensions/packages/pi-goal/test/state.test.ts": {
+    "mtime": 1781021657.2129,
+    "ast_hash": "9d4bcef1175fec34227a305fa9b26ef3",
+    "semantic_hash": "9d4bcef1175fec34227a305fa9b26ef3"
+  },
+  "/Users/andrey/Projects/pi-extensions/packages/pi-goal/test/updateGoalTool.test.ts": {
+    "mtime": 1781021657.2129831,
+    "ast_hash": "d822cfce4107cc2d1bca2af6a9b1abef",
+    "semantic_hash": "d822cfce4107cc2d1bca2af6a9b1abef"
+  },
+  "/Users/andrey/Projects/pi-extensions/packages/pi-herdr-integration/package.json": {
+    "mtime": 1781185405.5834546,
+    "ast_hash": "f122d6cec57ee05f480afe131ea44c88",
+    "semantic_hash": "f122d6cec57ee05f480afe131ea44c88"
+  },
+  "/Users/andrey/Projects/pi-extensions/packages/pi-herdr-integration/src/herdr.ts": {
+    "mtime": 1781021657.2132657,
+    "ast_hash": "d910ab62841f8b2ee91d395d58c3cf50",
+    "semantic_hash": "d910ab62841f8b2ee91d395d58c3cf50"
+  },
+  "/Users/andrey/Projects/pi-extensions/packages/pi-herdr-integration/src/index.ts": {
+    "mtime": 1781021657.2133427,
+    "ast_hash": "d9def281dd6b8f85055a11e442bdd3d8",
+    "semantic_hash": "d9def281dd6b8f85055a11e442bdd3d8"
+  },
+  "/Users/andrey/Projects/pi-extensions/packages/pi-herdr-integration/src/state.ts": {
+    "mtime": 1781021657.2133954,
+    "ast_hash": "2102055d4845e1f8433b869fb22b6211",
+    "semantic_hash": "2102055d4845e1f8433b869fb22b6211"
+  },
+  "/Users/andrey/Projects/pi-extensions/packages/pi-herdr-integration/test/herdr.test.ts": {
+    "mtime": 1781021657.213501,
+    "ast_hash": "338f9e909dbf20f5a7cd368e1bd1e1ef",
+    "semantic_hash": "338f9e909dbf20f5a7cd368e1bd1e1ef"
+  },
+  "/Users/andrey/Projects/pi-extensions/packages/pi-herdr-integration/test/index.test.ts": {
+    "mtime": 1781021657.213595,
+    "ast_hash": "e71b4b541456c77614b1df39675522e3",
+    "semantic_hash": "e71b4b541456c77614b1df39675522e3"
+  },
+  "/Users/andrey/Projects/pi-extensions/packages/pi-herdr-integration/test/state.test.ts": {
+    "mtime": 1781021657.213647,
+    "ast_hash": "589638b42e686835ca541344d81af20a",
+    "semantic_hash": "589638b42e686835ca541344d81af20a"
+  },
+  "/Users/andrey/Projects/pi-extensions/packages/pi-herdr-integration/tsconfig.json": {
+    "mtime": 1781021657.2136984,
+    "ast_hash": "b4a271c0cba2a932a048224e6bf493a4",
+    "semantic_hash": "b4a271c0cba2a932a048224e6bf493a4"
+  },
+  "/Users/andrey/Projects/pi-extensions/packages/pi-local-issue-watcher/package.json": {
+    "mtime": 1781185405.5836897,
+    "ast_hash": "fcd4a1440746fbad8b1a103308e013a8",
+    "semantic_hash": "fcd4a1440746fbad8b1a103308e013a8"
+  },
+  "/Users/andrey/Projects/pi-extensions/packages/pi-local-issue-watcher/src/command.ts": {
+    "mtime": 1781021657.2140064,
+    "ast_hash": "a3a6c07481d50f36ea083913769d54d5",
+    "semantic_hash": "a3a6c07481d50f36ea083913769d54d5"
+  },
+  "/Users/andrey/Projects/pi-extensions/packages/pi-local-issue-watcher/src/diff.ts": {
+    "mtime": 1781021657.214082,
+    "ast_hash": "f5007bc7c2e8d59d86289828d550d957",
+    "semantic_hash": "f5007bc7c2e8d59d86289828d550d957"
+  },
+  "/Users/andrey/Projects/pi-extensions/packages/pi-local-issue-watcher/src/format.ts": {
+    "mtime": 1781021657.2141643,
+    "ast_hash": "0b7ac289f6e1d49fad6ebfde8b62e226",
+    "semantic_hash": "0b7ac289f6e1d49fad6ebfde8b62e226"
+  },
+  "/Users/andrey/Projects/pi-extensions/packages/pi-local-issue-watcher/src/index.ts": {
+    "mtime": 1781021657.2142339,
+    "ast_hash": "3e1c89d1c8e581ca7d02b39013498f37",
+    "semantic_hash": "3e1c89d1c8e581ca7d02b39013498f37"
+  },
+  "/Users/andrey/Projects/pi-extensions/packages/pi-local-issue-watcher/src/infoHandler.ts": {
+    "mtime": 1781021657.2143059,
+    "ast_hash": "f7cc81abafd126d98c55eb0dd9d3540a",
+    "semantic_hash": "f7cc81abafd126d98c55eb0dd9d3540a"
+  },
+  "/Users/andrey/Projects/pi-extensions/packages/pi-local-issue-watcher/src/infoTui.ts": {
+    "mtime": 1781021657.2144084,
+    "ast_hash": "2486297cd529d37a808e1cde1d0c7508",
+    "semantic_hash": "2486297cd529d37a808e1cde1d0c7508"
+  },
+  "/Users/andrey/Projects/pi-extensions/packages/pi-local-issue-watcher/src/infoTuiFilter.ts": {
+    "mtime": 1781021657.2144523,
+    "ast_hash": "853fed44893d3f2256ea1f47236d39b5",
+    "semantic_hash": "853fed44893d3f2256ea1f47236d39b5"
+  },
+  "/Users/andrey/Projects/pi-extensions/packages/pi-local-issue-watcher/src/infoTuiKeys.ts": {
+    "mtime": 1781021657.2144957,
+    "ast_hash": "8007701e1eedf970118c3c3a51fc1731",
+    "semantic_hash": "8007701e1eedf970118c3c3a51fc1731"
+  },
+  "/Users/andrey/Projects/pi-extensions/packages/pi-local-issue-watcher/src/path.ts": {
+    "mtime": 1781021657.2145371,
+    "ast_hash": "2f0e30077fd3e6719749ee40927887f1",
+    "semantic_hash": "2f0e30077fd3e6719749ee40927887f1"
+  },
+  "/Users/andrey/Projects/pi-extensions/packages/pi-local-issue-watcher/src/persistence.ts": {
+    "mtime": 1781352586.2839305,
+    "ast_hash": "a72ccbb51c99ae0ce2946bf9ba3b00c6",
+    "semantic_hash": "a72ccbb51c99ae0ce2946bf9ba3b00c6"
+  },
+  "/Users/andrey/Projects/pi-extensions/packages/pi-local-issue-watcher/src/scanner.ts": {
+    "mtime": 1781021657.2146552,
+    "ast_hash": "58eff265423b96886a453f5e98fe7c51",
+    "semantic_hash": "58eff265423b96886a453f5e98fe7c51"
+  },
+  "/Users/andrey/Projects/pi-extensions/packages/pi-local-issue-watcher/src/types.ts": {
+    "mtime": 1781021657.214702,
+    "ast_hash": "23c0b693ea8c04ba128060feb9dc8067",
+    "semantic_hash": "23c0b693ea8c04ba128060feb9dc8067"
+  },
+  "/Users/andrey/Projects/pi-extensions/packages/pi-local-issue-watcher/test/diff.test.ts": {
+    "mtime": 1781021657.2148316,
+    "ast_hash": "515ec94a9030a5c01dedd19d621ba31e",
+    "semantic_hash": "515ec94a9030a5c01dedd19d621ba31e"
+  },
+  "/Users/andrey/Projects/pi-extensions/packages/pi-local-issue-watcher/test/format.test.ts": {
+    "mtime": 1781021657.2149355,
+    "ast_hash": "84781f77b949e3f9755205ffbdc67039",
+    "semantic_hash": "84781f77b949e3f9755205ffbdc67039"
+  },
+  "/Users/andrey/Projects/pi-extensions/packages/pi-local-issue-watcher/test/index.test.ts": {
+    "mtime": 1781352586.2848933,
+    "ast_hash": "f32d394e7de7fc911e7e250f5de2ee88",
+    "semantic_hash": "f32d394e7de7fc911e7e250f5de2ee88"
+  },
+  "/Users/andrey/Projects/pi-extensions/packages/pi-local-issue-watcher/test/infoHandler.test.ts": {
+    "mtime": 1781021657.2151816,
+    "ast_hash": "700e2564303083df43965910044457cb",
+    "semantic_hash": "700e2564303083df43965910044457cb"
+  },
+  "/Users/andrey/Projects/pi-extensions/packages/pi-local-issue-watcher/test/infoTui.test.ts": {
+    "mtime": 1781021657.215311,
+    "ast_hash": "5c3093200cf473911da7a4db81dd4c71",
+    "semantic_hash": "5c3093200cf473911da7a4db81dd4c71"
+  },
+  "/Users/andrey/Projects/pi-extensions/packages/pi-local-issue-watcher/test/infoTuiFilter.test.ts": {
+    "mtime": 1781021657.2153628,
+    "ast_hash": "0b47fde435f08adac8f025ed87a8696e",
+    "semantic_hash": "0b47fde435f08adac8f025ed87a8696e"
+  },
+  "/Users/andrey/Projects/pi-extensions/packages/pi-local-issue-watcher/test/infoTuiKeys.test.ts": {
+    "mtime": 1781021657.2154238,
+    "ast_hash": "22c315cd4591cc7780616c55f569a7f3",
+    "semantic_hash": "22c315cd4591cc7780616c55f569a7f3"
+  },
+  "/Users/andrey/Projects/pi-extensions/packages/pi-local-issue-watcher/test/path.test.ts": {
+    "mtime": 1781021657.215475,
+    "ast_hash": "fda6a7d4d44891706c56e28d8f11ada0",
+    "semantic_hash": "fda6a7d4d44891706c56e28d8f11ada0"
+  },
+  "/Users/andrey/Projects/pi-extensions/packages/pi-local-issue-watcher/test/persistence.test.ts": {
+    "mtime": 1781352586.2855768,
+    "ast_hash": "d80ed16149108327c820eeb760826f80",
+    "semantic_hash": "d80ed16149108327c820eeb760826f80"
+  },
+  "/Users/andrey/Projects/pi-extensions/packages/pi-local-issue-watcher/test/scanner.test.ts": {
+    "mtime": 1781021657.2156622,
+    "ast_hash": "1360e0af9cf2285290f9245cf475d8eb",
+    "semantic_hash": "1360e0af9cf2285290f9245cf475d8eb"
+  },
+  "/Users/andrey/Projects/pi-extensions/packages/pi-local-issue-watcher/test/scheduler.test.ts": {
+    "mtime": 1781021657.2157118,
+    "ast_hash": "bf89430ed2731a825cf2d83509b4b321",
+    "semantic_hash": "bf89430ed2731a825cf2d83509b4b321"
+  },
+  "/Users/andrey/Projects/pi-extensions/packages/pi-plan-mode/package.json": {
+    "mtime": 1781185405.5783477,
+    "ast_hash": "d38cc96b259156be9501e8ca539729fb",
+    "semantic_hash": "d38cc96b259156be9501e8ca539729fb"
+  },
+  "/Users/andrey/Projects/pi-extensions/packages/pi-plan-mode/src/handlers.ts": {
+    "mtime": 1781021657.216084,
+    "ast_hash": "297353eddc9ce538efe230c0605c453f",
+    "semantic_hash": "297353eddc9ce538efe230c0605c453f"
+  },
+  "/Users/andrey/Projects/pi-extensions/packages/pi-plan-mode/src/index.ts": {
+    "mtime": 1781021657.2162,
+    "ast_hash": "e7d950704ea609c30229c92a0ef46605",
+    "semantic_hash": "e7d950704ea609c30229c92a0ef46605"
+  },
+  "/Users/andrey/Projects/pi-extensions/packages/pi-plan-mode/src/settings-patch.ts": {
+    "mtime": 1781021657.2162669,
+    "ast_hash": "13712ee703b052191df22138aeb82a98",
+    "semantic_hash": "13712ee703b052191df22138aeb82a98"
+  },
+  "/Users/andrey/Projects/pi-extensions/packages/pi-plan-mode/src/state.ts": {
+    "mtime": 1781021657.2163432,
+    "ast_hash": "eb8cfb561282cee8b38dbaf7d0f88644",
+    "semantic_hash": "eb8cfb561282cee8b38dbaf7d0f88644"
+  },
+  "/Users/andrey/Projects/pi-extensions/packages/pi-plan-mode/src/tool-snapshot.ts": {
+    "mtime": 1781021657.2164156,
+    "ast_hash": "0ac5f7fcae49a30ad383251d012f2b1c",
+    "semantic_hash": "0ac5f7fcae49a30ad383251d012f2b1c"
+  },
+  "/Users/andrey/Projects/pi-extensions/packages/pi-plan-mode/src/utils.ts": {
+    "mtime": 1781021657.2164948,
+    "ast_hash": "be6cd0cad333ec5e7e4a2ec7d9d06190",
+    "semantic_hash": "be6cd0cad333ec5e7e4a2ec7d9d06190"
+  },
+  "/Users/andrey/Projects/pi-extensions/packages/pi-plan-mode/test/handlers.test.ts": {
+    "mtime": 1781021657.2166252,
+    "ast_hash": "afb967bec160534f4d04e054b48b567b",
+    "semantic_hash": "afb967bec160534f4d04e054b48b567b"
+  },
+  "/Users/andrey/Projects/pi-extensions/packages/pi-plan-mode/test/index.test.ts": {
+    "mtime": 1781021657.2167222,
+    "ast_hash": "a2c08bd6eb9720e96f243fc4799d9097",
+    "semantic_hash": "a2c08bd6eb9720e96f243fc4799d9097"
+  },
+  "/Users/andrey/Projects/pi-extensions/packages/pi-plan-mode/test/settings-patch.test.ts": {
+    "mtime": 1781021657.2168393,
+    "ast_hash": "03f55ac0039f9a9349678e608886a62c",
+    "semantic_hash": "03f55ac0039f9a9349678e608886a62c"
+  },
+  "/Users/andrey/Projects/pi-extensions/packages/pi-plan-mode/test/state.test.ts": {
+    "mtime": 1781021657.2169187,
+    "ast_hash": "74cf3147072b068ad4cd5a1163c78d1d",
+    "semantic_hash": "74cf3147072b068ad4cd5a1163c78d1d"
+  },
+  "/Users/andrey/Projects/pi-extensions/packages/pi-plan-mode/test/tool-snapshot.test.ts": {
+    "mtime": 1781021657.216989,
+    "ast_hash": "0d9ca1938fc434e7ea1789b52dbce7d5",
+    "semantic_hash": "0d9ca1938fc434e7ea1789b52dbce7d5"
+  },
+  "/Users/andrey/Projects/pi-extensions/packages/pi-plan-mode/test/utils.test.ts": {
+    "mtime": 1781021657.2170608,
+    "ast_hash": "d3eb03f6872e475a5ac6bc29cbce795a",
+    "semantic_hash": "d3eb03f6872e475a5ac6bc29cbce795a"
+  },
+  "/Users/andrey/Projects/pi-extensions/packages/pi-prompt-scheduler/package.json": {
+    "mtime": 1781185405.5786452,
+    "ast_hash": "8ac23cb2afde3095c9c2a26b4c9ca061",
+    "semantic_hash": "8ac23cb2afde3095c9c2a26b4c9ca061"
+  },
+  "/Users/andrey/Projects/pi-extensions/packages/pi-prompt-scheduler/src/index.ts": {
+    "mtime": 1781021657.217491,
+    "ast_hash": "fc7a72307800e646f5c9119fe2eb1573",
+    "semantic_hash": "fc7a72307800e646f5c9119fe2eb1573"
+  },
+  "/Users/andrey/Projects/pi-extensions/packages/pi-prompt-scheduler/src/scheduler.ts": {
+    "mtime": 1781021657.2175608,
+    "ast_hash": "968f51338ccfd5dc0dd00a4970f86e80",
+    "semantic_hash": "968f51338ccfd5dc0dd00a4970f86e80"
+  },
+  "/Users/andrey/Projects/pi-extensions/packages/pi-prompt-scheduler/src/settings.ts": {
+    "mtime": 1781021657.2176352,
+    "ast_hash": "c68e579498df2712070fa7491890ffda",
+    "semantic_hash": "c68e579498df2712070fa7491890ffda"
+  },
+  "/Users/andrey/Projects/pi-extensions/packages/pi-prompt-scheduler/src/storage.ts": {
+    "mtime": 1781021657.2176924,
+    "ast_hash": "24c05684c2636fe1431e9a2945a51a11",
+    "semantic_hash": "24c05684c2636fe1431e9a2945a51a11"
+  },
+  "/Users/andrey/Projects/pi-extensions/packages/pi-prompt-scheduler/src/subagent.ts": {
+    "mtime": 1781021657.2177565,
+    "ast_hash": "f6200b1c787d152921fe7e8f3f460af1",
+    "semantic_hash": "f6200b1c787d152921fe7e8f3f460af1"
+  },
+  "/Users/andrey/Projects/pi-extensions/packages/pi-prompt-scheduler/src/tool.ts": {
+    "mtime": 1781021657.2178216,
+    "ast_hash": "c26e396c49f811bf456220a29a8d8bd0",
+    "semantic_hash": "c26e396c49f811bf456220a29a8d8bd0"
+  },
+  "/Users/andrey/Projects/pi-extensions/packages/pi-prompt-scheduler/src/types.ts": {
+    "mtime": 1781021657.2179232,
+    "ast_hash": "d8b45d6bc8258864c745a38ab08f199e",
+    "semantic_hash": "d8b45d6bc8258864c745a38ab08f199e"
+  },
+  "/Users/andrey/Projects/pi-extensions/packages/pi-prompt-scheduler/src/ui/cron-widget.ts": {
+    "mtime": 1781021657.2180257,
+    "ast_hash": "734f56a7ec957f3347bc667bd0938739",
+    "semantic_hash": "734f56a7ec957f3347bc667bd0938739"
+  },
+  "/Users/andrey/Projects/pi-extensions/packages/pi-prompt-scheduler/src/ui/jobs-view.ts": {
+    "mtime": 1781021657.2181356,
+    "ast_hash": "7e3d065defa19a6a861ddae8d8d0d44a",
+    "semantic_hash": "7e3d065defa19a6a861ddae8d8d0d44a"
+  },
+  "/Users/andrey/Projects/pi-extensions/packages/pi-prompt-scheduler/test/cron-widget.test.ts": {
+    "mtime": 1781021657.218236,
+    "ast_hash": "b7bbc9d3af8c1d35553b39773d47272e",
+    "semantic_hash": "b7bbc9d3af8c1d35553b39773d47272e"
+  },
+  "/Users/andrey/Projects/pi-extensions/packages/pi-prompt-scheduler/test/jobs-view.test.ts": {
+    "mtime": 1781021657.2183313,
+    "ast_hash": "e44efda28c0d9671ffcaf9c971919696",
+    "semantic_hash": "e44efda28c0d9671ffcaf9c971919696"
+  },
+  "/Users/andrey/Projects/pi-extensions/packages/pi-prompt-scheduler/test/scheduler-instance.test.ts": {
+    "mtime": 1781021657.2184036,
+    "ast_hash": "8275f57222aabdd575ed99844432b34b",
+    "semantic_hash": "8275f57222aabdd575ed99844432b34b"
+  },
+  "/Users/andrey/Projects/pi-extensions/packages/pi-prompt-scheduler/test/scheduler-pure.test.ts": {
+    "mtime": 1781021657.218531,
+    "ast_hash": "d236b89849eb61f8e73ac8ddd7bfe28d",
+    "semantic_hash": "d236b89849eb61f8e73ac8ddd7bfe28d"
+  },
+  "/Users/andrey/Projects/pi-extensions/packages/pi-prompt-scheduler/test/settings.test.ts": {
+    "mtime": 1781021657.2186182,
+    "ast_hash": "8d93db0d007716c3c98e885491f2c7bb",
+    "semantic_hash": "8d93db0d007716c3c98e885491f2c7bb"
+  },
+  "/Users/andrey/Projects/pi-extensions/packages/pi-prompt-scheduler/test/storage.test.ts": {
+    "mtime": 1781021657.2186906,
+    "ast_hash": "7f983857403b656b890a31d194eb0130",
+    "semantic_hash": "7f983857403b656b890a31d194eb0130"
+  },
+  "/Users/andrey/Projects/pi-extensions/packages/pi-prompt-scheduler/test/tool.test.ts": {
+    "mtime": 1781021657.2187574,
+    "ast_hash": "fb2fc08756277df8e0f3798525d5b281",
+    "semantic_hash": "fb2fc08756277df8e0f3798525d5b281"
+  },
+  "/Users/andrey/Projects/pi-extensions/packages/pi-skills-browser/package.json": {
+    "mtime": 1781185405.5838697,
+    "ast_hash": "aef5426e8f8a26716b8c8562310ba0c0",
+    "semantic_hash": "aef5426e8f8a26716b8c8562310ba0c0"
+  },
+  "/Users/andrey/Projects/pi-extensions/packages/pi-skills-browser/src/helpers.ts": {
+    "mtime": 1781455138.7453103,
+    "ast_hash": "35ca07dbfed54591802e11c8920b73cc",
+    "semantic_hash": "35ca07dbfed54591802e11c8920b73cc"
+  },
+  "/Users/andrey/Projects/pi-extensions/packages/pi-skills-browser/src/index.ts": {
+    "mtime": 1781455138.7458808,
+    "ast_hash": "84b8a323b398b1360ed6cc5e62dba122",
+    "semantic_hash": "84b8a323b398b1360ed6cc5e62dba122"
+  },
+  "/Users/andrey/Projects/pi-extensions/packages/pi-skills-browser/src/keys.ts": {
+    "mtime": 1781021657.219128,
+    "ast_hash": "d8ed0e1a82d0e5ac54aaaabfc8edf4f8",
+    "semantic_hash": "d8ed0e1a82d0e5ac54aaaabfc8edf4f8"
+  },
+  "/Users/andrey/Projects/pi-extensions/packages/pi-skills-browser/src/row.ts": {
+    "mtime": 1781455138.746454,
+    "ast_hash": "596cce3fb118dbd7fa01a740e2215a1e",
+    "semantic_hash": "596cce3fb118dbd7fa01a740e2215a1e"
+  },
+  "/Users/andrey/Projects/pi-extensions/packages/pi-skills-browser/src/viewport.ts": {
+    "mtime": 1781021657.219233,
+    "ast_hash": "be90c10fe155752bda9a0765a1fbee34",
+    "semantic_hash": "be90c10fe155752bda9a0765a1fbee34"
+  },
+  "/Users/andrey/Projects/pi-extensions/packages/pi-skills-browser/test/helpers.test.ts": {
+    "mtime": 1781455138.7471397,
+    "ast_hash": "26797860ed6cd3668b190f8c40979998",
+    "semantic_hash": "26797860ed6cd3668b190f8c40979998"
+  },
+  "/Users/andrey/Projects/pi-extensions/packages/pi-skills-browser/test/index.test.ts": {
+    "mtime": 1781175202.662828,
+    "ast_hash": "a05b8cc77bd637520a24efb504c482c2",
+    "semantic_hash": "a05b8cc77bd637520a24efb504c482c2"
+  },
+  "/Users/andrey/Projects/pi-extensions/packages/pi-skills-browser/test/keys.test.ts": {
+    "mtime": 1781021657.2193964,
+    "ast_hash": "b098d2ee97d852c4f937941a080430ee",
+    "semantic_hash": "b098d2ee97d852c4f937941a080430ee"
+  },
+  "/Users/andrey/Projects/pi-extensions/packages/pi-skills-browser/test/row.test.ts": {
+    "mtime": 1781455138.7480187,
+    "ast_hash": "c6b438db30e9f69a5c7a374a12209f2d",
+    "semantic_hash": "c6b438db30e9f69a5c7a374a12209f2d"
+  },
+  "/Users/andrey/Projects/pi-extensions/packages/pi-skills-browser/test/viewport.test.ts": {
+    "mtime": 1781021657.2194943,
+    "ast_hash": "562c2f1ab9c213cfad0cc116eb17c2d3",
+    "semantic_hash": "562c2f1ab9c213cfad0cc116eb17c2d3"
+  },
+  "/Users/andrey/Projects/pi-extensions/packages/pi-speak/package.json": {
+    "mtime": 1781185405.5840664,
+    "ast_hash": "de3b07bf3f8a4fb9ba74296ac052ce30",
+    "semantic_hash": "de3b07bf3f8a4fb9ba74296ac052ce30"
+  },
+  "/Users/andrey/Projects/pi-extensions/packages/pi-speak/src/audio.ts": {
+    "mtime": 1781392491.8906648,
+    "ast_hash": "0d680485854f626e01fc3feed2524f9b",
+    "semantic_hash": "0d680485854f626e01fc3feed2524f9b"
+  },
+  "/Users/andrey/Projects/pi-extensions/packages/pi-speak/src/config.ts": {
+    "mtime": 1781021657.2200084,
+    "ast_hash": "2952d7baaaa6cae5a64956a1db3f8b38",
+    "semantic_hash": "2952d7baaaa6cae5a64956a1db3f8b38"
+  },
+  "/Users/andrey/Projects/pi-extensions/packages/pi-speak/src/index.ts": {
+    "mtime": 1781168390.2717187,
+    "ast_hash": "6fe286bbd7b5f75b176f088322f90157",
+    "semantic_hash": "6fe286bbd7b5f75b176f088322f90157"
+  },
+  "/Users/andrey/Projects/pi-extensions/packages/pi-speak/src/menu.ts": {
+    "mtime": 1781021657.2201712,
+    "ast_hash": "8642a25a491852bbeae742222770f315",
+    "semantic_hash": "8642a25a491852bbeae742222770f315"
+  },
+  "/Users/andrey/Projects/pi-extensions/packages/pi-speak/src/queue.ts": {
+    "mtime": 1781021657.2202377,
+    "ast_hash": "9b4741a4fe99ce7cea12a85a9fed89b4",
+    "semantic_hash": "9b4741a4fe99ce7cea12a85a9fed89b4"
+  },
+  "/Users/andrey/Projects/pi-extensions/packages/pi-speak/src/render.ts": {
+    "mtime": 1781021657.2202845,
+    "ast_hash": "92479f058d80105cb0fecbce9c06c3f9",
+    "semantic_hash": "92479f058d80105cb0fecbce9c06c3f9"
+  },
+  "/Users/andrey/Projects/pi-extensions/packages/pi-speak/src/schema.ts": {
+    "mtime": 1781021657.2203305,
+    "ast_hash": "ddacdd87ab2b6c6723e83959f204e690",
+    "semantic_hash": "ddacdd87ab2b6c6723e83959f204e690"
+  },
+  "/Users/andrey/Projects/pi-extensions/packages/pi-speak/src/state.ts": {
+    "mtime": 1781021657.2203894,
+    "ast_hash": "b65499c9378c1f2d37981abb9c04cdb9",
+    "semantic_hash": "b65499c9378c1f2d37981abb9c04cdb9"
+  },
+  "/Users/andrey/Projects/pi-extensions/packages/pi-speak/src/tts.ts": {
+    "mtime": 1781021657.2204554,
+    "ast_hash": "c2c905657a00a417accde7639ad25361",
+    "semantic_hash": "c2c905657a00a417accde7639ad25361"
+  },
+  "/Users/andrey/Projects/pi-extensions/packages/pi-speak/src/vendor/supertonic-helper.d.ts": {
+    "mtime": 1781021657.2205393,
+    "ast_hash": "756b1c35c98d76ca3a254229d2cb9c8a",
+    "semantic_hash": "756b1c35c98d76ca3a254229d2cb9c8a"
+  },
+  "/Users/andrey/Projects/pi-extensions/packages/pi-speak/src/vendor/supertonic-helper.js": {
+    "mtime": 1781021657.220596,
+    "ast_hash": "f5d18def6d038fc59173c36fbca23b02",
+    "semantic_hash": "f5d18def6d038fc59173c36fbca23b02"
+  },
+  "/Users/andrey/Projects/pi-extensions/packages/pi-speak/test/audio.test.ts": {
+    "mtime": 1781392491.8912864,
+    "ast_hash": "e0c9f7980aeafe94787ffd649cabc08f",
+    "semantic_hash": "e0c9f7980aeafe94787ffd649cabc08f"
+  },
+  "/Users/andrey/Projects/pi-extensions/packages/pi-speak/test/config.test.ts": {
+    "mtime": 1781352586.2884774,
+    "ast_hash": "ae7a26bd340e9e6cb287a264311cc7fc",
+    "semantic_hash": "ae7a26bd340e9e6cb287a264311cc7fc"
+  },
+  "/Users/andrey/Projects/pi-extensions/packages/pi-speak/test/index.test.ts": {
+    "mtime": 1781021657.2208047,
+    "ast_hash": "2c3bd0522067f4e8665451da6fefa18e",
+    "semantic_hash": "2c3bd0522067f4e8665451da6fefa18e"
+  },
+  "/Users/andrey/Projects/pi-extensions/packages/pi-speak/test/menu.test.ts": {
+    "mtime": 1781449165.845037,
+    "ast_hash": "ee050d3166b5ad4a486bae58ee31ca90",
+    "semantic_hash": "ee050d3166b5ad4a486bae58ee31ca90"
+  },
+  "/Users/andrey/Projects/pi-extensions/packages/pi-speak/test/queue.test.ts": {
+    "mtime": 1781352586.2893069,
+    "ast_hash": "da3a68ece5adb9bc5902e2abcae83cc3",
+    "semantic_hash": "da3a68ece5adb9bc5902e2abcae83cc3"
+  },
+  "/Users/andrey/Projects/pi-extensions/packages/pi-speak/test/render.test.ts": {
+    "mtime": 1781021657.2210057,
+    "ast_hash": "a1f9f7b4a05deec8da7b8842f8f68da0",
+    "semantic_hash": "a1f9f7b4a05deec8da7b8842f8f68da0"
+  },
+  "/Users/andrey/Projects/pi-extensions/packages/pi-speak/test/schema.test.ts": {
+    "mtime": 1781021657.2210517,
+    "ast_hash": "bb66c5dfbdbb26809355cbf03d1d2f5f",
+    "semantic_hash": "bb66c5dfbdbb26809355cbf03d1d2f5f"
+  },
+  "/Users/andrey/Projects/pi-extensions/packages/pi-speak/test/state.test.ts": {
+    "mtime": 1781021657.2211232,
+    "ast_hash": "3f947c1857e4c9912ea38b0736378dad",
+    "semantic_hash": "3f947c1857e4c9912ea38b0736378dad"
+  },
+  "/Users/andrey/Projects/pi-extensions/packages/pi-subagents/package.json": {
+    "mtime": 1781185405.579155,
+    "ast_hash": "31cd928c1306fec9cdbf5603d11ec81f",
+    "semantic_hash": "31cd928c1306fec9cdbf5603d11ec81f"
+  },
+  "/Users/andrey/Projects/pi-extensions/packages/pi-subagents/src/agent-manager.ts": {
+    "mtime": 1781021657.2214453,
+    "ast_hash": "6d1c24e3c9c267571e5dbc3211762170",
+    "semantic_hash": "6d1c24e3c9c267571e5dbc3211762170"
+  },
+  "/Users/andrey/Projects/pi-extensions/packages/pi-subagents/src/agent-runner.ts": {
+    "mtime": 1781021657.2215357,
+    "ast_hash": "b5144b8abb87f3cc5fc5cb86df1f1309",
+    "semantic_hash": "b5144b8abb87f3cc5fc5cb86df1f1309"
+  },
+  "/Users/andrey/Projects/pi-extensions/packages/pi-subagents/src/agent-types.ts": {
+    "mtime": 1781021657.221613,
+    "ast_hash": "c378c752a9412eb9cc5537fdfdf977e4",
+    "semantic_hash": "c378c752a9412eb9cc5537fdfdf977e4"
+  },
+  "/Users/andrey/Projects/pi-extensions/packages/pi-subagents/src/context.ts": {
+    "mtime": 1781021657.2216585,
+    "ast_hash": "5a8cd33fd250a7bb44f4ce374fdd31fa",
+    "semantic_hash": "5a8cd33fd250a7bb44f4ce374fdd31fa"
+  },
+  "/Users/andrey/Projects/pi-extensions/packages/pi-subagents/src/cross-extension-rpc.ts": {
+    "mtime": 1781021657.2217135,
+    "ast_hash": "1be8a8172d250c64c5da5d6d55bff2d9",
+    "semantic_hash": "1be8a8172d250c64c5da5d6d55bff2d9"
+  },
+  "/Users/andrey/Projects/pi-extensions/packages/pi-subagents/src/custom-agents.ts": {
+    "mtime": 1781021657.2217782,
+    "ast_hash": "c95d52990d65c4a5b274cf4feba34d51",
+    "semantic_hash": "c95d52990d65c4a5b274cf4feba34d51"
+  },
+  "/Users/andrey/Projects/pi-extensions/packages/pi-subagents/src/default-agents.ts": {
+    "mtime": 1781021657.2218337,
+    "ast_hash": "0081163453355a64d398ad88586642ff",
+    "semantic_hash": "0081163453355a64d398ad88586642ff"
+  },
+  "/Users/andrey/Projects/pi-extensions/packages/pi-subagents/src/enabled-models.ts": {
+    "mtime": 1781021657.2218888,
+    "ast_hash": "83d3b0d22d779a36e73d5f662633a9c1",
+    "semantic_hash": "83d3b0d22d779a36e73d5f662633a9c1"
+  },
+  "/Users/andrey/Projects/pi-extensions/packages/pi-subagents/src/env.ts": {
+    "mtime": 1781021657.2219286,
+    "ast_hash": "befd13acd31751fd9a041f736c31decb",
+    "semantic_hash": "befd13acd31751fd9a041f736c31decb"
+  },
+  "/Users/andrey/Projects/pi-extensions/packages/pi-subagents/src/group-join.ts": {
+    "mtime": 1781021657.2219934,
+    "ast_hash": "412373885d6cc66758db6cdbc170c1f2",
+    "semantic_hash": "412373885d6cc66758db6cdbc170c1f2"
+  },
+  "/Users/andrey/Projects/pi-extensions/packages/pi-subagents/src/index.ts": {
+    "mtime": 1781021657.222149,
+    "ast_hash": "5d711bdc5e0c0144716c61dd7178bf21",
+    "semantic_hash": "5d711bdc5e0c0144716c61dd7178bf21"
+  },
+  "/Users/andrey/Projects/pi-extensions/packages/pi-subagents/src/invocation-config.ts": {
+    "mtime": 1781021657.2222264,
+    "ast_hash": "712d9f2312e5511073cfc1328fba4d03",
+    "semantic_hash": "712d9f2312e5511073cfc1328fba4d03"
+  },
+  "/Users/andrey/Projects/pi-extensions/packages/pi-subagents/src/memory.ts": {
+    "mtime": 1781021657.2222924,
+    "ast_hash": "4f02be6a0a3ba4d8bde59c259f177495",
+    "semantic_hash": "4f02be6a0a3ba4d8bde59c259f177495"
+  },
+  "/Users/andrey/Projects/pi-extensions/packages/pi-subagents/src/model-resolver.ts": {
+    "mtime": 1781021657.2223477,
+    "ast_hash": "a981b12a0f8f4da6c6c380a4c671a069",
+    "semantic_hash": "a981b12a0f8f4da6c6c380a4c671a069"
+  },
+  "/Users/andrey/Projects/pi-extensions/packages/pi-subagents/src/output-file.ts": {
+    "mtime": 1781021657.2224128,
+    "ast_hash": "4c9f89c0034b8beaafd9ef3bc48d6de1",
+    "semantic_hash": "4c9f89c0034b8beaafd9ef3bc48d6de1"
+  },
+  "/Users/andrey/Projects/pi-extensions/packages/pi-subagents/src/prompts.ts": {
+    "mtime": 1781021657.2224922,
+    "ast_hash": "9bb9f7092aaba22936e3146a6ea79f13",
+    "semantic_hash": "9bb9f7092aaba22936e3146a6ea79f13"
+  },
+  "/Users/andrey/Projects/pi-extensions/packages/pi-subagents/src/schedule-store.ts": {
+    "mtime": 1781021657.2225692,
+    "ast_hash": "17c11b1c665a0c45a8959f8ce7526cb5",
+    "semantic_hash": "17c11b1c665a0c45a8959f8ce7526cb5"
+  },
+  "/Users/andrey/Projects/pi-extensions/packages/pi-subagents/src/schedule.ts": {
+    "mtime": 1781021657.2226658,
+    "ast_hash": "ad52fc74247f47bcfc065fc3b2a66b34",
+    "semantic_hash": "ad52fc74247f47bcfc065fc3b2a66b34"
+  },
+  "/Users/andrey/Projects/pi-extensions/packages/pi-subagents/src/settings.ts": {
+    "mtime": 1781021657.222767,
+    "ast_hash": "bae1f583dddd0c4e719ba6050071aaef",
+    "semantic_hash": "bae1f583dddd0c4e719ba6050071aaef"
+  },
+  "/Users/andrey/Projects/pi-extensions/packages/pi-subagents/src/skill-loader.ts": {
+    "mtime": 1781021657.2228215,
+    "ast_hash": "6791b9b8d29b1067bbdbc99e8f9abec6",
+    "semantic_hash": "6791b9b8d29b1067bbdbc99e8f9abec6"
+  },
+  "/Users/andrey/Projects/pi-extensions/packages/pi-subagents/src/status-note.ts": {
+    "mtime": 1781021657.2228749,
+    "ast_hash": "95d0f5abc2d7a8267b2cd93b5312862a",
+    "semantic_hash": "95d0f5abc2d7a8267b2cd93b5312862a"
+  },
+  "/Users/andrey/Projects/pi-extensions/packages/pi-subagents/src/types.ts": {
+    "mtime": 1781021657.222948,
+    "ast_hash": "6c1ae74f2d596831b37f888242febee5",
+    "semantic_hash": "6c1ae74f2d596831b37f888242febee5"
+  },
+  "/Users/andrey/Projects/pi-extensions/packages/pi-subagents/src/ui/agent-widget.ts": {
+    "mtime": 1781021657.2230723,
+    "ast_hash": "5fc9f23e18484bcbdc37ffd2f29c9d2c",
+    "semantic_hash": "5fc9f23e18484bcbdc37ffd2f29c9d2c"
+  },
+  "/Users/andrey/Projects/pi-extensions/packages/pi-subagents/src/ui/conversation-viewer.ts": {
+    "mtime": 1781021657.2232034,
+    "ast_hash": "11dcea1846a69151d9ff907167b0332d",
+    "semantic_hash": "11dcea1846a69151d9ff907167b0332d"
+  },
+  "/Users/andrey/Projects/pi-extensions/packages/pi-subagents/src/ui/schedule-menu.ts": {
+    "mtime": 1781021657.2232606,
+    "ast_hash": "914bfd70031440758a895c0b3d16f435",
+    "semantic_hash": "914bfd70031440758a895c0b3d16f435"
+  },
+  "/Users/andrey/Projects/pi-extensions/packages/pi-subagents/src/usage.ts": {
+    "mtime": 1781021657.223308,
+    "ast_hash": "df91623c878800fc501bd02b1de226c0",
+    "semantic_hash": "df91623c878800fc501bd02b1de226c0"
+  },
+  "/Users/andrey/Projects/pi-extensions/packages/pi-subagents/src/worktree.ts": {
+    "mtime": 1781021657.223384,
+    "ast_hash": "424d1faa158f9e17cd69fc92889b5039",
+    "semantic_hash": "424d1faa158f9e17cd69fc92889b5039"
+  },
+  "/Users/andrey/Projects/pi-extensions/packages/pi-subagents/test/agent-manager.test.ts": {
+    "mtime": 1781021657.2235093,
+    "ast_hash": "5a1cf0a5165667cc45b97fecf3a43174",
+    "semantic_hash": "5a1cf0a5165667cc45b97fecf3a43174"
+  },
+  "/Users/andrey/Projects/pi-extensions/packages/pi-subagents/test/agent-runner-settings.test.ts": {
+    "mtime": 1781021657.2235665,
+    "ast_hash": "1ca6e28544e407839050d38055d4c877",
+    "semantic_hash": "1ca6e28544e407839050d38055d4c877"
+  },
+  "/Users/andrey/Projects/pi-extensions/packages/pi-subagents/test/agent-runner.test.ts": {
+    "mtime": 1781021657.2236373,
+    "ast_hash": "1b7225b01d46e61a69262c75543c28cc",
+    "semantic_hash": "1b7225b01d46e61a69262c75543c28cc"
+  },
+  "/Users/andrey/Projects/pi-extensions/packages/pi-subagents/test/agent-types.test.ts": {
+    "mtime": 1781021657.2237668,
+    "ast_hash": "062c30213911100d1a49d4b694ea6d4b",
+    "semantic_hash": "062c30213911100d1a49d4b694ea6d4b"
+  },
+  "/Users/andrey/Projects/pi-extensions/packages/pi-subagents/test/agent-widget.test.ts": {
+    "mtime": 1781021657.2238374,
+    "ast_hash": "f1138722591b6bbad5e936e12b8dd6f8",
+    "semantic_hash": "f1138722591b6bbad5e936e12b8dd6f8"
+  },
+  "/Users/andrey/Projects/pi-extensions/packages/pi-subagents/test/context.test.ts": {
+    "mtime": 1781021657.2239087,
+    "ast_hash": "6c820b50920c04267c1a4138077d2f20",
+    "semantic_hash": "6c820b50920c04267c1a4138077d2f20"
+  },
+  "/Users/andrey/Projects/pi-extensions/packages/pi-subagents/test/conversation-viewer.test.ts": {
+    "mtime": 1781021657.223993,
+    "ast_hash": "f9f33046abba4a7f024b60e5266ad971",
+    "semantic_hash": "f9f33046abba4a7f024b60e5266ad971"
+  },
+  "/Users/andrey/Projects/pi-extensions/packages/pi-subagents/test/cross-extension-rpc.test.ts": {
+    "mtime": 1781021657.2240863,
+    "ast_hash": "547504c584c410d6eb49d5fd42f68d49",
+    "semantic_hash": "547504c584c410d6eb49d5fd42f68d49"
+  },
+  "/Users/andrey/Projects/pi-extensions/packages/pi-subagents/test/custom-agents.test.ts": {
+    "mtime": 1781021657.2241867,
+    "ast_hash": "9b55f1874c3e6753f9f8a56b2e93becc",
+    "semantic_hash": "9b55f1874c3e6753f9f8a56b2e93becc"
+  },
+  "/Users/andrey/Projects/pi-extensions/packages/pi-subagents/test/enabled-models.test.ts": {
+    "mtime": 1781021657.2242846,
+    "ast_hash": "2f21356475b106da8f40194b320ffe77",
+    "semantic_hash": "2f21356475b106da8f40194b320ffe77"
+  },
+  "/Users/andrey/Projects/pi-extensions/packages/pi-subagents/test/env.test.ts": {
+    "mtime": 1781175202.6629984,
+    "ast_hash": "8935b8acc2f9809465fb6eb3b801245f",
+    "semantic_hash": "8935b8acc2f9809465fb6eb3b801245f"
+  },
+  "/Users/andrey/Projects/pi-extensions/packages/pi-subagents/test/get-subagent-result-renderer.test.ts": {
+    "mtime": 1781021657.2244189,
+    "ast_hash": "07cd95e76da0b406cc7aabe0eb882e79",
+    "semantic_hash": "07cd95e76da0b406cc7aabe0eb882e79"
+  },
+  "/Users/andrey/Projects/pi-extensions/packages/pi-subagents/test/group-join.test.ts": {
+    "mtime": 1781021657.2245193,
+    "ast_hash": "9f1626743edfb8a069f28088a9ebf0d9",
+    "semantic_hash": "9f1626743edfb8a069f28088a9ebf0d9"
+  },
+  "/Users/andrey/Projects/pi-extensions/packages/pi-subagents/test/invocation-config.test.ts": {
+    "mtime": 1781021657.224579,
+    "ast_hash": "776ebbc83d3ce97b04abfd0d6b57cf4c",
+    "semantic_hash": "776ebbc83d3ce97b04abfd0d6b57cf4c"
+  },
+  "/Users/andrey/Projects/pi-extensions/packages/pi-subagents/test/memory.test.ts": {
+    "mtime": 1781021657.224686,
+    "ast_hash": "0cb2418443a8d6b8c1ddeb851d959700",
+    "semantic_hash": "0cb2418443a8d6b8c1ddeb851d959700"
+  },
+  "/Users/andrey/Projects/pi-extensions/packages/pi-subagents/test/model-resolver.test.ts": {
+    "mtime": 1781021657.2247982,
+    "ast_hash": "ac69b49136938236e12813d3724983fa",
+    "semantic_hash": "ac69b49136938236e12813d3724983fa"
+  },
+  "/Users/andrey/Projects/pi-extensions/packages/pi-subagents/test/output-file-create.test.ts": {
+    "mtime": 1781021657.224844,
+    "ast_hash": "56591ecbfa3f26ae842621edffbecb8b",
+    "semantic_hash": "56591ecbfa3f26ae842621edffbecb8b"
+  },
+  "/Users/andrey/Projects/pi-extensions/packages/pi-subagents/test/output-file.test.ts": {
+    "mtime": 1781021657.2249174,
+    "ast_hash": "579eeedc9381471cf704756bf29ad277",
+    "semantic_hash": "579eeedc9381471cf704756bf29ad277"
+  },
+  "/Users/andrey/Projects/pi-extensions/packages/pi-subagents/test/print-mode.test.ts": {
+    "mtime": 1781021657.2249606,
+    "ast_hash": "6aca34d3e00c9a4845d7b7dd9996107d",
+    "semantic_hash": "6aca34d3e00c9a4845d7b7dd9996107d"
+  },
+  "/Users/andrey/Projects/pi-extensions/packages/pi-subagents/test/prompts.test.ts": {
+    "mtime": 1781021657.2250438,
+    "ast_hash": "dcf1c059efb8bb833dc3fcb794bec8e2",
+    "semantic_hash": "dcf1c059efb8bb833dc3fcb794bec8e2"
+  },
+  "/Users/andrey/Projects/pi-extensions/packages/pi-subagents/test/schedule-e2e.test.ts": {
+    "mtime": 1781021657.2251418,
+    "ast_hash": "b31354b3c3fa5e0496e0bae520a19896",
+    "semantic_hash": "b31354b3c3fa5e0496e0bae520a19896"
+  },
+  "/Users/andrey/Projects/pi-extensions/packages/pi-subagents/test/schedule-store.test.ts": {
+    "mtime": 1781021657.2252073,
+    "ast_hash": "faa7d20b5d548459e7a5d763b75b32ba",
+    "semantic_hash": "faa7d20b5d548459e7a5d763b75b32ba"
+  },
+  "/Users/andrey/Projects/pi-extensions/packages/pi-subagents/test/schedule.test.ts": {
+    "mtime": 1781021657.22529,
+    "ast_hash": "513b699394824aeb34ae92540ec6416f",
+    "semantic_hash": "513b699394824aeb34ae92540ec6416f"
+  },
+  "/Users/andrey/Projects/pi-extensions/packages/pi-subagents/test/settings.test.ts": {
+    "mtime": 1781021657.2253582,
+    "ast_hash": "16e89a418c77d73506488be6389d2812",
+    "semantic_hash": "16e89a418c77d73506488be6389d2812"
+  },
+  "/Users/andrey/Projects/pi-extensions/packages/pi-subagents/test/skill-loader.test.ts": {
+    "mtime": 1781021657.2254624,
+    "ast_hash": "7245eafcd996ef9182b95e75e3e15f0f",
+    "semantic_hash": "7245eafcd996ef9182b95e75e3e15f0f"
+  },
+  "/Users/andrey/Projects/pi-extensions/packages/pi-subagents/test/status-note.test.ts": {
+    "mtime": 1781021657.225525,
+    "ast_hash": "f3d80fd247a6bb1dfb299b85de9b5d42",
+    "semantic_hash": "f3d80fd247a6bb1dfb299b85de9b5d42"
+  },
+  "/Users/andrey/Projects/pi-extensions/packages/pi-subagents/test/usage.test.ts": {
+    "mtime": 1781021657.2255857,
+    "ast_hash": "6bfd975008b71e479185737d6bfac28c",
+    "semantic_hash": "6bfd975008b71e479185737d6bfac28c"
+  },
+  "/Users/andrey/Projects/pi-extensions/packages/pi-subagents/test/worktree.test.ts": {
+    "mtime": 1781021657.225706,
+    "ast_hash": "7f8f8de4e56cc989711ef4aaf36bed4f",
+    "semantic_hash": "7f8f8de4e56cc989711ef4aaf36bed4f"
+  },
+  "/Users/andrey/Projects/pi-extensions/packages/pi-thinking-level-control/package.json": {
+    "mtime": 1781185405.5794652,
+    "ast_hash": "43ac6ddeb63a8b6c5525b9be32e12655",
+    "semantic_hash": "43ac6ddeb63a8b6c5525b9be32e12655"
+  },
+  "/Users/andrey/Projects/pi-extensions/packages/pi-thinking-level-control/src/index.ts": {
+    "mtime": 1781021657.225917,
+    "ast_hash": "5ddabb337666601148a751db0abd2ce6",
+    "semantic_hash": "5ddabb337666601148a751db0abd2ce6"
+  },
+  "/Users/andrey/Projects/pi-extensions/packages/pi-thinking-level-control/test/index.test.ts": {
+    "mtime": 1781021657.2259855,
+    "ast_hash": "7cf7b22bc5d3f5d2601228d30759e7fe",
+    "semantic_hash": "7cf7b22bc5d3f5d2601228d30759e7fe"
+  },
+  "/Users/andrey/Projects/pi-extensions/packages/pi-tools-management-tool/package.json": {
+    "mtime": 1781185405.5796816,
+    "ast_hash": "7f50dcaa8e4b7dd5f5a9377076892ff9",
+    "semantic_hash": "7f50dcaa8e4b7dd5f5a9377076892ff9"
+  },
+  "/Users/andrey/Projects/pi-extensions/packages/pi-tools-management-tool/src/index.ts": {
+    "mtime": 1781175202.6631978,
+    "ast_hash": "b8d7f4ad067394e6b7fafb86fd68ad96",
+    "semantic_hash": "b8d7f4ad067394e6b7fafb86fd68ad96"
+  },
+  "/Users/andrey/Projects/pi-extensions/packages/pi-tools-management-tool/src/manager.ts": {
+    "mtime": 1781021657.2262936,
+    "ast_hash": "750c03f356149ccf95ef3d3d02a3b6d5",
+    "semantic_hash": "750c03f356149ccf95ef3d3d02a3b6d5"
+  },
+  "/Users/andrey/Projects/pi-extensions/packages/pi-tools-management-tool/test/index.test.ts": {
+    "mtime": 1781175202.6633182,
+    "ast_hash": "51cf44dc4da9c43d3e9fd5edaf4ba524",
+    "semantic_hash": "51cf44dc4da9c43d3e9fd5edaf4ba524"
+  },
+  "/Users/andrey/Projects/pi-extensions/packages/pi-tools-management-tool/test/manager.test.ts": {
+    "mtime": 1781021657.2264624,
+    "ast_hash": "fdb809b32bdfe4d2a115c95806664ffe",
+    "semantic_hash": "fdb809b32bdfe4d2a115c95806664ffe"
+  },
+  "/Users/andrey/Projects/pi-extensions/packages/pi-tools/package.json": {
+    "mtime": 1781185405.5842566,
+    "ast_hash": "8c61c25074854ff6e956101bed261833",
+    "semantic_hash": "8c61c25074854ff6e956101bed261833"
+  },
+  "/Users/andrey/Projects/pi-extensions/packages/pi-tools/src/branchState.ts": {
+    "mtime": 1781021657.2266724,
+    "ast_hash": "8bf14551d3e0444f604cedc56065e5f3",
+    "semantic_hash": "8bf14551d3e0444f604cedc56065e5f3"
+  },
+  "/Users/andrey/Projects/pi-extensions/packages/pi-tools/src/completions.ts": {
+    "mtime": 1781021657.2267241,
+    "ast_hash": "a565934b9ebf7bf2aee2d8c65a4ede7b",
+    "semantic_hash": "a565934b9ebf7bf2aee2d8c65a4ede7b"
+  },
+  "/Users/andrey/Projects/pi-extensions/packages/pi-tools/src/helpers.ts": {
+    "mtime": 1781021657.2267747,
+    "ast_hash": "f7986fc828cd1d20ca6457373875095a",
+    "semantic_hash": "f7986fc828cd1d20ca6457373875095a"
+  },
+  "/Users/andrey/Projects/pi-extensions/packages/pi-tools/src/index.ts": {
+    "mtime": 1781175202.6634433,
+    "ast_hash": "9fb3f6c1ad097889cbf7621d83434a07",
+    "semantic_hash": "9fb3f6c1ad097889cbf7621d83434a07"
+  },
+  "/Users/andrey/Projects/pi-extensions/packages/pi-tools/src/renderToolMarkdown.ts": {
+    "mtime": 1781175202.6636734,
+    "ast_hash": "53a0de8f138f97d643dca8b4c4593bcd",
+    "semantic_hash": "53a0de8f138f97d643dca8b4c4593bcd"
+  },
+  "/Users/andrey/Projects/pi-extensions/packages/pi-tools/src/rows.ts": {
+    "mtime": 1781175202.6638315,
+    "ast_hash": "aef8f93c64a4e0c4fa66113944014c9d",
+    "semantic_hash": "aef8f93c64a4e0c4fa66113944014c9d"
+  },
+  "/Users/andrey/Projects/pi-extensions/packages/pi-tools/test/branchState.test.ts": {
+    "mtime": 1781021657.227096,
+    "ast_hash": "9fe12fe0c711af18a741cf89cb2f65cd",
+    "semantic_hash": "9fe12fe0c711af18a741cf89cb2f65cd"
+  },
+  "/Users/andrey/Projects/pi-extensions/packages/pi-tools/test/completions.test.ts": {
+    "mtime": 1781021657.2271442,
+    "ast_hash": "f1f169482a35bdad2ca298eaf79f235c",
+    "semantic_hash": "f1f169482a35bdad2ca298eaf79f235c"
+  },
+  "/Users/andrey/Projects/pi-extensions/packages/pi-tools/test/helpers.test.ts": {
+    "mtime": 1781021657.227207,
+    "ast_hash": "d5c9925ba7d6d07e4a09152b139e751c",
+    "semantic_hash": "d5c9925ba7d6d07e4a09152b139e751c"
+  },
+  "/Users/andrey/Projects/pi-extensions/packages/pi-tools/test/index.test.ts": {
+    "mtime": 1781175202.6639416,
+    "ast_hash": "72c57b0f5a603d4eff12463729df8bdf",
+    "semantic_hash": "72c57b0f5a603d4eff12463729df8bdf"
+  },
+  "/Users/andrey/Projects/pi-extensions/packages/pi-tools/test/renderToolMarkdown.test.ts": {
+    "mtime": 1781175202.6640933,
+    "ast_hash": "fb0d45f481d3b6d794fdefc685304a48",
+    "semantic_hash": "fb0d45f481d3b6d794fdefc685304a48"
+  },
+  "/Users/andrey/Projects/pi-extensions/packages/pi-tools/test/rows.test.ts": {
+    "mtime": 1781175202.6642401,
+    "ast_hash": "dfff70209bdb9e4f228a3edc7bfcb513",
+    "semantic_hash": "dfff70209bdb9e4f228a3edc7bfcb513"
+  },
+  "/Users/andrey/Projects/pi-extensions/packages/pi-watcher-core/package.json": {
+    "mtime": 1781185405.5844588,
+    "ast_hash": "5b0f982b6d8d66a82a836e271512a85d",
+    "semantic_hash": "5b0f982b6d8d66a82a836e271512a85d"
+  },
+  "/Users/andrey/Projects/pi-extensions/packages/pi-watcher-core/src/base-watcher-types.ts": {
+    "mtime": 1781175202.6645353,
+    "ast_hash": "081c13fe011e0b212af7ad5517b853ce",
+    "semantic_hash": "081c13fe011e0b212af7ad5517b853ce"
+  },
+  "/Users/andrey/Projects/pi-extensions/packages/pi-watcher-core/src/base-watcher.ts": {
+    "mtime": 1781175202.6647727,
+    "ast_hash": "8d178e4b7583a043a61e5a5618881f2e",
+    "semantic_hash": "8d178e4b7583a043a61e5a5618881f2e"
+  },
+  "/Users/andrey/Projects/pi-extensions/packages/pi-watcher-core/src/browse-view.ts": {
+    "mtime": 1781021657.2277029,
+    "ast_hash": "168e32facc66cdb2d5f361e1438ab3b4",
+    "semantic_hash": "168e32facc66cdb2d5f361e1438ab3b4"
+  },
+  "/Users/andrey/Projects/pi-extensions/packages/pi-watcher-core/src/classify-error.ts": {
+    "mtime": 1781021657.2277546,
+    "ast_hash": "57c97036c7ed9cc95581bbf799ca425a",
+    "semantic_hash": "57c97036c7ed9cc95581bbf799ca425a"
+  },
+  "/Users/andrey/Projects/pi-extensions/packages/pi-watcher-core/src/error-tracker.ts": {
+    "mtime": 1781021657.2278116,
+    "ast_hash": "19b27fdaca145d38810d098f858804c2",
+    "semantic_hash": "19b27fdaca145d38810d098f858804c2"
+  },
+  "/Users/andrey/Projects/pi-extensions/packages/pi-watcher-core/src/format-aggregated-errors.ts": {
+    "mtime": 1781021657.227866,
+    "ast_hash": "525c4103a6b57a0c8125743d2fed92de",
+    "semantic_hash": "525c4103a6b57a0c8125743d2fed92de"
+  },
+  "/Users/andrey/Projects/pi-extensions/packages/pi-watcher-core/src/lib.ts": {
+    "mtime": 1781021657.227913,
+    "ast_hash": "306826fc08441a57b69592c2873b754b",
+    "semantic_hash": "306826fc08441a57b69592c2873b754b"
+  },
+  "/Users/andrey/Projects/pi-extensions/packages/pi-watcher-core/src/persistence.ts": {
+    "mtime": 1781021657.2279859,
+    "ast_hash": "fb97d04f72e930dda63420c7bca83f06",
+    "semantic_hash": "fb97d04f72e930dda63420c7bca83f06"
+  },
+  "/Users/andrey/Projects/pi-extensions/packages/pi-watcher-core/src/poll-scheduler.ts": {
+    "mtime": 1781021657.2280562,
+    "ast_hash": "e707f7c8b9308661738d78ed54814b9c",
+    "semantic_hash": "e707f7c8b9308661738d78ed54814b9c"
+  },
+  "/Users/andrey/Projects/pi-extensions/packages/pi-watcher-core/src/renderer.ts": {
+    "mtime": 1781021657.2281263,
+    "ast_hash": "30e7c54af055525dbb616e0e860b5f85",
+    "semantic_hash": "30e7c54af055525dbb616e0e860b5f85"
+  },
+  "/Users/andrey/Projects/pi-extensions/packages/pi-watcher-core/src/seed-baselines.ts": {
+    "mtime": 1781175202.6648984,
+    "ast_hash": "ec3ffe5a9fa42e3206dc8e9b33f626d7",
+    "semantic_hash": "ec3ffe5a9fa42e3206dc8e9b33f626d7"
+  },
+  "/Users/andrey/Projects/pi-extensions/packages/pi-watcher-core/src/status-line.ts": {
+    "mtime": 1781021657.2282367,
+    "ast_hash": "905b510f24fa54ae919fcf1cc81e9bb0",
+    "semantic_hash": "905b510f24fa54ae919fcf1cc81e9bb0"
+  },
+  "/Users/andrey/Projects/pi-extensions/packages/pi-watcher-core/src/time.ts": {
+    "mtime": 1781021657.2282891,
+    "ast_hash": "8c2196ecfca3540c44cca81505d8f5c0",
+    "semantic_hash": "8c2196ecfca3540c44cca81505d8f5c0"
+  },
+  "/Users/andrey/Projects/pi-extensions/packages/pi-watcher-core/src/tool-activation.ts": {
+    "mtime": 1781021657.2283478,
+    "ast_hash": "8d5b7444cfb5548772ce4c8dd69ed22a",
+    "semantic_hash": "8d5b7444cfb5548772ce4c8dd69ed22a"
+  },
+  "/Users/andrey/Projects/pi-extensions/packages/pi-watcher-core/src/ui-surface.ts": {
+    "mtime": 1781021657.2284014,
+    "ast_hash": "15b89d2835454af68ee00fab32d33d8c",
+    "semantic_hash": "15b89d2835454af68ee00fab32d33d8c"
+  },
+  "/Users/andrey/Projects/pi-extensions/packages/pi-watcher-core/src/validate-aws-profile.ts": {
+    "mtime": 1781021657.228447,
+    "ast_hash": "81962dd391e59a61798112e4dee06b41",
+    "semantic_hash": "81962dd391e59a61798112e4dee06b41"
+  },
+  "/Users/andrey/Projects/pi-extensions/packages/pi-watcher-core/src/watcher-widget.ts": {
+    "mtime": 1781021657.2285595,
+    "ast_hash": "70b01e69ab91016c0473dd7c22c9b5dc",
+    "semantic_hash": "70b01e69ab91016c0473dd7c22c9b5dc"
+  },
+  "/Users/andrey/Projects/pi-extensions/packages/pi-watcher-core/test/base-watcher.test.ts": {
+    "mtime": 1781175202.6650903,
+    "ast_hash": "1a7dca6b391aa05a45366a5bc630a8ee",
+    "semantic_hash": "1a7dca6b391aa05a45366a5bc630a8ee"
+  },
+  "/Users/andrey/Projects/pi-extensions/packages/pi-watcher-core/test/browse-view.test.ts": {
+    "mtime": 1781021657.2288795,
+    "ast_hash": "bc90b6b2ed5731e5549e937ea739b200",
+    "semantic_hash": "bc90b6b2ed5731e5549e937ea739b200"
+  },
+  "/Users/andrey/Projects/pi-extensions/packages/pi-watcher-core/test/classify-error.test.ts": {
+    "mtime": 1781021657.2289698,
+    "ast_hash": "5d43970fd3567572e601ae8ab62e1cdc",
+    "semantic_hash": "5d43970fd3567572e601ae8ab62e1cdc"
+  },
+  "/Users/andrey/Projects/pi-extensions/packages/pi-watcher-core/test/error-tracker.test.ts": {
+    "mtime": 1781021657.2290382,
+    "ast_hash": "0b2611aac1c4dcba4d2ac440cdf284ad",
+    "semantic_hash": "0b2611aac1c4dcba4d2ac440cdf284ad"
+  },
+  "/Users/andrey/Projects/pi-extensions/packages/pi-watcher-core/test/format-aggregated-errors.test.ts": {
+    "mtime": 1781021657.2290876,
+    "ast_hash": "3a2277a9c98d1a825c661cd9b8cbf77f",
+    "semantic_hash": "3a2277a9c98d1a825c661cd9b8cbf77f"
+  },
+  "/Users/andrey/Projects/pi-extensions/packages/pi-watcher-core/test/persistence.test.ts": {
+    "mtime": 1781021657.229192,
+    "ast_hash": "f52f35e029108c5a93a3d73bb28d524a",
+    "semantic_hash": "f52f35e029108c5a93a3d73bb28d524a"
+  },
+  "/Users/andrey/Projects/pi-extensions/packages/pi-watcher-core/test/poll-scheduler.test.ts": {
+    "mtime": 1781021657.2292542,
+    "ast_hash": "2ab5ab7a0909c62b3d24326f2bff948e",
+    "semantic_hash": "2ab5ab7a0909c62b3d24326f2bff948e"
+  },
+  "/Users/andrey/Projects/pi-extensions/packages/pi-watcher-core/test/renderer.test.ts": {
+    "mtime": 1781021657.2293196,
+    "ast_hash": "5f01ce9b6461dbae7d3fb8651cbd7a93",
+    "semantic_hash": "5f01ce9b6461dbae7d3fb8651cbd7a93"
+  },
+  "/Users/andrey/Projects/pi-extensions/packages/pi-watcher-core/test/seed-baselines.test.ts": {
+    "mtime": 1781175202.6651955,
+    "ast_hash": "eb5f1d97c36696f66e6691bf4d2d4f23",
+    "semantic_hash": "eb5f1d97c36696f66e6691bf4d2d4f23"
+  },
+  "/Users/andrey/Projects/pi-extensions/packages/pi-watcher-core/test/status-line.test.ts": {
+    "mtime": 1781021657.229416,
+    "ast_hash": "964d259d05dd21dbda345dc2ddbbeb6b",
+    "semantic_hash": "964d259d05dd21dbda345dc2ddbbeb6b"
+  },
+  "/Users/andrey/Projects/pi-extensions/packages/pi-watcher-core/test/time.test.ts": {
+    "mtime": 1781021657.2294655,
+    "ast_hash": "a540601f061665bf127b58024b660496",
+    "semantic_hash": "a540601f061665bf127b58024b660496"
+  },
+  "/Users/andrey/Projects/pi-extensions/packages/pi-watcher-core/test/tool-activation.test.ts": {
+    "mtime": 1781021657.2295039,
+    "ast_hash": "116cfe4a57d59e63461aa57f871cd924",
+    "semantic_hash": "116cfe4a57d59e63461aa57f871cd924"
+  },
+  "/Users/andrey/Projects/pi-extensions/packages/pi-watcher-core/test/ui-surface.test.ts": {
+    "mtime": 1781021657.2295468,
+    "ast_hash": "bfbe0924a8107a25320b7606a2ed78ac",
+    "semantic_hash": "bfbe0924a8107a25320b7606a2ed78ac"
+  },
+  "/Users/andrey/Projects/pi-extensions/packages/pi-watcher-core/test/validate-aws-profile.test.ts": {
+    "mtime": 1781021657.2295916,
+    "ast_hash": "41dd98423b577931e6164b1e4bc746f7",
+    "semantic_hash": "41dd98423b577931e6164b1e4bc746f7"
+  },
+  "/Users/andrey/Projects/pi-extensions/packages/pi-watcher-core/test/watcher-widget.test.ts": {
+    "mtime": 1781021657.2296891,
+    "ast_hash": "5044e83bfb28f6e6e10023df2e9fbe50",
+    "semantic_hash": "5044e83bfb28f6e6e10023df2e9fbe50"
+  },
+  "/Users/andrey/Projects/pi-extensions/packages/pi-watcher-core/tsconfig.json": {
+    "mtime": 1781021657.2297404,
+    "ast_hash": "b4a271c0cba2a932a048224e6bf493a4",
+    "semantic_hash": "b4a271c0cba2a932a048224e6bf493a4"
+  },
+  "/Users/andrey/Projects/pi-extensions/tsconfig.json": {
+    "mtime": 1781175202.6652894,
+    "ast_hash": "10a08d40279a849bd8c49635e0f65a93",
+    "semantic_hash": "10a08d40279a849bd8c49635e0f65a93"
+  },
+  "/Users/andrey/Projects/pi-extensions/vitest.config.ts": {
+    "mtime": 1781386886.1722543,
+    "ast_hash": "44b18cd5ef0e7d2a552dafb86328e442",
+    "semantic_hash": "44b18cd5ef0e7d2a552dafb86328e442"
+  },
+  "/Users/andrey/Projects/pi-extensions/.archon/config.yaml": {
+    "mtime": 1781021657.1902006,
+    "ast_hash": "02b4c8a93976355f02f4d9c22ea13626",
+    "semantic_hash": "02b4c8a93976355f02f4d9c22ea13626"
+  },
+  "/Users/andrey/Projects/pi-extensions/.archon/workflows/pi-extension-feature.yaml": {
+    "mtime": 1781021657.190314,
+    "ast_hash": "04bc515b5a52757697e457a96548257f",
+    "semantic_hash": "04bc515b5a52757697e457a96548257f"
+  },
+  "/Users/andrey/Projects/pi-extensions/.pi/agent/skills/graphify/SKILL.md": {
+    "mtime": 1781450505.3764758,
+    "ast_hash": "17b7c995311ce18dcf6e9f2a8263e530",
+    "semantic_hash": "17b7c995311ce18dcf6e9f2a8263e530"
+  },
+  "/Users/andrey/Projects/pi-extensions/.pi/agent/skills/graphify/references/add-watch.md": {
+    "mtime": 1781449824.7409863,
+    "ast_hash": "0df0589623217ca38a12bdcabfb42f4c",
+    "semantic_hash": "0df0589623217ca38a12bdcabfb42f4c"
+  },
+  "/Users/andrey/Projects/pi-extensions/.pi/agent/skills/graphify/references/exports.md": {
+    "mtime": 1781449824.7420766,
+    "ast_hash": "c04ddf8f1f5ef5e262ebec491a523c74",
+    "semantic_hash": "c04ddf8f1f5ef5e262ebec491a523c74"
+  },
+  "/Users/andrey/Projects/pi-extensions/.pi/agent/skills/graphify/references/extraction-spec.md": {
+    "mtime": 1781449824.7424965,
+    "ast_hash": "a86a7321597b23cc2b22e011b3dc6e1d",
+    "semantic_hash": "a86a7321597b23cc2b22e011b3dc6e1d"
+  },
+  "/Users/andrey/Projects/pi-extensions/.pi/agent/skills/graphify/references/github-and-merge.md": {
+    "mtime": 1781449824.7434194,
+    "ast_hash": "cde13df085e4c492aeb7ba298a996d0d",
+    "semantic_hash": "cde13df085e4c492aeb7ba298a996d0d"
+  },
+  "/Users/andrey/Projects/pi-extensions/.pi/agent/skills/graphify/references/hooks.md": {
+    "mtime": 1781449824.7443452,
+    "ast_hash": "3f545db6ce646650bb9de588f5512a27",
+    "semantic_hash": "3f545db6ce646650bb9de588f5512a27"
+  },
+  "/Users/andrey/Projects/pi-extensions/.pi/agent/skills/graphify/references/query.md": {
+    "mtime": 1781449824.745277,
+    "ast_hash": "c2a8e798674a81b02aa9975f43023819",
+    "semantic_hash": "c2a8e798674a81b02aa9975f43023819"
+  },
+  "/Users/andrey/Projects/pi-extensions/.pi/agent/skills/graphify/references/transcribe.md": {
+    "mtime": 1781449824.7455041,
+    "ast_hash": "70f6aa30d6211f3a2c7e9fc45479f50c",
+    "semantic_hash": "70f6aa30d6211f3a2c7e9fc45479f50c"
+  },
+  "/Users/andrey/Projects/pi-extensions/.pi/agent/skills/graphify/references/update.md": {
+    "mtime": 1781449824.7457314,
+    "ast_hash": "0dad167a95bdb389f02fecffb60b1bc8",
+    "semantic_hash": "0dad167a95bdb389f02fecffb60b1bc8"
+  },
+  "/Users/andrey/Projects/pi-extensions/.pi/skills/check-upstreams/SKILL.md": {
+    "mtime": 1781021657.1907654,
+    "ast_hash": "6bccbf05889d86e91c5cb638fef0e2fd",
+    "semantic_hash": "6bccbf05889d86e91c5cb638fef0e2fd"
+  },
+  "/Users/andrey/Projects/pi-extensions/.pi/skills/patch-pi-tool-renderer/SKILL.md": {
+    "mtime": 1781035224.1648958,
+    "ast_hash": "fb46bd75d3a89bb4f2cb7f0838cbfc22",
+    "semantic_hash": "fb46bd75d3a89bb4f2cb7f0838cbfc22"
+  },
+  "/Users/andrey/Projects/pi-extensions/.pi/skills/rebase-experimental-worktrees/SKILL.md": {
+    "mtime": 1781021657.1909618,
+    "ast_hash": "bbf6dc441e34987276633070c5172c11",
+    "semantic_hash": "bbf6dc441e34987276633070c5172c11"
+  },
+  "/Users/andrey/Projects/pi-extensions/AGENTS.md": {
+    "mtime": 1781175202.6547348,
+    "ast_hash": "d742eb57755c906db90001eedc82e235",
+    "semantic_hash": "d742eb57755c906db90001eedc82e235"
+  },
+  "/Users/andrey/Projects/pi-extensions/README.md": {
+    "mtime": 1781386886.1704125,
+    "ast_hash": "e41368ebc2d34d0b6a7076f403e4271e",
+    "semantic_hash": "e41368ebc2d34d0b6a7076f403e4271e"
+  },
+  "/Users/andrey/Projects/pi-extensions/packages/pi-additional-system-prompt/README.md": {
+    "mtime": 1781021657.1919618,
+    "ast_hash": "793d91ed8bf0439a76372884d2c70185",
+    "semantic_hash": "793d91ed8bf0439a76372884d2c70185"
+  },
+  "/Users/andrey/Projects/pi-extensions/packages/pi-additional-system-prompt/assets/PROMPT.md": {
+    "mtime": 1781021657.1920407,
+    "ast_hash": "612c28fb2bef918f646ac9331fea39cd",
+    "semantic_hash": "612c28fb2bef918f646ac9331fea39cd"
+  },
+  "/Users/andrey/Projects/pi-extensions/packages/pi-agent-introspection/README.md": {
+    "mtime": 1781021657.1924937,
+    "ast_hash": "b305e304a3182a52fbde427b441ad57a",
+    "semantic_hash": "b305e304a3182a52fbde427b441ad57a"
+  },
+  "/Users/andrey/Projects/pi-extensions/packages/pi-agent-introspection/skills/agent-introspection/SKILL.md": {
+    "mtime": 1781021657.1926596,
+    "ast_hash": "6fc8579fb25f6b48268e20c072936b15",
+    "semantic_hash": "6fc8579fb25f6b48268e20c072936b15"
+  },
+  "/Users/andrey/Projects/pi-extensions/packages/pi-ask-user-question/README.md": {
+    "mtime": 1781021657.1932354,
+    "ast_hash": "fc7a182b8b0040a05f2d34d5e3dbf971",
+    "semantic_hash": "fc7a182b8b0040a05f2d34d5e3dbf971"
+  },
+  "/Users/andrey/Projects/pi-extensions/packages/pi-aws-ec2-watcher/README.md": {
+    "mtime": 1781021657.1950467,
+    "ast_hash": "59d3b8ecb1e6032fb5158ef6598cf7cb",
+    "semantic_hash": "59d3b8ecb1e6032fb5158ef6598cf7cb"
+  },
+  "/Users/andrey/Projects/pi-extensions/packages/pi-aws-ec2-watcher/skills/aws-ec2-watcher/SKILL.md": {
+    "mtime": 1781021657.1953008,
+    "ast_hash": "9cac21a44c1047a7ef2716d46dee4c92",
+    "semantic_hash": "9cac21a44c1047a7ef2716d46dee4c92"
+  },
+  "/Users/andrey/Projects/pi-extensions/packages/pi-aws-glue-watcher/README.md": {
+    "mtime": 1781021657.1968634,
+    "ast_hash": "6cec76a1c9374f765f383fab83e34f34",
+    "semantic_hash": "6cec76a1c9374f765f383fab83e34f34"
+  },
+  "/Users/andrey/Projects/pi-extensions/packages/pi-aws-glue-watcher/skills/aws-glue-watcher/SKILL.md": {
+    "mtime": 1781021657.1971116,
+    "ast_hash": "e4eaca8afbe2b3a986ad4ae8f06a9712",
+    "semantic_hash": "e4eaca8afbe2b3a986ad4ae8f06a9712"
+  },
+  "/Users/andrey/Projects/pi-extensions/packages/pi-aws-s3-watcher/README.md": {
+    "mtime": 1781021657.1998613,
+    "ast_hash": "ef5cfa9c1988b9519bcceca1caf4180b",
+    "semantic_hash": "ef5cfa9c1988b9519bcceca1caf4180b"
+  },
+  "/Users/andrey/Projects/pi-extensions/packages/pi-aws-s3-watcher/skills/aws-s3-watcher/SKILL.md": {
+    "mtime": 1781021657.20005,
+    "ast_hash": "ed013ec2ebad36faae3e168dd7861cca",
+    "semantic_hash": "ed013ec2ebad36faae3e168dd7861cca"
+  },
+  "/Users/andrey/Projects/pi-extensions/packages/pi-browser-control/README.md": {
+    "mtime": 1781175202.6579938,
+    "ast_hash": "d1f637fb41647d2739b88b0c1b980cb4",
+    "semantic_hash": "d1f637fb41647d2739b88b0c1b980cb4"
+  },
+  "/Users/andrey/Projects/pi-extensions/packages/pi-browser-control/skills/browser-control/SKILL.md": {
+    "mtime": 1781175202.6584725,
+    "ast_hash": "ff31152754726dae70d21b22dacc40f2",
+    "semantic_hash": "ff31152754726dae70d21b22dacc40f2"
+  },
+  "/Users/andrey/Projects/pi-extensions/packages/pi-btw/README.md": {
+    "mtime": 1781021657.2014391,
+    "ast_hash": "b74be6ba2157cc1ddf8b2f2bd9a7604d",
+    "semantic_hash": "b74be6ba2157cc1ddf8b2f2bd9a7604d"
+  },
+  "/Users/andrey/Projects/pi-extensions/packages/pi-btw/UPSTREAM.md": {
+    "mtime": 1781021657.2015047,
+    "ast_hash": "157206d3e29c0dd1ef1927c26f7c0450",
+    "semantic_hash": "157206d3e29c0dd1ef1927c26f7c0450"
+  },
+  "/Users/andrey/Projects/pi-extensions/packages/pi-btw/skills/btw/SKILL.md": {
+    "mtime": 1781021657.201738,
+    "ast_hash": "b3f117ae15ef9f4a633b23214e780e38",
+    "semantic_hash": "b3f117ae15ef9f4a633b23214e780e38"
+  },
+  "/Users/andrey/Projects/pi-extensions/packages/pi-built-in-tool-renderer/README.md": {
+    "mtime": 1781021657.2022743,
+    "ast_hash": "d27578bc6e68958faa675846589a9c71",
+    "semantic_hash": "d27578bc6e68958faa675846589a9c71"
+  },
+  "/Users/andrey/Projects/pi-extensions/packages/pi-built-in-tool-renderer/UPSTREAM.md": {
+    "mtime": 1781021657.2023365,
+    "ast_hash": "e786a9813227350d1fdfacf4528e0c56",
+    "semantic_hash": "e786a9813227350d1fdfacf4528e0c56"
+  },
+  "/Users/andrey/Projects/pi-extensions/packages/pi-claude-code-import-commands/README.md": {
+    "mtime": 1781021657.2031572,
+    "ast_hash": "7430c513974bcbdf7e2f27a17cb9c7e3",
+    "semantic_hash": "7430c513974bcbdf7e2f27a17cb9c7e3"
+  },
+  "/Users/andrey/Projects/pi-extensions/packages/pi-claude-code-skills-import/README.md": {
+    "mtime": 1781021657.2037814,
+    "ast_hash": "a6a6557cfa554ec99cf0ecdf8b8a611b",
+    "semantic_hash": "a6a6557cfa554ec99cf0ecdf8b8a611b"
+  },
+  "/Users/andrey/Projects/pi-extensions/packages/pi-custom-compaction/CHANGELOG.md": {
+    "mtime": 1781021657.205695,
+    "ast_hash": "aa6401b39786c02cb052e63218744731",
+    "semantic_hash": "aa6401b39786c02cb052e63218744731"
+  },
+  "/Users/andrey/Projects/pi-extensions/packages/pi-custom-compaction/README.md": {
+    "mtime": 1781021657.2058573,
+    "ast_hash": "385148722e5bb43758dafa2265ff493a",
+    "semantic_hash": "385148722e5bb43758dafa2265ff493a"
+  },
+  "/Users/andrey/Projects/pi-extensions/packages/pi-custom-compaction/UPSTREAM.md": {
+    "mtime": 1781021657.205919,
+    "ast_hash": "c5db52d29ce929f0df8c238477af76ee",
+    "semantic_hash": "c5db52d29ce929f0df8c238477af76ee"
+  },
+  "/Users/andrey/Projects/pi-extensions/packages/pi-extensions-browser/README.md": {
+    "mtime": 1781175202.661503,
+    "ast_hash": "35ed48b8a6bfefa0fd105460ee83ac5c",
+    "semantic_hash": "35ed48b8a6bfefa0fd105460ee83ac5c"
+  },
+  "/Users/andrey/Projects/pi-extensions/packages/pi-file-system-watcher/README.md": {
+    "mtime": 1781021657.2084808,
+    "ast_hash": "3430a57c4759eadfda5b659b9fd233db",
+    "semantic_hash": "3430a57c4759eadfda5b659b9fd233db"
+  },
+  "/Users/andrey/Projects/pi-extensions/packages/pi-file-system-watcher/skills/file-system-watcher/SKILL.md": {
+    "mtime": 1781021657.2086575,
+    "ast_hash": "837aa96c4e37c97ac404d39a84fa1358",
+    "semantic_hash": "837aa96c4e37c97ac404d39a84fa1358"
+  },
+  "/Users/andrey/Projects/pi-extensions/packages/pi-git-watcher/skills/git-watcher/SKILL.md": {
+    "mtime": 1781021657.209725,
+    "ast_hash": "45dca17f3f89a30da33f74dc8bc0c5f5",
+    "semantic_hash": "45dca17f3f89a30da33f74dc8bc0c5f5"
+  },
+  "/Users/andrey/Projects/pi-extensions/packages/pi-git-worktree-enforcer/README.md": {
+    "mtime": 1781021657.2111075,
+    "ast_hash": "40455fe3e807412fca73ce48377480aa",
+    "semantic_hash": "40455fe3e807412fca73ce48377480aa"
+  },
+  "/Users/andrey/Projects/pi-extensions/packages/pi-goal/README.md": {
+    "mtime": 1781021657.2116895,
+    "ast_hash": "78ccaa55c7efc5b2b36ac9fb73accd88",
+    "semantic_hash": "78ccaa55c7efc5b2b36ac9fb73accd88"
+  },
+  "/Users/andrey/Projects/pi-extensions/packages/pi-goal/UPSTREAM.md": {
+    "mtime": 1781021657.2117682,
+    "ast_hash": "b0b1047dc1723442d1e1c199e7aa93c6",
+    "semantic_hash": "b0b1047dc1723442d1e1c199e7aa93c6"
+  },
+  "/Users/andrey/Projects/pi-extensions/packages/pi-herdr-integration/README.md": {
+    "mtime": 1781021657.2130787,
+    "ast_hash": "0797148ab30deb638f3ac400a678b4a2",
+    "semantic_hash": "0797148ab30deb638f3ac400a678b4a2"
+  },
+  "/Users/andrey/Projects/pi-extensions/packages/pi-local-issue-watcher/README.md": {
+    "mtime": 1781021657.2138445,
+    "ast_hash": "b598684e3b48721cbfd9c71f005f5a1f",
+    "semantic_hash": "b598684e3b48721cbfd9c71f005f5a1f"
+  },
+  "/Users/andrey/Projects/pi-extensions/packages/pi-plan-mode/README.md": {
+    "mtime": 1781021657.2158844,
+    "ast_hash": "2bdf0a3d088fbf0e65a7e4f31b7dc5d0",
+    "semantic_hash": "2bdf0a3d088fbf0e65a7e4f31b7dc5d0"
+  },
+  "/Users/andrey/Projects/pi-extensions/packages/pi-plan-mode/UPSTREAM.md": {
+    "mtime": 1781021657.2159457,
+    "ast_hash": "1f7e593af86e8bf2aa645c3ae27c34a7",
+    "semantic_hash": "1f7e593af86e8bf2aa645c3ae27c34a7"
+  },
+  "/Users/andrey/Projects/pi-extensions/packages/pi-prompt-scheduler/README.md": {
+    "mtime": 1781021657.217247,
+    "ast_hash": "76ce1152d974307b6a910b8aa30c4f53",
+    "semantic_hash": "76ce1152d974307b6a910b8aa30c4f53"
+  },
+  "/Users/andrey/Projects/pi-extensions/packages/pi-prompt-scheduler/UPSTREAM.md": {
+    "mtime": 1781021657.2173154,
+    "ast_hash": "dbb4490ed4fd7f60c8b0330bb77c3853",
+    "semantic_hash": "dbb4490ed4fd7f60c8b0330bb77c3853"
+  },
+  "/Users/andrey/Projects/pi-extensions/packages/pi-skills-browser/README.md": {
+    "mtime": 1781455138.7445838,
+    "ast_hash": "55a7764f2f2279eb187dc7bce0f3ac6b",
+    "semantic_hash": "55a7764f2f2279eb187dc7bce0f3ac6b"
+  },
+  "/Users/andrey/Projects/pi-extensions/packages/pi-speak/README.md": {
+    "mtime": 1781168390.2712593,
+    "ast_hash": "1fecc570c1e8ac1f0d0f682923a152ea",
+    "semantic_hash": "1fecc570c1e8ac1f0d0f682923a152ea"
+  },
+  "/Users/andrey/Projects/pi-extensions/packages/pi-speak/UPSTREAM.md": {
+    "mtime": 1781021657.2196853,
+    "ast_hash": "1bc3cd8236f2ee09c67535466bd43722",
+    "semantic_hash": "1bc3cd8236f2ee09c67535466bd43722"
+  },
+  "/Users/andrey/Projects/pi-extensions/packages/pi-speak/skills/pi-speak/SKILL.md": {
+    "mtime": 1781168390.271528,
+    "ast_hash": "c291da2328561094795a70b342e8d459",
+    "semantic_hash": "c291da2328561094795a70b342e8d459"
+  },
+  "/Users/andrey/Projects/pi-extensions/packages/pi-subagents/README.md": {
+    "mtime": 1781021657.2212427,
+    "ast_hash": "c3431aa34d84301878d027a458026e58",
+    "semantic_hash": "c3431aa34d84301878d027a458026e58"
+  },
+  "/Users/andrey/Projects/pi-extensions/packages/pi-subagents/UPSTREAM.md": {
+    "mtime": 1781021657.2212994,
+    "ast_hash": "27280f35bc59e1917ef9979dbd9e2b18",
+    "semantic_hash": "27280f35bc59e1917ef9979dbd9e2b18"
+  },
+  "/Users/andrey/Projects/pi-extensions/packages/pi-thinking-level-control/README.md": {
+    "mtime": 1781021657.2257955,
+    "ast_hash": "0dc27834c941f72e5fcd504b44a68bf5",
+    "semantic_hash": "0dc27834c941f72e5fcd504b44a68bf5"
+  },
+  "/Users/andrey/Projects/pi-extensions/packages/pi-tools-management-tool/README.md": {
+    "mtime": 1781021657.2260966,
+    "ast_hash": "4ab27a32c467fcb0334e15a2cc6b316a",
+    "semantic_hash": "4ab27a32c467fcb0334e15a2cc6b316a"
+  },
+  "/Users/andrey/Projects/pi-extensions/packages/pi-tools/README.md": {
+    "mtime": 1781021657.226537,
+    "ast_hash": "0ce2fd50c444b8017ce614c99c7b41ab",
+    "semantic_hash": "0ce2fd50c444b8017ce614c99c7b41ab"
+  },
+  "/Users/andrey/Projects/pi-extensions/packages/pi-custom-compaction/banner.png": {
+    "mtime": 1781021657.206092,
+    "ast_hash": "21273dc76863de1e05707088011f4cf2",
+    "semantic_hash": "21273dc76863de1e05707088011f4cf2"
+  }
+}

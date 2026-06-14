@@ -1,5 +1,4 @@
 .DS_Store
-.pi/settings.json
 .vitest-cache/
 .worktrees/
 *.log

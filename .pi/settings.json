@@ -1,0 +1,11 @@
+{
+  "packages": [
+    "../.worktrees/experimental-pi-headroom/packages/pi-headroom",
+    "../.worktrees/experimental-pi-lm-studio-models-management/packages/pi-lm-studio-models-management",
+    "../.worktrees/experimental-pi-observational-memory/packages/pi-observational-memory",
+    "../.worktrees/experimental-pi-system-prompt-browser/packages/pi-system-prompt-browser",
+    "../packages/pi-git-watcher",
+    "../packages/pi-skills-browser",
+    "../packages/pi-herdr-integration"
+  ]
+}
