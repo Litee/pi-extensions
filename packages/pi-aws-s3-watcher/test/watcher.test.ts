@@ -1125,3 +1125,68 @@ describe('commandName', () => {
   })
 })
 
+
+// ---------------------------------------------------------------------------
+// Additional view coverage — itemSortKey, itemGroup, renderItemDetail branches
+// ---------------------------------------------------------------------------
+
+describe('S3Watcher view — additional branch coverage', () => {
+  const { watcher } = makeWatcher()
+  const baseWatch = {
+    watchId: 'w1',
+    bucket: 'my-bucket',
+    key: 'some/key.txt',
+    profile: 'dev',
+    region: 'us-east-1' as string | undefined,
+    target: 'creation' as const,
+    timeoutAt: undefined as number | undefined,
+    addedAt: 0,
+    lastPolledAt: undefined as number | undefined,
+    baseline: { exists: false } as { exists: boolean } | undefined,
+    terminal: false,
+    consecutiveErrors: 0,
+  }
+
+  it('itemSortKey returns bucket/key', () => {
+    expect(watcher.view.itemSortKey(baseWatch)).toBe('my-bucket/some/key.txt')
+  })
+
+  it('itemGroup returns the bucket', () => {
+    expect(watcher.view.itemGroup?.(baseWatch)).toBe('my-bucket')
+  })
+
+  it('renderItemRowText shows ERROR when consecutiveErrors hits threshold', () => {
+    const w = { ...baseWatch, consecutiveErrors: 5 }
+    const text = watcher.view.renderItemRowText(w)
+    expect(text).toContain('ERR')
+  })
+
+  it('renderItemDetail shows polled timestamp when lastPolledAt is set', () => {
+    const w = { ...baseWatch, lastPolledAt: 1_700_000_000_000 }
+    const fields = watcher.view.renderItemDetail(w, { theme: {} as never, width: 80 })
+    expect(fields.find((f) => f.label === 'polled')?.value).toMatch(/^\d{4}/)
+  })
+
+  it('renderItemDetail shows timeout timestamp when timeoutAt is set', () => {
+    const w = { ...baseWatch, timeoutAt: 1_700_000_000_000 }
+    const fields = watcher.view.renderItemDetail(w, { theme: {} as never, width: 80 })
+    expect(fields.find((f) => f.label === 'timeout')?.value).toMatch(/^\d{4}/)
+  })
+
+  it('renderItemDetail shows poll interval when pollIntervalMs provided', () => {
+    const fields = watcher.view.renderItemDetail(baseWatch, { theme: {} as never, width: 80, pollIntervalMs: 45_000 })
+    expect(fields.find((f) => f.label === 'poll')?.value).toBe('45s')
+  })
+
+  it('renderItemDetail shows "yes" for terminal watches', () => {
+    const w = { ...baseWatch, terminal: true }
+    const fields = watcher.view.renderItemDetail(w, { theme: {} as never, width: 80 })
+    expect(fields.find((f) => f.label === 'terminal')?.value).toBe('yes')
+  })
+
+  it('renderItemDetail shows "present" for baseline.exists=true', () => {
+    const w = { ...baseWatch, baseline: { exists: true } }
+    const fields = watcher.view.renderItemDetail(w, { theme: {} as never, width: 80 })
+    expect(fields.find((f) => f.label === 'state')?.value).toBe('present')
+  })
+})

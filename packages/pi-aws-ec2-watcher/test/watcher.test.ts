@@ -1405,3 +1405,77 @@ describe('Ec2Watcher.noteSchedulerSuccess (line 545)', () => {
     expect(client.describeInstance).toHaveBeenCalled()
   })
 })
+
+// ---------------------------------------------------------------------------
+// Additional view coverage tests
+// ---------------------------------------------------------------------------
+
+describe('Ec2Watcher view — additional branch coverage', () => {
+  let watcher: ReturnType<typeof makeWatcher>['watcher']
+
+  beforeEach(() => {
+    ;({ watcher } = makeWatcher({ state: 'running' }))
+  })
+
+  const baseWatch = {
+    watchId: 'w1',
+    instanceId: 'i-0abc1234',
+    profile: 'prod',
+    region: 'eu-west-1' as string | undefined,
+    timeoutAt: undefined as number | undefined,
+    addedAt: 0,
+    lastPolledAt: undefined as number | undefined,
+    baseline: { state: 'running' as const } as { state: 'running' | 'stopped' | 'terminated' | 'pending' | 'shutting-down' | 'stopping'; nameTag?: string } | undefined,
+    terminal: false,
+    consecutiveErrors: 0,
+  }
+
+  it('itemSortKey returns the instanceId', () => {
+    expect(watcher.view.itemSortKey({ ...baseWatch })).toBe('i-0abc1234')
+  })
+
+  it('itemGroup returns the profile', () => {
+    expect(watcher.view.itemGroup?.({ ...baseWatch })).toBe('prod')
+  })
+
+  it('renderItemDetail shows polled timestamp when lastPolledAt is set', () => {
+    const w = { ...baseWatch, lastPolledAt: 1_700_000_000_000 }
+    const fields = watcher.view.renderItemDetail(w, { theme: {} as never, width: 80, pollIntervalMs: 60_000 })
+    expect(fields.find((f) => f.label === 'polled')?.value).toMatch(/^\d{4}-\d{2}-\d{2}T/)
+  })
+
+  it('renderItemDetail shows timeout timestamp when timeoutAt is set', () => {
+    const w = { ...baseWatch, timeoutAt: 1_700_000_000_000 }
+    const fields = watcher.view.renderItemDetail(w, { theme: {} as never, width: 80 })
+    expect(fields.find((f) => f.label === 'timeout')?.value).toMatch(/^\d{4}-\d{2}-\d{2}T/)
+  })
+
+  it('renderItemDetail shows poll interval in seconds when ctx has pollIntervalMs', () => {
+    const w = { ...baseWatch }
+    const fields = watcher.view.renderItemDetail(w, { theme: {} as never, width: 80, pollIntervalMs: 30_000 })
+    expect(fields.find((f) => f.label === 'poll')?.value).toBe('30s')
+  })
+
+  it('renderItemDetail shows "yes" for terminal watches', () => {
+    const w = { ...baseWatch, terminal: true }
+    const fields = watcher.view.renderItemDetail(w, { theme: {} as never, width: 80 })
+    expect(fields.find((f) => f.label === 'terminal')?.value).toBe('yes')
+  })
+
+  it('renderItemRowText shows nameTag when present in baseline', () => {
+    const w = { ...baseWatch, baseline: { state: 'running' as const, nameTag: 'my-server' } }
+    const text = watcher.view.renderItemRowText(w)
+    expect(text).toContain('my-server')
+  })
+
+  it('renderItemRowText shows ERROR when consecutiveErrors hits threshold', () => {
+    const w = { ...baseWatch, consecutiveErrors: 5 } // POLL_ERROR_THRESHOLD = 5
+    const text = watcher.view.renderItemRowText(w)
+    expect(text).toContain('ERR')
+  })
+
+  it('isRowDimmed returns true for terminal watches', () => {
+    const w = { ...baseWatch, terminal: true }
+    expect(watcher.view.isRowDimmed?.(w)).toBe(true)
+  })
+})

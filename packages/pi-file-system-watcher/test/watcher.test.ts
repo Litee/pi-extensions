@@ -1318,3 +1318,66 @@ describe("FsWatcher.addWatch sets enabled=true [#0002]", () => {
 });
 
 
+// ---------------------------------------------------------------------------
+// Additional view coverage — branch coverage for renderItemDetail, renderItemRowText
+// ---------------------------------------------------------------------------
+
+describe("FsWatcher view — additional branch coverage", () => {
+  let watcher: FsWatcher;
+  beforeEach(() => {
+    ({ watcher } = makeWatcher());
+  });
+
+  const baseWatch = {
+    watchId: "w1",
+    path: "/tmp/output.json",
+    target: "creation" as const,
+    timeoutAt: undefined as number | undefined,
+    addedAt: 0,
+    lastPolledAt: undefined as number | undefined,
+    baseline: { exists: false } as FsBaseline | undefined,
+    terminal: false,
+    consecutiveErrors: 0,
+  };
+
+  it("renderItemRowText shows ERROR for consecutiveErrors >= threshold", () => {
+    const w = { ...baseWatch, consecutiveErrors: 5 };
+    const text = watcher.view.renderItemRowText(w);
+    expect(text).toContain("ERR");
+  });
+
+  it("renderItemDetail shows polled timestamp when lastPolledAt is set", () => {
+    const w = { ...baseWatch, lastPolledAt: 1_700_000_000_000 };
+    const fields = watcher.view.renderItemDetail(w, { theme: {} as never, width: 80 });
+    expect(fields.find((f) => f.label === "polled")?.value).toMatch(/^\d{4}/);
+  });
+
+  it("renderItemDetail shows timeout timestamp when timeoutAt is set", () => {
+    const w = { ...baseWatch, timeoutAt: 1_700_000_000_000 };
+    const fields = watcher.view.renderItemDetail(w, { theme: {} as never, width: 80 });
+    expect(fields.find((f) => f.label === "timeout")?.value).toMatch(/^\d{4}/);
+  });
+
+  it("renderItemDetail shows poll interval when pollIntervalMs provided", () => {
+    const fields = watcher.view.renderItemDetail(baseWatch, { theme: {} as never, width: 80, pollIntervalMs: 60_000 });
+    expect(fields.find((f) => f.label === "poll")?.value).toBe("60s");
+  });
+
+  it("renderItemDetail shows 'yes' for terminal watches", () => {
+    const w = { ...baseWatch, terminal: true };
+    const fields = watcher.view.renderItemDetail(w, { theme: {} as never, width: 80 });
+    expect(fields.find((f) => f.label === "terminal")?.value).toBe("yes");
+  });
+
+  it("renderItemDetail shows mtime when baseline.mtimeNs is set", () => {
+    const w = { ...baseWatch, baseline: { exists: true, mtimeNs: BigInt(1_700_000_000_000_000_000) } as FsBaseline };
+    const fields = watcher.view.renderItemDetail(w, { theme: {} as never, width: 80 });
+    expect(fields.find((f) => f.label === "mtimeNs")?.value).toBeDefined();
+  });
+
+  it("renderItemDetail shows file size when baseline.size is set", () => {
+    const w = { ...baseWatch, baseline: { exists: true, size: 1234 } as FsBaseline };
+    const fields = watcher.view.renderItemDetail(w, { theme: {} as never, width: 80 });
+    expect(fields.find((f) => f.label === "size")?.value).toBe("1234 bytes");
+  });
+});

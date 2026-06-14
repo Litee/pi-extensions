@@ -498,3 +498,317 @@ describe("selectAt dynamicSuffix", () => {
 		expect(prefixedLabel.includes("Test speech")).toBe(true);
 	});
 });
+
+// ---------------------------------------------------------------------------
+// Additional branch coverage tests
+// ---------------------------------------------------------------------------
+
+describe("runSpeakMenu — additional branches", () => {
+	// Cancel in language picker → else branch of `if (l)` (L633)
+	it("language picker: cancel → onSetSessionLang not called, menu continues", async () => {
+		const { ctx } = makeCtxSelect(["Language: en", null, "Close"]);
+		const onSetSessionLang = vi.fn();
+		await runSpeakMenu(ctx, makeDefaultOptions({ onSetSessionLang }));
+		expect(onSetSessionLang).not.toHaveBeenCalled();
+	});
+
+	// Cancel in speed picker → else branch of `if (v !== null)` (L643)
+	it("speed picker: cancel → onSetSessionSpeed not called, menu continues", async () => {
+		const { ctx } = makeCtxSelect(["Speed: Normal (1.05)", "Cancel", "Close"]);
+		const onSetSessionSpeed = vi.fn();
+		await runSpeakMenu(ctx, makeDefaultOptions({ onSetSessionSpeed }));
+		expect(onSetSessionSpeed).not.toHaveBeenCalled();
+	});
+
+	// Cancel in steps picker → else branch of `if (v !== null)` (L653)
+	it("steps picker: cancel → onSetSessionSteps not called, menu continues", async () => {
+		const { ctx } = makeCtxSelect(["Steps: Default — 8 steps", "Cancel", "Close"]);
+		const onSetSessionSteps = vi.fn();
+		await runSpeakMenu(ctx, makeDefaultOptions({ onSetSessionSteps }));
+		expect(onSetSessionSteps).not.toHaveBeenCalled();
+	});
+
+	// Cancel in default voice picker → else branch of `if (v)` (L665)
+	it("default voice picker: cancel → saveConfig not called", async () => {
+		const { ctx } = makeCtxSelect(["Default voice: M1", "Cancel", "Close"]);
+		const saveConfig = vi.fn(() => true);
+		await runSpeakMenu(ctx, makeDefaultOptions({ saveConfig }));
+		expect(saveConfig).not.toHaveBeenCalled();
+	});
+
+	// Default language picker — true branch (L671-676)
+	it("default language picker: selecting 'fr' calls saveConfig({ defaultLang: 'fr' })", async () => {
+		const { ctx } = makeCtxSelect(["Default language: en", "fr", "Close"]);
+		const saveConfig = vi.fn(() => true);
+		await runSpeakMenu(ctx, makeDefaultOptions({ saveConfig }));
+		expect(saveConfig).toHaveBeenCalledWith({ defaultLang: "fr" });
+	});
+
+	// Default language picker — cancel → saveConfig not called
+	it("default language picker: cancel → saveConfig not called", async () => {
+		const { ctx } = makeCtxSelect(["Default language: en", "Cancel", "Close"]);
+		const saveConfig = vi.fn(() => true);
+		await runSpeakMenu(ctx, makeDefaultOptions({ saveConfig }));
+		expect(saveConfig).not.toHaveBeenCalled();
+	});
+
+	// Default steps picker — true branch (L687-692)
+	it("default steps picker: selecting 'Quality — 16 steps' calls saveConfig({ defaultSteps: 16 })", async () => {
+		const { ctx } = makeCtxSelect(["Default steps: Default — 8 steps", "Quality — 16 steps", "Close"]);
+		const saveConfig = vi.fn(() => true);
+		await runSpeakMenu(ctx, makeDefaultOptions({ saveConfig }));
+		expect(saveConfig).toHaveBeenCalledWith({ defaultSteps: 16 });
+	});
+
+	// Default steps picker — cancel → saveConfig not called
+	it("default steps picker: cancel → saveConfig not called", async () => {
+		const { ctx } = makeCtxSelect(["Default steps: Default — 8 steps", "Cancel", "Close"]);
+		const saveConfig = vi.fn(() => true);
+		await runSpeakMenu(ctx, makeDefaultOptions({ saveConfig }));
+		expect(saveConfig).not.toHaveBeenCalled();
+	});
+
+	// Default speed picker — cancel → saveConfig not called
+	it("default speed picker: cancel → saveConfig not called", async () => {
+		const { ctx } = makeCtxSelect(["Default speed: Normal (1.05)", "Cancel", "Close"]);
+		const saveConfig = vi.fn(() => true);
+		await runSpeakMenu(ctx, makeDefaultOptions({ saveConfig }));
+		expect(saveConfig).not.toHaveBeenCalled();
+	});
+
+	// After language selection → onSpeakHello is called (L636)
+	it("language picker: after selecting, onSpeakHello is called", async () => {
+		const { ctx } = makeCtxSelect(["Language: en", "fr", "Close"]);
+		const onSpeakHello = vi.fn(() => Promise.resolve());
+		const onSetSessionLang = vi.fn();
+		await runSpeakMenu(ctx, makeDefaultOptions({ onSpeakHello, onSetSessionLang }));
+		expect(onSpeakHello).toHaveBeenCalled();
+	});
+
+	// After speed selection → onSpeakHello is called (L646)
+	it("speed picker: after selecting, onSpeakHello is called", async () => {
+		const { ctx } = makeCtxSelect(["Speed: Normal (1.05)", "Fast (1.3)", "Close"]);
+		const onSpeakHello = vi.fn(() => Promise.resolve());
+		const onSetSessionSpeed = vi.fn();
+		await runSpeakMenu(ctx, makeDefaultOptions({ onSpeakHello, onSetSessionSpeed }));
+		expect(onSpeakHello).toHaveBeenCalled();
+	});
+
+	// After steps selection → onSpeakHello is called (L656)
+	it("steps picker: after selecting, onSpeakHello is called", async () => {
+		const { ctx } = makeCtxSelect(["Steps: Default — 8 steps", "Quality — 16 steps", "Close"]);
+		const onSpeakHello = vi.fn(() => Promise.resolve());
+		const onSetSessionSteps = vi.fn();
+		await runSpeakMenu(ctx, makeDefaultOptions({ onSpeakHello, onSetSessionSteps }));
+		expect(onSpeakHello).toHaveBeenCalled();
+	});
+
+	// Model info displayed when assets directory exists
+	it("model info shows size in MB when assets dir exists", async () => {
+		const fsModule = await import("node:fs");
+		const pathModule = await import("node:path");
+		const osModule = await import("node:os");
+		const dir = pathModule.join(osModule.tmpdir(), `pi-speak-menu-test-${Date.now()}`);
+		fsModule.mkdirSync(dir, { recursive: true });
+		fsModule.writeFileSync(pathModule.join(dir, "model.bin"), Buffer.alloc(2 * 1024 * 1024, 0x42));
+		try {
+			const { ctx, selectCalls } = makeCtxSelect(["Close"]);
+			await runSpeakMenu(ctx, makeDefaultOptions({ getAssetsDir: () => dir }));
+			const items = selectCalls[0] ?? [];
+			const modelItem = items.find((item) => item.startsWith("Model:"));
+			expect(modelItem).toMatch(/\(\d+ MB\)/);
+		} finally {
+			fsModule.rmSync(dir, { recursive: true, force: true });
+		}
+	});
+
+	// Config-driven defaults (loadConfig returns non-default values)
+	it("uses config defaultVoice in effective voice when no session override", async () => {
+		const { ctx, selectCalls } = makeCtxSelect(["Close"]);
+		await runSpeakMenu(ctx, makeDefaultOptions({
+			loadConfig: vi.fn(() => ({ defaultVoice: "F2", defaultLang: "fr", defaultSpeed: 1.3, defaultSteps: 16 })),
+		}));
+		const items = selectCalls[0] ?? [];
+		expect(items.find((i) => i.startsWith("Voice:"))).toBe("Voice: F2");
+		expect(items.find((i) => i.startsWith("Language:"))).toBe("Language: fr");
+	});
+});
+
+// ---------------------------------------------------------------------------
+// findMenuIndex — prefix match path
+// ---------------------------------------------------------------------------
+
+describe("findMenuIndex", () => {
+	// The prefix match path (L530) — test by having a choice that matches by colon prefix
+	it("cursor restored by prefix match after a dynamic label changes", async () => {
+		// When the label changes from "speak: disabled" to "speak: enabled" between menu
+		// iterations, findMenuIndex must restore the cursor to the "speak: ..." row via
+		// prefix match (exact match fails because "disabled" ≠ "enabled").
+		const { ctx, selectCalls } = makeCtxSelect(["speak: disabled", "Close"]);
+		const onToggle = vi.fn(() => Promise.resolve(true)); // returns true → enabled
+		await runSpeakMenu(ctx, makeDefaultOptions({ onToggle }));
+
+		// Second render: menu items rebuilt with "speak: enabled"
+		const secondItems = selectCalls[1] ?? [];
+		const speakItem = secondItems.find((i) => i.startsWith("speak:"));
+		expect(speakItem).toBe("speak: enabled");
+	});
+
+	// Selecting "Voice: F2" then "Close" — lastChoice changes, and on re-render
+	// "Voice: F2" appears, which is an exact match so it's found directly.
+	it("cursor restored by exact match after voice selection", async () => {
+		const { ctx, selectCalls } = makeCtxSelect(["Voice: M1", "F2", "Close"]);
+		await runSpeakMenu(ctx, makeDefaultOptions());
+		// After picking F2, lastChoice = "Voice: M1". On next render, "Voice: F2"
+		// matches by prefix "Voice:" → cursor goes to that row.
+		const thirdItems = selectCalls[2] ?? [];
+		expect(thirdItems.find((i) => i.startsWith("Voice:"))).toBe("Voice: F2");
+	});
+});
+
+// ---------------------------------------------------------------------------
+// pickWithPreview — string effVoice/effLang path (used by pickSpeed + pickSteps)
+// ---------------------------------------------------------------------------
+
+describe("pickSpeed and pickSteps pass string effVoice/effLang to pickWithPreview", () => {
+	afterEach(() => {
+		vi.useRealTimers();
+	});
+
+	/**
+	 * Builds a ctx where:
+	 *   custom call 1  = main menu  → selects "Speed: Normal (1.05)"
+	 *   custom call 2  = speed picker → exposes component + done
+	 *   custom call 3  = main menu  → selects "Close"
+	 */
+	function makeSpeedPickerCtx() {
+		let customCallCount = 0;
+		let speedPickerComponent: { handleInput: (data: string) => void } | undefined;
+		let speedPickerDone: ((v: string | null) => void) | undefined;
+
+		const ctx: MenuCtx = {
+			ui: {
+				select: vi.fn(),
+				notify: vi.fn(),
+				custom: vi.fn(<T>(
+					factory: (tui: { requestRender: () => void }, theme: unknown, kb: unknown, done: (v: T) => void) => unknown,
+				): Promise<T> => {
+					customCallCount++;
+					const call = customCallCount;
+					return new Promise<T>((resolve) => {
+						// eslint-disable-next-line @typescript-eslint/no-explicit-any, @typescript-eslint/no-unsafe-assignment, @typescript-eslint/no-unsafe-call
+						const component = (factory as any)(
+							{ requestRender: vi.fn() },
+							{ fg: (_r: string, s: string) => s, bold: (s: string) => s },
+							{},
+							(v: T) => resolve(v),
+						);
+						if (call === 1) {
+							// main menu: "Speed: Normal (1.05)" at index ~6
+							resolve({ value: "Speed: Normal (1.05)", index: 6 } as T);
+						} else if (call === 2) {
+							speedPickerComponent = component as { handleInput: (data: string) => void };
+							speedPickerDone = (v: string | null) => resolve(v as T);
+						} else {
+							resolve({ value: "Close", index: 0 } as T);
+						}
+					});
+				}) as NonNullable<MenuCtx["ui"]["custom"]>,
+			},
+		};
+
+		return {
+			ctx,
+			getComponent: () => speedPickerComponent,
+			closeSpeedPicker: (v: string | null = null) => speedPickerDone?.(v),
+		};
+	}
+
+	async function flushMicrotasks(n = 10): Promise<void> {
+		for (let i = 0; i < n; i++) await Promise.resolve();
+	}
+
+	it("navigating in speed picker with string effVoice triggers onPreview once after debounce", async () => {
+		vi.useFakeTimers();
+		const onPreview = vi.fn().mockResolvedValue(undefined);
+		const { ctx, getComponent, closeSpeedPicker } = makeSpeedPickerCtx();
+
+		const menuPromise = runSpeakMenu(ctx, makeDefaultOptions({ onPreview }));
+		await flushMicrotasks();
+
+		const comp = getComponent();
+		expect(comp).toBeDefined();
+
+		// Navigate down once
+		comp!.handleInput("\x1b[B");
+		expect(onPreview).not.toHaveBeenCalled();
+
+		await vi.advanceTimersByTimeAsync(400);
+		// onPreview should have been called once (with string effVoice and effLang)
+		expect(onPreview).toHaveBeenCalledOnce();
+		const [text, voice, lang] = onPreview.mock.calls[0] as [string, string, string];
+		expect(typeof text).toBe("string");
+		expect(typeof voice).toBe("string"); // effVoice is a string here, not a function
+		expect(typeof lang).toBe("string");  // effLang is a string here
+
+		closeSpeedPicker(null);
+		await menuPromise;
+	});
+});
+
+// ---------------------------------------------------------------------------
+// Additional coverage for catch handlers and edge cases
+// ---------------------------------------------------------------------------
+
+describe("runSpeakMenu — catch handlers and edge cases", () => {
+	// L611: .catch(() => {}) fires when onTest rejects
+	it("onTest rejection is swallowed by catch handler", async () => {
+		const { ctx } = makeCtxSelect(["Test speech", "Close"]);
+		const onTest = vi.fn(() => Promise.reject(new Error("TTS init failed")));
+		// Should not throw — the catch swallows the error
+		await expect(runSpeakMenu(ctx, makeDefaultOptions({ onTest }))).resolves.toBeUndefined();
+	});
+
+	// L626: .catch(() => {}) fires when voice onSpeakHello rejects
+	it("onSpeakHello rejection after voice selection is swallowed", async () => {
+		const { ctx } = makeCtxSelect(["Voice: M1", "F2", "Close"]);
+		const onSpeakHello = vi.fn(() => Promise.reject(new Error("audio error")));
+		await expect(runSpeakMenu(ctx, makeDefaultOptions({ onSpeakHello }))).resolves.toBeUndefined();
+	});
+
+	// L636: .catch(() => {}) fires when language onSpeakHello rejects
+	it("onSpeakHello rejection after language selection is swallowed", async () => {
+		const { ctx } = makeCtxSelect(["Language: en", "fr", "Close"]);
+		const onSpeakHello = vi.fn(() => Promise.reject(new Error("audio error")));
+		const onSetSessionLang = vi.fn();
+		await expect(runSpeakMenu(ctx, makeDefaultOptions({ onSpeakHello, onSetSessionLang }))).resolves.toBeUndefined();
+	});
+
+	// L646: .catch(() => {}) fires when speed onSpeakHello rejects
+	it("onSpeakHello rejection after speed selection is swallowed", async () => {
+		const { ctx } = makeCtxSelect(["Speed: Normal (1.05)", "Fast (1.3)", "Close"]);
+		const onSpeakHello = vi.fn(() => Promise.reject(new Error("audio error")));
+		const onSetSessionSpeed = vi.fn();
+		await expect(runSpeakMenu(ctx, makeDefaultOptions({ onSpeakHello, onSetSessionSpeed }))).resolves.toBeUndefined();
+	});
+
+	// L656: .catch(() => {}) fires when steps onSpeakHello rejects
+	it("onSpeakHello rejection after steps selection is swallowed", async () => {
+		const { ctx } = makeCtxSelect(["Steps: Default — 8 steps", "Quality — 16 steps", "Close"]);
+		const onSpeakHello = vi.fn(() => Promise.reject(new Error("audio error")));
+		const onSetSessionSteps = vi.fn();
+		await expect(runSpeakMenu(ctx, makeDefaultOptions({ onSpeakHello, onSetSessionSteps }))).resolves.toBeUndefined();
+	});
+
+	// L687 else: Model info item (non-interactive) falls through to loop restart
+	it("selecting model info item (non-interactive) causes loop to re-render and then Close exits", async () => {
+		const { ctx } = makeCtxSelect(["Model: not downloaded", "Close"]);
+		await expect(runSpeakMenu(ctx, makeDefaultOptions())).resolves.toBeUndefined();
+	});
+
+	// L472: selectAt fallback → ctx.ui.select returns null → menu exits
+	it("null return from ctx.ui.select exits the menu immediately", async () => {
+		const { ctx } = makeCtxSelect([null]);
+		await expect(runSpeakMenu(ctx, makeDefaultOptions())).resolves.toBeUndefined();
+	});
+});

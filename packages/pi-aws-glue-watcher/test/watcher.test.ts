@@ -7,7 +7,24 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import type { JobRunResponse, WorkflowRunResponse } from '../src/glue-client.js'
 import type { GlueClient } from '../src/glue-client.js'
 import { GlueWatcher, stateColor } from '../src/watcher.js'
-import type { GlueWatch, JobBaseline, WatchBaseline, WorkflowBaseline } from '../src/types.js'
+import type { GlueEvent, GlueWatch, JobBaseline, WatchBaseline, WorkflowBaseline } from '../src/types.js'
+import { POLL_ERROR_THRESHOLD } from 'pi-watcher-core/base-watcher'
+
+// Capture the expandedTextOverride function passed to createWatcherMessageRenderer
+// so we can test it without needing a live pi-tui runtime.
+let capturedExpandedTextOverride: ((message: unknown) => string | undefined) | undefined
+
+vi.mock('pi-watcher-core/renderer', async (importOriginal) => {
+  type RendererModule = typeof import('pi-watcher-core/renderer')
+  const orig = await importOriginal<RendererModule>()
+  return {
+    ...orig,
+    createWatcherMessageRenderer: (label: string, opts: { expandedTextOverride?: (m: unknown) => string | undefined }) => {
+      if (opts?.expandedTextOverride) capturedExpandedTextOverride = opts.expandedTextOverride
+      return orig.createWatcherMessageRenderer(label, opts)
+    },
+  }
+})
 
 vi.mock('../src/config.js', () => ({
   loadConfig: vi.fn(() => ({})),
@@ -997,6 +1014,666 @@ describe('GlueWatcher startPolling identity check', () => {
     // New scheduler is still the same instance and still running
     expect(schedulers.get('w2')).toBe(newScheduler)
     expect(newScheduler?.isRunning).toBe(true)
+
+    watcher.stopPolling()
+    vi.useRealTimers()
+  })
+})
+
+// ---------------------------------------------------------------------------
+// view.renderItemRowText — text-mode row (TUI-less contexts)
+// ---------------------------------------------------------------------------
+
+describe('view.renderItemRowText', () => {
+  let watcher: GlueWatcher
+
+  beforeEach(() => {
+    ;({ watcher } = makeWatcher())
+  })
+
+  function makeJobWatch(overrides: Partial<GlueWatch> = {}): GlueWatch {
+    return {
+      watchId: 'w1',
+      type: 'job',
+      name: 'my-etl-job',
+      runId: 'jr_abcd1234',
+      profile: 'dev',
+      region: undefined,
+      addedAt: 0,
+      lastPolledAt: undefined,
+      baseline: undefined,
+      terminal: false,
+      consecutiveErrors: 0,
+      ...overrides,
+    }
+  }
+
+  it('shows WATCHING for an active non-error watch', () => {
+    const w = makeJobWatch({ baseline: { state: 'RUNNING', errorMessage: '' } })
+    const text = watcher.view.renderItemRowText(w)
+    expect(text).toContain('WATCHING')
+    expect(text).toContain('RUNNING')
+  })
+
+  it('shows DONE for a terminal watch', () => {
+    const w = makeJobWatch({ terminal: true, baseline: { state: 'SUCCEEDED', errorMessage: '' } })
+    const text = watcher.view.renderItemRowText(w)
+    expect(text).toContain('DONE')
+    expect(text).toContain('SUCCEEDED')
+  })
+
+  it('shows ERROR when consecutiveErrors exceeds threshold', () => {
+    const w = makeJobWatch({ consecutiveErrors: POLL_ERROR_THRESHOLD })
+    const text = watcher.view.renderItemRowText(w)
+    expect(text).toContain('ERROR')
+  })
+
+  it('uses "?" for state when baseline is absent', () => {
+    const w = makeJobWatch()
+    const text = watcher.view.renderItemRowText(w)
+    expect(text).toContain('?')
+    expect(text).toContain('WATCHING')
+  })
+
+  it('includes last 4 chars of runId', () => {
+    const w = makeJobWatch({ runId: 'jr_xyz99999' })
+    const text = watcher.view.renderItemRowText(w)
+    expect(text).toContain('[9999]')
+  })
+})
+
+// ---------------------------------------------------------------------------
+// view.renderItemRowTUI — status column (DONE / ERROR path)
+// ---------------------------------------------------------------------------
+
+describe('view.renderItemRowTUI — status column', () => {
+  let watcher: GlueWatcher
+
+  beforeEach(() => {
+    ;({ watcher } = makeWatcher())
+  })
+
+  function makeJobWatch(overrides: Partial<GlueWatch> = {}): GlueWatch {
+    return {
+      watchId: 'w1',
+      type: 'job',
+      name: 'my-etl-job',
+      runId: 'jr_abcd1234',
+      profile: 'dev',
+      region: undefined,
+      addedAt: 0,
+      lastPolledAt: undefined,
+      baseline: undefined,
+      terminal: false,
+      consecutiveErrors: 0,
+      ...overrides,
+    }
+  }
+
+  it('status column shows DONE and color warning for terminal watch', () => {
+    const w = makeJobWatch({ terminal: true })
+    const cols = watcher.view.renderItemRowTUI(w, { theme: {} as never, width: 120 })
+    const status = cols.find((c) => c.name === 'status')
+    expect(status?.text).toBe('DONE')
+    expect(status?.color).toBe('warning')
+  })
+
+  it('status column shows ERROR and color error when consecutiveErrors >= threshold', () => {
+    const w = makeJobWatch({ consecutiveErrors: POLL_ERROR_THRESHOLD })
+    const cols = watcher.view.renderItemRowTUI(w, { theme: {} as never, width: 120 })
+    const status = cols.find((c) => c.name === 'status')
+    expect(status?.text).toBe('ERROR')
+    expect(status?.color).toBe('error')
+  })
+})
+
+// ---------------------------------------------------------------------------
+// view.renderItemDetail
+// ---------------------------------------------------------------------------
+
+describe('view.renderItemDetail', () => {
+  let watcher: GlueWatcher
+
+  beforeEach(() => {
+    ;({ watcher } = makeWatcher())
+  })
+
+  function makeJobWatch(overrides: Partial<GlueWatch> = {}): GlueWatch {
+    return {
+      watchId: 'w1',
+      type: 'job',
+      name: 'my-etl-job',
+      runId: 'jr_abcd1234',
+      profile: 'dev',
+      region: undefined,
+      addedAt: 0,
+      lastPolledAt: undefined,
+      baseline: undefined,
+      terminal: false,
+      consecutiveErrors: 0,
+      ...overrides,
+    }
+  }
+
+  const mockCtx = { theme: {} as never, width: 120 }
+
+  it('shows "never" for lastPolledAt when undefined', () => {
+    const w = makeJobWatch({ lastPolledAt: undefined })
+    const fields = watcher.view.renderItemDetail(w, mockCtx)
+    const polled = fields.find((f) => f.label === 'polled')
+    expect(polled?.value).toBe('never')
+  })
+
+  it('shows ISO string for lastPolledAt when set', () => {
+    const w = makeJobWatch({ lastPolledAt: 1_700_000_000_000 })
+    const fields = watcher.view.renderItemDetail(w, mockCtx)
+    const polled = fields.find((f) => f.label === 'polled')
+    expect(polled?.value).toMatch(/^\d{4}-\d{2}-\d{2}T/)
+  })
+
+  it('shows "unknown" for poll interval when context has none', () => {
+    const w = makeJobWatch()
+    const fields = watcher.view.renderItemDetail(w, mockCtx)
+    const poll = fields.find((f) => f.label === 'poll')
+    expect(poll?.value).toBe('unknown')
+  })
+
+  it('shows seconds for poll interval when context has a value', () => {
+    const w = makeJobWatch()
+    const fields = watcher.view.renderItemDetail(w, { ...mockCtx, pollIntervalMs: 120_000 })
+    const poll = fields.find((f) => f.label === 'poll')
+    expect(poll?.value).toBe('120s')
+  })
+
+  it('shows "yes" for terminal flag when terminal is true', () => {
+    const w = makeJobWatch({ terminal: true })
+    const fields = watcher.view.renderItemDetail(w, mockCtx)
+    const terminal = fields.find((f) => f.label === 'terminal')
+    expect(terminal?.value).toBe('yes')
+  })
+
+  it('shows "no" for terminal flag when terminal is false', () => {
+    const w = makeJobWatch({ terminal: false })
+    const fields = watcher.view.renderItemDetail(w, mockCtx)
+    const terminal = fields.find((f) => f.label === 'terminal')
+    expect(terminal?.value).toBe('no')
+  })
+
+  it('shows "unknown" for state when baseline is absent', () => {
+    const w = makeJobWatch({ baseline: undefined })
+    const fields = watcher.view.renderItemDetail(w, mockCtx)
+    const state = fields.find((f) => f.label === 'state')
+    expect(state?.value).toBe('unknown')
+  })
+
+  it('shows "default" for region when watch has no region', () => {
+    const w = makeJobWatch({ region: undefined })
+    const fields = watcher.view.renderItemDetail(w, mockCtx)
+    const region = fields.find((f) => f.label === 'region')
+    expect(region?.value).toBe('default')
+  })
+
+  it('shows actual region when watch has one', () => {
+    const w = makeJobWatch({ region: 'us-east-2' })
+    const fields = watcher.view.renderItemDetail(w, mockCtx)
+    const region = fields.find((f) => f.label === 'region')
+    expect(region?.value).toBe('us-east-2')
+  })
+})
+
+// ---------------------------------------------------------------------------
+// view.renderEventRow and view.isRowDimmed
+// ---------------------------------------------------------------------------
+
+describe('view.renderEventRow and isRowDimmed', () => {
+  let watcher: GlueWatcher
+
+  beforeEach(() => {
+    ;({ watcher } = makeWatcher())
+  })
+
+  it('renderEventRow returns the formatted string', () => {
+    const event: GlueEvent = {
+      formatted: '• job my-etl SUCCEEDED',
+      isTerminal: true,
+      watchId: 'w1',
+      type: 'job',
+      name: 'my-etl',
+      runId: 'jr1234',
+      eventType: 'state_changed',
+      previousState: 'RUNNING',
+      newState: 'SUCCEEDED',
+      summary: 'job my-etl changed state to SUCCEEDED',
+    }
+    expect(watcher.view.renderEventRow(event)).toBe('• job my-etl SUCCEEDED')
+  })
+
+  it('isRowDimmed returns true for terminal watches', () => {
+    const w: GlueWatch = {
+      watchId: 'w1',
+      type: 'job',
+      name: 'my-etl-job',
+      runId: 'jr_abcd',
+      profile: 'dev',
+      region: undefined,
+      lastPolledAt: undefined,
+      baseline: undefined,
+      addedAt: 0,
+      terminal: true,
+      consecutiveErrors: 0,
+    }
+    expect(watcher.view.isRowDimmed?.(w)).toBe(true)
+  })
+
+  it('isRowDimmed returns false for active watches', () => {
+    const w: GlueWatch = {
+      watchId: 'w1',
+      type: 'job',
+      name: 'my-etl-job',
+      runId: 'jr_abcd',
+      profile: 'dev',
+      region: undefined,
+      lastPolledAt: undefined,
+      baseline: undefined,
+      addedAt: 0,
+      terminal: false,
+      consecutiveErrors: 0,
+    }
+    expect(watcher.view.isRowDimmed?.(w)).toBe(false)
+  })
+})
+
+// ---------------------------------------------------------------------------
+// view.itemSortKey and view.itemGroup
+// ---------------------------------------------------------------------------
+
+describe('view.itemSortKey and itemGroup', () => {
+  let watcher: GlueWatcher
+
+  beforeEach(() => {
+    ;({ watcher } = makeWatcher())
+  })
+
+  it('itemSortKey returns type:name:runId', () => {
+    const w: GlueWatch = {
+      watchId: 'w1',
+      type: 'job',
+      name: 'etl-job',
+      runId: 'jr_aabbccdd',
+      profile: 'dev',
+      region: undefined,
+      lastPolledAt: undefined,
+      baseline: undefined,
+      addedAt: 0,
+      terminal: false,
+      consecutiveErrors: 0,
+    }
+    expect(watcher.view.itemSortKey(w)).toBe('job:etl-job:jr_aabbccdd')
+  })
+
+  it('itemGroup returns the profile', () => {
+    const w: GlueWatch = {
+      watchId: 'w1',
+      type: 'workflow',
+      name: 'wf1',
+      runId: 'wr_aabbccdd',
+      profile: 'production',
+      region: undefined,
+      lastPolledAt: undefined,
+      baseline: undefined,
+      addedAt: 0,
+      terminal: false,
+      consecutiveErrors: 0,
+    }
+    expect(watcher.view.itemGroup?.(w)).toBe('production')
+  })
+})
+
+// ---------------------------------------------------------------------------
+// normaliseBaseline — optional fields and null paths
+// ---------------------------------------------------------------------------
+
+describe('normaliseBaseline — optional fields', () => {
+  let watcher: GlueWatcher
+
+  beforeEach(() => {
+    ;({ watcher } = makeWatcher())
+  })
+
+  it('normalises a JobBaseline with all optional fields set', () => {
+    const result = watcher.normaliseBaseline({
+      errorMessage: '',
+      state: 'RUNNING',
+      startedOn: '2024-01-15T12:00:00Z',
+      completedOn: '2024-01-15T13:00:00Z',
+      numberOfWorkers: 5,
+      workerType: 'G.1X',
+      timeoutMinutes: 120,
+    })
+    expect(result).not.toBeNull()
+    const b = result as JobBaseline
+    expect(b.startedOn).toBe('2024-01-15T12:00:00Z')
+    expect(b.completedOn).toBe('2024-01-15T13:00:00Z')
+    expect(b.numberOfWorkers).toBe(5)
+    expect(b.workerType).toBe('G.1X')
+    expect(b.timeoutMinutes).toBe(120)
+  })
+
+  it('returns null for a JobBaseline when state is not a string', () => {
+    const result = watcher.normaliseBaseline({ errorMessage: '', state: 42 })
+    expect(result).toBeNull()
+  })
+
+  it('normalises a WorkflowBaseline with nodes array', () => {
+    const result = watcher.normaliseBaseline({
+      totalActions: 3,
+      succeededActions: 1,
+      failedActions: 0,
+      runningActions: 2,
+      state: 'RUNNING',
+      reportedFailedNodes: [],
+      nodes: [{ Name: 'node1', Type: 'JOB', JobDetails: {} }],
+    })
+    expect(result).not.toBeNull()
+    const b = result as WorkflowBaseline
+    expect(Array.isArray(b.nodes)).toBe(true)
+    expect(b.nodes?.length).toBe(1)
+  })
+
+  it('returns null for a WorkflowBaseline when state is not a string', () => {
+    const result = watcher.normaliseBaseline({
+      totalActions: 2,
+      succeededActions: 0,
+      failedActions: 0,
+      runningActions: 2,
+      state: null,
+      reportedFailedNodes: [],
+    })
+    expect(result).toBeNull()
+  })
+})
+
+// ---------------------------------------------------------------------------
+// normaliseWatch — edge cases
+// ---------------------------------------------------------------------------
+
+describe('normaliseWatch — non-boolean terminal and non-number consecutiveErrors', () => {
+  let watcher: GlueWatcher
+
+  beforeEach(() => {
+    ;({ watcher } = makeWatcher())
+  })
+
+  it('defaults terminal to false when it is not a boolean', () => {
+    const result = watcher.normaliseWatch({
+      watchId: 'w1',
+      type: 'job',
+      name: 'etl',
+      runId: 'jr1234',
+      profile: 'dev',
+      terminal: 'yes', // wrong type
+    })
+    expect(result?.terminal).toBe(false)
+  })
+
+  it('defaults consecutiveErrors to 0 when it is not a finite number', () => {
+    const result = watcher.normaliseWatch({
+      watchId: 'w1',
+      type: 'job',
+      name: 'etl',
+      runId: 'jr1234',
+      profile: 'dev',
+      consecutiveErrors: 'three', // wrong type
+    })
+    expect(result?.consecutiveErrors).toBe(0)
+  })
+})
+
+// ---------------------------------------------------------------------------
+// addWatch — workflow, region param, seeding failure
+// ---------------------------------------------------------------------------
+
+describe('addWatch — additional branches', () => {
+  it('addWatch with region sets region on the watch', async () => {
+    vi.useFakeTimers()
+    const { watcher } = makeWatcher()
+    const result = await watcher.executeTool({
+      action: 'add',
+      type: 'workflow',
+      name: 'my-workflow',
+      runId: 'wr_123abc',
+      profile: 'prod',
+      region: 'eu-west-1',
+    })
+    expect(result.details['ok']).toBe(true)
+    const watchId = result.details['watchId'] as string
+    const watches = (watcher as unknown as { watches: Map<string, GlueWatch> }).watches
+    expect(watches.get(watchId)?.region).toBe('eu-west-1')
+    watcher.stopPolling()
+    vi.useRealTimers()
+  })
+
+  it('addWatch with snapshot failure reports seeding error in message', async () => {
+    vi.useFakeTimers()
+    const client = makeClient()
+    vi.mocked(client.getJobRun).mockRejectedValue(new Error('network timeout'))
+    const { watcher } = makeWatcher(client)
+    const result = await watcher.executeTool({
+      action: 'add',
+      type: 'job',
+      name: 'broken-job',
+      runId: 'jr_fail',
+      profile: 'dev',
+    })
+    const text = result.content[0]?.text
+    expect(String(text ?? '')).toContain('seeding failed')
+    watcher.stopPolling()
+    vi.useRealTimers()
+  })
+})
+
+// ---------------------------------------------------------------------------
+// browseOptions — callbacks exercised directly
+// ---------------------------------------------------------------------------
+
+describe('browseOptions callbacks', () => {
+  let watcher: GlueWatcher
+  let client: GlueClient
+
+  beforeEach(() => {
+    vi.useFakeTimers()
+    ;({ watcher, client } = makeWatcher())
+  })
+
+  afterEach(() => {
+    watcher.stopPolling()
+    vi.useRealTimers()
+  })
+
+  function makeJobWatch(overrides: Partial<GlueWatch> = {}): GlueWatch {
+    return {
+      watchId: 'w1',
+      type: 'job',
+      name: 'my-etl-job',
+      runId: 'jr_abcd1234',
+      profile: 'dev',
+      region: 'us-east-1',
+      addedAt: 0,
+      lastPolledAt: undefined,
+      baseline: undefined,
+      terminal: false,
+      consecutiveErrors: 0,
+      ...overrides,
+    }
+  }
+
+  function makeWorkflowWatch(overrides: Partial<GlueWatch> = {}): GlueWatch {
+    return {
+      watchId: 'w2',
+      type: 'workflow',
+      name: 'my-workflow',
+      runId: 'wr_abcd5678',
+      profile: 'dev',
+      region: 'us-east-1',
+      addedAt: 0,
+      lastPolledAt: undefined,
+      baseline: undefined,
+      terminal: false,
+      consecutiveErrors: 0,
+      ...overrides,
+    }
+  }
+
+  it('stop rowAction visible returns false for terminal watches', () => {
+    const opts = (watcher as unknown as { browseOptions(): { rowActions: Array<{ id: string; visible: (w: GlueWatch) => boolean }> } }).browseOptions()
+    const stopAction = opts.rowActions.find((a) => a.id === 'stop')
+    expect(stopAction?.visible(makeJobWatch({ terminal: true }))).toBe(false)
+    expect(stopAction?.visible(makeJobWatch({ terminal: false }))).toBe(true)
+  })
+
+  it('remove rowAction visible returns false for terminal watches', () => {
+    const opts = (watcher as unknown as { browseOptions(): { rowActions: Array<{ id: string; visible: (w: GlueWatch) => boolean }> } }).browseOptions()
+    const removeAction = opts.rowActions.find((a) => a.id === 'remove')
+    expect(removeAction?.visible(makeJobWatch({ terminal: true }))).toBe(false)
+    expect(removeAction?.visible(makeJobWatch({ terminal: false }))).toBe(true)
+  })
+
+  it('stop rowAction.run calls stopJobRun for job watches', async () => {
+    const opts = (watcher as unknown as { browseOptions(): { rowActions: Array<{ id: string; run: (w: GlueWatch) => Promise<void> }> } }).browseOptions()
+    const stopAction = opts.rowActions.find((a) => a.id === 'stop')
+    await stopAction?.run(makeJobWatch())
+    expect(client.stopJobRun).toHaveBeenCalledWith('my-etl-job', 'jr_abcd1234', 'dev', 'us-east-1')
+  })
+
+  it('stop rowAction.run calls stopWorkflowRun for workflow watches', async () => {
+    const opts = (watcher as unknown as { browseOptions(): { rowActions: Array<{ id: string; run: (w: GlueWatch) => Promise<void> }> } }).browseOptions()
+    const stopAction = opts.rowActions.find((a) => a.id === 'stop')
+    await stopAction?.run(makeWorkflowWatch())
+    expect(client.stopWorkflowRun).toHaveBeenCalledWith('my-workflow', 'wr_abcd5678', 'dev', 'us-east-1')
+  })
+
+  it('remove rowAction.run calls executeTool with remove action', async () => {
+    const opts = (watcher as unknown as { browseOptions(): { rowActions: Array<{ id: string; run: (w: GlueWatch) => Promise<void> }> } }).browseOptions()
+    const removeAction = opts.rowActions.find((a) => a.id === 'remove')
+    // Add a watch first so executeTool can find it
+    ;(watcher as unknown as { watches: Map<string, GlueWatch> }).watches.set('w1', makeJobWatch())
+    const executeSpy = vi.spyOn(watcher, 'executeTool')
+    await removeAction?.run(makeJobWatch())
+    expect(executeSpy).toHaveBeenCalledWith({ action: 'remove', watchId: 'w1' })
+  })
+
+  it('onRefresh calls pollOnce', () => {
+    const opts = (watcher as unknown as { browseOptions(): { onRefresh: () => void } }).browseOptions()
+    const pollSpy = vi.spyOn(watcher, 'pollOnce').mockResolvedValue(undefined)
+    opts.onRefresh()
+    expect(pollSpy).toHaveBeenCalledOnce()
+  })
+
+  it('onPurge calls executePurge', () => {
+    const opts = (watcher as unknown as { browseOptions(): { onPurge: () => void } }).browseOptions()
+    const purgeSpy = vi.spyOn(watcher as unknown as { executePurge(): void }, 'executePurge').mockReturnValue(undefined)
+    opts.onPurge()
+    expect(purgeSpy).toHaveBeenCalledOnce()
+  })
+
+  it('getPollIntervalMs returns interval from per-watch scheduler', () => {
+    const opts = (watcher as unknown as { browseOptions(): { getPollIntervalMs: (w: GlueWatch) => number } }).browseOptions()
+    const w = makeJobWatch({ watchId: 'w1' })
+    // Add the watch so its scheduler is created on first access
+    ;(watcher as unknown as { watches: Map<string, GlueWatch> }).watches.set('w1', w)
+    const ms = opts.getPollIntervalMs(w)
+    expect(typeof ms).toBe('number')
+    expect(ms).toBeGreaterThan(0)
+  })
+})
+
+// ---------------------------------------------------------------------------
+// expandedTextOverride in register()
+// ---------------------------------------------------------------------------
+
+describe('expandedTextOverride in register()', () => {
+  beforeEach(() => {
+    capturedExpandedTextOverride = undefined
+  })
+
+  it('returns expanded text when message has a watches field', () => {
+    const { watcher, pi } = makeWatcher()
+    watcher.register(pi as never)
+    const fn = capturedExpandedTextOverride
+    expect(fn).toBeDefined()
+
+    const fn2 = fn!; const result = fn2({
+      details: {
+        watches: {},
+        date: new Date().toISOString(),
+      },
+    })
+    expect(typeof result).toBe('string')
+  })
+
+  it('returns expanded text with pollMs when present', () => {
+    const { watcher, pi } = makeWatcher()
+    watcher.register(pi as never)
+    const fn = capturedExpandedTextOverride
+    expect(fn).toBeDefined()
+
+    const fn2 = fn!; const result = fn2({
+      details: {
+        watches: {},
+        date: new Date().toISOString(),
+        pollMs: 120_000,
+      },
+    })
+    expect(typeof result).toBe('string')
+  })
+
+  it('returns undefined when message has no watches field', () => {
+    const { watcher, pi } = makeWatcher()
+    watcher.register(pi as never)
+    const fn = capturedExpandedTextOverride
+    expect(fn).toBeDefined()
+
+    const fn3 = fn!; expect(fn3({ details: { someOtherField: true } })).toBeUndefined()
+    expect(fn3({ details: null })).toBeUndefined()
+    expect(fn3({})).toBeUndefined()
+  })
+})
+
+// ---------------------------------------------------------------------------
+// onSessionStart — crash-recovery path
+// ---------------------------------------------------------------------------
+
+describe('onSessionStart — crash-recovery', () => {
+  it('enables watcher and shows widget when there are active watches but enabled=false', async () => {
+    vi.useFakeTimers()
+    const { watcher, pi } = makeWatcher()
+
+    // Seed an active watch directly
+    ;(watcher as unknown as { watches: Map<string, GlueWatch> }).watches.set('w1', {
+      watchId: 'w1',
+      type: 'job',
+      name: 'job1',
+      runId: 'jr1234',
+      profile: 'dev',
+      region: undefined,
+      lastPolledAt: undefined,
+      baseline: undefined,
+      addedAt: 0,
+      terminal: false,
+      consecutiveErrors: 0,
+    })
+
+    // Simulate enabled=false (default initial state before registration)
+    ;(watcher as unknown as { enabled: boolean }).enabled = false
+    ;(watcher as unknown as { _state: { enabled: boolean } })._state = { enabled: false }
+
+    // Call onSessionStart — should detect hasActive=true + enabled=false
+    await watcher.onSessionStart({ ui: { notify: vi.fn() } })
+
+    // enabled should now be true
+    expect((watcher as unknown as { enabled: boolean }).enabled).toBe(true)
+    // addToolToActive should have been called via pi.getActiveTools / setActiveTools
+    expect(pi.getActiveTools).toHaveBeenCalled()
 
     watcher.stopPolling()
     vi.useRealTimers()

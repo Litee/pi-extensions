@@ -926,3 +926,96 @@ describe("compressPath", () => {
     expect(compressPath("/a/b", 0)).toBe("…");
   });
 });
+
+// ---------------------------------------------------------------------------
+// Additional view coverage — renderItemDetail, renderItemRowTUI, renderItemRowText
+// ---------------------------------------------------------------------------
+
+describe("GitWatcher view — additional branch coverage", () => {
+  function makeWatch(overrides: Partial<GitWatch> = {}): GitWatch {
+    return {
+      watchId: "w1",
+      repoPath: "/repo/myproject",
+      branch: "main",
+      targets: ["new_commit"],
+      timeoutAt: undefined,
+      addedAt: 0,
+      lastPolledAt: undefined,
+      baseline: undefined,
+      terminal: false,
+      consecutiveErrors: 0,
+      ...overrides,
+    };
+  }
+
+  let watcher: GitWatcher;
+  beforeEach(() => {
+    ;({ watcher } = makeWatcher());
+  });
+
+  it("renderItemDetail shows polled timestamp when lastPolledAt is set", () => {
+    const w = makeWatch({ lastPolledAt: 1_700_000_000_000 });
+    const fields = watcher.view.renderItemDetail(w, { theme: {} as never, width: 80 });
+    expect(fields.find((f) => f.label === "polled")?.value).toMatch(/^\d{4}/);
+  });
+
+  it("renderItemDetail shows timeout timestamp when timeoutAt is set", () => {
+    const w = makeWatch({ timeoutAt: 1_700_000_000_000 });
+    const fields = watcher.view.renderItemDetail(w, { theme: {} as never, width: 80 });
+    expect(fields.find((f) => f.label === "timeout")?.value).toMatch(/^\d{4}/);
+  });
+
+  it("renderItemDetail shows poll interval when pollIntervalMs is provided", () => {
+    const w = makeWatch();
+    const fields = watcher.view.renderItemDetail(w, { theme: {} as never, width: 80, pollIntervalMs: 30_000 });
+    expect(fields.find((f) => f.label === "poll")?.value).toBe("30s");
+  });
+
+  it("renderItemDetail shows 'yes' for terminal watches", () => {
+    const w = makeWatch({ terminal: true });
+    const fields = watcher.view.renderItemDetail(w, { theme: {} as never, width: 80 });
+    expect(fields.find((f) => f.label === "terminal")?.value).toBe("yes");
+  });
+
+  it("renderItemRowText shows ERROR when consecutiveErrors hits threshold", () => {
+    const w = makeWatch({ consecutiveErrors: 5 }); // POLL_ERROR_THRESHOLD = 5
+    const text = watcher.view.renderItemRowText(w);
+    expect(text).toContain("ERROR");
+  });
+
+  it("renderItemRowTUI status column shows DONE for terminal watch", () => {
+    const w = makeWatch({ terminal: true });
+    const cols = watcher.view.renderItemRowTUI(w, { theme: {} as never, width: 80 });
+    const status = cols.find((c) => c.name === "status");
+    expect(status?.text).toBe("DONE");
+  });
+
+  it("renderItemRowTUI status column shows ERROR and color error at threshold", () => {
+    const w = makeWatch({ consecutiveErrors: 5 });
+    const cols = watcher.view.renderItemRowTUI(w, { theme: {} as never, width: 80 });
+    const status = cols.find((c) => c.name === "status");
+    expect(status?.text).toBe("ERROR");
+    expect(status?.color).toBe("error");
+  });
+
+  it("renderItemRowTUI head column shows truncated sha when baseline has headSha", () => {
+    const w = makeWatch({ baseline: { headSha: "abc1234def567890", branches: [], tags: [] } });
+    const cols = watcher.view.renderItemRowTUI(w, { theme: {} as never, width: 80 });
+    const head = cols.find((c) => c.name === "head");
+    expect(head?.text).toBe("abc1234");
+  });
+
+  it("renderItemRowTUI repo color is 'warning' when consecutiveErrors hits threshold", () => {
+    const w = makeWatch({ consecutiveErrors: 5 });
+    const cols = watcher.view.renderItemRowTUI(w, { theme: {} as never, width: 80 });
+    const repo = cols.find((c) => c.name === "repo");
+    expect(repo?.color).toBe("warning");
+  });
+
+  it("renderItemRowTUI shows timeout warning color when timeoutAt is < 5min away", () => {
+    const w = makeWatch({ timeoutAt: Date.now() + 2 * 60 * 1000 }); // 2 minutes from now
+    const cols = watcher.view.renderItemRowTUI(w, { theme: {} as never, width: 80 });
+    const timeout = cols.find((c) => c.name === "timeout");
+    expect(timeout?.color).toBe("warning");
+  });
+});
