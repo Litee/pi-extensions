@@ -129,6 +129,11 @@ export default defineConfig({
 				// the active-tool set on session_start via pi.setActiveTools. Pure
 				// lifecycle glue — no extractable logic; requires a live runtime.
 				"**/pi-agent-introspection/src/index.ts",
+				// pi-system-prompt-browser/src/index.ts is the TUI shell that wires
+				// ctx.ui.custom() to the pure spkbLogic.ts module (100% covered).
+				// The slash-command handler + two-level menu rendering requires a
+				// live pi-tui runtime.
+				"**/pi-system-prompt-browser/src/index.ts",
 				// pi-aws-ec2-watcher/src/index.ts is a thin factory + re-export barrel.
 				// createExtensionWithClient() creates an Ec2Watcher and calls .register(pi);
 				// all Ec2Watcher logic is covered in watcher.ts / poller.ts tests.
