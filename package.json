@@ -21,6 +21,7 @@
   },
   "pi": {
     "extensions": [
+      "packages/pi-headroom/src/index.ts",
       "packages/*/src/index.ts"
     ]
   },

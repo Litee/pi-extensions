@@ -1,0 +1,27 @@
+{
+  "name": "pi-headroom",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Headroom token compression for pi — compress large tool results via a local Headroom proxy to reclaim context window.",
+  "type": "module",
+  "keywords": [
+    "pi-package"
+  ],
+  "pi": {
+    "extensions": [
+      "./src/index.ts"
+    ]
+  },
+  "peerDependencies": {
+    "@earendil-works/pi-ai": "*",
+    "@earendil-works/pi-coding-agent": "*"
+  },
+  "peerDependenciesMeta": {
+    "@earendil-works/pi-ai": {
+      "optional": true
+    },
+    "@earendil-works/pi-coding-agent": {
+      "optional": true
+    }
+  }
+}
