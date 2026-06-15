@@ -171,6 +171,16 @@ describe("formatDetailsView", () => {
 		expect(result).toContain("(none)");
 	});
 
+	it("shows read error for context files with error flag", () => {
+		const files: ContextFileWithTokens[] = [
+			{ path: "/no/such/file.md", tokens: null, error: true },
+		];
+		const result = formatDetailsView({ skills: [], contextFiles: files, selectedTools: [] });
+
+		expect(result).toContain("(read error)");
+		expect(result).toContain("~? tokens");
+	});
+
 	it("shows selected tools", () => {
 		const result = formatDetailsView({
 			skills: [],
