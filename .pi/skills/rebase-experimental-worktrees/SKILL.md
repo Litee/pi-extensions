@@ -71,6 +71,16 @@ git -C <worktree-path> rebase --abort
 > Note: Do NOT fetch from remote first. The monorepo may have no remote access.
 > Rebase against the local `main` ref only.
 
+## Step 3.5 — Run `npm install` after each successful rebase
+
+After each successful rebase, run `npm install` in the worktree to ensure `node_modules` is up to date before health checks:
+
+```bash
+cd <worktree-path> && npm install --silent
+```
+
+This is required because worktrees do not automatically inherit `node_modules` from the repo root, and eslint/typecheck/tests will silently fail or skip if binaries like `node_modules/.bin/eslint` are missing.
+
 ## Step 4 — Print summary table
 
 Print a markdown table with one row per `experimental-*` worktree:
