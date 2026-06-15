@@ -21,8 +21,8 @@
     "typebox": "^1.2.8"
   },
   "dependencies": {
-    "@aws-sdk/client-ec2": "^3.1066.0",
-    "@aws-sdk/credential-providers": "^3.1066.0",
+    "@aws-sdk/client-ec2": "^3.1067.0",
+    "@aws-sdk/credential-providers": "^3.1067.0",
     "pi-watcher-core": "^0.1.0"
   }
 }
