@@ -51,7 +51,7 @@ describe("headroom config", () => {
 	it("loads settings.json overrides", () => {
 		const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), "headroom-settings-"));
 		try {
-			const settingsPath = path.join(tmpDir, "settings.json");
+			const settingsPath = path.join(tmpDir, "pi-headroom.json");
 			fs.writeFileSync(
 				settingsPath,
 				JSON.stringify({

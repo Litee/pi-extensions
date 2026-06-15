@@ -2,6 +2,7 @@ import type { ContextEvent, ExtensionAPI, ExtensionContext } from "@earendil-wor
 import { applyCompressionResult, buildCompressionPayload } from "./bridge.ts";
 import { HeadroomHttpClient } from "./client.ts";
 import { isRemoteBlocked, loadHeadroomConfig } from "./config.ts";
+import { openHeadroomMenu } from "./menu.ts";
 import { startPersistentHeadroomProxy } from "./proxy-manager.ts";
 import type { AgentMessage, CompressResult, HeadroomConfig, HeadroomStats } from "./types.ts";
 
@@ -20,7 +21,7 @@ interface HeadroomRuntimeState {
 	stats: HeadroomStats;
 }
 
-interface HeadroomRuntime {
+export interface HeadroomRuntime {
 	config: HeadroomConfig;
 	client: HeadroomHttpClient;
 	state: HeadroomRuntimeState;
@@ -318,7 +319,7 @@ async function handleCommand(runtime: HeadroomRuntime, command: Subcommand, ctx:
 		await showProxyStats(ctx, runtime.client, runtime.config);
 		return;
 	}
-	ctx.ui.notify(renderStatus(runtime.config, runtime.state), "info");
+	await openHeadroomMenu(ctx, runtime);
 }
 
 function refreshStatus(ctx: ExtensionContext, config: HeadroomConfig, state: HeadroomRuntimeState): void {
@@ -377,38 +378,6 @@ async function showProxyStats(
 	}
 }
 
-function renderStatus(config: HeadroomConfig, state: HeadroomRuntimeState): string {
-	const stats = state.stats;
-	const lines = [
-		"Headroom token compression",
-		`  Enabled: ${state.enabled ? "yes" : "no"}`,
-		`  Proxy:   ${config.baseUrl} (${state.proxyOnline === true ? "online" : state.proxyStarting ? "starting" : state.proxyOnline === false ? "not running" : "unknown"})`,
-		`  Auto-start: ${config.autoStart ? `yes (${config.command})` : "no"}`,
-		`  Shutdown: proxy is left running after Pi exits`,
-		`  Remote:  ${isRemoteBlocked(config) ? "blocked" : config.allowRemote ? "allowed" : "local-only"}`,
-		`  Thresholds: context >= ${config.minContextTokens.toLocaleString()} tokens, toolResult >= ${config.minMessageChars.toLocaleString()} chars`,
-		"",
-		"Session stats:",
-		`  Attempts:     ${stats.attempts}`,
-		`  Applied:      ${stats.applied}`,
-		`  Guard skips:  ${stats.guardSkips}`,
-		`  Tokens saved: ${stats.tokensSaved.toLocaleString()}`,
-	];
-	if (stats.last) {
-		const pct = Math.round((1 - stats.last.compressionRatio) * 100);
-		lines.push(
-			"",
-			"Last applied compression:",
-			`  ${stats.last.tokensBefore.toLocaleString()} → ${stats.last.tokensAfter.toLocaleString()} tokens (-${pct}%)`,
-			`  Applied messages: ${stats.last.appliedMessages}`,
-			`  Transforms: ${stats.last.transformsApplied.join(", ") || "none"}`,
-			`  CCR hashes: ${stats.last.ccrHashes.length}`,
-		);
-	}
-	if (stats.lastSkipReason) lines.push("", `Last guard skip: ${stats.lastSkipReason}`);
-	if (stats.lastError) lines.push("", `Last error: ${stats.lastError}`);
-	return lines.join("\n");
-}
 
 function proxyStartHint(config: HeadroomConfig): string {
 	if (isRemoteBlocked(config)) return renderRemoteBlocked(config);

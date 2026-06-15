@@ -1,0 +1,176 @@
+/**
+ * TUI settings menu for `/headroom`.
+ *
+ * Opens a SettingsList overlay that lets the user toggle compression,
+ * adjust numeric thresholds, and reset to defaults — all persisted to
+ * pi-headroom.json immediately on change.
+ */
+
+import type { ExtensionContext } from "@earendil-works/pi-coding-agent";
+import { DynamicBorder, getSettingsListTheme } from "@earendil-works/pi-coding-agent";
+import { Container, Input, type SettingItem, SettingsList, Spacer, Text, truncateToWidth } from "@earendil-works/pi-tui";
+import { deleteHeadroomSettings, loadHeadroomConfig, saveHeadroomSettings } from "./config.ts";
+import type { HeadroomRuntime } from "./index.ts";
+
+// ---------------------------------------------------------------------------
+// Number input submenu factory
+// ---------------------------------------------------------------------------
+
+function makeNumberSubmenu(
+	label: string,
+	currentValue: string,
+	min: number,
+	done: (v?: string) => void,
+) {
+	const input = new Input();
+	input.setValue(currentValue);
+	input.onSubmit = (v) => {
+		const n = Number.parseInt(v, 10);
+		if (Number.isFinite(n) && n >= min) done(String(n));
+		else done(); // invalid — cancel
+	};
+	input.onEscape = () => done();
+	return {
+		render: (width: number) => [
+			truncateToWidth(`  ${label}:`, width),
+			...input.render(width),
+			truncateToWidth("  enter to save · esc to cancel", width),
+		],
+		handleInput: (data: string) => {
+			input.handleInput(data);
+		},
+		invalidate: () => {
+			input.invalidate();
+		},
+	};
+}
+
+// ---------------------------------------------------------------------------
+// Settings persistence helper
+// ---------------------------------------------------------------------------
+
+function buildSettingsToSave(runtime: HeadroomRuntime) {
+	const defaults = loadHeadroomConfig({});
+	const s: { enabled?: boolean; minContextTokens?: number; minMessageChars?: number } = {};
+	if (runtime.state.enabled !== defaults.enabled) s.enabled = runtime.state.enabled;
+	if (runtime.config.minContextTokens !== defaults.minContextTokens) s.minContextTokens = runtime.config.minContextTokens;
+	if (runtime.config.minMessageChars !== defaults.minMessageChars) s.minMessageChars = runtime.config.minMessageChars;
+	return s;
+}
+
+// ---------------------------------------------------------------------------
+// Change handler
+// ---------------------------------------------------------------------------
+
+function handleChange(
+	id: string,
+	newValue: string,
+	runtime: HeadroomRuntime,
+	ctx: ExtensionContext,
+	done: (v: void) => void,
+	settingsList: SettingsList,
+): void {
+	if (id === "enabled") {
+		runtime.state.enabled = newValue === "on";
+		runtime.refreshStatus(ctx);
+		saveHeadroomSettings(buildSettingsToSave(runtime));
+		settingsList.updateValue("enabled", runtime.state.enabled ? "on" : "off");
+		return;
+	}
+
+	if (id === "minContextTokens") {
+		runtime.config.minContextTokens = Number.parseInt(newValue, 10);
+		saveHeadroomSettings(buildSettingsToSave(runtime));
+		settingsList.updateValue("minContextTokens", String(runtime.config.minContextTokens));
+		return;
+	}
+
+	if (id === "minMessageChars") {
+		runtime.config.minMessageChars = Number.parseInt(newValue, 10);
+		saveHeadroomSettings(buildSettingsToSave(runtime));
+		settingsList.updateValue("minMessageChars", String(runtime.config.minMessageChars));
+		return;
+	}
+
+	if (id === "reset" && newValue === "confirm") {
+		deleteHeadroomSettings();
+		const fresh = loadHeadroomConfig(process.env);
+		runtime.config.enabled = fresh.enabled;
+		runtime.config.minContextTokens = fresh.minContextTokens;
+		runtime.config.minMessageChars = fresh.minMessageChars;
+		runtime.state.enabled = fresh.enabled;
+		runtime.refreshStatus(ctx);
+		ctx.ui.notify("Headroom settings reset to defaults", "info");
+		done();
+	}
+}
+
+// ---------------------------------------------------------------------------
+// Main menu entry point
+// ---------------------------------------------------------------------------
+
+export async function openHeadroomMenu(ctx: ExtensionContext, runtime: HeadroomRuntime): Promise<void> {
+	await ctx.ui.custom<void>((tui, theme, _kb, done) => {
+		const container = new Container();
+		container.addChild(new DynamicBorder((s) => theme.fg("accent", s)));
+		container.addChild(new Text(theme.fg("accent", theme.bold("Headroom Settings")), 1, 0));
+		container.addChild(new Spacer(1));
+
+		const items: SettingItem[] = [
+			{
+				id: "enabled",
+				label: "Compression",
+				description: "Enable or disable Headroom token compression",
+				currentValue: runtime.state.enabled ? "on" : "off",
+				values: ["on", "off"],
+			},
+			{
+				id: "minContextTokens",
+				label: "Min context tokens",
+				description: "Compress only when context exceeds this many tokens",
+				currentValue: String(runtime.config.minContextTokens),
+				submenu: (currentValue, submenuDone) =>
+					makeNumberSubmenu("Min context tokens", currentValue, 0, submenuDone),
+			},
+			{
+				id: "minMessageChars",
+				label: "Min message chars",
+				description: "Skip messages shorter than this many characters",
+				currentValue: String(runtime.config.minMessageChars),
+				submenu: (currentValue, submenuDone) =>
+					makeNumberSubmenu("Min message chars", currentValue, 1, submenuDone),
+			},
+			{
+				id: "reset",
+				label: "↺ Reset to defaults",
+				description: "Delete pi-headroom.json — press Enter to confirm",
+				currentValue: "",
+				values: ["confirm"],
+			},
+		];
+
+		const settingsTheme = getSettingsListTheme();
+		const settingsList = new SettingsList(
+			items,
+			items.length + 2,
+			settingsTheme,
+			(id, newValue) => {
+				handleChange(id, newValue, runtime, ctx, done, settingsList);
+			},
+			() => done(),
+		);
+
+		container.addChild(settingsList);
+		container.addChild(new Text(theme.fg("dim", "↑↓ navigate · enter select · esc close"), 1, 0));
+		container.addChild(new DynamicBorder((s) => theme.fg("accent", s)));
+
+		return {
+			render: (w: number) => container.render(w),
+			invalidate: () => container.invalidate(),
+			handleInput: (data: string) => {
+				settingsList.handleInput?.(data);
+				tui.requestRender();
+			},
+		};
+	});
+}

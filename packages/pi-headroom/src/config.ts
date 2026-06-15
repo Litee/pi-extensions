@@ -8,8 +8,7 @@ const DEFAULT_MIN_CONTEXT_TOKENS = 20_000;
 const DEFAULT_MIN_MESSAGE_CHARS = 2_000;
 const DEFAULT_TIMEOUT_MS = 30_000;
 
-export const HEADROOM_SETTINGS_DIR = path.join(os.homedir(), ".pi", "agent", "headroom");
-export const HEADROOM_SETTINGS_FILE = path.join(HEADROOM_SETTINGS_DIR, "settings.json");
+export const HEADROOM_SETTINGS_FILE = path.join(os.homedir(), ".pi", "agent", "pi-headroom.json");
 
 export interface HeadroomSettings {
 	enabled?: boolean | string;
@@ -21,6 +20,19 @@ export interface HeadroomSettings {
 	minContextTokens?: number | string;
 	minMessageChars?: number | string;
 	timeoutMs?: number | string;
+}
+
+export function saveHeadroomSettings(settings: HeadroomSettings, settingsPath: string = HEADROOM_SETTINGS_FILE): void {
+	fs.mkdirSync(path.dirname(settingsPath), { recursive: true });
+	fs.writeFileSync(settingsPath, JSON.stringify(settings, null, 2), "utf-8");
+}
+
+export function deleteHeadroomSettings(settingsPath: string = HEADROOM_SETTINGS_FILE): void {
+	try {
+		fs.unlinkSync(settingsPath);
+	} catch (err) {
+		if ((err as NodeJS.ErrnoException).code !== "ENOENT") throw err;
+	}
 }
 
 export function loadHeadroomSettings(settingsPath: string = HEADROOM_SETTINGS_FILE): HeadroomSettings {
