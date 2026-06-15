@@ -92,3 +92,19 @@ Print a markdown table with one row per `experimental-*` worktree:
 | `experimental-baz` | ❌ conflict — aborted | — |
 
 Finish with a one-line note listing any skipped (dirty) or aborted (conflict) worktrees by name, so the user knows which need manual attention.
+
+## Gotchas
+
+1. **`npm install` dirties `package-lock.json`** — running it post-rebase leaves a modified lockfile in the worktree. Restore it with `git checkout -- package-lock.json` after installing, or skip install if worktrees already share root `node_modules`.
+
+2. **`--onto` rebase leaves detached HEAD** — the branch ref is not updated automatically. Always force-update: `git branch -f <branch> HEAD` then `git checkout <branch>`.
+
+3. **Broken worktree (missing `.git` file)** — a worktree with only `package-lock.json` on disk and no `.git` silently runs all `git -C` commands against the parent repo. Verify the path contains a `.git` file before rebasing; recreate with `git worktree add` if missing.
+
+4. **Stale rebase state** — a leftover `rebase-merge/` directory from a previous failed attempt blocks new rebases. Check for and remove it: `rm -fr <repo>/.git/worktrees/<wt>/rebase-merge`.
+
+5. **`--skip` on README conflicts can drop content** — a commit that conflicts only on README may contain other real changes. Always inspect the full diff with `git show <commit>` before skipping.
+
+6. **Test fixture commits leaking into branch history** — if tests create temp git repos without `--local` identity config, those commits can become reachable from the branch. Warn if any commit above `main` has an unexpected author identity (e.g. `Test <test@test.com>`).
+
+7. **`core.bare = true` breaks worktrees** — if set, git operations behave unexpectedly. Add a pre-flight check: `git config core.bare` must return `false`.
