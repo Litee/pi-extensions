@@ -13,7 +13,6 @@
  */
 
 import type { S3Client as AwsS3Client } from "@aws-sdk/client-s3";
-import { fromIni } from "@aws-sdk/credential-providers";
 
 // ---------------------------------------------------------------------------
 // Response shapes
@@ -81,6 +80,7 @@ export function createS3Client(): S3Client {
 		let c = clientCache.get(key);
 		if (!c) {
 			const { S3Client } = await import("@aws-sdk/client-s3");
+			const { fromIni } = await import("@aws-sdk/credential-providers");
 			c = new S3Client({
 				credentials: fromIni({ profile }),
 				...(region !== undefined ? { region } : {}),

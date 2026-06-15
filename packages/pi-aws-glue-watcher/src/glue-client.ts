@@ -19,7 +19,6 @@
  */
 
 import type { GlueClient as AwsGlueClient } from "@aws-sdk/client-glue";
-import { fromIni } from "@aws-sdk/credential-providers";
 
 // ---------------------------------------------------------------------------
 // Error types
@@ -144,6 +143,7 @@ export function createGlueClient(): GlueClient {
 		let c = clientCache.get(key);
 		if (!c) {
 			const { GlueClient } = await import("@aws-sdk/client-glue");
+			const { fromIni } = await import("@aws-sdk/credential-providers");
 			c = new GlueClient({
 				credentials: fromIni({ profile }),
 				...(region !== undefined ? { region } : {}),

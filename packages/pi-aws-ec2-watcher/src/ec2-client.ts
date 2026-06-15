@@ -7,7 +7,7 @@
  */
 
 import type { EC2Client as AwsEc2Client } from "@aws-sdk/client-ec2";
-import { fromIni } from "@aws-sdk/credential-providers";
+
 import type { Ec2InstanceState } from "./types.js";
 
 // ---------------------------------------------------------------------------
@@ -77,6 +77,7 @@ export function createEc2Client(): Ec2Client {
 		let c = clientCache.get(key);
 		if (!c) {
 			const { EC2Client } = await import("@aws-sdk/client-ec2");
+			const { fromIni } = await import("@aws-sdk/credential-providers");
 			c = new EC2Client({
 				credentials: fromIni({ profile }),
 				...(region !== undefined ? { region } : {}),
