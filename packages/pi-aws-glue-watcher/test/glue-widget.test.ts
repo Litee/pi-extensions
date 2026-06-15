@@ -166,6 +166,7 @@ describe("GlueWidget header — AWS prefix in title", () => {
 		const theme = { fg: (_c: string, t: string) => t, bold: (t: string) => t };
 		const rendered = factory(undefined, theme).render(120).join("\n");
 		expect(rendered).toContain("AWS Glue Watcher");
+		expect(rendered).toContain("/glue-watcher for menu");
 
 		widget.destroy();
 	});
