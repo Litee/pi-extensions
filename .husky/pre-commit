@@ -1,1 +1,10 @@
+# Block commits when author name or email doesn't match expected values
+if [ "$(git config user.name)" != "Andrey Lipatkin" ] || \
+   [ "$(git config user.email)" != "400234+Litee@users.noreply.github.com" ]; then
+  echo "❌ ERROR: git user.name and user.email must be configured."
+  echo "   git config user.name \"Andrey Lipatkin\""
+  echo "   git config user.email \"400234+Litee@users.noreply.github.com\""
+  exit 1
+fi
+
 npm run lint && npm test
