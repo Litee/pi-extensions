@@ -177,3 +177,124 @@ describe("skillsBrowserExtension /skills handler", () => {
 		expect(custom).toHaveBeenCalled();
 	});
 });
+
+// ---------------------------------------------------------------------------
+// SkillEntry name: "skill:" prefix stripping and inPrompt matching
+// ---------------------------------------------------------------------------
+
+/**
+ * Extract the render function from the callback that was passed to
+ * `ctx.ui.custom`.  Calls the callback with a passthrough theme stub so the
+ * rendered lines contain only plain text (no ANSI escapes), making assertions
+ * straightforward.
+ */
+function captureRender(
+	custom: ReturnType<typeof vi.fn>,
+): (width: number) => string[] {
+	const cb = custom.mock.calls[0]![0] as (
+		tui: { requestRender: () => void },
+		theme: { fg: (c: string, s: string) => string; bold: (s: string) => string },
+		kb: unknown,
+		done: () => void,
+	) => { render: (w: number) => string[] };
+	const theme = {
+		fg: (_c: string, s: string) => s,
+		bold: (s: string) => s,
+	};
+	const controller = cb({ requestRender: vi.fn() }, theme, undefined, vi.fn());
+	return controller.render;
+}
+
+describe("SkillEntry name: 'skill:' prefix stripping and inPrompt matching", () => {
+	it("strips 'skill:' prefix so the display name does not start with 'skill:'", async () => {
+		const skillCommand = {
+			name: "skill:my-skill",
+			description: "A prefixed skill.",
+			source: "skill",
+			sourceInfo: { path: "/home/user/.pi/agent/skills/my-skill/SKILL.md" },
+		};
+		const { handler } = setup([skillCommand]);
+		const custom = vi.fn().mockResolvedValue(undefined);
+		const ctx = makeCtx({ ui: { notify: vi.fn(), custom } });
+
+		await handler("", ctx);
+
+		const render = captureRender(custom);
+		const output = render(120).join("\n");
+
+		expect(output).toContain("my-skill");
+		expect(output).not.toMatch(/skill:my-skill/);
+	});
+
+	it("uses name as-is when there is no 'skill:' prefix", async () => {
+		const skillCommand = {
+			name: "my-skill",
+			description: "An unprefixed skill.",
+			source: "skill",
+			sourceInfo: { path: "/home/user/.pi/agent/skills/my-skill/SKILL.md" },
+		};
+		const { handler } = setup([skillCommand]);
+		const custom = vi.fn().mockResolvedValue(undefined);
+		const ctx = makeCtx({ ui: { notify: vi.fn(), custom } });
+
+		await handler("", ctx);
+
+		const render = captureRender(custom);
+		const output = render(120).join("\n");
+
+		expect(output).toContain("my-skill");
+	});
+
+	it("marks a skill inPrompt when getSystemPromptOptions contains the prefixed name", async () => {
+		const skillCommand = {
+			name: "skill:my-skill",
+			description: "A prefixed skill.",
+			source: "skill",
+			sourceInfo: { path: "/home/user/.pi/agent/skills/my-skill/SKILL.md" },
+		};
+		const { handler } = setup([skillCommand]);
+		const custom = vi.fn().mockResolvedValue(undefined);
+		const ctx = makeCtx({
+			ui: { notify: vi.fn(), custom },
+			// Provide the original prefixed name — inPrompt must match on c.name
+			getSystemPromptOptions: vi.fn().mockReturnValue({
+				skills: [{ name: "skill:my-skill" }],
+			}),
+		});
+
+		await handler("", ctx);
+
+		const render = captureRender(custom);
+		const output = render(120).join("\n");
+
+		// buildRowLine emits "● " (via theme.fg("success", "● ")) for inPrompt rows.
+		expect(output).toContain("●");
+	});
+
+	it("does NOT mark a skill inPrompt when only the stripped name appears in getSystemPromptOptions", async () => {
+		const skillCommand = {
+			name: "skill:my-skill",
+			description: "A prefixed skill.",
+			source: "skill",
+			sourceInfo: { path: "/home/user/.pi/agent/skills/my-skill/SKILL.md" },
+		};
+		const { handler } = setup([skillCommand]);
+		const custom = vi.fn().mockResolvedValue(undefined);
+		const ctx = makeCtx({
+			ui: { notify: vi.fn(), custom },
+			// Only the stripped name — should NOT trigger inPrompt
+			getSystemPromptOptions: vi.fn().mockReturnValue({
+				skills: [],
+			}),
+		});
+
+		await handler("", ctx);
+
+		const render = captureRender(custom);
+		const output = render(120).join("\n");
+
+		const rows = output.split("\n").filter((l) => l.includes("my-skill"));
+		expect(rows.length).toBeGreaterThan(0);
+		expect(rows[0]).not.toContain("●");
+	});
+});

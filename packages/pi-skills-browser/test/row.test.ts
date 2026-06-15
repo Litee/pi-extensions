@@ -25,7 +25,7 @@ function mkSkill(name: string, tokens: number, inPrompt = false): SkillEntry {
 // ---------------------------------------------------------------------------
 
 describe("computeNameColWidth", () => {
-	it("returns a fixed 25 enough for skill prefix plus ~19 char name", () => {
+	it("returns a fixed 40 enough for ~38 char names", () => {
 		expect(computeNameColWidth(80)).toBe(40);
 		expect(computeNameColWidth(40)).toBe(40);
 		expect(computeNameColWidth(100)).toBe(40);

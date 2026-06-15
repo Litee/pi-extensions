@@ -31,7 +31,7 @@ export const TOKEN_COL_WIDTH = 12;
 const NAME_PATH_SEP = "  ";
 
 /**
- * Name column width: fixed (30 — enough for "skill:" + ~24 char name with
+ * Name column width: fixed (40 — enough for ~38 char names with
  * room to grow). Two spaces separate name and path columns.
  * The path column takes all remaining space.
  */

@@ -55,15 +55,18 @@ export default function skillsBrowserExtension(pi: ExtensionAPI) {
 			const skills: SkillEntry[] = pi
 				.getCommands()
 				.filter((c) => c.source === "skill")
-				.map((c) => ({
-						name: `${c.name}  ${detectPathDisplay(c.sourceInfo.path, process.cwd())}`,
+				.map((c) => {
+					const displayName = c.name.startsWith("skill:") ? c.name.slice("skill:".length) : c.name;
+					return {
+						name: `${displayName}  ${detectPathDisplay(c.sourceInfo.path, process.cwd())}`,
 					description: c.description ?? "",
 					tokens: estimateDescriptionTokens(c.description ?? ""),
-					path: c.sourceInfo.path,
-					pathDisplay: detectPathDisplay(c.sourceInfo.path, process.cwd()),
-					scope: detectScope(c.sourceInfo.path),
-					inPrompt: skillsInPrompt.has(c.name),
-				}));
+						path: c.sourceInfo.path,
+						pathDisplay: detectPathDisplay(c.sourceInfo.path, process.cwd()),
+						scope: detectScope(c.sourceInfo.path),
+						inPrompt: skillsInPrompt.has(c.name),
+					};
+				});
 
 			if (skills.length === 0) {
 				ctx.ui.notify("No skills registered in this session", "warning");
