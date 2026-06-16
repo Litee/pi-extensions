@@ -60,10 +60,10 @@ function readAgentVersion(): string {
 export default function versionExtension(pi: ExtensionAPI): void {
 	pi.registerCommand("version", {
 		description: "Print the current version of the pi coding agent.",
-		// eslint-disable-next-line @typescript-eslint/require-await
-		handler: async (_args, ctx) => {
+		handler: (_args, ctx): Promise<void> => {
 			const version = readAgentVersion();
 			ctx.ui.notify(`@earendil-works/pi-coding-agent v${version}`, "info");
+			return Promise.resolve();
 		},
 	});
 }
