@@ -66,8 +66,8 @@ export default function (pi: ExtensionAPI) {
 		type: "boolean",
 		default: false,
 	});
-	pi.registerFlag("recap-disable", {
-		description: "Disable the automatic session recap",
+	pi.registerFlag("recap-auto", {
+		description: "Enable automatic session recaps (idle, focus, and resume triggers)",
 		type: "boolean",
 		default: false,
 	});
@@ -93,7 +93,7 @@ export default function (pi: ExtensionAPI) {
 		const n = Number(pi.getFlag("recap-focus-min-seconds") ?? DEFAULT_FOCUS_MIN_SECONDS);
 		return Math.max(0, Number.isFinite(n) ? n : DEFAULT_FOCUS_MIN_SECONDS);
 	};
-	const isDisabled = (): boolean => Boolean(pi.getFlag("recap-disable"));
+	const isAutoEnabled = (): boolean => Boolean(pi.getFlag("recap-auto"));
 	const isFocusDisabled = (): boolean => Boolean(pi.getFlag("recap-disable-focus"));
 	const allowDuringActive = (): boolean => Boolean(pi.getFlag("recap-during-active"));
 	const configuredOverride = (): { source: "--recap-model" | "pi-session-recap.json"; spec: string } | null => {
@@ -108,7 +108,7 @@ export default function (pi: ExtensionAPI) {
 	// --- orchestrator (lazy — needs ctx) ------------------------------------
 
 	const config: RecapOrchestratorConfig = {
-		isDisabled,
+		isAutoEnabled,
 		isFocusDisabled,
 		idleMs: () => idleSeconds() * 1000,
 		focusMinMs: () => focusMinSeconds() * 1000,
@@ -299,7 +299,7 @@ export default function (pi: ExtensionAPI) {
 			sessionIdleOverride = undefined;
 		}
 		attachFocusReporting(ctx);
-		if (isDisabled() || !ctx.hasUI) return;
+		if (!isAutoEnabled() || !ctx.hasUI) return;
 		if (event.reason === "resume" || event.reason === "fork") {
 			const orch = getOrchestrator(ctx);
 			setTimeout(() => {
@@ -331,12 +331,11 @@ export default function (pi: ExtensionAPI) {
 		}
 		const focusOff = isFocusDisabled();
 		const disabledFlags: DisabledFlag[] = [];
-		if (isDisabled()) disabledFlags.push("--recap-disable");
 		if (focusOff) disabledFlags.push("--recap-disable-focus");
 		return {
 			override,
 			activeModelSpec: activeModelSpec(ctx),
-			autoRecapEnabled: !isDisabled(),
+			autoRecapEnabled: isAutoEnabled(),
 			idleSeconds: idleSeconds(),
 			focusMinSeconds: focusOff ? null : focusMinSeconds(),
 			disabledFlags,

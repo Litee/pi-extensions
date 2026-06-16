@@ -77,7 +77,7 @@ function makeDeps(
 	const getApiKeyAndHeaders = vi.fn(() => ({ ok: true, apiKey: "test-key" }));
 
 	const config: RecapOrchestratorDeps["config"] = {
-		isDisabled: () => false,
+		isAutoEnabled: () => true,
 		isFocusDisabled: () => false,
 		idleMs: () => 1000,
 		focusMinMs: () => 100,
@@ -91,6 +91,7 @@ function makeDeps(
 		ui: {
 			setWidget,
 			setStatus,
+			notify: vi.fn(),
 			theme: {
 				fg: (_c: string, t: string) => t,
 				bold: (t: string) => t,
@@ -135,16 +136,31 @@ describe("recapOrchestrator", () => {
 		expect(deps.setWidget).toHaveBeenCalled();
 	});
 
-	it("discards the recap if the leaf advances while the model call is in flight (leaf-id snapshot guard)", async () => {
+	it("discards the recap if the leaf advances while the model call is in flight (leaf-id snapshot guard), for non-manual reasons", async () => {
 		// Two distinct leaves: snapshot reads the first, post-await reads the second.
+		// The guard only applies to automatic triggers (idle/focus/resume), not manual.
+		const deps = makeDeps({ leafIds: ["leaf-A", "leaf-B"] });
+		const orch = createRecapOrchestrator(deps);
+		await orch.runGenerateAndShow({ reason: "idle" });
+
+		// LLM ran...
+		expect(deps.completeSimple).toHaveBeenCalledTimes(1);
+		// Placeholder was set before the LLM call, but the final recap must NOT be painted (stale leaf).
+		const finalPaints = deps.setWidget.mock.calls.filter(
+			(a) => a[1] !== undefined && !(a[1] as string).includes("generating…"),
+		);
+		expect(finalPaints).toHaveLength(0);
+	});
+
+	it("shows the recap even if the leaf advances during manual /recap (leaf-id guard skipped for manual)", async () => {
+		// Manual /recap adds the command itself as a new leaf entry — expected and harmless.
 		const deps = makeDeps({ leafIds: ["leaf-A", "leaf-B"] });
 		const orch = createRecapOrchestrator(deps);
 		await orch.runGenerateAndShow({ reason: "manual" });
 
-		// LLM ran...
 		expect(deps.completeSimple).toHaveBeenCalledTimes(1);
-		// ...but the widget must NOT be painted (stale leaf).
-		expect(deps.setWidget).not.toHaveBeenCalled();
+		// Widget MUST be shown for manual even with a new leaf (placeholder + final = 2 calls).
+		expect(deps.setWidget).toHaveBeenCalledTimes(2);
 	});
 
 	it("late completion from a cancelled request does not clobber a newer active request (ownership guard)", async () => {
@@ -183,11 +199,11 @@ describe("recapOrchestrator", () => {
 		releaseFirst!(undefined);
 		await p1.catch(() => {});
 
-		// Only the fresh recap should have painted; no stale second paint.
-		const widgetCalls = deps.setWidget.mock.calls.filter(
-			(args) => args[1] !== undefined,
+		// Only the fresh final recap should have painted; placeholders are excluded.
+		const finalCalls = deps.setWidget.mock.calls.filter(
+			(args) => args[1] !== undefined && !(args[1] as string).includes("generating…"),
 		);
-		expect(widgetCalls).toHaveLength(1);
+		expect(finalCalls).toHaveLength(1);
 	});
 
 	it("onFocusOut skips regen when a recap already exists for the current leaf", async () => {
@@ -233,8 +249,10 @@ describe("recapOrchestrator", () => {
 		releaseDraft!(undefined);
 		await new Promise((r) => setTimeout(r, 10));
 
-		// Widget must never have been painted.
-		expect(deps.setWidget.mock.calls.filter((args) => args[1] !== undefined)).toEqual([]);
+		// Final recap must never have been painted (placeholder is expected; draft was aborted).
+		expect(deps.setWidget.mock.calls.filter(
+			(args) => args[1] !== undefined && !(args[1] as string).includes("generating…"),
+		)).toEqual([]);
 	});
 
 	it("onFocusIn after the min-seconds threshold reveals a pending recap", async () => {
@@ -244,12 +262,16 @@ describe("recapOrchestrator", () => {
 		orch.onFocusOut();
 		// Await the draft cycle (focus reason + focusedOutAt !== undefined ⇒ parks in pendingRecap).
 		await new Promise((r) => setTimeout(r, 10));
-		// It should NOT have painted yet — it parked.
-		expect(deps.setWidget.mock.calls.filter((args) => args[1] !== undefined)).toEqual([]);
+		// It should NOT have painted a final recap yet — the draft parked (placeholder is expected).
+		expect(deps.setWidget.mock.calls.filter(
+			(args) => args[1] !== undefined && !(args[1] as string).includes("generating…"),
+		)).toEqual([]);
 
 		orch.onFocusIn();
 		// pendingRecap is revealed synchronously in onFocusIn.
-		const paints = deps.setWidget.mock.calls.filter((args) => args[1] !== undefined);
+		const paints = deps.setWidget.mock.calls.filter(
+			(args) => args[1] !== undefined && !(args[1] as string).includes("generating…"),
+		);
 		expect(paints).toHaveLength(1);
 	});
 
@@ -268,9 +290,9 @@ describe("recapOrchestrator", () => {
 		orch.cancelActive();
 	});
 
-	it("scheduleRecap does nothing when --recap-disable is set", () => {
+	it("scheduleRecap does nothing when --recap-auto is not set", () => {
 		vi.useFakeTimers();
-		const deps = makeDeps({ config: { isDisabled: () => true } });
+		const deps = makeDeps({ config: { isAutoEnabled: () => false } });
 		const orch = createRecapOrchestrator(deps);
 		orch.scheduleRecap();
 		vi.advanceTimersByTime(10_000);
@@ -424,9 +446,11 @@ describe("recapOrchestrator", () => {
 
 		orch.onFocusOut();
 		await new Promise((r) => setTimeout(r, 10));
-		// First focus draft completed and parked; no widget yet.
+		// First focus draft completed and parked; no final recap yet (placeholder is expected).
 		expect(
-			deps.setWidget.mock.calls.filter((args) => args[1] !== undefined),
+			deps.setWidget.mock.calls.filter(
+				(args) => args[1] !== undefined && !(args[1] as string).includes("generating…"),
+			),
 		).toEqual([]);
 		deps.completeSimple.mockClear();
 
@@ -434,7 +458,9 @@ describe("recapOrchestrator", () => {
 		orch.onTurnStart();
 		orch.onFocusIn();
 		expect(
-			deps.setWidget.mock.calls.filter((args) => args[1] !== undefined),
+			deps.setWidget.mock.calls.filter(
+				(args) => args[1] !== undefined && !(args[1] as string).includes("generating…"),
+			),
 		).toEqual([]);
 	});
 
@@ -464,7 +490,9 @@ describe("recapOrchestrator", () => {
 
 		expect(wasAborted).toBe(true);
 		expect(
-			deps.setWidget.mock.calls.filter((args) => args[1] !== undefined),
+			deps.setWidget.mock.calls.filter(
+				(args) => args[1] !== undefined && !(args[1] as string).includes("generating…"),
+			),
 		).toEqual([]);
 	});
 
@@ -571,7 +599,8 @@ describe("recapOrchestrator", () => {
 
 		// No model → runModelCall returns undefined → no completeSimple call.
 		expect(deps.completeSimple).not.toHaveBeenCalled();
-		expect(deps.setWidget).not.toHaveBeenCalled();
+		// Placeholder was set before runModelCall bailed; no final recap painted.
+		expect(deps.setWidget).toHaveBeenCalledTimes(1);
 	});
 
 	it("returns undefined from runModelCall when getApiKeyAndHeaders returns ok=false", async () => {
@@ -581,7 +610,8 @@ describe("recapOrchestrator", () => {
 		await orch.runGenerateAndShow({ reason: "manual" });
 
 		expect(deps.completeSimple).not.toHaveBeenCalled();
-		expect(deps.setWidget).not.toHaveBeenCalled();
+		// Placeholder was set before runModelCall bailed; no final recap painted.
+		expect(deps.setWidget).toHaveBeenCalledTimes(1);
 	});
 
 	// ---- early-return paths in runGenerateAndShow -------------------------
@@ -604,6 +634,11 @@ describe("recapOrchestrator", () => {
 		await orch.runGenerateAndShow({ reason: "manual" });
 
 		expect(deps.completeSimple).not.toHaveBeenCalled();
+		// Manual /recap on empty transcript should notify the user.
+		const notify = (deps.ctx.ui as unknown as { notify: ReturnType<typeof vi.fn> }).notify;
+		expect(notify).toHaveBeenCalledTimes(1);
+		expect(notify.mock.calls[0]?.[0]).toMatch(/nothing to recap/i);
+		expect(notify.mock.calls[0]?.[1]).toBe("info");
 	});
 
 	it("returns early without calling completeSimple when entries have no meaningful activity and reason is not 'manual'", async () => {
@@ -630,7 +665,10 @@ describe("recapOrchestrator", () => {
 		await orch.runGenerateAndShow({ reason: "manual" });
 
 		expect(deps.completeSimple).toHaveBeenCalledTimes(1);
-		expect(deps.setWidget.mock.calls.filter((a) => a[1] !== undefined)).toEqual([]);
+		// Placeholder was set, but final recap was not (empty LLM response).
+		expect(deps.setWidget.mock.calls.filter(
+			(a) => a[1] !== undefined && !(a[1] as string).includes("generating…"),
+		)).toEqual([]);
 	});
 
 	it("focus recap shows directly when onFocusIn clears focusedOutAt while the draft is in flight", async () => {
@@ -658,7 +696,10 @@ describe("recapOrchestrator", () => {
 		releaseDraft!(undefined);
 		await new Promise((r) => setTimeout(r, 10));
 
-		const paints = deps.setWidget.mock.calls.filter((a) => a[1] !== undefined);
+		// placeholder + final recap = 2 non-undefined calls; filter to final only.
+		const paints = deps.setWidget.mock.calls.filter(
+			(a) => a[1] !== undefined && !(a[1] as string).includes("generating…"),
+		);
 		expect(paints).toHaveLength(1);
 	});
 

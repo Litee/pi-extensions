@@ -85,10 +85,11 @@ function makeFakePi(
 	);
 	const sendMessage = vi.fn();
 	const appendEntry = vi.fn();
-	// Return undefined for any flag unless the test seeded a value (or a
-	// custom `getFlag` is wired in for regression tests).
-	const flagValues = opts.flagValues ?? {};
-	const getFlagImpl = opts.getFlag ?? ((name: string) => flagValues[name]);
+	// Return `true` for `recap-auto` unless the test overrides it (auto-recap
+	// is opt-in in production; tests default it on so behaviour-testing tests
+	// don't all need to seed the flag explicitly).
+	const flagValues = { "recap-auto": true, ...(opts.flagValues ?? {}) };
+	const getFlagImpl = opts.getFlag ?? ((name: string) => flagValues[name as keyof typeof flagValues]);
 	const getFlag = vi.fn(getFlagImpl);
 
 	return {
@@ -201,11 +202,14 @@ describe("/recap command dispatch (#0004)", () => {
 		await getHandler(pi)("", ctx);
 
 		// generateAndShow reads the branch as its first step. Empty branch ->
-		// empty transcript -> returns before any LLM call, but the read itself
+		// empty transcript -> returns after notifying user, but the read itself
 		// is our observable signal that the manual path was entered.
 		expect(ctx.sessionManager.getBranch).toHaveBeenCalledTimes(1);
-		// No status/help-style notification on the manual path.
-		expect(ctx.ui.notify).not.toHaveBeenCalled();
+		// Empty transcript on a manual /recap should surface a helpful message.
+		expect(ctx.ui.notify).toHaveBeenCalledTimes(1);
+		const [msg, level] = ctx.ui.notify.mock.calls[0] as [string, string];
+		expect(msg).toMatch(/nothing to recap/i);
+		expect(level).toBe("info");
 	});
 
 	it("the legacy `status` subcommand is no longer recognised and produces a `Unknown` toast pointing at /recap-settings", async () => {
@@ -301,7 +305,7 @@ describe("flag-key wiring — pi.getFlag must match pi.registerFlag names (no `-
 			flagValues: {
 				"recap-idle-seconds": "45",
 				"recap-focus-min-seconds": "7",
-				"recap-disable": true,
+				"recap-auto": false,
 				"recap-disable-focus": true,
 				"recap-model": "anthropic/claude-haiku-4-5",
 			},
@@ -322,7 +326,7 @@ describe("flag-key wiring — pi.getFlag must match pi.registerFlag names (no `-
 		// --recap-disable-focus wins over focus seconds.
 		expect(body).toContain("Focus trigger:  disabled");
 		expect(body).toContain("Auto-recap:     disabled");
-		expect(body).toContain("Disabled flags: --recap-disable, --recap-disable-focus");
+		expect(body).toContain("Disabled flags: --recap-disable-focus");
 		expect(body).toContain("anthropic/claude-haiku-4-5");
 		expect(body).toMatch(/from --recap-model|override failed to resolve/);
 		// The editable idle-timeout row reflects the same flag value.
@@ -613,8 +617,7 @@ describe("lifecycle event handlers delegate to the orchestrator", () => {
 		const pi = makeFakePi();
 		createExtension(pi as never);
 		const ctx = makeFakeCtx();
-		await pi.handlers.get("input")?. ({}, ctx);
-		// clearRecapWidget calls setWidget(key, undefined) and setStatus(key, undefined).
+		await pi.handlers.get("input")?.({}, ctx);
 		expect(ctx.ui.setWidget).toHaveBeenCalledWith(expect.any(String), undefined);
 		expect(ctx.ui.setStatus).toHaveBeenCalledWith(expect.any(String), undefined);
 	});
@@ -968,8 +971,8 @@ describe("targeted coverage — specific uncovered paths", () => {
 		expect(ctx.ui.setWidget).not.toHaveBeenCalled();
 	});
 
-	it("session_start returns early when recap-disable is true (isDisabled() guard)", () => {
-		const pi = makeFakePi({ flagValues: { "recap-disable": true } });
+	it("session_start returns early when recap-auto is false (auto disabled)", () => {
+		const pi = makeFakePi({ flagValues: { "recap-auto": false } });
 		createExtension(pi as never);
 		const ctx = makeFakeCtx();
 		// session_start should not throw; the recap-just-fire path is skipped.

@@ -460,7 +460,7 @@ describe("buildStatusLine", () => {
 		autoRecapEnabled: true,
 		idleSeconds: 120,
 		focusMinSeconds: 3 as number | null,
-		disabledFlags: [] as ReadonlyArray<"--recap-disable" | "--recap-disable-focus">,
+		disabledFlags: [] as ReadonlyArray<"--recap-disable-focus">,
 		triggerCount: 0,
 		tokenUsage: null,
 	};
@@ -549,17 +549,16 @@ describe("buildStatusLine", () => {
 		);
 	});
 
-	it("renders `Auto-recap: disabled` and lists `--recap-disable` under Disabled flags", () => {
+	it("renders `Auto-recap: disabled` when autoRecapEnabled is false", () => {
 		const out = buildStatusLine({
 			...base,
 			override: null,
 			autoRecapEnabled: false,
-			disabledFlags: ["--recap-disable"],
+			disabledFlags: [],
 			triggerCount: 0,
 			tokenUsage: null,
 		});
 		expect(out).toContain("Auto-recap:     disabled");
-		expect(out).toContain("Disabled flags: --recap-disable");
 	});
 
 	it("renders `Focus trigger: disabled` and lists `--recap-disable-focus` under Disabled flags", () => {
@@ -592,19 +591,17 @@ describe("buildStatusLine", () => {
 	});
 
 	it("joins multiple disabled flags with a comma in presentation order", () => {
-		// Both flags active — they appear in registration order
-		// (--recap-disable, then --recap-disable-focus) so a future refactor
-		// can't re-order them silently.
+		// Only --recap-disable-focus can appear in the disabled flags list now
 		const out = buildStatusLine({
 			...base,
 			override: null,
 			autoRecapEnabled: false,
 			focusMinSeconds: null,
-			disabledFlags: ["--recap-disable", "--recap-disable-focus"],
+			disabledFlags: ["--recap-disable-focus"],
 			triggerCount: 0,
 			tokenUsage: null,
 		});
-		expect(out).toContain("Disabled flags: --recap-disable, --recap-disable-focus");
+		expect(out).toContain("Disabled flags: --recap-disable-focus");
 	});
 	it("shows Triggers: 0 when triggerCount is 0", () => {
 		const out = buildStatusLine({ ...base, override: null, triggerCount: 0, tokenUsage: null });

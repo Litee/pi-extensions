@@ -72,8 +72,8 @@ function makeFakePi(): StubPi {
 		registerMessageRenderer: vi.fn(),
 		sendMessage: vi.fn(),
 		appendEntry: vi.fn(),
-		// No flags seeded — defaults apply. `--recap-model` and `--recap-disable`
-		// read as undefined, so the manual path uses ctx.model and runs.
+		// No flags seeded — defaults apply. `--recap-model` reads as undefined,
+		// so the manual path uses ctx.model and runs.
 		getFlag: vi.fn(() => undefined),
 		commands,
 	};

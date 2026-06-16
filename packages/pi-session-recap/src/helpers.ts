@@ -76,18 +76,22 @@ export function extractToolCalls(content: unknown): string[] {
  * formatted. User/assistant text is truncated to 1200 chars per message,
  * tool results to 400 chars.
  */
-export function buildRecentTranscript(entries: Entry[], fromLastUser = true): string {
+export function buildRecentTranscript(entries: Entry[], fromLastUser = true, skipLastUserCount = 0): string {
 	let slice = entries;
 	if (fromLastUser) {
-		let lastUserIdx = -1;
+		let found = 0;
+		let targetIdx = -1;
 		for (let i = entries.length - 1; i >= 0; i--) {
 			const e = entries[i];
 			if (e && e.type === "message" && e.message?.role === "user") {
-				lastUserIdx = i;
-				break;
+				if (found >= skipLastUserCount) {
+					targetIdx = i;
+					break;
+				}
+				found++;
 			}
 		}
-		if (lastUserIdx >= 0) slice = entries.slice(lastUserIdx);
+		if (targetIdx >= 0) slice = entries.slice(targetIdx);
 	}
 
 	const lines: string[] = [];
@@ -153,7 +157,7 @@ export function firstLine(text: string): string | undefined {
 // ---------------------------------------------------------------------------
 
 /** Flags listed in the `Disabled flags:` row when active. */
-export type DisabledFlag = "--recap-disable" | "--recap-disable-focus";
+export type DisabledFlag = "--recap-disable-focus";
 
 /**
  * Fully-resolved inputs for `buildStatusLine`. Keeping this struct of plain
@@ -182,7 +186,7 @@ export interface StatusLineOptions {
 	 * configured but fails to resolve.
 	 */
 	activeModelSpec: string;
-	/** `false` iff `--recap-disable` is set — auto-recap is wired up otherwise. */
+	/** `true` when `--recap-auto` is set — opt-in automatic recaps. */
 	autoRecapEnabled: boolean;
 	/** Whole seconds for the idle fallback after turn_end. */
 	idleSeconds: number;

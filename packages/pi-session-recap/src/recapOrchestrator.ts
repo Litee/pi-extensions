@@ -26,7 +26,7 @@ export type RecapReason = "idle" | "manual" | "resume" | "focus";
 type Model = Parameters<typeof completeSimpleFn>[0];
 
 export interface RecapOrchestratorConfig {
-	isDisabled: () => boolean;
+	isAutoEnabled: () => boolean;
 	/** Unused by the orchestrator itself; surfaced so the outer index.ts keeps a single config object. */
 	isFocusDisabled?: () => boolean;
 	idleMs: () => number;
@@ -257,8 +257,16 @@ export function createRecapOrchestrator(deps: RecapOrchestratorDeps): RecapOrche
 		if (entries === undefined) return;
 		if (!hasMeaningfulActivity(entries) && opts.reason !== "manual") return;
 
-		const transcript = buildRecentTranscript(entries, opts.reason !== "resume");
-		if (!transcript.trim()) return;
+		const fromLastUser = opts.reason !== "resume";
+		// For manual /recap, the last user message IS the "/recap" command itself.
+		// Skip it so we summarise the actual prior conversation.
+		const skipLastUser = opts.reason === "manual" ? 1 : 0;
+		const transcript = buildRecentTranscript(entries, fromLastUser, skipLastUser);
+		if (!transcript.trim()) {
+			if (opts.reason === "manual" && ctx.hasUI)
+				ctx.ui.notify("Nothing to recap yet — start a conversation first.", "info");
+			return;
+		}
 
 		// Snapshot the leaf we're summarising BEFORE we await.
 		const startLeaf = getLeafId();
@@ -270,8 +278,13 @@ export function createRecapOrchestrator(deps: RecapOrchestratorDeps): RecapOrche
 		activeReason = opts.reason;
 
 		const showStatus = opts.reason !== "resume" && opts.reason !== "focus";
-		if (showStatus && ctx.hasUI)
-			ctx.ui.setStatus(statusKey, ctx.ui.theme.fg("dim", "✦ drafting recap…"));
+		if (ctx.hasUI) {
+			const theme = ctx.ui.theme;
+			const header = theme.fg("accent", theme.bold("✦ recap"));
+			ctx.ui.setWidget(widgetKey, [header, theme.fg("dim", "generating…")], { placement: "aboveEditor" });
+			if (showStatus)
+				ctx.ui.setStatus(statusKey, theme.fg("dim", "✦ drafting recap…"));
+		}
 
 		deps.onTrigger?.();
 
@@ -282,8 +295,12 @@ export function createRecapOrchestrator(deps: RecapOrchestratorDeps): RecapOrche
 			// Accumulate token usage regardless of whether recap text is empty.
 			deps.onUsage?.(result.usage);
 
-			if (!result.text) return;
-			if (getLeafId() !== startLeaf) return;
+			if (!result.text) {
+				if (opts.reason === "manual" && ctx.hasUI)
+					ctx.ui.notify("Recap returned empty — the conversation may be too short.", "info");
+				return;
+			}
+			if (getLeafId() !== startLeaf && opts.reason !== "manual") return;
 			lastDraftedLeafId = startLeaf;
 			clearTimer();
 
@@ -307,7 +324,7 @@ export function createRecapOrchestrator(deps: RecapOrchestratorDeps): RecapOrche
 
 	const scheduleRecap = () => {
 		clearTimer();
-		if (deps.config.isDisabled() || !safeHasUI()) return;
+		if (!deps.config.isAutoEnabled() || !safeHasUI()) return;
 		idleTimer = setTimeout(() => {
 			idleTimer = undefined;
 			// The captured ctx may have been invalidated between scheduling
@@ -343,7 +360,7 @@ export function createRecapOrchestrator(deps: RecapOrchestratorDeps): RecapOrche
 			focusDraftAfterAgent = true;
 			return;
 		}
-		if (deps.config.isDisabled() || activeController) return;
+		if (!deps.config.isAutoEnabled() || activeController) return;
 
 		const leaf = getLeafId();
 		if (lastDraftedLeafId && leaf === lastDraftedLeafId) return;
