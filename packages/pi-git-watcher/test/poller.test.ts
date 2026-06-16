@@ -39,11 +39,10 @@ function makeWatch(targets: TargetCondition[], baseline?: GitBaseline): GitWatch
 
 describe("snapshotRepo", () => {
   it("calls resolveBranch with watch.branch (not HEAD)", async () => {
-    const client = makeClient();
+    const resolveBranchMock = vi.fn().mockResolvedValue(SHA1);
+    const client = makeClient({ resolveBranch: resolveBranchMock });
     const watch = makeWatch(["new_commit"]);
     await snapshotRepo(client, watch);
-    // eslint-disable-next-line @typescript-eslint/unbound-method
-    const resolveBranchMock = client.resolveBranch as ReturnType<typeof vi.fn>;
     expect(resolveBranchMock).toHaveBeenCalledWith("/repo/myproject", "main");
   });
 
