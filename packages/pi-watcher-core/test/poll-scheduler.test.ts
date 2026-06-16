@@ -288,3 +288,62 @@ describe("PollScheduler.noteBackoff — throttle / auth failure", () => {
 		expect(s.timer).toBeNull();
 	});
 });
+
+// ---------------------------------------------------------------------------
+// Branch-coverage additions
+// ---------------------------------------------------------------------------
+
+describe("PollScheduler.forceInterval", () => {
+	it("sets intervalMs directly without touching idleMs or restarting timer", () => {
+		const s = makeScheduler();
+		s.forceInterval(9_999);
+		expect(s.intervalMs).toBe(9_999);
+		expect(s.idleIntervalMs).toBe(BASE); // idle base unchanged
+		expect(s.isRunning).toBe(false);
+	});
+
+	it("allows presetting interval near maxMs so noteBackoff caps in one step", () => {
+		const s = makeScheduler();
+		s.forceInterval(MAX / 2); // preset to half-max
+		s.noteBackoff();           // doubles to MAX
+		expect(s.intervalMs).toBe(MAX);
+	});
+});
+
+describe("PollScheduler — stop during tick prevents rescheduling", () => {
+	beforeEach(() => { vi.useFakeTimers(); });
+	afterEach(() => { vi.useRealTimers(); });
+
+	it("when stop() is called inside a tick, the loop does not reschedule (timer=null in finally)", async () => {
+		// Covers the false branch of `if (this._timer !== null)` in the finally block:
+		// stop() sets _timer = null during the tick so finally skips rescheduling.
+		const s = makeScheduler();
+		const tick = vi.fn().mockImplementation(async () => {
+			s.stop(); // sets _timer = null mid-tick
+		});
+		s.start(tick);
+		await vi.advanceTimersByTimeAsync(BASE);
+		expect(tick).toHaveBeenCalledTimes(1);
+		expect(s.isRunning).toBe(false);
+		// Confirm no further ticks
+		await vi.advanceTimersByTimeAsync(BASE * 5);
+		expect(tick).toHaveBeenCalledTimes(1);
+	});
+});
+
+describe("PollScheduler — inFlight guard prevents re-entrant loop execution", () => {
+	beforeEach(() => { vi.useFakeTimers(); });
+	afterEach(() => { vi.useRealTimers(); });
+
+	it("loop body returns early when _inFlight is already true (covers guard true branch)", async () => {
+		// Covers the `if (this._inFlight) return;` true branch.
+		// Manually set _inFlight=true before the timer fires so loop() returns early
+		// without calling tick.
+		const s = makeScheduler();
+		const tick = vi.fn().mockResolvedValue(undefined);
+		s.start(tick);
+		(s as unknown as { _inFlight: boolean })._inFlight = true;
+		await vi.advanceTimersByTimeAsync(BASE);
+		expect(tick).not.toHaveBeenCalled();
+	});
+});

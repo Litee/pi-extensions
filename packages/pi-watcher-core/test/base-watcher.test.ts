@@ -2371,3 +2371,195 @@ describe('config methods', () => {
     })
   })
 })
+
+// ---------------------------------------------------------------------------
+// Branch-coverage additions
+// ---------------------------------------------------------------------------
+
+describe('_rehydrateState — getEntries throws (catch { return } branch)', () => {
+  it('handles getEntries() throwing without surfacing the error', async () => {
+    const { watcher } = makeWatcher()
+    const ctx = {
+      hasUI: false,
+      sessionManager: {
+        getEntries: () => { throw new Error('simulated storage error') },
+      },
+    }
+    // Should resolve without throwing — the catch block simply returns
+    await expect(watcher.onSessionStart(ctx)).resolves.toBeUndefined()
+    expect(watcher.testWatches.size).toBe(0)
+  })
+})
+
+describe('_rehydrateState — null/invalid entry data (line 1298 branch)', () => {
+  it('skips entries where entry.data is null', async () => {
+    const { watcher } = makeWatcher()
+    const ctx = makeCtx([
+      {
+        type: 'custom',
+        customType: 'stub-watcher:state',
+        data: null,
+      },
+    ])
+    await watcher.onSessionStart(ctx)
+    expect(watcher.testWatches.size).toBe(0)
+  })
+
+  it('skips entries where entry.data is a non-object primitive (e.g. number)', async () => {
+    const { watcher } = makeWatcher()
+    const ctx = makeCtx([
+      {
+        type: 'custom',
+        customType: 'stub-watcher:state',
+        data: 42,
+      },
+    ])
+    await watcher.onSessionStart(ctx)
+    expect(watcher.testWatches.size).toBe(0)
+  })
+
+  it('skips entries where entry.data is an array', async () => {
+    const { watcher } = makeWatcher()
+    const ctx = makeCtx([
+      {
+        type: 'custom',
+        customType: 'stub-watcher:state',
+        data: ['not', 'an', 'object'],
+      },
+    ])
+    await watcher.onSessionStart(ctx)
+    expect(watcher.testWatches.size).toBe(0)
+  })
+})
+
+describe('_makeCommandCtx — confirm Cancel button run callback (line 1277)', () => {
+  it('Cancel item run() resolves with close, keeping confirmed=false', async () => {
+    // The Cancel button's run callback `() => Promise.resolve('close')` (line 1277)
+    // is only called when openMenuView invokes it. We mock openMenuView to call it.
+    const stub = makeStub({ itemSource: 'user-tool' })
+    stub.testWatches.set('a', makeWatch({ id: 'a', terminal: true }))
+
+    const ctxForCmd = {
+      hasUI: true,
+      ui: {
+        hasUI: true,
+        notify: vi.fn(),
+        setStatus: vi.fn(),
+        theme: { fg: (_: string, t: string) => t },
+        custom: vi.fn(),
+      },
+      sessionManager: { getEntries: () => [] },
+    }
+    const surface = { setStatus: vi.fn(), notify: vi.fn() } as never
+    const state = stub._currentState()
+    const cmdCtx = (stub as unknown as {
+      _makeCommandCtx(s: unknown, st: unknown, c: unknown): CommandCtx
+    })._makeCommandCtx(surface, state, ctxForCmd)
+
+    // Mock openMenuView to directly call the Cancel item's run()
+    const openMenuViewMock = vi.mocked(browseViewModule.openMenuView)
+    openMenuViewMock.mockImplementationOnce(async (_title, getItems) => {
+      const items = getItems()
+      const cancelItem = items.find((i) => i.id === 'no')
+      await cancelItem?.run()
+    })
+
+    const result = await cmdCtx.confirm('Are you sure?')
+    // Cancel was selected → confirmed stays false
+    expect(result).toBe(false)
+  })
+})
+
+describe('_rehydrateState — entry with type=custom but wrong customType (line 1298)', () => {
+  it('skips entries where type=custom but customType does not match stateCustomType', async () => {
+    // Covers the true branch of `entry.customType !== this.stateCustomType`
+    // by providing an entry with type='custom' but a different customType.
+    const { watcher } = makeWatcher()
+    const ctx = makeCtx([
+      {
+        type: 'custom',
+        customType: 'other-extension:state',  // does NOT match 'stub-watcher:state'
+        data: {
+          savedAt: Date.now(),
+          enabled: true,
+          displayMode: 'widget',
+          watches: [{ id: 'x', label: 'X', terminal: false, consecutiveErrors: 0 }],
+          baselines: {},
+        },
+      },
+    ])
+    await watcher.onSessionStart(ctx)
+    // Nothing should be rehydrated — wrong customType was skipped
+    expect(watcher.testWatches.size).toBe(0)
+  })
+})
+
+describe('_makeCommandCtx — confirm YES button run callback (lines 1269-1274)', () => {
+  it('Yes item run() sets confirmed=true and returns close', async () => {
+    // The yes run callback `() => { confirmed = true; return Promise.resolve('close') }`
+    // (lines 1269-1274) is covered when openMenuView invokes it.
+    const stub = makeStub({ itemSource: 'user-tool' })
+    stub.testWatches.set('a', makeWatch({ id: 'a', terminal: true }))
+
+    const ctxForCmd = {
+      hasUI: true,
+      ui: {
+        hasUI: true,
+        notify: vi.fn(),
+        setStatus: vi.fn(),
+        theme: { fg: (_: string, t: string) => t },
+        custom: vi.fn(),
+      },
+      sessionManager: { getEntries: () => [] },
+    }
+    const surface = { setStatus: vi.fn(), notify: vi.fn() } as never
+    const state = stub._currentState()
+    const cmdCtx = (stub as unknown as {
+      _makeCommandCtx(s: unknown, st: unknown, c: unknown): CommandCtx
+    })._makeCommandCtx(surface, state, ctxForCmd)
+
+    // Mock openMenuView to call the Yes item's run()
+    const openMenuViewMock = vi.mocked(browseViewModule.openMenuView)
+    openMenuViewMock.mockImplementationOnce(async (_title, getItems) => {
+      const items = getItems()
+      const yesItem = items.find((i) => i.id === 'yes')
+      await yesItem?.run()
+    })
+
+    const result = await cmdCtx.confirm('Are you sure?')
+    // Yes was selected → confirmed = true
+    expect(result).toBe(true)
+  })
+
+  it('confirmLabel is used as Yes button label when provided (covers ?? fallback)', async () => {
+    const stub = makeStub({ itemSource: 'user-tool' })
+    const ctxForCmd = {
+      hasUI: true,
+      ui: {
+        hasUI: true,
+        notify: vi.fn(),
+        setStatus: vi.fn(),
+        theme: { fg: (_: string, t: string) => t },
+        custom: vi.fn(),
+      },
+      sessionManager: { getEntries: () => [] },
+    }
+    const surface = { setStatus: vi.fn(), notify: vi.fn() } as never
+    const state = stub._currentState()
+    const cmdCtx = (stub as unknown as {
+      _makeCommandCtx(s: unknown, st: unknown, c: unknown): CommandCtx
+    })._makeCommandCtx(surface, state, ctxForCmd)
+
+    let capturedLabel = ''
+    const openMenuViewMock = vi.mocked(browseViewModule.openMenuView)
+    openMenuViewMock.mockImplementationOnce(async (_title, getItems) => {
+      const items = getItems()
+      const yesItem = items.find((i) => i.id === 'yes')
+      capturedLabel = yesItem?.label(stub._currentState()) ?? ''
+    })
+
+    await cmdCtx.confirm('Message', 'Delete Now')
+    // Custom confirmLabel is used instead of default 'Confirm'
+    expect(capturedLabel).toBe('Delete Now')
+  })
+})

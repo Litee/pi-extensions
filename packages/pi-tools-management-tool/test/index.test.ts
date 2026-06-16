@@ -1101,3 +1101,315 @@ describe("renderResult — prompt-diff markers in TUI (#0002)", () => {
 		expect(out).not.toContain("[x]");
 	});
 });
+
+// ===========================================================================
+// Additional branch coverage
+// ===========================================================================
+
+describe("lastAssistantStopReason — return undefined path (line 225)", () => {
+	it("auto-continue fires when agent_end has no messages (stopReason→undefined)", async () => {
+		// Covers the `return undefined` at the end of lastAssistantStopReason.
+		// With no messages, the for-loop never executes → returns undefined.
+		// In agent_end: `stopReason !== undefined` is false → don't bail → refresh fires.
+		const pi = makeFakePi({ all: [...BASE_TOOLS], active: ["read"] });
+		createExtension(pi.api);
+		await pi.fireSessionStart();
+		await exec(pi.tool, { action: "list" });
+		await pi.fireAgentEnd([]);
+		vi.runAllTimers();
+		expect(pi.sendMessage).toHaveBeenCalledTimes(1);
+		const { msg } = firstSendMessageCall(pi);
+		expect(msg.content).toMatch(/Continue\./);
+	});
+
+	it("auto-continue fires when all messages are non-assistant role (m.role !== 'assistant')", async () => {
+		// Covers the `m.role !== "assistant"` branch in lastAssistantStopReason
+		// (loop skips non-assistant messages and falls through to `return undefined`).
+		const pi = makeFakePi({ all: [...BASE_TOOLS], active: ["read"] });
+		createExtension(pi.api);
+		await pi.fireSessionStart();
+		await exec(pi.tool, { action: "list" });
+		const userMsg = { role: "user", content: [] } as unknown as AgentMessage;
+		await pi.fireAgentEnd([userMsg]);
+		vi.runAllTimers();
+		expect(pi.sendMessage).toHaveBeenCalledTimes(1);
+	});
+
+	it("auto-continue fires when assistant message has no stopReason (typeof sr !== 'string')", async () => {
+		// Covers the `: undefined` branch of `typeof sr === "string" ? sr : undefined`.
+		// stopReason absent → sr is undefined → typeof check fails → returns undefined.
+		// In agent_end: stopReason === undefined → condition `stopReason !== undefined` is false
+		// → don't bail early → refresh fires.
+		const pi = makeFakePi({ all: [...BASE_TOOLS], active: ["read"] });
+		createExtension(pi.api);
+		await pi.fireSessionStart();
+		await exec(pi.tool, { action: "list" });
+		const msgNoStopReason: AgentMessage = {
+			role: "assistant",
+			content: [{ type: "toolCall", id: "x", name: "manage_tools", arguments: {} }],
+			// stopReason intentionally absent
+		} as unknown as AgentMessage;
+		await pi.fireAgentEnd([msgNoStopReason]);
+		vi.runAllTimers();
+		expect(pi.sendMessage).toHaveBeenCalledTimes(1);
+	});
+});
+
+describe("renderResult — ignoredProtected TUI warning (line 481)", () => {
+	it("shows Refused (protected) warning when a protected tool deactivation was attempted", async () => {
+		// Covers `if (d?.ignoredProtected?.length)` true branch in renderResult.
+		const pi = makeFakePi({ all: [...BASE_TOOLS], active: ["read", "bash"] });
+		createExtension(pi.api);
+		await pi.fireSessionStart();
+		const res = await exec(pi.tool, { action: "deactivate", tools: ["manage_tools"] });
+		const out = renderText(pi.tool, res, { expanded: true });
+		expect(out).toMatch(/Refused \(protected\)/);
+		expect(out).toContain("manage_tools");
+	});
+});
+
+describe("execute deactivate — ignoredUnknown in LLM text (line 556)", () => {
+	it("reports ignored unknown tool names in LLM text for deactivate action", async () => {
+		// Covers `if (result.ignoredUnknown.length > 0)` true branch in the `deactivate` switch case.
+		// The activate case already has a test for ignoredUnknown; this covers the deactivate case.
+		const pi = makeFakePi({ all: [...BASE_TOOLS], active: ["read", "bash", "edit"] });
+		createExtension(pi.api);
+		await pi.fireSessionStart();
+		const res = await exec(pi.tool, { action: "deactivate", tools: ["edit", "phantom_tool"] });
+		const txt = textOf(res);
+		expect(txt).toMatch(/phantom_tool/);
+		expect(txt).toMatch(/Ignored unknown/i);
+		expect(pi.active.has("edit")).toBe(false); // edit was properly deactivated
+		expect(pi.active.has("bash")).toBe(true); // bash untouched
+	});
+});
+
+describe("renderResult — isPartial and missing-details branches", () => {
+	it("isPartial: true renders ellipsis placeholder without executing the full render", async () => {
+		// Covers `if (isPartial) return new Text(...)` true branch.
+		const pi = makeFakePi({ all: [...BASE_TOOLS], active: ["read"] });
+		createExtension(pi.api);
+		await pi.fireSessionStart();
+		const res = await exec(pi.tool, { action: "list" });
+		const out = renderText(pi.tool, res, { expanded: false, isPartial: true });
+		expect(out).toContain("...");
+	});
+
+	it("details=undefined (collapsed): shows 0/0 with ctrl+o hint and does not crash", () => {
+		// Covers d?.active.length ?? 0, d?.total ?? 0, d?.changed?.activated ?? [],
+		// d?.changed?.deactivated ?? [], d?.action === undefined (shouldCollapse true path).
+		const pi = makeFakePi({ all: [...BASE_TOOLS], active: ["read"] });
+		createExtension(pi.api);
+		const out = renderText(pi.tool, {}, { expanded: false });
+		// action is undefined → back-compat list path → large list → shouldCollapse=true
+		expect(out).toContain("ctrl+o");
+		expect(out).toContain("0"); // 0 active / 0 total
+	});
+
+	it("details=undefined (expanded): enters back-compat list path with empty rows", () => {
+		// Covers d?.rows ?? [] fallback and d?.action === undefined in else-if.
+		// Also covers d?.ignoredUnknown?.length and d?.ignoredProtected?.length false branches
+		// when d is undefined (both are falsy → no warning appended).
+		const pi = makeFakePi({ all: [...BASE_TOOLS], active: ["read"] });
+		createExtension(pi.api);
+		const out = renderText(pi.tool, {}, { expanded: true });
+		// Empty rows → no tool lines. The header line with 0/0 should still render.
+		expect(out).toBeTruthy();
+		expect(out).toContain("0");
+		// No warnings appended (d is undefined → both ignoredUnknown and ignoredProtected are falsy)
+		expect(out).not.toContain("Ignored unknown");
+		expect(out).not.toContain("Refused");
+	});
+
+	it("getSystemPromptOptions().selectedTools=undefined falls back to [] via ?? []", async () => {
+		// Covers the `selectedTools ?? []` branch in execute() when selectedTools is undefined.
+		const pi = makeFakePi({ all: [...BASE_TOOLS], active: ["read"] });
+		createExtension(pi.api);
+		await pi.fireSessionStart();
+		const ctx = makeCtx();
+		// Override to return undefined selectedTools
+		(ctx as unknown as Record<string, unknown>).getSystemPromptOptions =
+			vi.fn(() => ({ selectedTools: undefined }));
+		const res = await exec(pi.tool, { action: "list" }, ctx);
+		const txt = textOf(res);
+		expect(txt).toBeTruthy();
+		// With no selectedTools, all active tools show as [~] (active but not in prompt)
+		expect(txt).toContain("[~] read");
+	});
+});
+
+// ===========================================================================
+// Additional branch coverage — lines 167, 180, 225, 254, 467, 481, 556
+// ===========================================================================
+
+describe("lastAssistantStopReason — return undefined path (line 225)", () => {
+	it("auto-continue fires when agent_end has no messages (stopReason→undefined)", async () => {
+		// Covers the `return undefined` at the end of lastAssistantStopReason.
+		// Empty messages → for-loop never executes → returns undefined.
+		// In agent_end: `stopReason !== undefined` is false → don't bail → refresh fires.
+		const pi = makeFakePi({ all: [...BASE_TOOLS], active: ["read"] });
+		createExtension(pi.api);
+		await pi.fireSessionStart();
+		await exec(pi.tool, { action: "list" });
+		await pi.fireAgentEnd([]);
+		vi.runAllTimers();
+		expect(pi.sendMessage).toHaveBeenCalledTimes(1);
+		const { msg } = firstSendMessageCall(pi);
+		expect(msg.content).toMatch(/Continue\./);
+	});
+
+	it("auto-continue fires when all messages are non-assistant role (m.role !== 'assistant')", async () => {
+		// Covers the `m.role !== "assistant"` false branch in lastAssistantStopReason
+		// first loop — loop skips the user message and falls through to `return undefined`.
+		const pi = makeFakePi({ all: [...BASE_TOOLS], active: ["read"] });
+		createExtension(pi.api);
+		await pi.fireSessionStart();
+		await exec(pi.tool, { action: "list" });
+		const userMsg = { role: "user", content: [] } as unknown as AgentMessage;
+		await pi.fireAgentEnd([userMsg]);
+		vi.runAllTimers();
+		expect(pi.sendMessage).toHaveBeenCalledTimes(1);
+	});
+
+	it("auto-continue fires when assistant message has no stopReason (typeof sr !== 'string')", async () => {
+		// Covers the `: undefined` branch of `typeof sr === "string" ? sr : undefined`.
+		// stopReason absent → sr is undefined → typeof check fails → returns undefined.
+		// In agent_end: stopReason === undefined → `stopReason !== undefined` is false
+		// → don't bail early → refresh fires.
+		const pi = makeFakePi({ all: [...BASE_TOOLS], active: ["read"] });
+		createExtension(pi.api);
+		await pi.fireSessionStart();
+		await exec(pi.tool, { action: "list" });
+		const msgNoStopReason: AgentMessage = {
+			role: "assistant",
+			content: [{ type: "toolCall", id: "x", name: "manage_tools", arguments: {} }],
+			// stopReason intentionally absent
+		} as unknown as AgentMessage;
+		await pi.fireAgentEnd([msgNoStopReason]);
+		vi.runAllTimers();
+		expect(pi.sendMessage).toHaveBeenCalledTimes(1);
+	});
+});
+
+describe("renderResult — ignoredProtected TUI warning (line 481)", () => {
+	it("shows Refused (protected) warning when a protected tool deactivation was attempted", async () => {
+		// Covers `if (d?.ignoredProtected?.length)` true branch in renderResult.
+		const pi = makeFakePi({ all: [...BASE_TOOLS], active: ["read", "bash"] });
+		createExtension(pi.api);
+		await pi.fireSessionStart();
+		const res = await exec(pi.tool, { action: "deactivate", tools: ["manage_tools"] });
+		const out = renderText(pi.tool, res, { expanded: true });
+		expect(out).toMatch(/Refused \(protected\)/);
+		expect(out).toContain("manage_tools");
+	});
+});
+
+describe("execute deactivate — ignoredUnknown in LLM text (line 556)", () => {
+	it("reports ignored unknown tool names in LLM text for deactivate action", async () => {
+		// Covers `if (result.ignoredUnknown.length > 0)` true branch in the `deactivate` case.
+		// The activate case already has a test for ignoredUnknown; this covers the deactivate case.
+		const pi = makeFakePi({ all: [...BASE_TOOLS], active: ["read", "bash", "edit"] });
+		createExtension(pi.api);
+		await pi.fireSessionStart();
+		const res = await exec(pi.tool, { action: "deactivate", tools: ["edit", "phantom_tool"] });
+		const txt = textOf(res);
+		expect(txt).toMatch(/phantom_tool/);
+		expect(txt).toMatch(/Ignored unknown/i);
+		expect(pi.active.has("edit")).toBe(false);
+		expect(pi.active.has("bash")).toBe(true);
+	});
+});
+
+describe("renderResult — isPartial and missing-details branches", () => {
+	it("isPartial: true renders ellipsis placeholder without executing the full render", async () => {
+		// Covers `if (isPartial) return new Text(...)` true branch.
+		const pi = makeFakePi({ all: [...BASE_TOOLS], active: ["read"] });
+		createExtension(pi.api);
+		await pi.fireSessionStart();
+		const res = await exec(pi.tool, { action: "list" });
+		const out = renderText(pi.tool, res, { expanded: false, isPartial: true });
+		expect(out).toContain("...");
+	});
+
+	it("details=undefined (collapsed): shows 0/0 with ctrl+o hint and does not crash", () => {
+		// Covers d?.active.length ?? 0, d?.total ?? 0, d?.changed?.activated ?? [],
+		// d?.changed?.deactivated ?? [], d?.action === undefined (shouldCollapse true path).
+		const pi = makeFakePi({ all: [...BASE_TOOLS], active: ["read"] });
+		createExtension(pi.api);
+		const out = renderText(pi.tool, {}, { expanded: false });
+		// action is undefined → back-compat list path → large list → shouldCollapse=true
+		expect(out).toContain("ctrl+o");
+		expect(out).toContain("0");
+	});
+
+	it("details=undefined (expanded): enters back-compat list path with empty rows", () => {
+		// Covers d?.rows ?? [] fallback and d?.action === undefined in else-if.
+		// Also covers d?.ignoredUnknown?.length and d?.ignoredProtected?.length false branches
+		// when d is undefined.
+		const pi = makeFakePi({ all: [...BASE_TOOLS], active: ["read"] });
+		createExtension(pi.api);
+		const out = renderText(pi.tool, {}, { expanded: true });
+		expect(out).toBeTruthy();
+		expect(out).toContain("0");
+		expect(out).not.toContain("Ignored unknown");
+		expect(out).not.toContain("Refused");
+	});
+
+	it("getSystemPromptOptions().selectedTools=undefined falls back to [] via ?? []", async () => {
+		// Covers the `selectedTools ?? []` branch in execute() when selectedTools is undefined.
+		const pi = makeFakePi({ all: [...BASE_TOOLS], active: ["read"] });
+		createExtension(pi.api);
+		await pi.fireSessionStart();
+		const ctx = makeCtx();
+		(ctx as unknown as Record<string, unknown>).getSystemPromptOptions =
+			vi.fn(() => ({ selectedTools: undefined }));
+		const res = await exec(pi.tool, { action: "list" }, ctx);
+		const txt = textOf(res);
+		expect(txt).toBeTruthy();
+		expect(txt).toContain("[~] read");
+	});
+});
+
+describe("buildListing / renderListing / renderResult — empty description (lines 167, 180, 467)", () => {
+	it("tool with non-string description: buildListing falls back to '' (line 167), renderListing skips separator (line 180), renderResult skips separator (line 467)", async () => {
+		// Use description: undefined to force the typeof !== 'string' branch (line 167).
+		// buildListing stores "", renderListing r.description falsy → "" (line 180),
+		// renderResult row.description falsy → "" (line 467).
+		const noDescTool = { name: "nodesc", description: undefined } as unknown as ToolInfo;
+		const pi = makeFakePi({ all: [...BASE_TOOLS, noDescTool], active: ["read", "nodesc"] });
+		createExtension(pi.api);
+		await pi.fireSessionStart();
+		const res = await exec(pi.tool, { action: "list" });
+		// LLM text (renderListing): "nodesc" should appear without a " — " separator.
+		const txt = textOf(res);
+		expect(txt).toContain("nodesc");
+		const nodescLlmLine = txt.split("\n").find((l) => /\bnodesc\b/.test(l) && !l.includes("manage"));
+		expect(nodescLlmLine).toBeDefined();
+		expect(nodescLlmLine).not.toContain("—");
+		// TUI output (renderResult, list expanded): same tool row without separator.
+		const out = renderText(pi.tool, res, { expanded: true });
+		expect(out).toContain("nodesc");
+		const nodescTuiLine = out.split("\n").find((l) => /\bnodesc\b/.test(l) && !l.includes("manage"));
+		expect(nodescTuiLine).toBeDefined();
+		expect(nodescTuiLine).not.toContain("—");
+	});
+});
+
+describe("calledAnyAfterLastActivation — non-assistant message in second loop (line 254)", () => {
+	it("skips non-assistant messages after the last manage_tools call and still fires refresh", async () => {
+		// Covers `if (!m || m.role !== 'assistant') continue` in the SECOND loop of
+		// calledAnyAfterLastActivation (i.e. after lastIdx has been found).
+		// A user message after the manage_tools call is skipped, no qualifying toolCall
+		// found → returns false → refresh fires advertising the newly-activated tool.
+		const pi = makeFakePi({ all: [...BASE_TOOLS], active: ["read"] });
+		createExtension(pi.api);
+		await pi.fireSessionStart();
+		await exec(pi.tool, { action: "activate", tools: ["edit"] });
+		const userMsg = { role: "user", content: [] } as unknown as AgentMessage;
+		await pi.fireAgentEnd([asstWithToolCall("manage_tools"), userMsg]);
+		vi.runAllTimers();
+		expect(pi.sendMessage).toHaveBeenCalledTimes(1);
+		const { msg } = firstSendMessageCall(pi);
+		expect(msg.content).toMatch(/edit/);
+	});
+});

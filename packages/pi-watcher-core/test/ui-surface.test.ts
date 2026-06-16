@@ -51,4 +51,9 @@ describe("extractUiSurface", () => {
 	it("returns null when ctx has no ui property and hasUI is falsy", () => {
 		expect(extractUiSurface({})).toBeNull();
 	});
+
+	it("returns null when ctx.hasUI is true but ctx.ui is undefined (any.ui ?? null fallback)", () => {
+		// hasUI=true at the top level but no .ui bundle → hasUI=true, any.ui=undefined → returns null
+		expect(extractUiSurface({ hasUI: true })).toBeNull();
+	});
 });

@@ -32,13 +32,17 @@ const { MockContainer, MockInput, MockSelectList, MockText, piTuiMatchesKey } = 
     invalidate() { this._children.forEach(c => { try { c.invalidate() } catch {} }) }
   }
 
+  const inputInstances: MockInput[] = []
   class MockInput {
     private _value = ''
+    constructor() { inputInstances.push(this) }
     handleInput(_d: string) {}
     getValue() { return this._value }
     setValue(v: string) { this._value = v }
     render(_w: number): string[] { return [] }
     invalidate() {}
+    static getInstances() { return inputInstances }
+    static reset() { inputInstances.length = 0 }
   }
 
   class MockSelectListType {
@@ -2073,5 +2077,267 @@ describe('renderDimmedRow', () => {
     ]
     const result = renderRowColumns(cols, 12, theme)
     expect(result).toContain('[dim]')
+  })
+})
+
+// ---------------------------------------------------------------------------
+// Branch-coverage additions
+// ---------------------------------------------------------------------------
+
+// ---------------------------------------------------------------------------
+// openMenuView — non-special keys forwarded to SelectList (lines 224-225)
+// ---------------------------------------------------------------------------
+
+describe('openMenuView — non-special key forwarded to SelectList.handleInput (lines 224-225)', () => {
+  beforeEach(() => { MockSelectList.reset() })
+
+  it('a non-escape/non-enter key calls sl.handleInput and requestRender', () => {
+    const requestRender = vi.fn()
+    let capturedComponent: ComponentLike | null = null
+    const items: MenuViewItem[] = [
+      { id: 'a', label: 'Item A', run: () => Promise.resolve('close' as const) },
+    ]
+    const customSpy = vi.fn().mockImplementation((factory: _FactoryFn) => {
+      capturedComponent = factory({ requestRender }, null, null, vi.fn())
+      return null
+    })
+    const ctx = {
+      ui: {
+        custom: customSpy,
+        theme: { fg: (_: string, t: string) => t, bold: (t: string) => t },
+      },
+    }
+    void openMenuView('Test', () => items, ctx)
+
+    const sl = MockSelectList.getInstances().at(-1)! as unknown as { handleInput: ReturnType<typeof vi.fn> }
+    sl.handleInput = vi.fn()
+
+    // Press a key that is not escape/q/enter/space → falls through to sl.handleInput + requestRender
+    capturedComponent!.handleInput('down')
+
+    expect(sl.handleInput).toHaveBeenCalledWith('down')
+    expect(requestRender).toHaveBeenCalled()
+  })
+
+  it('requestRender is called even when _tui.requestRender is provided', () => {
+    const requestRender = vi.fn()
+    let capturedComponent: ComponentLike | null = null
+    const items: MenuViewItem[] = [
+      { id: 'a', label: 'Item A', run: () => Promise.resolve('close' as const) },
+    ]
+    const customSpy = vi.fn().mockImplementation((factory: _FactoryFn) => {
+      capturedComponent = factory({ requestRender }, null, null, vi.fn())
+      return null
+    })
+    const ctx = {
+      ui: {
+        custom: customSpy,
+        theme: { fg: (_: string, t: string) => t, bold: (t: string) => t },
+      },
+    }
+    void openMenuView('Test', () => items, ctx)
+    capturedComponent!.handleInput('up')
+    expect(requestRender).toHaveBeenCalled()
+  })
+})
+
+// ---------------------------------------------------------------------------
+// _buildBrowseComponent header — filteredCount truthy branch (line 318)
+// ---------------------------------------------------------------------------
+
+describe('_buildBrowseComponent header — non-empty filter shows filtered count (line 318)', () => {
+  beforeEach(() => {
+    MockSelectList.reset()
+    MockInput.reset()
+  })
+
+  it('header render calls filterWatches when search input is non-empty', async () => {
+    const filterSpy = vi.fn((w: string, q: string) => w.includes(q))
+    const { ctx, getComponent } = makeBrowseCtx()
+
+    await openBrowseView(
+      makeSimpleBrowseOpts(['alpha', 'beta', 'gamma'], {
+        filter: filterSpy,
+        header: ({ filtered }) => `${filtered} matches`,
+      }),
+      ctx,
+    )
+
+    // Set a non-empty value on the search input so currentFilter is truthy
+    const inputs = MockInput.getInstances()
+    expect(inputs.length).toBeGreaterThan(0)
+    inputs[0]!.setValue('alpha')
+
+    // Render now: currentFilter is 'alpha' → true branch fires filterWatches
+    const rendered = getComponent()!.render(80).join('\n')
+    // filterWatches('alpha') matches only 'alpha' → filtered=1
+    expect(rendered).toContain('1 matches')
+  })
+
+  it('header render uses sortedWatches.length when filter is empty', async () => {
+    const { ctx, getComponent } = makeBrowseCtx()
+
+    await openBrowseView(
+      makeSimpleBrowseOpts(['alpha', 'beta'], {
+        header: ({ filtered }) => `${filtered} total`,
+      }),
+      ctx,
+    )
+    // No filter set — currentFilter='', false branch: filteredCount = sortedWatches.length = 2
+    const rendered = getComponent()!.render(80).join('\n')
+    expect(rendered).toContain('2 total')
+  })
+})
+
+// ---------------------------------------------------------------------------
+// _buildBrowseComponent header — non-empty hdr string (line 322)
+// ---------------------------------------------------------------------------
+
+describe('_buildBrowseComponent header — non-empty hdr adds dim subtitle (line 322)', () => {
+  beforeEach(() => {
+    MockSelectList.reset()
+    MockInput.reset()
+  })
+
+  it('header line includes title + dim hdr when opts.header returns a non-empty string', async () => {
+    const theme = {
+      fg: (alias: string, t: string) => `[${alias}]${t}`,
+      bold: (t: string) => `**${t}**`,
+    }
+    let capturedComponent: ComponentLike | null = null
+    const ctx = {
+      ui: {
+        custom: (factory: (tui: unknown, theme: unknown, kb: unknown, done: (v: void) => void) => unknown): Promise<void> => {
+          capturedComponent = factory({ requestRender: vi.fn() }, theme, null, vi.fn()) as ComponentLike
+          return Promise.resolve()
+        },
+        theme,
+      },
+    }
+
+    await openBrowseView(
+      makeSimpleBrowseOpts(['w1'], {
+        header: () => '3 active',  // non-empty → truthy → hits line 322
+      }),
+      ctx,
+    )
+
+    const rendered = capturedComponent!.render(80).join('\n')
+    // line 322 renders: theme.bold(title) + ' ' + theme.fg('dim', hdr)
+    expect(rendered).toContain('[dim]3 active')
+    expect(rendered).toContain('**Test**')
+  })
+})
+
+// ---------------------------------------------------------------------------
+// _buildBrowseComponent confirm header — purge count render (line 312-313)
+// ---------------------------------------------------------------------------
+
+describe('purge confirm header render (lines 312-313)', () => {
+  beforeEach(() => { MockSelectList.reset() })
+
+  it('purge confirm header renders plural form for n > 1', () => {
+    // Two terminal watches → confirm state has count=2 → 'es' suffix
+    const component = buildTestComponentWithTerminal(['w1', 'w2'], vi.fn().mockReturnValue([]))
+    component.handleInput('\x10')  // ctrl+p → purge confirm state
+    const rendered = component.render(80).join('\n')
+    expect(rendered).toContain('Purge 2 completed watches?')
+  })
+
+  it('purge confirm header renders singular form for n = 1 (n===1 ? "" : "es" true branch)', () => {
+    // Exactly ONE terminal watch → ternary n===1 → '' → no 'es' suffix
+    const component = buildTestComponentWithTerminal(['w1'], vi.fn().mockReturnValue([]))
+    component.handleInput('\x10')  // ctrl+p → purge confirm state
+    const rendered = component.render(80).join('\n')
+    expect(rendered).toContain('Purge 1 completed watch?')
+    expect(rendered).not.toContain('watches')
+  })
+})
+
+// ---------------------------------------------------------------------------
+// openMenuView — render, invalidate and no-bold-theme paths (lines 205, 211-212)
+// ---------------------------------------------------------------------------
+
+describe('openMenuView — render and invalidate on the menu component', () => {
+  beforeEach(() => { MockSelectList.reset() })
+
+  it('component.render(w) returns lines from the container', () => {
+    let capturedComponent: ComponentLike | null = null
+    const items: MenuViewItem[] = [
+      { id: 'a', label: 'Item A', run: () => Promise.resolve('close' as const) },
+    ]
+    const customSpy = vi.fn().mockImplementation((factory: _FactoryFn) => {
+      capturedComponent = factory({ requestRender: vi.fn() }, null, null, vi.fn())
+      return null
+    })
+    const ctx = {
+      ui: {
+        custom: customSpy,
+        theme: { fg: (_: string, t: string) => t, bold: (t: string) => t },
+      },
+    }
+    void openMenuView('Test', () => items, ctx)
+    expect(capturedComponent).not.toBeNull()
+    // Calling render covers lines 211 (render arrow function body)
+    const lines = capturedComponent!.render(80)
+    expect(Array.isArray(lines)).toBe(true)
+  })
+
+  it('component.invalidate() does not throw (covers line 212)', () => {
+    let capturedComponent: ComponentLike | null = null
+    const items: MenuViewItem[] = [
+      { id: 'a', label: 'Item A', run: () => Promise.resolve('close' as const) },
+    ]
+    const customSpy = vi.fn().mockImplementation((factory: _FactoryFn) => {
+      capturedComponent = factory({ requestRender: vi.fn() }, null, null, vi.fn())
+      return null
+    })
+    const ctx = {
+      ui: {
+        custom: customSpy,
+        theme: { fg: (_: string, t: string) => t, bold: (t: string) => t },
+      },
+    }
+    void openMenuView('Test', () => items, ctx)
+    expect(() => capturedComponent!.invalidate()).not.toThrow()
+  })
+
+  it('uses plain Text(title) when ctx.ui.theme has no bold function (line 205)', () => {
+    // When theme.bold is absent, the else branch runs: container.addChild(new Text(title))
+    let capturedComponent: ComponentLike | null = null
+    const items: MenuViewItem[] = [
+      { id: 'a', label: 'Item A', run: () => Promise.resolve('close' as const) },
+    ]
+    const customSpy = vi.fn().mockImplementation((factory: _FactoryFn) => {
+      capturedComponent = factory({ requestRender: vi.fn() }, null, null, vi.fn())
+      return null
+    })
+    const ctx = {
+      ui: {
+        custom: customSpy,
+        // theme with no bold — will hit else branch (line 205)
+        theme: { fg: (_: string, t: string) => t } as { fg: (a: string, t: string) => string },
+      },
+    }
+    void openMenuView('Menu Without Bold', () => items, ctx)
+    const lines = capturedComponent!.render(80)
+    // Title text 'Menu Without Bold' should appear in the render output without bold wrapping
+    expect(lines.join('\n')).toContain('Menu Without Bold')
+  })
+
+  it('uses plain Text(title) when ctx.ui.theme is undefined (also covers line 205)', () => {
+    let capturedComponent: ComponentLike | null = null
+    const items: MenuViewItem[] = [
+      { id: 'a', label: 'Item A', run: () => Promise.resolve('close' as const) },
+    ]
+    const customSpy = vi.fn().mockImplementation((factory: _FactoryFn) => {
+      capturedComponent = factory({ requestRender: vi.fn() }, null, null, vi.fn())
+      return null
+    })
+    // ctx.ui.theme is absent → theme = undefined → theme?.bold is falsy → else branch
+    const ctx = { ui: { custom: customSpy } }
+    void openMenuView('No Theme Title', () => items, ctx)
+    const lines = capturedComponent!.render(80)
+    expect(lines.join('\n')).toContain('No Theme Title')
   })
 })
