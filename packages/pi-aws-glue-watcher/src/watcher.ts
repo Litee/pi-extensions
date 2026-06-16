@@ -341,7 +341,11 @@ export class GlueWatcher extends BaseWatcher<GlueWatch, WatchBaseline, GlueEvent
       typeof r['baseline'] === 'object' &&
       !Array.isArray(r['baseline'])
     ) {
-      w.baseline = r['baseline'] as WatchBaseline
+      // Route through normaliseBaseline so watch.baseline undergoes the same
+      // field-level validation as entries in this.baselines — keeps the two in
+      // sync and ensures numberOfWorkers / workerType survive the round-trip.
+      const nb = this.normaliseBaseline(r['baseline'])
+      if (nb !== null) w.baseline = nb
     }
     return w as GlueWatch
   }

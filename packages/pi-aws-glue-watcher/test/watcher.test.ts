@@ -7,7 +7,8 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import type { JobRunResponse, WorkflowRunResponse } from '../src/glue-client.js'
 import type { GlueClient } from '../src/glue-client.js'
 import { GlueWatcher, stateColor } from '../src/watcher.js'
-import type { GlueEvent, GlueWatch, JobBaseline, WatchBaseline, WorkflowBaseline } from '../src/types.js'
+import type { GlueEvent, GlueWatch, JobBaseline, WatchBaseline, WatchMap, WorkflowBaseline } from '../src/types.js'
+import { buildWidgetEntries } from '../src/ui/widgetRows.js'
 import { POLL_ERROR_THRESHOLD } from 'pi-watcher-core/base-watcher'
 
 // Capture the expandedTextOverride function passed to createWatcherMessageRenderer
@@ -1676,6 +1677,88 @@ describe('onSessionStart — crash-recovery', () => {
     expect(pi.getActiveTools).toHaveBeenCalled()
 
     watcher.stopPolling()
+    vi.useRealTimers()
+  })
+})
+
+// ---------------------------------------------------------------------------
+// Round-trip: numberOfWorkers + workerType survive poll → persist → normalise → widget entry
+// ---------------------------------------------------------------------------
+
+describe('round-trip: numberOfWorkers and workerType through persist → normalise → widget entry', () => {
+  it('preserves numberOfWorkers and workerType after poll + writeState + rehydration', async () => {
+    vi.useFakeTimers()
+
+    // Step 1 — poll: mock client that first returns RUNNING (no workers) for the seed,
+    // then returns SUCCEEDED + workers so the poll produces a state-change event and
+    // writeState() is called with the updated baseline.
+    const client = makeClient()
+    vi.mocked(client.getJobRun)
+      .mockResolvedValueOnce({ JobRun: { JobRunState: 'RUNNING', ErrorMessage: '' } })
+      .mockResolvedValue({
+        JobRun: {
+          JobRunState: 'SUCCEEDED',
+          ErrorMessage: '',
+          NumberOfWorkers: 10,
+          WorkerType: 'G.2X',
+          StartedOn: '2024-01-01T00:00:00Z',
+          CompletedOn: '2024-01-01T01:00:00Z',
+        },
+      })
+
+    const { watcher, pi } = makeWatcher(client)
+
+    // Add a job watch (seeds baseline as RUNNING with no workers)
+    const addResult = await watcher.executeTool({
+      action: 'add',
+      type: 'job',
+      name: 'my-etl',
+      runId: 'jr_abc123',
+      profile: 'my-profile',
+    })
+    const watchId = addResult.details['watchId'] as string
+
+    // Poll: RUNNING → SUCCEEDED triggers a state_changed event → writeState() is called
+    await watcher.pollWatch(watchId)
+
+    // Step 2 — persist: capture the most recent state entry written by writeState()
+    const appendCalls = (pi.appendEntry as ReturnType<typeof vi.fn>).mock.calls
+    const stateCall = [...appendCalls]
+      .reverse()
+      .find(([type]: [string]) => type === 'pi-aws-glue-watcher:state')
+    expect(stateCall).toBeDefined()
+    // Simulate JSON serialisation round-trip (as the pi runtime would do)
+    const persistedData = JSON.parse(JSON.stringify(stateCall![1])) as Record<string, unknown>
+
+    // Step 3 — normalise: rehydrate a fresh watcher from the persisted state
+    const { watcher: watcher2 } = makeWatcher(client)
+    await watcher2.onSessionStart({
+      sessionManager: {
+        getEntries: () => [
+          {
+            type: 'custom',
+            customType: 'pi-aws-glue-watcher:state',
+            data: persistedData,
+          },
+        ],
+      },
+      ui: { notify: vi.fn() },
+    })
+
+    // Step 4 — widget entry: buildWidgetEntries must carry numberOfWorkers + workerType
+    const watches2 = (watcher2 as unknown as { watches: Map<string, GlueWatch> }).watches
+    const watchMap: WatchMap = {}
+    for (const [k, v] of watches2) watchMap[k] = v
+
+    const entries = buildWidgetEntries(watchMap)
+    const entry = entries.find((e) => e.displayName.includes('my-etl'))
+
+    expect(entry).toBeDefined()
+    expect(entry?.numberOfWorkers).toBe(10)
+    expect(entry?.workerType).toBe('G.2X')
+
+    watcher.stopPolling()
+    watcher2.stopPolling()
     vi.useRealTimers()
   })
 })
