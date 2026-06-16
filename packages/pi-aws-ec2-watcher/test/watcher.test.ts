@@ -955,7 +955,7 @@ describe('Ec2Watcher.browseOptions', () => {
     const purgeSpy = vi.spyOn(watcher as unknown as { executePurge(): [] }, 'executePurge').mockReturnValue([])
     const opts = (watcher as unknown as { browseOptions(): { onPurge?(): [] } }).browseOptions()
     // eslint-disable-next-line @typescript-eslint/unbound-method
-    expect(opts.onPurge).toBeDefined()
+    expect(opts).toHaveProperty('onPurge')
     opts.onPurge!()
     expect(purgeSpy).toHaveBeenCalled()
   })
