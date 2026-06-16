@@ -77,7 +77,7 @@ function makePi() {
       on: vi.fn().mockReturnValue(() => {}),
       emit: vi.fn(),
     },
-  } as unknown as ExtensionAPI
+  }
 }
 
 // ---------------------------------------------------------------------------
@@ -287,9 +287,9 @@ function makeCommandCtx(stub: StubWatcher, overrides: Partial<CommandCtx> = {}):
   }
 }
 
-function makeWatcher(piOverride?: ExtensionAPI) {
+function makeWatcher(piOverride?: ReturnType<typeof makePi>) {
   const pi = piOverride ?? makePi()
-  const watcher = new StubWatcher({ pi, now: () => 1_000_000 })
+  const watcher = new StubWatcher({ pi: pi as unknown as ExtensionAPI, now: () => 1_000_000 })
   return { watcher, pi }
 }
 
@@ -446,9 +446,8 @@ describe('pollOnce', () => {
     })
     watcher.testWatches.set('w1', { id: 'w1', label: 'L', terminal: false, consecutiveErrors: 0 })
     await watcher.pollOnce()
-    const mockPi = pi as unknown as { sendMessage: ReturnType<typeof vi.fn> }
-    expect(mockPi.sendMessage).toHaveBeenCalledOnce()
-    const [msg] = mockPi.sendMessage.mock.calls[0] as [{ content: string; display: boolean }]
+    expect(pi.sendMessage).toHaveBeenCalledOnce()
+    const [msg] = pi.sendMessage.mock.calls[0] as [{ content: string; display: boolean }]
     expect(msg.display).toBe(true)
     expect(msg.content).toContain('thing happened')
   })
@@ -462,8 +461,7 @@ describe('pollOnce', () => {
     })
     watcher.testWatches.set('w1', { id: 'w1', label: 'L', terminal: false, consecutiveErrors: 0 })
     await watcher.pollOnce()
-    const mockPi = pi as unknown as { sendMessage: ReturnType<typeof vi.fn> }
-    expect(mockPi.sendMessage).not.toHaveBeenCalled()
+    expect(pi.sendMessage).not.toHaveBeenCalled()
   })
 
   it('calls noteSchedulerSuccess after poll cycle', async () => {
@@ -511,7 +509,7 @@ describe('pollOnce', () => {
 describe('onTurnEnd', () => {
   it('activates when tool is in active set but enabled is false', () => {
     const pi = makePi()
-    ;(pi.getActiveTools as ReturnType<typeof vi.fn>).mockReturnValue(['stub_watcher'])
+    pi.getActiveTools.mockReturnValue(['stub_watcher'])
     const { watcher } = makeWatcher(pi)
     expect(watcher.testEnabled).toBe(false)
     watcher.onTurnEnd({})
@@ -520,7 +518,7 @@ describe('onTurnEnd', () => {
 
   it('deactivates when tool is not in active set but enabled is true', () => {
     const pi = makePi()
-    ;(pi.getActiveTools as ReturnType<typeof vi.fn>).mockReturnValue([])
+    pi.getActiveTools.mockReturnValue([])
     const { watcher } = makeWatcher(pi)
     ;(watcher as unknown as { enabled: boolean }).enabled = true
     watcher.onTurnEnd({})
@@ -529,9 +527,9 @@ describe('onTurnEnd', () => {
 
   it('is a noop when states already agree', () => {
     const pi = makePi()
-    ;(pi.getActiveTools as ReturnType<typeof vi.fn>).mockReturnValue([])
+    pi.getActiveTools.mockReturnValue([])
     const { watcher } = makeWatcher(pi)
-    const appendEntry = vi.mocked(pi.appendEntry)
+    const appendEntry = pi.appendEntry
     watcher.onTurnEnd({})
     // no state change means no writeState call
     expect(appendEntry).not.toHaveBeenCalled()
@@ -580,7 +578,7 @@ describe('refreshStatus', () => {
 describe('writeState', () => {
   it('calls pi.appendEntry with stateCustomType and correct shape', () => {
     const { watcher, pi } = makeWatcher()
-    const appendEntry = vi.mocked(pi.appendEntry)
+    const appendEntry = pi.appendEntry
     watcher.testWatches.set('w1', { id: 'w1', label: 'L', terminal: false, consecutiveErrors: 0 })
     watcher.writeState()
     expect(appendEntry).toHaveBeenCalledOnce()
@@ -596,7 +594,7 @@ describe('writeState', () => {
 
   it('swallows errors from appendEntry', () => {
     const { watcher, pi } = makeWatcher()
-    ;(pi.appendEntry as ReturnType<typeof vi.fn>).mockImplementation(() => {
+    pi.appendEntry.mockImplementation(() => {
       throw new Error('disk full')
     })
     expect(() => watcher.writeState()).not.toThrow()
@@ -674,7 +672,7 @@ describe('executeTool', () => {
     vi.useFakeTimers()
     const { watcher, pi } = makeWatcher()
     const addWatchSpy = vi.spyOn(watcher, 'addWatch')
-    const appendEntry = vi.mocked(pi.appendEntry)
+    const appendEntry = pi.appendEntry
     const result = await watcher.executeTool({ action: 'add', id: 'w1' })
     expect(addWatchSpy).toHaveBeenCalledOnce()
     expect(result.content[0]?.text).toBe('added')
@@ -822,7 +820,7 @@ describe('containsTerminalStateEvent', () => {
     watcher.testWatches.set('w1', { id: 'w1', label: 'L', terminal: false, consecutiveErrors: 0 })
     await watcher.pollWatch('w1')
     expect(watcher.testWatches.get('w1')?.terminal).toBe(true)
-    expect(vi.mocked(pi.sendMessage)).toHaveBeenCalledOnce()
+    expect(pi.sendMessage).toHaveBeenCalledOnce()
   })
 
   it('override returning false: does NOT mark watch terminal even when events are produced', async () => {
@@ -841,7 +839,7 @@ describe('containsTerminalStateEvent', () => {
     watcher.testWatches.set('w1', { id: 'w1', label: 'L', terminal: false, consecutiveErrors: 0 })
     await watcher.pollWatch('w1')
     expect(watcher.testWatches.get('w1')?.terminal).toBe(false)
-    expect(vi.mocked(pi.sendMessage)).toHaveBeenCalledOnce() // event message still fires
+    expect(pi.sendMessage).toHaveBeenCalledOnce() // event message still fires
   })
 })
 
@@ -973,9 +971,8 @@ describe('statusLabel', () => {
     const watch: StubWatch = { id: 'w1', label: 'L', terminal: false, consecutiveErrors: POLL_ERROR_THRESHOLD - 1 }
     watcher.testWatches.set('w1', watch)
     await watcher.pollWatch('w1')
-    const mockPi = pi as unknown as { sendMessage: ReturnType<typeof vi.fn> }
-    expect(mockPi.sendMessage).toHaveBeenCalledOnce()
-    const [msg] = mockPi.sendMessage.mock.calls[0] as [{ content: string }]
+    expect(pi.sendMessage).toHaveBeenCalledOnce()
+    const [msg] = pi.sendMessage.mock.calls[0] as [{ content: string }]
     expect(msg.content).toContain('stub:')
     expect(msg.content).not.toContain('stub-watcher:')
   })
@@ -991,9 +988,8 @@ describe('statusLabel', () => {
     watcher.testWatches.set('w1', watch)
     // detectChanges succeeds → clears errors → sends recovery message
     await watcher.pollWatch('w1')
-    const mockPi = pi as unknown as { sendMessage: ReturnType<typeof vi.fn> }
-    expect(mockPi.sendMessage).toHaveBeenCalledOnce()
-    const [msg] = mockPi.sendMessage.mock.calls[0] as [{ content: string }]
+    expect(pi.sendMessage).toHaveBeenCalledOnce()
+    const [msg] = pi.sendMessage.mock.calls[0] as [{ content: string }]
     expect(msg.content).toContain('stub:')
     expect(msg.content).not.toContain('stub-watcher:')
   })
@@ -1855,8 +1851,7 @@ describe('pollWatch — reactivation hint when disabled', () => {
 
     await watcher.pollWatch('w1')
 
-    const mockPi = pi as unknown as { sendMessage: ReturnType<typeof vi.fn> }
-    const calls = mockPi.sendMessage.mock.calls as Array<[{ content: string }]>
+    const calls = pi.sendMessage.mock.calls as Array<[{ content: string }]>
     const chatMessage = calls.find(([msg]) => msg.content.includes('state changed'))
     expect(chatMessage).toBeDefined()
     // Reactivation hint should be included since enabled=false and itemSource=user-tool
@@ -2019,11 +2014,11 @@ describe('onSessionStart — widget show and hide', () => {
 describe('onSessionStart — user-tool with enabled=true skips removeToolFromActive', () => {
   it('does not call removeToolFromActive when enabled=true', async () => {
     const pi = makePi()
-    ;(pi.getActiveTools as ReturnType<typeof vi.fn>).mockReturnValue(['stub_watcher'])
+    pi.getActiveTools.mockReturnValue(['stub_watcher'])
     const { watcher } = makeWatcher(pi)
     ;(watcher as unknown as { enabled: boolean }).enabled = true
     const ctx = makeCtxWithState({ enabled: true })
-    const setActiveSpy = vi.mocked(pi.setActiveTools)
+    const setActiveSpy = pi.setActiveTools
     setActiveSpy.mockClear()
     await watcher.onSessionStart(ctx)
     // setActiveTools should NOT be called (tool already active and enabled=true)
