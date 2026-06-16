@@ -1071,8 +1071,7 @@ describe('WatcherView.compressColumns', () => {
       renderEventRow: () => '',
       // no compressColumns
     }
-    // eslint-disable-next-line @typescript-eslint/unbound-method
-    expect(view.compressColumns).toBeUndefined()
+    expect(view).not.toHaveProperty('compressColumns')
   })
 })
 

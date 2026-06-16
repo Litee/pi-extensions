@@ -18,6 +18,7 @@
  *   - Ctrl-C anywhere:    close
  */
 
+import type { SelectItem } from '@earendil-works/pi-tui'
 import { matchesKey, Container, Input, SelectList, Text } from '@earendil-works/pi-tui'
 import { getSelectListTheme, DynamicBorder } from '@earendil-works/pi-coding-agent'
 import type { BrowseViewOptions, DetailField, MenuResult, RowColumn } from './base-watcher-types.js'
@@ -339,23 +340,27 @@ function _buildBrowseComponent<TWatch>(
   }))
   const selectList = new SelectList(slItems, Math.min(slItems.length + 2, 20), getSelectListTheme())
 
-  // Patch setFilter to use our domain-aware browseFilter predicate
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any, @typescript-eslint/no-unsafe-assignment
-  const slInternal = selectList as any
-  // eslint-disable-next-line @typescript-eslint/no-unsafe-member-access
+  // Patch setFilter to use our domain-aware browseFilter predicate.
+  // SelectListInternals reaches into private fields not exposed by the
+  // public SelectList API; setSelectedIndex(0) uses the public method.
+  interface SelectListInternals {
+    filteredItems: SelectItem[]
+    selectedIndex: number
+    allItems: SelectItem[]
+    setFilter(value: string): void
+    renderItem(item: SelectItem, isSelected: boolean, width: number): string
+  }
+  const slInternal = selectList as unknown as SelectListInternals
   slInternal.setFilter = (filter: string): void => {
     const filtered = filterWatches(sortedWatches, filter, (w, q) => opts.filter(w, q))
-    // eslint-disable-next-line @typescript-eslint/no-unsafe-member-access
     slInternal.filteredItems = filtered.map((w) => ({
       value: opts.view.renderItemRowText(w),
       label: computeRowLabel(w, opts.view, Math.max(1, lastWidth - SELECT_LIST_OVERHEAD), theme),
     }))
-    // eslint-disable-next-line @typescript-eslint/no-unsafe-member-access
-    slInternal.selectedIndex = 0
+    selectList.setSelectedIndex(0)
   }
 
   // Override per-item rendering for selection-aware colour handling
-  // eslint-disable-next-line @typescript-eslint/no-unsafe-member-access
   slInternal.renderItem = (
     item: { value: string; label: string },
     isSelected: boolean,
@@ -405,17 +410,13 @@ function _buildBrowseComponent<TWatch>(
   function rebuildFilteredItems(): void {
     const currentFilter = searchInput.getValue()
     const filtered = filterWatches(sortedWatches, currentFilter, (w, q) => opts.filter(w, q))
-    // eslint-disable-next-line @typescript-eslint/no-unsafe-member-access
     slInternal.filteredItems = filtered.map((w) => ({
       value: opts.view.renderItemRowText(w),
       label: computeRowLabel(w, opts.view, Math.max(1, lastWidth - SELECT_LIST_OVERHEAD), theme),
     }))
-    // eslint-disable-next-line @typescript-eslint/no-unsafe-member-access
-    const _currentIdx = (slInternal.selectedIndex as number) ?? 0
-    // eslint-disable-next-line @typescript-eslint/no-unsafe-member-access
-    const _itemCount = (slInternal.filteredItems as unknown[])?.length ?? 1
-    // eslint-disable-next-line @typescript-eslint/no-unsafe-member-access
-    slInternal.selectedIndex = Math.min(_currentIdx, Math.max(0, _itemCount - 1))
+    const _currentIdx = slInternal.selectedIndex
+    const _itemCount = slInternal.filteredItems.length
+    selectList.setSelectedIndex(Math.min(_currentIdx, Math.max(0, _itemCount - 1)))
   }
 
   // (footer moved into header child above)
@@ -457,13 +458,11 @@ function _buildBrowseComponent<TWatch>(
         lastWidth = w
         const currentFilter = searchInput.getValue()
         const filtered = filterWatches(sortedWatches, currentFilter, (w, q) => opts.filter(w, q))
-        // eslint-disable-next-line @typescript-eslint/no-unsafe-member-access
         slInternal.filteredItems = filtered.map((watch) => ({
           value: opts.view.renderItemRowText(watch),
           label: computeRowLabel(watch, opts.view, Math.max(1, w - SELECT_LIST_OVERHEAD), theme),
         }))
         // Also update allItems so resets after filter-clear work correctly
-        // eslint-disable-next-line @typescript-eslint/no-unsafe-member-access
         slInternal.allItems = sortedWatches.map((watch) => ({
           value: opts.view.renderItemRowText(watch),
           label: computeRowLabel(watch, opts.view, Math.max(1, w - SELECT_LIST_OVERHEAD), theme),
@@ -558,10 +557,8 @@ function _buildBrowseComponent<TWatch>(
       if (matchesKey(data, 'ctrl+x') && opts.rowActions !== undefined) {
         const removeAction = opts.rowActions.find((a) => a.id === 'remove')
         if (removeAction !== undefined) {
-          // eslint-disable-next-line @typescript-eslint/no-unsafe-member-access
-          const _filteredItems = slInternal.filteredItems as Array<{ value: string; label: string }> | undefined
-          // eslint-disable-next-line @typescript-eslint/no-unsafe-member-access
-          const _selectedIdx = (slInternal.selectedIndex as number) ?? 0
+          const _filteredItems = slInternal.filteredItems
+          const _selectedIdx = slInternal.selectedIndex
           const selectedValue = _filteredItems?.[_selectedIdx]?.value
           const watch = selectedValue !== undefined ? watchByValue.get(selectedValue) : undefined
           if (watch !== undefined) {

@@ -613,8 +613,7 @@ export abstract class BaseWatcher<
         description: this.toolDescription,
         parameters: this.toolParameters() ?? {},
         execute: async (_toolCallId: string, params: unknown) =>
-          // eslint-disable-next-line @typescript-eslint/no-unsafe-return, @typescript-eslint/no-explicit-any
-          this.executeTool(params as Record<string, unknown>) as unknown as Promise<any>,
+          this.executeTool(params as Record<string, unknown>),
       })
     }
 

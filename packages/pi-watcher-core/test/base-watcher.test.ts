@@ -531,8 +531,7 @@ describe('onTurnEnd', () => {
     const pi = makePi()
     ;(pi.getActiveTools as ReturnType<typeof vi.fn>).mockReturnValue([])
     const { watcher } = makeWatcher(pi)
-    // eslint-disable-next-line @typescript-eslint/unbound-method
-    const appendEntry = pi.appendEntry as ReturnType<typeof vi.fn>
+    const appendEntry = vi.mocked(pi.appendEntry)
     watcher.onTurnEnd({})
     // no state change means no writeState call
     expect(appendEntry).not.toHaveBeenCalled()
@@ -581,8 +580,7 @@ describe('refreshStatus', () => {
 describe('writeState', () => {
   it('calls pi.appendEntry with stateCustomType and correct shape', () => {
     const { watcher, pi } = makeWatcher()
-    // eslint-disable-next-line @typescript-eslint/unbound-method
-    const appendEntry = pi.appendEntry as ReturnType<typeof vi.fn>
+    const appendEntry = vi.mocked(pi.appendEntry)
     watcher.testWatches.set('w1', { id: 'w1', label: 'L', terminal: false, consecutiveErrors: 0 })
     watcher.writeState()
     expect(appendEntry).toHaveBeenCalledOnce()
@@ -676,8 +674,7 @@ describe('executeTool', () => {
     vi.useFakeTimers()
     const { watcher, pi } = makeWatcher()
     const addWatchSpy = vi.spyOn(watcher, 'addWatch')
-    // eslint-disable-next-line @typescript-eslint/unbound-method
-    const appendEntry = pi.appendEntry as ReturnType<typeof vi.fn>
+    const appendEntry = vi.mocked(pi.appendEntry)
     const result = await watcher.executeTool({ action: 'add', id: 'w1' })
     expect(addWatchSpy).toHaveBeenCalledOnce()
     expect(result.content[0]?.text).toBe('added')
@@ -825,8 +822,7 @@ describe('containsTerminalStateEvent', () => {
     watcher.testWatches.set('w1', { id: 'w1', label: 'L', terminal: false, consecutiveErrors: 0 })
     await watcher.pollWatch('w1')
     expect(watcher.testWatches.get('w1')?.terminal).toBe(true)
-    // eslint-disable-next-line @typescript-eslint/unbound-method
-    expect(pi.sendMessage).toHaveBeenCalledOnce()
+    expect(vi.mocked(pi.sendMessage)).toHaveBeenCalledOnce()
   })
 
   it('override returning false: does NOT mark watch terminal even when events are produced', async () => {
@@ -845,8 +841,7 @@ describe('containsTerminalStateEvent', () => {
     watcher.testWatches.set('w1', { id: 'w1', label: 'L', terminal: false, consecutiveErrors: 0 })
     await watcher.pollWatch('w1')
     expect(watcher.testWatches.get('w1')?.terminal).toBe(false)
-    // eslint-disable-next-line @typescript-eslint/unbound-method
-    expect(pi.sendMessage).toHaveBeenCalledOnce() // event message still fires
+    expect(vi.mocked(pi.sendMessage)).toHaveBeenCalledOnce() // event message still fires
   })
 })
 
@@ -1254,8 +1249,7 @@ describe('commandName', () => {
     watcher.register(pi)
     expect(registerCommandSpy).toHaveBeenCalledWith(
       'stub-watcher',
-      // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment
-      expect.objectContaining({ handler: expect.any(Function) }),
+      expect.objectContaining({ handler: expect.any(Function) as unknown }),
     )
   })
 
@@ -1269,8 +1263,7 @@ describe('commandName', () => {
     watcher.register(pi)
     expect(registerCommandSpy).toHaveBeenCalledWith(
       'my-command',
-      // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment
-      expect.objectContaining({ handler: expect.any(Function) }),
+      expect.objectContaining({ handler: expect.any(Function) as unknown }),
     )
     // Must NOT be called with extensionName when commandName overrides
     expect(registerCommandSpy).not.toHaveBeenCalledWith(
@@ -2030,8 +2023,7 @@ describe('onSessionStart — user-tool with enabled=true skips removeToolFromAct
     const { watcher } = makeWatcher(pi)
     ;(watcher as unknown as { enabled: boolean }).enabled = true
     const ctx = makeCtxWithState({ enabled: true })
-    // eslint-disable-next-line @typescript-eslint/unbound-method
-    const setActiveSpy = pi.setActiveTools as ReturnType<typeof vi.fn>
+    const setActiveSpy = vi.mocked(pi.setActiveTools)
     setActiveSpy.mockClear()
     await watcher.onSessionStart(ctx)
     // setActiveTools should NOT be called (tool already active and enabled=true)
