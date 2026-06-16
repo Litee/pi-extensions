@@ -318,8 +318,9 @@ describe("PollScheduler — stop during tick prevents rescheduling", () => {
 		// Covers the false branch of `if (this._timer !== null)` in the finally block:
 		// stop() sets _timer = null during the tick so finally skips rescheduling.
 		const s = makeScheduler();
-		const tick = vi.fn().mockImplementation(async () => {
+		const tick = vi.fn().mockImplementation(() => {
 			s.stop(); // sets _timer = null mid-tick
+			return Promise.resolve();
 		});
 		s.start(tick);
 		await vi.advanceTimersByTimeAsync(BASE);

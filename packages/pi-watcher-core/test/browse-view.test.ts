@@ -2316,7 +2316,7 @@ describe('openMenuView — render and invalidate on the menu component', () => {
       ui: {
         custom: customSpy,
         // theme with no bold — will hit else branch (line 205)
-        theme: { fg: (_: string, t: string) => t } as { fg: (a: string, t: string) => string },
+        theme: { fg: (_: string, t: string) => t },
       },
     }
     void openMenuView('Menu Without Bold', () => items, ctx)
@@ -2339,5 +2339,120 @@ describe('openMenuView — render and invalidate on the menu component', () => {
     void openMenuView('No Theme Title', () => items, ctx)
     const lines = capturedComponent!.render(80)
     expect(lines.join('\n')).toContain('No Theme Title')
+  })
+})
+
+// ---------------------------------------------------------------------------
+// openBrowseView — default theme fallback (lines 77-78)
+// ---------------------------------------------------------------------------
+
+describe('openBrowseView — default theme used when ctx.ui.theme is absent (lines 77-78)', () => {
+  beforeEach(() => {
+    MockSelectList.reset()
+    MockInput.reset()
+  })
+
+  it('renders without throwing when ctx.ui.theme is undefined (covers default fg/bold callbacks)', async () => {
+    // When anyCtx.ui?.theme is undefined, the default { fg: (_, t) => t, bold: (t) => t }
+    // is used. The fg/bold callbacks on lines 77-78 fire when the component renders.
+    let capturedComponent: ComponentLike | null = null
+    const ctx = {
+      ui: {
+        // No theme property — triggers the ?? default
+        custom: (factory: (tui: unknown, theme: unknown, kb: unknown, done: (v: void) => void) => unknown): Promise<void> => {
+          capturedComponent = factory({ requestRender: vi.fn() }, null, null, vi.fn()) as ComponentLike
+          return Promise.resolve()
+        },
+      },
+    }
+
+    await openBrowseView(
+      makeSimpleBrowseOpts(['item1', 'item2'], { header: () => '2 items' }),
+      ctx,
+    )
+
+    // Render triggers calls to theme.fg/bold — which are the default lambdas (lines 77-78)
+    expect(() => capturedComponent!.render(80)).not.toThrow()
+    const lines = capturedComponent!.render(80)
+    expect(Array.isArray(lines)).toBe(true)
+  })
+})
+
+// ---------------------------------------------------------------------------
+// openMenuView renderItem — non-disabled, non-selected path (line 193)
+// ---------------------------------------------------------------------------
+
+describe('openMenuView renderItem — non-disabled, non-selected item (line 193)', () => {
+  beforeEach(() => { MockSelectList.reset() })
+
+  it('non-selected non-disabled item returns indent + label (line 193)', () => {
+    const items: MenuViewItem[] = [
+      { id: 'a', label: 'Item A', run: () => Promise.resolve('close' as const) },
+    ]
+    let capturedSl: unknown = null
+    const customSpy = vi.fn().mockImplementation((factory: _FactoryFn) => {
+      factory({ requestRender: vi.fn() }, null, null, vi.fn())
+      capturedSl = MockSelectList.getInstances().at(-1)
+      return null
+    })
+    const ctx = {
+      ui: {
+        custom: customSpy,
+        theme: { fg: (_: string, t: string) => t, bold: (t: string) => t },
+      },
+    }
+    void openMenuView('Test', () => items, ctx)
+    type _SlLike = { renderItem?: (item: { value: string; label: string }, isSelected: boolean, width: number) => string }
+    const sl = capturedSl as _SlLike
+    if (!sl?.renderItem) return
+    // non-disabled, non-selected → line 193: return '  ' + label.slice(0, contentWidth)
+    const result = sl.renderItem({ value: 'a', label: 'Item A' }, false, 40)
+    expect(result).toBe('  Item A')
+  })
+
+  it('selected non-disabled item returns arrow + accent label (covers ?? fallback on line 196)', () => {
+    // When theme is absent, `theme?.fg('accent', '→') ?? '→'` uses the ?? fallback (line 196)
+    const items: MenuViewItem[] = [
+      { id: 'a', label: 'Item A', run: () => Promise.resolve('close' as const) },
+    ]
+    let capturedSl: unknown = null
+    const customSpy = vi.fn().mockImplementation((factory: _FactoryFn) => {
+      // Pass no theme so theme?.fg is undefined → ?? fallback fires
+      factory({ requestRender: vi.fn() }, null, null, vi.fn())
+      capturedSl = MockSelectList.getInstances().at(-1)
+      return null
+    })
+    // ctx.ui.theme is absent → theme = undefined inside openMenuView
+    const ctx = { ui: { custom: customSpy } }
+    void openMenuView('Test', () => items, ctx)
+    type _SlLike = { renderItem?: (item: { value: string; label: string }, isSelected: boolean, width: number) => string }
+    const sl = capturedSl as _SlLike
+    if (!sl?.renderItem) return
+    // selected, non-disabled, no theme → arrow = '→' (fallback), label = plain
+    const result = sl.renderItem({ value: 'a', label: 'Item A' }, true, 40)
+    expect(result).toContain('→')
+    expect(result).toContain('Item A')
+  })
+
+  it('disabled selected item with no theme uses ?? fallback for dimArrow (line 188)', () => {
+    // Line 188: `const dimArrow = theme?.fg('dim', '→') ?? '→'` — covers the ?? fallback
+    const items: MenuViewItem[] = [
+      { id: 'a', label: 'Item A', disabled: true, run: () => Promise.resolve('close' as const) },
+    ]
+    let capturedSl: unknown = null
+    const customSpy = vi.fn().mockImplementation((factory: _FactoryFn) => {
+      factory({ requestRender: vi.fn() }, null, null, vi.fn())
+      capturedSl = MockSelectList.getInstances().at(-1)
+      return null
+    })
+    // No theme → theme?.fg is undefined → ?? '→' fallback on line 188
+    const ctx = { ui: { custom: customSpy } }
+    void openMenuView('Test', () => items, ctx)
+    type _SlLike = { renderItem?: (item: { value: string; label: string }, isSelected: boolean, width: number) => string }
+    const sl = capturedSl as _SlLike
+    if (!sl?.renderItem) return
+    // disabled + selected, no theme → dimArrow = '→' (fallback)
+    const result = sl.renderItem({ value: 'a', label: 'Item A' }, true, 40)
+    expect(result).toContain('→')
   })
 })
