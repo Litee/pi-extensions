@@ -40,6 +40,7 @@
  */
 
 import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
+import type { SelectItem } from "@earendil-works/pi-tui";
 import { matchesKey } from "@earendil-works/pi-tui";
 
 import { formatPreview, type InfoPicker, type InfoRow } from "./infoHandler.js";
@@ -189,22 +190,20 @@ export function makeInfoTuiPicker(ctx: CommandCtx): InfoPicker {
 			// `value.toLowerCase().startsWith(filter)` which is wrong for us
 			// (value is the absolute file path, not the user-visible text).
 			// The actual substring logic lives in `filterItemsBySubstring`
-			// (pure + covered); this assignment is the single scoped `any`
-			// site that patches the upstream component's private fields
-			// (`filteredItems` / `selectedIndex`) which `SelectList.render()`
-			// reads on every frame.
-			// eslint-disable-next-line @typescript-eslint/no-explicit-any, @typescript-eslint/no-unsafe-assignment -- SelectList internals: no public filter API in @earendil-works/pi-tui
-			const slInternal = selectList as any;
-			// eslint-disable-next-line @typescript-eslint/no-unsafe-member-access
+			// (pure + covered); this cast reaches into SelectList's private
+			// `filteredItems` field — the only private access needed.
+			interface SelectListInternals {
+				filteredItems: SelectItem[];
+				setFilter(value: string): void;
+			}
+			const slInternal = selectList as unknown as SelectListInternals;
 			slInternal.setFilter = (filter: string): void => {
-				// eslint-disable-next-line @typescript-eslint/no-unsafe-member-access
 				slInternal.filteredItems = filterItemsBySubstring(
 					items,
 					filter,
 					(it) => it.label,
 				);
-				// eslint-disable-next-line @typescript-eslint/no-unsafe-member-access
-				slInternal.selectedIndex = 0;
+				selectList.setSelectedIndex(0);
 			};
 			listContainer.addChild(selectList);
 
