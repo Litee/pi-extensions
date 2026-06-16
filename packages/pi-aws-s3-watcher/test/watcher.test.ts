@@ -892,8 +892,7 @@ describe('S3Watcher statusLabel / displayName', () => {
 describe('S3Watcher view.compressColumns', () => {
   it('is defined', () => {
     const { watcher } = makeWatcher()
-    // eslint-disable-next-line @typescript-eslint/unbound-method
-    expect(watcher.view.compressColumns).toBeDefined()
+    expect(watcher.view).toHaveProperty('compressColumns')
   })
 
   it('compresses URI column using compressS3Uri when URI is too long', () => {
@@ -991,8 +990,7 @@ describe('S3Watcher.browseOptions', () => {
   it('browseOptions.onPurge calls executePurge', () => {
     const purgeSpy = vi.spyOn(watcher as unknown as { executePurge(): [] }, 'executePurge').mockReturnValue([])
     const opts = (watcher as unknown as { browseOptions(): { onPurge?(): [] } }).browseOptions()
-    // eslint-disable-next-line @typescript-eslint/unbound-method
-    expect(opts.onPurge).toBeDefined()
+    expect(opts).toHaveProperty('onPurge')
     opts.onPurge!()
     expect(purgeSpy).toHaveBeenCalled()
   })
