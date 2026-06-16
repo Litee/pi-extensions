@@ -580,8 +580,9 @@ describe("onSpeakHello callback — LANG_PHRASES", () => {
 		vi.mocked(assetsReady).mockReturnValue(true);
 
 		let capturedOptions: MenuOptions | undefined;
-		vi.mocked(runSpeakMenu).mockImplementationOnce(async (_ctx, opts) => { // eslint-disable-line @typescript-eslint/require-await
+		vi.mocked(runSpeakMenu).mockImplementationOnce((_ctx, opts) => {
 			capturedOptions = opts;
+			return Promise.resolve();
 		});
 
 		const pi = makeFakePi({ active: [] });

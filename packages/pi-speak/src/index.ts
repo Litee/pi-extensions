@@ -141,26 +141,25 @@ export default function speakExtension(pi: ExtensionAPI): void {
 			return renderCall(args, theme);
 		},
 		renderResult,
-		// eslint-disable-next-line @typescript-eslint/require-await
-		async execute(_id, params: SpeakParamsT) {
+		execute(_id, params: SpeakParamsT) {
 			const text = params.text;
 			const shortText = text.slice(0, 80);
 
 			if (text.length > MAX_TEXT_CHARS) {
-				return {
+				return Promise.resolve({
 					content: [{ type: "text" as const, text: `speak: text too long (${text.length} chars). Maximum is ${MAX_TEXT_CHARS} chars (~60 s of speech).` }],
 					details: { ok: false, voice: "M1", lang: "en", text: shortText, message: `text too long: ${text.length} > ${MAX_TEXT_CHARS} chars` },
-				};
+				});
 			}
 
 			const cfg = loadConfig();
 			const assetsDir = getAssetsDir();
 
 			if (!assetsReady(assetsDir)) {
-				return {
+				return Promise.resolve({
 					content: [{ type: "text" as const, text: "speak: assets not downloaded. Run /speak to install." }],
 					details: { ok: false, voice: "M1", lang: "en", text: shortText, message: "assets not downloaded" },
-				};
+				});
 			}
 
 			// Priority: session override → tool param → config default → fallback
@@ -182,10 +181,10 @@ export default function speakExtension(pi: ExtensionAPI): void {
 				} : {}),
 			});
 
-			return {
+			return Promise.resolve({
 				content: [{ type: "text" as const, text: `Queued (#${pos}): ${shortText}${text.length > 80 ? "…" : ""}` }],
 				details: { ok: true, voice, lang, text: shortText, queuePosition: pos },
-			};
+			});
 		},
 	});
 

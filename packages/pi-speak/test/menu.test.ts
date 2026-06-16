@@ -344,8 +344,7 @@ describe("pickVoice SelectList preview", () => {
 					customCallCount++;
 					const call = customCallCount;
 					return new Promise<T>((resolve) => {
-						// eslint-disable-next-line @typescript-eslint/no-unsafe-assignment, @typescript-eslint/no-unsafe-call, @typescript-eslint/no-explicit-any
-						const component = (factory as any)(
+						const component = factory(
 							{ requestRender: vi.fn() },
 							{ fg: (_r: string, s: string) => s, bold: (s: string) => s },
 							{},
@@ -696,8 +695,7 @@ describe("pickSpeed and pickSteps pass string effVoice/effLang to pickWithPrevie
 					customCallCount++;
 					const call = customCallCount;
 					return new Promise<T>((resolve) => {
-						// eslint-disable-next-line @typescript-eslint/no-explicit-any, @typescript-eslint/no-unsafe-assignment, @typescript-eslint/no-unsafe-call
-						const component = (factory as any)(
+						const component = factory(
 							{ requestRender: vi.fn() },
 							{ fg: (_r: string, s: string) => s, bold: (s: string) => s },
 							{},
