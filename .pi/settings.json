@@ -9,7 +9,6 @@
     "../.worktrees/feature-aws-base-watcher/packages/pi-aws-s3-watcher",
     "../.worktrees/feature-aws-base-watcher/packages/pi-file-system-watcher",
     "../.worktrees/feature-aws-base-watcher/packages/pi-git-watcher",
-    "../packages/pi-git-watcher",
     "../packages/pi-herdr-integration",
     "../packages/pi-session-recap"
   ]
