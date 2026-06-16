@@ -1725,7 +1725,7 @@ describe('round-trip: numberOfWorkers and workerType through persist → normali
     const appendCalls = (pi.appendEntry as ReturnType<typeof vi.fn>).mock.calls
     const stateCall = [...appendCalls]
       .reverse()
-      .find(([type]: [string]) => type === 'pi-aws-glue-watcher:state')
+      .find((args) => args[0] === 'pi-aws-glue-watcher:state')
     expect(stateCall).toBeDefined()
     // Simulate JSON serialisation round-trip (as the pi runtime would do)
     const persistedData = JSON.parse(JSON.stringify(stateCall![1])) as Record<string, unknown>

@@ -57,6 +57,7 @@ const { MockContainer, MockInput, MockSelectList, MockText, piTuiMatchesKey } = 
 
     handleInput(_d: string) {}
     setFilter(_q: string) {}
+    setSelectedIndex(idx: number) { this.selectedIndex = idx }
     render(_w: number): string[] { return [] }
     invalidate() {}
 

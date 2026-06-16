@@ -50,7 +50,11 @@
 import tseslint from "typescript-eslint";
 
 export default tseslint.config(
-	// Global ignores — keep build artefacts and worktrees out of linting.
+	// Global ignores — keep build artefacts, worktrees, and root config
+	// files out of linting. Root .js configs (eslint.config.js,
+	// commitlint.config.js, etc.) are excluded here because they are not
+	// covered by the TypeScript Language Service and would cause
+	// @typescript-eslint type-aware rules to crash.
 	{
 		ignores: [
 			"**/node_modules/**",
@@ -63,6 +67,7 @@ export default tseslint.config(
 			"packages/*/dist/**",
 			"packages/*/src/vendor/**",
 			"packages/*/firefox-addon/**",
+			"*.js",
 		],
 	},
 

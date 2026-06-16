@@ -130,6 +130,7 @@ const fakes = vi.hoisted(() => {
 			}
 		}
 		invalidate(): void {}
+		setSelectedIndex(idx: number): void { this.selectedIndex = idx }
 		render(_w: number): string[] {
 			return [];
 		}
