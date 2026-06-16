@@ -1,8 +1,11 @@
+import { homedir } from "node:os";
+import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 
 import {
 	applyFilter,
 	applySortMode,
+	detectPathDisplay,
 	detectScope,
 	estimateDescriptionTokens,
 	filterAndSort,
@@ -39,6 +42,70 @@ const SKILLS: SkillEntry[] = [
 	mkSkill("write-well", "Compose and edit any written document."),
 	mkSkill("skill-creator", "Create new skills or modify existing ones."),
 ];
+
+// ---------------------------------------------------------------------------
+// detectPathDisplay
+// ---------------------------------------------------------------------------
+
+describe("detectPathDisplay", () => {
+	const cwd = "/projects/my-repo";
+
+	it("strips cwd prefix and removes SKILL.md filename for a project skill", () => {
+		const path = "/projects/my-repo/.pi/skills/my-skill/SKILL.md";
+		expect(detectPathDisplay(path, cwd)).toBe(".pi/skills/my-skill");
+	});
+
+	it("strips cwd prefix for a nested path without SKILL.md suffix", () => {
+		// A skill stored at a non-standard name still strips the cwd prefix.
+		const path = "/projects/my-repo/custom/skill-dir";
+		// dir = "custom/skill-dir" (no SKILL.md to strip) → returned as-is relative
+		expect(detectPathDisplay(path, cwd)).toBe("custom/skill-dir");
+	});
+
+	it("returns the SKILL.md filename when SKILL.md sits directly in cwd (dir is empty)", () => {
+		// When dir becomes "" after stripping the SKILL.md suffix the function
+		// falls back to returning the unmodified `relative`.
+		const _path = "/projects/my-repo/x/SKILL.md";
+		// relative = "x/SKILL.md", dir = "x" (truthy) — but this also exercises
+		// the cwd-strip branch. Use a path where SKILL.md is bare:
+		expect(detectPathDisplay("/projects/my-repo/SKILL.md", cwd)).toBe("SKILL.md");
+	});
+
+	it("restores the ~ prefix for paths under the user home directory", () => {
+		const home = homedir();
+		const path = join(home, ".pi/agent/skills/my-skill/SKILL.md");
+		const result = detectPathDisplay(path, cwd);
+		expect(result).toBe(`~/.pi/agent/skills/my-skill/SKILL.md`);
+	});
+
+	it("expands a tilde path and then restores ~ for home-relative display", () => {
+		// A path supplied as ~/... should be expanded then re-tilde'd.
+		const tildePath = "~/.pi/agent/agents/my-agent/SKILL.md";
+		const result = detectPathDisplay(tildePath, cwd);
+		expect(result).toBe("~/.pi/agent/agents/my-agent/SKILL.md");
+	});
+
+	it("returns the path unchanged when it is outside cwd and home", () => {
+		const path = "/opt/system/skills/SKILL.md";
+		expect(detectPathDisplay(path, cwd)).toBe(path);
+	});
+
+	it("returns empty string when path equals cwd exactly (dir || relative fallback with both empty)", () => {
+		// When normalized === cwdNorm, relative = "" and dir = "", so the ||
+		// right-hand side is the value returned (both are "").
+		expect(detectPathDisplay("/projects/my-repo", cwd)).toBe("");
+	});
+
+	it("handles the case where cwd IS the home directory (path under both)", () => {
+		// cwd = homedir() — the cwd check fires first, so the path is stripped
+		// relative to cwd without a leading ~.
+		const home = homedir();
+		const path = join(home, ".pi/skills/my-skill/SKILL.md");
+		const result = detectPathDisplay(path, home);
+		// Stripped relative to cwd (= home), not re-tilde'd
+		expect(result).toBe(".pi/skills/my-skill");
+	});
+});
 
 // ---------------------------------------------------------------------------
 // estimateDescriptionTokens

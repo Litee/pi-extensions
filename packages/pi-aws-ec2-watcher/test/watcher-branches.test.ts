@@ -248,6 +248,132 @@ describe("Ec2Watcher protected getters (L198-211)", () => {
 })
 
 // ---------------------------------------------------------------------------
+// addWatch — seed baseline with full optional fields (L421-425)
+// ---------------------------------------------------------------------------
+
+describe("Ec2Watcher.addWatch — seed baseline with optional metadata", () => {
+	it("sets nameTag on baseline when seed response includes nameTag (L421 true branch)", async () => {
+		const { watcher } = makeWatcher({
+			state: "running",
+			nameTag: "seed-server",
+		})
+		const result = await watcher.executeTool({
+			action: "add",
+			instanceId: "i-0a1b2c3d4e5f67890",
+			profile: "p",
+		})
+		expect(result.details["ok"]).toBe(true)
+		const watchId = result.details["watchId"] as string
+		expect(watcher["baselines"].get(watchId)?.nameTag).toBe("seed-server")
+	})
+
+	it("sets stateTransitionReason on baseline when seed response includes it (L422 true branch)", async () => {
+		const { watcher } = makeWatcher({
+			state: "running",
+			stateTransitionReason: "User initiated (2024-01-01)",
+		})
+		const result = await watcher.executeTool({
+			action: "add",
+			instanceId: "i-0a1b2c3d4e5f67890",
+			profile: "p",
+		})
+		const watchId = result.details["watchId"] as string
+		expect(watcher["baselines"].get(watchId)?.stateTransitionReason).toBe(
+			"User initiated (2024-01-01)",
+		)
+	})
+
+	it("sets availabilityZone on baseline when seed response includes it (L423 true branch)", async () => {
+		const { watcher } = makeWatcher({
+			state: "running",
+			availabilityZone: "ap-south-1a",
+		})
+		const result = await watcher.executeTool({
+			action: "add",
+			instanceId: "i-0a1b2c3d4e5f67890",
+			profile: "p",
+		})
+		const watchId = result.details["watchId"] as string
+		expect(watcher["baselines"].get(watchId)?.availabilityZone).toBe("ap-south-1a")
+	})
+
+	it("sets instanceType on baseline when seed response includes it (L424 true branch)", async () => {
+		const { watcher } = makeWatcher({
+			state: "running",
+			instanceType: "g4dn.xlarge",
+		})
+		const result = await watcher.executeTool({
+			action: "add",
+			instanceId: "i-0a1b2c3d4e5f67890",
+			profile: "p",
+		})
+		const watchId = result.details["watchId"] as string
+		expect(watcher["baselines"].get(watchId)?.instanceType).toBe("g4dn.xlarge")
+	})
+
+	it("sets launchTime ISO string on baseline when seed response includes it (L425 true branch)", async () => {
+		const launchDate = new Date("2024-07-04T00:00:00.000Z")
+		const { watcher } = makeWatcher({ state: "running", launchTime: launchDate })
+		const result = await watcher.executeTool({
+			action: "add",
+			instanceId: "i-0a1b2c3d4e5f67890",
+			profile: "p",
+		})
+		const watchId = result.details["watchId"] as string
+		expect(watcher["baselines"].get(watchId)?.launchTime).toBe(launchDate.toISOString())
+	})
+
+	it("includes region in not-found error message when region is specified (L416 ternary true)", async () => {
+		const { watcher } = makeWatcher({ notFound: true })
+		const result = await watcher.executeTool({
+			action: "add",
+			instanceId: "i-0a1b2c3d4e5f67890",
+			profile: "p",
+			region: "eu-central-1",
+		})
+		expect(result.details["ok"]).toBe(false)
+		expect((result.content[0] as { text: string }).text).toContain("eu-central-1")
+	})
+})
+
+// ---------------------------------------------------------------------------
+// startPolling — terminal watch skipped (L536 true branch)
+// ---------------------------------------------------------------------------
+
+describe("Ec2Watcher.startPolling — terminal watch is skipped", () => {
+	it("does not create a scheduler for a terminal watch (L536 continue branch)", async () => {
+		vi.useFakeTimers()
+		const { watcher } = makeWatcher({ state: "running" })
+
+		// Add a watch, then mark it terminal before startPolling
+		const addResult = await watcher.executeTool({
+			action: "add",
+			instanceId: "i-0a1b2c3d4e5f67890",
+			profile: "p",
+		})
+		const watchId = addResult.details["watchId"] as string
+		const watch = watcher["watches"].get(watchId)!
+		watcher.stopPolling()
+
+		// Mark the watch as terminal and clear its scheduler
+		watch.terminal = true
+		watcher["_watchSchedulers"].delete(watchId)
+
+		// startPolling should skip the terminal watch
+		watcher.startPolling()
+
+		const schedulers = watcher[
+			"_watchSchedulers"
+		] as Map<string, { isRunning: boolean }>
+		// No scheduler should have been created for the terminal watch
+		expect(schedulers.has(watchId)).toBe(false)
+
+		watcher.stopPolling()
+		vi.useRealTimers()
+	})
+})
+
+// ---------------------------------------------------------------------------
 // Ec2Watcher.buildChangeChatMessage() — line 339
 // ---------------------------------------------------------------------------
 
