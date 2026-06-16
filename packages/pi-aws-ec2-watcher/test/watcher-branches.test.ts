@@ -334,6 +334,21 @@ describe("Ec2Watcher.addWatch — seed baseline with optional metadata", () => {
 		expect(result.details["ok"]).toBe(false)
 		expect((result.content[0] as { text: string }).text).toContain("eu-central-1")
 	})
+
+	it("adds watch without baseline when seed returns no state (L419 false branch)", async () => {
+		// Response has neither state nor notFound — seeds no baseline but still adds the watch.
+		const { watcher } = makeWatcher({} /* state: undefined, notFound: undefined */)
+		const result = await watcher.executeTool({
+			action: "add",
+			instanceId: "i-0a1b2c3d4e5f67890",
+			profile: "p",
+		})
+		// The watch is added (state label = '?') and no error is thrown
+		expect(result.details["ok"]).toBe(true)
+		const watchId = result.details["watchId"] as string
+		// Baseline should be undefined (no state returned, no notFound)
+		expect(watcher["watches"].get(watchId)?.baseline).toBeUndefined()
+	})
 })
 
 // ---------------------------------------------------------------------------
@@ -427,3 +442,52 @@ describe("Ec2Watcher.buildChangeChatMessage()", () => {
 		expect(msg).toContain("2 changes detected");
 	});
 });
+
+// ---------------------------------------------------------------------------
+// classifyError — L313: (err as Error)?.name ?? '' nullish fallback
+// ---------------------------------------------------------------------------
+
+describe("Ec2Watcher.classifyError — null/nameless input (L313)", () => {
+	it("classifies null as generic (L313 ?? '' fallback when name is nullish)", () => {
+		const { watcher } = makeWatcher()
+		const result = watcher.classifyError(null)
+		expect(result.kind).toBe("generic")
+		expect(result.shouldBackoff).toBe(false)
+	})
+
+	it("classifies an object with no name property as generic (L313 ?? '' fallback)", () => {
+		const { watcher } = makeWatcher()
+		const result = watcher.classifyError({ message: "no name here" })
+		expect(result.kind).toBe("generic")
+	})
+})
+
+// ---------------------------------------------------------------------------
+// detectChanges timeout path — L259: baselines.get() ?? { state: 'not_found' }
+// ---------------------------------------------------------------------------
+
+describe("Ec2Watcher.detectChanges — timeout with no stored baseline (L259)", () => {
+	it("uses { state: 'not_found' } fallback when baselines has no entry for the watch (L259)", async () => {
+		const { watcher } = makeWatcher({ state: "running" })
+		;(watcher as unknown as { _now: () => number })._now = () => 9000
+
+		const watch: import("../src/types.js").Ec2Watch = {
+			watchId: "orphan",
+			instanceId: "i-orphan123",
+			profile: "p",
+			region: undefined,
+			timeoutAt: 1000, // in the past relative to _now=9000
+			addedAt: 0,
+			lastPolledAt: undefined,
+			baseline: undefined,
+			terminal: false,
+			consecutiveErrors: 0,
+		}
+		// Do NOT store a baseline for "orphan" — key is absent from watcher.baselines
+
+		const result = await watcher.detectChanges(watch)
+		expect(result.events[0]!.eventType).toBe("timeout")
+		// Fallback: { state: 'not_found' }
+		expect(result.newBaseline.state).toBe("not_found")
+	})
+})
