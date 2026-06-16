@@ -227,8 +227,7 @@ describe("SubagentScheduler — lifecycle", () => {
     expect(emitSpy).toHaveBeenCalledWith("subagents:scheduled",
       expect.objectContaining({
         type: "error", jobId: "reload-test",
-        // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment
-        error: expect.stringMatching(/in the past/),
+        error: expect.stringMatching(/in the past/) as unknown,
       }),
     );
   });
@@ -327,8 +326,7 @@ describe("SubagentScheduler — fire path", () => {
     expect(emitSpy).toHaveBeenCalledWith("subagents:scheduled",
       expect.objectContaining({
         type: "fired", name: "fire-once",
-        // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment
-        agentId: expect.stringMatching(/^agent-/),
+        agentId: expect.stringMatching(/^agent-/) as unknown,
       }),
     );
   });

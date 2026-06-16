@@ -137,8 +137,7 @@ describe("agent-runner final output capture", () => {
 
     expect(session.bindExtensions).toHaveBeenCalledTimes(1);
     expect(session.bindExtensions).toHaveBeenCalledWith(
-      // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment
-      expect.objectContaining({ onError: expect.any(Function) }),
+      expect.objectContaining({ onError: expect.any(Function) as unknown }),
     );
 
     const bindOrder = session.bindExtensions.mock.invocationCallOrder[0]!;
@@ -176,8 +175,7 @@ describe("agent-runner final output capture", () => {
     expect(defaultResourceLoaderCtor).toHaveBeenCalledWith(
       expect.objectContaining({
         noContextFiles: true,
-        // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment
-        appendSystemPromptOverride: expect.any(Function),
+        appendSystemPromptOverride: expect.any(Function) as unknown,
       }),
     );
     // The override returns an empty list so any loaded sources are discarded.
@@ -940,8 +938,7 @@ describe("agent-runner — config.model resolution", () => {
     // Because model === undefined, the spread `...(model !== undefined ? { model } : {})`
     // emits no `model` key — assert the session was created without one.
     expect(createAgentSession).toHaveBeenCalledWith(
-      // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment
-      expect.not.objectContaining({ model: expect.anything() }),
+      expect.not.objectContaining({ model: expect.anything() as unknown }),
     );
   });
 });
