@@ -2,7 +2,7 @@
   "name": "pi-headroom",
   "version": "0.1.0",
   "private": true,
-  "description": "Headroom token compression for pi — compress large tool results via a local Headroom proxy to reclaim context window.",
+  "description": "Headroom settings management and status display for pi — toggle compression, adjust thresholds, view footer status.",
   "type": "module",
   "keywords": [
     "pi-package"

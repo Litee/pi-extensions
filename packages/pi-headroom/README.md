@@ -1,8 +1,10 @@
 # @ryan_nookpi/pi-extension-headroom
 
-This extension reclaims context window in pi by compressing large tool results through a [Headroom](https://github.com/headroom-ai/headroom) proxy before each LLM call.
+This extension provides settings management and status display for [Headroom](https://github.com/headroom-ai/headroom) compression.
 
-Headroom runs locally, compresses only oversized `toolResult` payloads, and leaves your prompts, assistant turns, and tool-call metadata untouched. Compression is applied only when the proxy is online and the change passes strict alignment guards, so it never silently rewrites your conversation.
+It lets you toggle token compression, adjust thresholds, and view current settings through a TUI menu — all persisted to `~/.pi/agent/pi-headroom.json`.
+
+**This extension does not manage the Headroom proxy lifecycle.** You launch and control the proxy externally (e.g. via terminal). The extension simply reads your settings and shows status in the pi footer.
 
 ## Install
 
@@ -16,33 +18,24 @@ You also need the Headroom proxy available on your machine:
 pip install "headroom-ai[proxy]"
 ```
 
-By default the extension auto-starts a local token-mode proxy (`headroom proxy --mode token --no-cache`) on `http://127.0.0.1:8788` and leaves it running after pi exits.
+## Commands
 
-## How it works
+- `/headroom` — open the TUI settings menu (compression toggle, thresholds, reset).
+- `/headroom on` — enable compression for this session.
+- `/headroom off` — disable compression for this session.
+- `/headroom status` — show current settings (default when no subcommand).
+- `/headroom health` — report proxy URL and whether it is reachable.
+- `/headroom stats` — report proxy statistics (requires a running proxy).
 
-- Listens on the `context` event fired before each LLM call.
-- Skips entirely until context usage reaches the configured token threshold.
-- Sends an OpenAI-shaped copy of the conversation to the proxy's `/v1/compress` endpoint.
-- Applies the result only to large `toolResult` messages, preserving pi metadata (`toolName`, `details`, tool-call ids, images).
-- Rejects any response that changes message count, roles, tool-call ids, or non-candidate content.
+The footer shows a compact status (`✓ Headroom -42% (12,345 saved)`) when compression is applied and the proxy is online.
 
 ## Privacy
 
 Compression sends conversation context to the proxy, so remote URLs are blocked by default. Only `localhost`/`127.0.0.1`/`::1` are allowed unless you explicitly set `PI_HEADROOM_ALLOW_REMOTE=1` for a proxy you trust.
 
-## Commands
-
-- `/headroom` — show current status and session stats.
-- `/headroom on` — enable compression and ensure the proxy is running.
-- `/headroom off` — disable compression for this session (the proxy keeps running).
-- `/headroom health` — check / start the proxy and report whether it is online.
-- `/headroom stats` — print the proxy's own `/stats` output.
-
-The footer shows a compact status (`✓ Headroom -42% (12,345 saved)`) once compression is applied.
-
 ## Configuration
 
-Settings are read at startup from `~/.pi/agent/headroom/settings.json`. Values in this file override environment variables; environment variables remain supported as fallbacks.
+Settings are read at startup from `~/.pi/agent/pi-headroom.json`. Values in this file override environment variables; environment variables remain supported as fallbacks.
 
 Example:
 
@@ -58,10 +51,19 @@ Example:
 | `enabled` | `PI_HEADROOM_ENABLED` | `true` | Enable compression on start. |
 | `baseUrl` (`url` also accepted) | `PI_HEADROOM_URL` (`HEADROOM_URL` / `HEADROOM_BASE_URL` also accepted) | `http://127.0.0.1:8788` | Proxy base URL. |
 | `allowRemote` | `PI_HEADROOM_ALLOW_REMOTE` | `false` | Allow non-local proxy URLs. |
-| `autoStart` | `PI_HEADROOM_AUTO_START` | `true` | Auto-start a local persistent proxy when offline. |
 | `command` | `PI_HEADROOM_COMMAND` | `headroom` | Command used to launch the proxy. |
 | `minContextTokens` | `PI_HEADROOM_MIN_CONTEXT_TOKENS` | `20000` | Skip compression below this context token count. |
 | `minMessageChars` | `PI_HEADROOM_MIN_MESSAGE_CHARS` | `2000` | Only compress messages at or above this size. |
 | `timeoutMs` | `PI_HEADROOM_TIMEOUT_MS` | `30000` | HTTP timeout for proxy requests. |
 
 Boolean values accept JSON booleans, or strings such as `1/0`, `true/false`, `yes/no`, `on/off`.
+
+## Manual proxy launch
+
+To start the proxy manually:
+
+```bash
+HEADROOM_TELEMETRY=off headroom proxy --host 127.0.0.1 --port 8788 --mode token --no-cache
+```
+
+The extension will automatically detect the proxy when it is running at the configured `baseUrl`.
