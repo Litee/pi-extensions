@@ -276,17 +276,16 @@ export default function piGoal(pi: ExtensionAPI): void {
 	pi.registerCommand("goal", {
 		description:
 			"Set a goal and let pi work autonomously across turns. Usage: /goal <objective> | /goal stop | /goal status",
-		// eslint-disable-next-line @typescript-eslint/require-await -- registerCommand requires Promise<void>; we have no async work in this handler today, but the contract is async.
-		handler: async (args, ctx) => {
+		handler: (args, ctx): Promise<void> => {
 			const trimmed = args.trim();
 
 			if (trimmed === "stop") {
 				if (!goalEnabled) {
 					ctx.ui.notify("Goal mode is not active.", "warning");
-					return;
+					return Promise.resolve();
 				}
 				endGoalAborted("Goal mode cancelled (/goal stop).", ctx);
-				return;
+				return Promise.resolve();
 			}
 
 			if (trimmed === "status") {
@@ -303,7 +302,7 @@ export default function piGoal(pi: ExtensionAPI): void {
 					{ customType: STATUS_MESSAGE_TYPE, content, display: true },
 					{ deliverAs: "followUp" },
 				);
-				return;
+				return Promise.resolve();
 			}
 
 			if (!trimmed) {
@@ -311,7 +310,7 @@ export default function piGoal(pi: ExtensionAPI): void {
 					"Usage: /goal <objective> | /goal stop | /goal status",
 					"warning",
 				);
-				return;
+				return Promise.resolve();
 			}
 
 			if (goalEnabled) {
@@ -319,10 +318,11 @@ export default function piGoal(pi: ExtensionAPI): void {
 					`Goal mode already active for "${goalObjective}". Use /goal stop first.`,
 					"warning",
 				);
-				return;
+				return Promise.resolve();
 			}
 
 			enableGoal(trimmed, ctx);
+			return Promise.resolve();
 		},
 	});
 

@@ -61,18 +61,17 @@ export interface UpdateGoalCallbacks {
  * it can be unit-tested with vi.fn() stubs without spinning up an
  * ExtensionContext.
  */
-// eslint-disable-next-line @typescript-eslint/require-await -- Tool execute() must return a Promise; the work itself is synchronous.
-export async function handleUpdateGoal(
+export function handleUpdateGoal(
 	params: UpdateGoalArgs,
 	cbs: UpdateGoalCallbacks,
 ): Promise<UpdateGoalResult> {
 	const summary = (params.summary ?? "").trim();
 	cbs.onBlocked(summary);
 	const message = `update_goal: blocked — ${summary || "(no summary)"}`;
-	return {
+	return Promise.resolve({
 		content: [{ type: "text", text: message }],
 		details: { ok: true, message },
-	};
+	});
 }
 
 // ---------------------------------------------------------------------------
