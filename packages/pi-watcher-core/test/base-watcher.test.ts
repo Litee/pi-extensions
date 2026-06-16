@@ -271,7 +271,7 @@ function makeStub(opts: StubOpts = {}) {
     }
   }
   const pi = makePi()
-  return new DynStub({ pi: pi as never, now: () => 0 })
+  return new DynStub({ pi: pi as unknown as ExtensionAPI, now: () => 0 })
 }
 
 function makeCommandCtx(stub: StubWatcher, overrides: Partial<CommandCtx> = {}): CommandCtx {
@@ -289,7 +289,7 @@ function makeCommandCtx(stub: StubWatcher, overrides: Partial<CommandCtx> = {}):
 
 function makeWatcher(piOverride?: ReturnType<typeof makePi>) {
   const pi = piOverride ?? makePi()
-  const watcher = new StubWatcher({ pi: pi as never, now: () => 1_000_000 })
+  const watcher = new StubWatcher({ pi: pi as unknown as ExtensionAPI, now: () => 1_000_000 })
   return { watcher, pi }
 }
 
@@ -626,7 +626,7 @@ describe('buildMenu', () => {
       override get hasWidget(): boolean { return true }
     }
     const pi = makePi()
-    const watcher = new WidgetWatcher({ pi: pi as never, now: () => 0 })
+    const watcher = new WidgetWatcher({ pi: pi as unknown as ExtensionAPI, now: () => 0 })
     const menu = watcher.buildMenu()
     expect(menu.find((m) => m.id === 'displayMode')).toBeDefined()
   })
@@ -643,7 +643,7 @@ describe('buildMenu', () => {
       override scanItems() { return Promise.resolve([]) }
     }
     const pi = makePi()
-    const watcher = new ScanWatcher({ pi: pi as never, now: () => 0 })
+    const watcher = new ScanWatcher({ pi: pi as unknown as ExtensionAPI, now: () => 0 })
     const menu = watcher.buildMenu()
     expect(menu.find((m) => m.id === 'refresh')).toBeDefined()
   })
@@ -830,7 +830,7 @@ describe('containsTerminalStateEvent', () => {
       }
     }
     const pi = makePi()
-    const watcher = new NonTerminalWatcher({ pi: pi as never })
+    const watcher = new NonTerminalWatcher({ pi: pi as unknown as ExtensionAPI })
     watcher.detectChangesFn = () => Promise.resolve({
       newBaseline: { seenAt: 0 },
       events: [{ watchId: 'w1', summary: 'change' }],
@@ -934,7 +934,7 @@ describe('statusLabel', () => {
       override get statusLabel() { return 'stub' }
     }
     const pi = makePi()
-    const watcher = new LabeledWatcher({ pi: pi as never, now: () => 0 })
+    const watcher = new LabeledWatcher({ pi: pi as unknown as ExtensionAPI, now: () => 0 })
     const ctx = makeCtxWithState({
       displayMode: 'statusline',
       watches: [{ id: 'w1', label: 'L', terminal: false, consecutiveErrors: 0 }],
@@ -954,7 +954,7 @@ describe('statusLabel', () => {
       override get statusLabel() { return 'stub' }
     }
     const pi = makePi()
-    const watcher = new LabeledWatcher({ pi: pi as never, now: () => 0 })
+    const watcher = new LabeledWatcher({ pi: pi as unknown as ExtensionAPI, now: () => 0 })
     const result = await watcher.executeTool({ action: 'list' })
     expect(result.content[0]?.text).toContain('stub:')
     expect(result.content[0]?.text).not.toContain('stub-watcher:')
@@ -966,7 +966,7 @@ describe('statusLabel', () => {
       override get statusLabel() { return 'stub' }
     }
     const pi = makePi()
-    const watcher = new LabeledWatcher({ pi: pi as never, now: () => 0 })
+    const watcher = new LabeledWatcher({ pi: pi as unknown as ExtensionAPI, now: () => 0 })
     watcher.detectChangesFn = () => Promise.reject(new Error('poll failed'))
     const watch: StubWatch = { id: 'w1', label: 'L', terminal: false, consecutiveErrors: POLL_ERROR_THRESHOLD - 1 }
     watcher.testWatches.set('w1', watch)
@@ -982,7 +982,7 @@ describe('statusLabel', () => {
       override get statusLabel() { return 'stub' }
     }
     const pi = makePi()
-    const watcher = new LabeledWatcher({ pi: pi as never, now: () => 0 })
+    const watcher = new LabeledWatcher({ pi: pi as unknown as ExtensionAPI, now: () => 0 })
     // Watch that has already crossed the error threshold — next success triggers recovery
     const watch: StubWatch = { id: 'w1', label: 'L', terminal: false, consecutiveErrors: POLL_ERROR_THRESHOLD }
     watcher.testWatches.set('w1', watch)
@@ -1010,7 +1010,7 @@ describe('displayName', () => {
       override get displayName() { return 'My Watcher' }
     }
     const pi = makePi()
-    const watcher = new DisplayWatcher({ pi: pi as never, now: () => 0 })
+    const watcher = new DisplayWatcher({ pi: pi as unknown as ExtensionAPI, now: () => 0 })
 
     const openMenuViewMock = vi.mocked(browseViewModule.openMenuView)
     openMenuViewMock.mockClear()
@@ -1041,7 +1041,7 @@ describe('displayName', () => {
       override get displayName() { return 'My Watcher Display' }
     }
     const pi = makePi()
-    const watcher = new DisplayWatcher({ pi: pi as never, now: () => 0 })
+    const watcher = new DisplayWatcher({ pi: pi as unknown as ExtensionAPI, now: () => 0 })
 
     const ctx = {
       hasUI: true,
@@ -1254,7 +1254,7 @@ describe('commandName', () => {
       protected override get commandName(): string { return 'my-command' }
     }
     const pi = makePi()
-    const watcher = new NamedWatcher({ pi: pi as never, now: () => 0 })
+    const watcher = new NamedWatcher({ pi: pi as unknown as ExtensionAPI, now: () => 0 })
     const registerCommandSpy = vi.spyOn(pi, 'registerCommand')
     watcher.register(pi)
     expect(registerCommandSpy).toHaveBeenCalledWith(
@@ -1741,7 +1741,7 @@ describe('buildMenu — nounPlural', () => {
         }
       }
     }
-    const stub = new NounPluralWatcher({ pi: makePi() as never, now: () => 0 })
+    const stub = new NounPluralWatcher({ pi: makePi() as unknown as ExtensionAPI, now: () => 0 })
     const menu = stub.buildMenu()
     const browseItem = menu.find(m => m.id === 'browse')!
     const state = (stub as unknown as { _currentState(): unknown })._currentState() as Parameters<typeof browseItem.label>[0]
@@ -1758,7 +1758,7 @@ describe('buildMenu — nounPlural', () => {
         }
       }
     }
-    const stub = new NounOnlyWatcher({ pi: makePi() as never, now: () => 0 })
+    const stub = new NounOnlyWatcher({ pi: makePi() as unknown as ExtensionAPI, now: () => 0 })
     const menu = stub.buildMenu()
     const browseItem = menu.find(m => m.id === 'browse')!
     const state = (stub as unknown as { _currentState(): unknown })._currentState() as Parameters<typeof browseItem.label>[0]
@@ -2252,7 +2252,7 @@ class ConfigStub extends StubWatcher {
 }
 
 function makeConfigStub() {
-  return new ConfigStub({ pi: makePi() as never, now: () => 0 })
+  return new ConfigStub({ pi: makePi() as unknown as ExtensionAPI, now: () => 0 })
 }
 
 describe('config methods', () => {
