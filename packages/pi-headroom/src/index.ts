@@ -32,6 +32,10 @@ export default function headroomExtension(pi: ExtensionAPI): void {
 	const config = loadHeadroomConfig();
 	const state = createRuntimeState(config);
 
+	pi.on("session_start", (_event, ctx) => {
+		refreshStatus(ctx, config, state);
+	});
+
 	pi.registerCommand("headroom", {
 		description: "Headroom settings. Usage: /headroom [on|off|status|health|stats]",
 		getArgumentCompletions(argumentPrefix) {
