@@ -11,7 +11,6 @@ describe("headroom config", () => {
 		expect(config.enabled).toBe(true);
 		expect(config.baseUrl).toBe("http://127.0.0.1:8788");
 		expect(config.allowRemote).toBe(false);
-		expect(config.autoStart).toBe(true);
 		expect(config.command).toBe("headroom");
 		expect(config.minContextTokens).toBe(20_000);
 		expect(config.minMessageChars).toBe(2_000);
@@ -36,12 +35,10 @@ describe("headroom config", () => {
 			PI_HEADROOM_MIN_CONTEXT_TOKENS: "1000",
 			PI_HEADROOM_MIN_MESSAGE_CHARS: "500",
 			PI_HEADROOM_TIMEOUT_MS: "3000",
-			PI_HEADROOM_AUTO_START: "false",
 			PI_HEADROOM_COMMAND: "custom-headroom",
 		});
 
 		expect(config.enabled).toBe(false);
-		expect(config.autoStart).toBe(false);
 		expect(config.command).toBe("custom-headroom");
 		expect(config.minContextTokens).toBe(1000);
 		expect(config.minMessageChars).toBe(500);
@@ -58,7 +55,6 @@ describe("headroom config", () => {
 					enabled: false,
 					baseUrl: "http://localhost:9999/",
 					allowRemote: true,
-					autoStart: false,
 					command: "custom-headroom",
 					minContextTokens: 12345,
 					minMessageChars: 678,
@@ -72,7 +68,6 @@ describe("headroom config", () => {
 			expect(config.enabled).toBe(false);
 			expect(config.baseUrl).toBe("http://localhost:9999");
 			expect(config.allowRemote).toBe(true);
-			expect(config.autoStart).toBe(false);
 			expect(config.command).toBe("custom-headroom");
 			expect(config.minContextTokens).toBe(12345);
 			expect(config.minMessageChars).toBe(678);

@@ -54,7 +54,6 @@ function getConfig(overrides: Partial<HeadroomConfig> = {}): HeadroomConfig {
 		enabled: true,
 		baseUrl: "http://127.0.0.1:8788",
 		allowRemote: false,
-		autoStart: true,
 		command: "headroom",
 		minContextTokens: 20_000,
 		minMessageChars: 2_000,

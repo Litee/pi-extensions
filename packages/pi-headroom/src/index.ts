@@ -76,8 +76,6 @@ export function headroomExtension(pi: ExtensionAPI): void {
 			return;
 		}
 		runtime.refreshStatus(ctx);
-		if (!runtime.state.enabled) return;
-		void ensureProxyInBackground(runtime, ctx);
 	});
 
 	pi.on("context", (event, ctx) => handleContextCompression(runtime, event, ctx));
@@ -111,7 +109,7 @@ async function ensureProxy(
 	proxyManager: ProxyManager,
 ): Promise<boolean> {
 	if (await runtime.updateHealth(ctx)) return true;
-	if (!runtime.config.autoStart || runtime.state.proxyStartAttempted) return false;
+	if (runtime.state.proxyStartAttempted) return false;
 
 	runtime.state.proxyStartAttempted = true;
 	runtime.state.proxyStarting = true;
@@ -130,49 +128,6 @@ async function ensureProxy(
 	runtime.state.proxyOnline = online;
 	runtime.refreshStatus(ctx);
 	return online;
-}
-
-async function ensureProxyInBackground(runtime: HeadroomRuntime, ctx?: ExtensionContext): Promise<void> {
-	try {
-		if (ctx && (await runtime.updateHealth(ctx))) {
-			safeRefreshStatus(runtime, ctx);
-			return;
-		}
-		if (!runtime.config.autoStart || runtime.state.proxyStartAttempted) {
-			safeRefreshStatus(runtime, ctx);
-			return;
-		}
-		runtime.state.proxyStartAttempted = true;
-		runtime.state.proxyStarting = true;
-		safeRefreshStatus(runtime, ctx);
-		if (ctx) {
-			const started = await runtime.client.health(ctx.signal).then(() => ({ ok: true }));
-			if (!started.ok) {
-				runtime.state.stats.lastError = "proxy start failed";
-				runtime.state.proxyStarting = false;
-				runtime.state.proxyOnline = false;
-				safeRefreshStatus(runtime, ctx);
-				return;
-			}
-			runtime.state.proxyOnline = await waitForProxyHealth(runtime, ctx.signal);
-			runtime.state.proxyStarting = false;
-			safeRefreshStatus(runtime, ctx);
-		}
-	} catch (error) {
-		runtime.state.proxyStarting = false;
-		runtime.state.proxyOnline = false;
-		runtime.state.stats.lastError = error instanceof Error ? error.message : String(error);
-		safeRefreshStatus(runtime, ctx);
-	}
-}
-
-function safeRefreshStatus(runtime: HeadroomRuntime, ctx: ExtensionContext | undefined): void {
-	if (!ctx) return;
-	try {
-		runtime.refreshStatus(ctx);
-	} catch {
-		// The session may have been reloaded/replaced while background health was in flight.
-	}
 }
 
 async function waitForProxyHealth(runtime: HeadroomRuntime, signal?: AbortSignal): Promise<boolean> {
@@ -196,7 +151,6 @@ async function handleContextCompression(
 	const payload = buildCompressionPayload(event.messages, runtime.config.minMessageChars);
 	if (payload.candidateCount === 0) return undefined;
 	if (runtime.state.proxyOnline !== true) {
-		void ensureProxyInBackground(runtime, ctx);
 		return undefined;
 	}
 
@@ -407,19 +361,10 @@ async function showProxyStats(
 
 function proxyStartHint(config: HeadroomConfig): string {
 	if (isRemoteBlocked(config)) return renderRemoteBlocked(config);
-	if (!config.autoStart) {
-		return [
-			`Headroom proxy is not running: ${config.baseUrl}`,
-			"Auto-start is disabled. Start it manually:",
-			`  HEADROOM_TELEMETRY=off ${renderManualProxyCommand(config)}`,
-		].join("\n");
-	}
 	return [
 		`Headroom proxy is not running: ${config.baseUrl}`,
-		`Tried to start persistent proxy with command: ${config.command}`,
-		"Install Headroom or set PI_HEADROOM_COMMAND if needed:",
-		'  pip install "headroom-ai[proxy]"',
-		"  # then run /headroom on",
+		"Start it manually:",
+		`  HEADROOM_TELEMETRY=off ${renderManualProxyCommand(config)}`,
 	].join("\n");
 }
 

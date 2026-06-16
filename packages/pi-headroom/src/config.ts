@@ -15,7 +15,6 @@ export interface HeadroomSettings {
 	baseUrl?: string;
 	url?: string;
 	allowRemote?: boolean | string;
-	autoStart?: boolean | string;
 	command?: string;
 	minContextTokens?: number | string;
 	minMessageChars?: number | string;
@@ -56,7 +55,6 @@ export function loadHeadroomConfig(
 		enabled: parseBoolean(settings.enabled, parseBoolean(env["PI_HEADROOM_ENABLED"], true)),
 		baseUrl,
 		allowRemote: parseBoolean(settings.allowRemote, parseBoolean(env["PI_HEADROOM_ALLOW_REMOTE"], false)),
-		autoStart: parseBoolean(settings.autoStart, parseBoolean(env["PI_HEADROOM_AUTO_START"], true)),
 		command: parseString(settings.command, env["PI_HEADROOM_COMMAND"]?.trim() || "headroom"),
 		minContextTokens: parseInteger(
 			settings.minContextTokens,
