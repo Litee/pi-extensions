@@ -20,16 +20,18 @@ vi.mock("node:os", () => ({
 // ---------------------------------------------------------------------------
 
 import {
+	buildSummary,
 	checkHealth,
 	deriveName,
 	detectKind,
 	filterEntries,
+	isLocalPathMissing,
 	loadEntries,
 	markConflicts,
 	readPackageName,
 	resolveHome,
 	type ExtPackageEntry,
-} from "../src/index.js";
+} from "../src/helpers.js";
 
 // ---------------------------------------------------------------------------
 // Typed mock handles
@@ -93,6 +95,10 @@ describe("detectKind", () => {
 		expect(detectKind("git+https://github.com/owner/repo")).toBe("other");
 	});
 
+	it("relative path ../foo → 'local'", () => {
+		expect(detectKind("../some/path")).toBe("local");
+	});
+
 	it("plain unrecognized string → 'other'", () => {
 		expect(detectKind("some-package-name")).toBe("other");
 	});
@@ -115,12 +121,25 @@ describe("resolveHome", () => {
 		expect(resolveHome("~\\foo")).toBe(join("/home/testuser", "foo"));
 	});
 
-	it("leaves a path without a tilde unchanged", () => {
-		expect(resolveHome("./relative/path")).toBe("./relative/path");
+	it("leaves a path without a leading ./ or ~/ unchanged", () => {
+		expect(resolveHome("relative-path")).toBe("relative-path");
 	});
 
 	it("leaves a plain string without tilde unchanged", () => {
 		expect(resolveHome("no-tilde-here")).toBe("no-tilde-here");
+	});
+
+	it("resolves ./ path against explicit cwd", () => {
+		expect(resolveHome("./some/path", "/base/dir")).toBe("/base/dir/some/path");
+	});
+
+	it("resolves ../ path against explicit cwd", () => {
+		expect(resolveHome("../some/path", "/base/dir")).toBe("/base/some/path");
+	});
+
+	it("resolves ../ relative to settings file directory (.pi/)", () => {
+		// ../packages/foo relative to .pi/ should resolve to packages/foo at project root
+		expect(resolveHome("../packages/foo", "/base/.pi")).toBe("/base/packages/foo");
 	});
 });
 
@@ -155,6 +174,13 @@ describe("checkHealth", () => {
 	it("other kind → 'unverified' (no fs call)", () => {
 		expect(checkHealth("git+https://github.com/x/y", "other")).toBe("unverified");
 		expect(mockExists).not.toHaveBeenCalled();
+	});
+
+	it("local + relative path resolves against provided cwd (settings dir)", () => {
+		// Simulate ../packages/foo from .pi/ resolving to /base/packages/foo
+		mockExists.mockImplementation((p) => p === "/base/packages/foo");
+		expect(checkHealth("../packages/foo", "local", "/base/.pi")).toBe("ok");
+		expect(mockExists).toHaveBeenCalledWith("/base/packages/foo");
 	});
 });
 
@@ -577,5 +603,117 @@ describe("loadEntries", () => {
 
 		expect(() => loadEntries(CWD)).not.toThrow();
 		expect(loadEntries(CWD)).toHaveLength(0);
+	});
+});
+
+// ---------------------------------------------------------------------------
+// buildSummary (Issue #0001 — conflict count lives in the header legend)
+// ---------------------------------------------------------------------------
+
+describe("buildSummary", () => {
+	function makeEntry(overrides: Partial<ExtPackageEntry>): ExtPackageEntry {
+		return {
+			name: "ext",
+			raw: "/some/path",
+			spec: "/some/path",
+			scope: "user",
+			kind: "local",
+			health: "ok",
+			disabled: false,
+			conflict: false,
+			...overrides,
+		};
+	}
+
+	it("counts ok, missing, unverified, and conflict entries", () => {
+		const entries: ExtPackageEntry[] = [
+			makeEntry({ health: "ok" }),
+			makeEntry({ health: "ok" }),
+			makeEntry({ health: "missing" }),
+			makeEntry({ health: "unverified" }),
+			makeEntry({ health: "ok", conflict: true }),
+		];
+		expect(buildSummary(entries)).toEqual({
+			ok: 3,
+			missing: 1,
+			unverified: 1,
+			conflict: 1,
+		});
+	});
+
+	it("returns zeros for an empty list", () => {
+		expect(buildSummary([])).toEqual({ ok: 0, missing: 0, unverified: 0, conflict: 0 });
+	});
+
+	it("includes conflict count so the header summary legend has all info in one place", () => {
+		const entries: ExtPackageEntry[] = [
+			makeEntry({ conflict: true }),
+			makeEntry({ conflict: true }),
+			makeEntry({}),
+		];
+		// The conflict count is available via buildSummary — it should be rendered
+		// in the header legend block, not hardcoded separately in the navigation footer.
+		expect(buildSummary(entries).conflict).toBe(2);
+	});
+});
+
+// ---------------------------------------------------------------------------
+// isLocalPathMissing (Issue #0002 — non-existing paths highlighted in red)
+// ---------------------------------------------------------------------------
+
+describe("isLocalPathMissing", () => {
+	beforeEach(() => {
+		mockExists.mockReset();
+	});
+
+	it("returns true for a local path that does not exist", () => {
+		mockExists.mockReturnValue(false);
+		expect(isLocalPathMissing("/home/user/.pi/extensions/my-ext")).toBe(true);
+	});
+
+	it("returns false for a local path that exists", () => {
+		mockExists.mockReturnValue(true);
+		expect(isLocalPathMissing("/home/user/.pi/extensions/my-ext")).toBe(false);
+	});
+
+	it("strips the leading underscore from disabled entries before checking", () => {
+		mockExists.mockImplementation((p: unknown) => p === "/home/user/.pi/ext");
+		expect(isLocalPathMissing("_/home/user/.pi/ext")).toBe(false);
+		expect(isLocalPathMissing("_/home/user/.pi/missing")).toBe(true);
+	});
+
+	it("returns false for npm: specs (non-local) regardless of existsSync", () => {
+		mockExists.mockReturnValue(false);
+		expect(isLocalPathMissing("npm:some-package@1.0.0")).toBe(false);
+		expect(mockExists).not.toHaveBeenCalled();
+	});
+
+	it("returns false for https: specs (non-local) regardless of existsSync", () => {
+		mockExists.mockReturnValue(false);
+		expect(isLocalPathMissing("https://example.com/ext.js")).toBe(false);
+		expect(mockExists).not.toHaveBeenCalled();
+	});
+
+	it("resolves ~ home paths before calling existsSync", () => {
+		mockExists.mockReturnValue(false);
+		// Should not throw — home expansion is applied before existsSync
+		expect(() => isLocalPathMissing("~/my-ext")).not.toThrow();
+		expect(mockExists).toHaveBeenCalled();
+		// The arg must be an absolute path (tilde expanded)
+		const calledWith = (mockExists.mock.calls[0] as [string])[0];
+		expect(calledWith).not.toContain("~");
+		expect(calledWith).toMatch(/^\//);
+	});
+
+	it("returns false for a disabled npm spec _npm:some-package (non-local)", () => {
+		mockExists.mockReturnValue(false);
+		expect(isLocalPathMissing("_npm:some-package")).toBe(false);
+		expect(mockExists).not.toHaveBeenCalled();
+	});
+
+	it("../ relative path that does not exist → true", () => {
+		mockExists.mockReturnValue(false);
+		expect(isLocalPathMissing("../.worktrees/nonexistent/pkg")).toBe(true);
+		expect(mockExists).toHaveBeenCalled();
 	});
 });

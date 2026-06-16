@@ -17,213 +17,36 @@
  *   Esc             Close
  */
 
-import { existsSync, readFileSync } from "node:fs";
-import { homedir } from "node:os";
-import { join } from "node:path";
-
 import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
-import type { ThemeColor } from "@earendil-works/pi-coding-agent";
 import { matchesKey, truncateToWidth } from "@earendil-works/pi-tui";
 
-// ---------------------------------------------------------------------------
-// Data model
-// ---------------------------------------------------------------------------
+import {
+	type ExtPackageEntry,
+	buildSummary,
+	filterEntries,
+	loadEntries,
+} from "./helpers.js";
+import { renderEntry } from "./render.js";
 
-export interface ExtPackageEntry {
-	/** Display name: package.json#name for local paths, spec for npm/git */
-	name: string;
-	/** Raw string from settings.json (may start with _ for disabled entries) */
-	raw: string;
-	/** Path or spec with leading _ stripped */
-	spec: string;
-	scope: "project" | "user";
-	kind: "local" | "npm" | "other";
-	health: "ok" | "missing" | "unverified";
-	/** True when the raw entry starts with _ (explicitly disabled by user) */
-	disabled: boolean;
-	/** True when the same package name appears in both user and project scope */
-	conflict: boolean;
-}
-
-// ---------------------------------------------------------------------------
-// Pure helpers (exported for testability)
-// ---------------------------------------------------------------------------
-
-export function detectKind(spec: string): "local" | "npm" | "other" {
-	if (spec.startsWith("npm:")) return "npm";
-	if (
-		spec.startsWith("/") ||
-		spec.startsWith("./") ||
-		spec.startsWith("~/") ||
-		spec.startsWith("~\\") ||
-		/^[a-zA-Z]:[\\/]/.test(spec)
-	)
-		return "local";
-	return "other";
-}
-
-export function resolveHome(spec: string): string {
-	if (spec.startsWith("~/") || spec.startsWith("~\\")) {
-		return join(homedir(), spec.slice(2));
-	}
-	return spec;
-}
-
-export function checkHealth(spec: string, kind: "local" | "npm" | "other"): "ok" | "missing" | "unverified" {
-	if (kind === "local") {
-		return existsSync(resolveHome(spec)) ? "ok" : "missing";
-	}
-	return "unverified";
-}
-
-export function readPackageName(dir: string): string | undefined {
-	try {
-		const pkgPath = join(dir, "package.json");
-		if (!existsSync(pkgPath)) return undefined;
-		const pkg = JSON.parse(readFileSync(pkgPath, "utf8")) as { name?: string };
-		return typeof pkg.name === "string" ? pkg.name : undefined;
-	} catch {
-		return undefined;
-	}
-}
-
-export function deriveName(
-	spec: string,
-	kind: "local" | "npm" | "other",
-	health: "ok" | "missing" | "unverified",
-): string {
-	if (kind === "npm") {
-		const bare = spec.replace(/^npm:/, "");
-		const atIdx = bare.startsWith("@") ? bare.indexOf("@", 1) : bare.indexOf("@");
-		return atIdx > 0 ? bare.slice(0, atIdx) : bare;
-	}
-	if (kind === "local") {
-		if (health === "missing") return spec.split("/").at(-1) ?? spec;
-		return readPackageName(resolveHome(spec)) ?? spec.split("/").at(-1) ?? spec;
-	}
-	return spec;
-}
-
-function readPackageList(settingsPath: string): string[] {
-	try {
-		if (!existsSync(settingsPath)) return [];
-		const settings = JSON.parse(readFileSync(settingsPath, "utf8")) as {
-			packages?: unknown[];
-			extensions?: unknown[];
-		};
-		const raw: string[] = [];
-		for (const entry of settings.packages ?? []) {
-			if (typeof entry === "string") {
-				raw.push(entry);
-			} else if (entry && typeof entry === "object" && "source" in entry && typeof entry.source === "string") {
-				raw.push(entry.source);
-			}
-		}
-		for (const entry of settings.extensions ?? []) {
-			if (typeof entry === "string") raw.push(entry);
-		}
-		return raw;
-	} catch {
-		return [];
-	}
-}
-
-export function markConflicts(entries: ExtPackageEntry[]): ExtPackageEntry[] {
-	// A conflict is the same name present in both user and project scope.
-	const scopes = new Map<string, Set<string>>();
-	for (const e of entries) {
-		if (!scopes.has(e.name)) scopes.set(e.name, new Set());
-		scopes.get(e.name)!.add(e.scope);
-	}
-	return entries.map((e) => ({
-		...e,
-		conflict: (scopes.get(e.name)?.size ?? 0) > 1,
-	}));
-}
-
-export function loadEntries(cwd: string): ExtPackageEntry[] {
-	const agentDir = join(homedir(), ".pi", "agent");
-	const sources: [string, "user" | "project"][] = [
-		[join(agentDir, "settings.json"), "user"],
-		[join(cwd, ".pi", "settings.json"), "project"],
-	];
-
-	const entries: ExtPackageEntry[] = [];
-	for (const [settingsPath, scope] of sources) {
-		for (const raw of readPackageList(settingsPath)) {
-			const disabled = raw.startsWith("_");
-			const cleanSpec = disabled ? raw.slice(1) : raw;
-			const spec = raw; // keep underscore for display
-			const kind = detectKind(cleanSpec);
-			const health = checkHealth(cleanSpec, kind);
-			const name = deriveName(cleanSpec, kind, health);
-			entries.push({ name, raw, spec, scope, kind, health, disabled, conflict: false });
-		}
-	}
-	return markConflicts(entries);
-}
-
-export function filterEntries(entries: ExtPackageEntry[], query: string): ExtPackageEntry[] {
-	if (!query) return entries;
-	const q = query.toLowerCase();
-	return entries.filter(
-		(e) => e.name.toLowerCase().includes(q) || e.spec.toLowerCase().includes(q),
-	);
-}
-
-// ---------------------------------------------------------------------------
-// TUI rendering
-// ---------------------------------------------------------------------------
-
-const MAX_VISIBLE_ROWS = 20;
-
-const HEALTH_ICON: Record<ExtPackageEntry["health"], string> = {
-	ok: "✓",
-	missing: "⚠",
-	unverified: "~",
-};
-
-const HEALTH_COLOR: Record<ExtPackageEntry["health"], ThemeColor> = {
-	ok: "success",
-	missing: "error",
-	unverified: "dim",
-};
-
-type Theme = { fg: (color: ThemeColor, text: string) => string; bold: (text: string) => string };
-
-function renderEntry(
-	entry: ExtPackageEntry,
-	isSelected: boolean,
-	nameColWidth: number,
-	width: number,
-	theme: Theme,
-): string {
-	const arrow = isSelected ? theme.fg("accent", "> ") : "  ";
-	const isWarning = entry.conflict || entry.health === "missing";
-	const healthColor = HEALTH_COLOR[entry.health];
-	const icon = theme.fg(entry.disabled ? "dim" : healthColor, ` ${HEALTH_ICON[entry.health]} `);
-	const conflictBadge = entry.conflict ? theme.fg(isSelected ? "accent" : "error", "⚡ ") : "   ";
-	const plainName =
-		entry.name.length > nameColWidth
-			? `${entry.name.slice(0, nameColWidth - 1)}…`
-			: entry.name;
-	const paddedName = plainName.padEnd(nameColWidth);
-	const nameColored = isSelected
-		? theme.fg("accent", paddedName)
-		: isWarning
-			? theme.fg("error", paddedName)
-			: entry.disabled
-				? theme.fg("dim", paddedName)
-				: paddedName;
-	const pathPart = !isSelected && isWarning
-		? theme.fg("error", entry.spec)
-		: theme.fg("dim", entry.spec);
-	return truncateToWidth(`${arrow}${nameColored}${conflictBadge}${icon}${pathPart}`, width);
-}
+export type { ExtPackageEntry };
+export { buildSummary, filterEntries, loadEntries };
+export {
+	checkHealth,
+	deriveName,
+	detectKind,
+	isLocalPathMissing,
+	markConflicts,
+	readPackageName,
+	resolveHome,
+	type SummaryStats,
+} from "./helpers.js";
+export { renderEntry } from "./render.js";
 
 // ---------------------------------------------------------------------------
 // Extension entry point
 // ---------------------------------------------------------------------------
+
+const MAX_VISIBLE_ROWS = 20;
 
 export default function extensionsBrowserExtension(pi: ExtensionAPI): void {
 	pi.registerCommand("extensions", {
@@ -271,10 +94,7 @@ export default function extensionsBrowserExtension(pi: ExtensionAPI): void {
 					const lines: string[] = [];
 
 					// Title + health summary
-					const okCount = filtered.filter((e) => e.health === "ok").length;
-					const missingCount = filtered.filter((e) => e.health === "missing").length;
-					const unverifiedCount = filtered.filter((e) => e.health === "unverified").length;
-					const conflictCount = filtered.filter((e) => e.conflict).length;
+					const { ok: okCount, missing: missingCount, unverified: unverifiedCount, conflict: conflictCount } = buildSummary(filtered);
 					const summary = [
 						theme.fg("success", `${okCount} ✓ ok`),
 						...(missingCount > 0 ? [theme.fg("error", `${missingCount} ⚠ missing`)] : []),
@@ -377,7 +197,7 @@ export default function extensionsBrowserExtension(pi: ExtensionAPI): void {
 						truncateToWidth(
 							theme.fg(
 								"dim",
-								`↑↓ navigate · type to filter · ⌫ clear · esc close   ${pos}   ⚡ conflict`,
+								`↑↓ navigate · type to filter · ⌫ clear · esc close   ${pos}`,		// ⚡ conflict count is shown in the header summary legend
 							),
 							width,
 						),
