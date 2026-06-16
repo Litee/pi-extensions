@@ -77,7 +77,7 @@ function makePi() {
       on: vi.fn().mockReturnValue(() => {}),
       emit: vi.fn(),
     },
-  } as unknown as ExtensionAPI
+  }
 }
 
 // ---------------------------------------------------------------------------
@@ -1242,7 +1242,7 @@ describe('commandName', () => {
   it('register() registers command under commandName', () => {
     const { watcher, pi } = makeWatcher()
     const registerCommandSpy = vi.spyOn(pi, 'registerCommand')
-    watcher.register(pi)
+    watcher.register(pi as unknown as ExtensionAPI)
     expect(registerCommandSpy).toHaveBeenCalledWith(
       'stub-watcher',
       expect.objectContaining({ handler: expect.any(Function) as unknown }),
@@ -1256,7 +1256,7 @@ describe('commandName', () => {
     const pi = makePi()
     const watcher = new NamedWatcher({ pi: pi as unknown as ExtensionAPI, now: () => 0 })
     const registerCommandSpy = vi.spyOn(pi, 'registerCommand')
-    watcher.register(pi)
+    watcher.register(pi as unknown as ExtensionAPI)
     expect(registerCommandSpy).toHaveBeenCalledWith(
       'my-command',
       expect.objectContaining({ handler: expect.any(Function) as unknown }),
