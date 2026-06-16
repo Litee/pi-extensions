@@ -55,11 +55,11 @@ export default defineConfig({
 				// modules (all 100% covered). Exercising the shell requires a
 				// live pi-tui runtime.
 				"**/pi-skills-browser/src/index.ts",
-				// pi-tools/src/index.ts is the TUI shell that wires
+				// pi-tools-browser/src/index.ts is the TUI shell that wires
 				// ctx.ui.custom(...) to the pure branchState.ts / completions.ts
 				// / renderToolMarkdown.ts / rows.ts modules (all 100% covered).
 				// Exercising the shell requires a live pi-tui runtime.
-				"**/pi-tools/src/index.ts",
+				"**/pi-tools-browser/src/index.ts",
 				// pi-aws-glue-watcher/src/ui/watches-view.ts and glue-widget.ts
 				// are Container + DynamicBorder shells that wire the pure
 				// watchesModel.ts / watchesKeys.ts / widgetRows.ts modules

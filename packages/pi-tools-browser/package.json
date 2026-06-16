@@ -1,5 +1,5 @@
 {
-  "name": "pi-tools",
+  "name": "pi-tools-browser",
   "version": "0.1.0",
   "private": true,
   "description": "Pi extension that registers a /tools command for reviewing every tool available in a pi session (name, source, description, parameter schema, active state, and a compact token estimate).",
