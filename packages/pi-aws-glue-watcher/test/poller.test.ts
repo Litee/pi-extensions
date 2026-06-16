@@ -663,6 +663,7 @@ describe("snapshotWorkflowRun — undefined Status ?? '' fallback (line 112)", (
 			getWorkflowRun: vi.fn().mockResolvedValue({
 				Run: {
 					// Status intentionally absent → undefined → ?? "" returns ""
+					Status: undefined as unknown as string,
 					Statistics: {},
 					Graph: { Nodes: [] },
 				},

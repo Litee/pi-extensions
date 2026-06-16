@@ -68,7 +68,7 @@ describe("createGitClient — explicit timeoutMs option", () => {
 
   it("accepts { timeoutMs: undefined } falling back to 5000", async () => {
     mockOk("true\n");
-    const client = createGitClient({ timeoutMs: undefined });
+    const client = createGitClient({});
     expect(await client.isGitRepo("/repo")).toBe(true);
   });
 });

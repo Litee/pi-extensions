@@ -703,7 +703,7 @@ describe("buildWidgetEntries — sort edge cases", () => {
 describe("renderEntryLine — uncovered branches", () => {
 	it("renders N×? when numberOfWorkers is set but workerType is absent (hits ?? '?' branch)", () => {
 		const line = renderEntryLine(
-			{ displayName: "j", state: "RUNNING", numberOfWorkers: 5, workerType: undefined, isTerminal: false },
+			{ displayName: "j", state: "RUNNING", numberOfWorkers: 5, isTerminal: false },
 			10,
 			plainTheme,
 		);

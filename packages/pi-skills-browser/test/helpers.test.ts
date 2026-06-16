@@ -65,9 +65,7 @@ describe("detectPathDisplay", () => {
 	it("returns the SKILL.md filename when SKILL.md sits directly in cwd (dir is empty)", () => {
 		// When dir becomes "" after stripping the SKILL.md suffix the function
 		// falls back to returning the unmodified `relative`.
-		const _path = "/projects/my-repo/x/SKILL.md";
-		// relative = "x/SKILL.md", dir = "x" (truthy) — but this also exercises
-		// the cwd-strip branch. Use a path where SKILL.md is bare:
+		// relative = "SKILL.md", dir = "" (falsy) — falls back to returning relative
 		expect(detectPathDisplay("/projects/my-repo/SKILL.md", cwd)).toBe("SKILL.md");
 	});
 

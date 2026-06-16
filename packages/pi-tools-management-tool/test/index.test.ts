@@ -1228,7 +1228,7 @@ describe("renderResult — isPartial and missing-details branches", () => {
 		await pi.fireSessionStart();
 		const ctx = makeCtx();
 		// Override to return undefined selectedTools
-		(ctx as unknown as Record<string, unknown>).getSystemPromptOptions =
+		(ctx as unknown as Record<string, unknown>)["getSystemPromptOptions"] =
 			vi.fn(() => ({ selectedTools: undefined }));
 		const res = await exec(pi.tool, { action: "list" }, ctx);
 		const txt = textOf(res);
@@ -1361,7 +1361,7 @@ describe("renderResult — isPartial and missing-details branches", () => {
 		createExtension(pi.api);
 		await pi.fireSessionStart();
 		const ctx = makeCtx();
-		(ctx as unknown as Record<string, unknown>).getSystemPromptOptions =
+		(ctx as unknown as Record<string, unknown>)["getSystemPromptOptions"] =
 			vi.fn(() => ({ selectedTools: undefined }));
 		const res = await exec(pi.tool, { action: "list" }, ctx);
 		const txt = textOf(res);
