@@ -1,4 +1,4 @@
-import type { ContextEvent } from "@earendil-works/pi-coding-agent";
+import type { ContextEvent, ExtensionContext } from "@earendil-works/pi-coding-agent";
 
 // AgentMessage lives in @earendil-works/pi-agent-core, which is only a transitive
 // dependency here. Derive it from the publicly exported ContextEvent payload so the
@@ -107,3 +107,46 @@ export interface ApplyCompressionOptions {
 export type ApplyCompressionResult =
 	| { ok: true; messages: AgentMessage[]; appliedMessages: number }
 	| { ok: false; reason: string };
+
+// ---------------------------------------------------------------------------
+// Dependency injection interfaces — allow mocking external resources in tests.
+// ---------------------------------------------------------------------------
+
+export interface HeadroomClient {
+	health(signal?: AbortSignal): Promise<boolean>;
+	stats(signal?: AbortSignal): Promise<unknown>;
+	compress(
+		messages: OpenAIMessage[],
+		model: string | undefined,
+		signal?: AbortSignal,
+	): Promise<CompressResult>;
+}
+
+export interface ProxyManager {
+	startPersistentHeadroomProxy(
+		config: HeadroomConfig,
+	): Promise<{ ok: true } | { ok: false; reason: string }>;
+}
+
+export interface HeadroomRuntimeState {
+	enabled: boolean;
+	proxyOnline: boolean | null;
+	proxyStarting: boolean;
+	proxyStartAttempted: boolean;
+	remoteWarningShown: boolean;
+	offlineWarningShown: boolean;
+	stats: HeadroomStats;
+}
+
+export interface HeadroomMenu {
+	openHeadroomMenu(ctx: unknown, runtime: HeadroomRuntime): Promise<void>;
+}
+
+export interface HeadroomRuntime {
+	config: HeadroomConfig;
+	client: HeadroomClient;
+	state: HeadroomRuntimeState;
+	refreshStatus(ctx: ExtensionContext): void;
+	updateHealth(ctx: ExtensionContext): Promise<boolean>;
+	ensureProxy(ctx: ExtensionContext): Promise<boolean>;
+}

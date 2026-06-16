@@ -10,7 +10,11 @@ import type { ExtensionContext } from "@earendil-works/pi-coding-agent";
 import { DynamicBorder, getSettingsListTheme } from "@earendil-works/pi-coding-agent";
 import { Container, Input, type SettingItem, SettingsList, Spacer, Text, truncateToWidth } from "@earendil-works/pi-tui";
 import { deleteHeadroomSettings, loadHeadroomConfig, saveHeadroomSettings } from "./config.ts";
-import type { HeadroomRuntime } from "./index.ts";
+import type { HeadroomRuntime } from "./types.ts";
+
+export function createDefaultMenu(): { openHeadroomMenu(ctx: unknown, runtime: HeadroomRuntime): Promise<void> } {
+	return { openHeadroomMenu: defaultOpenHeadroomMenu };
+}
 
 // ---------------------------------------------------------------------------
 // Number input submenu factory
@@ -109,7 +113,7 @@ function handleChange(
 // Main menu entry point
 // ---------------------------------------------------------------------------
 
-export async function openHeadroomMenu(ctx: ExtensionContext, runtime: HeadroomRuntime): Promise<void> {
+export async function defaultOpenHeadroomMenu(ctx: ExtensionContext, runtime: HeadroomRuntime): Promise<void> {
 	await ctx.ui.custom<void>((tui, theme, _kb, done) => {
 		const container = new Container();
 		container.addChild(new DynamicBorder((s) => theme.fg("accent", s)));

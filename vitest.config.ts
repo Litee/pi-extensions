@@ -241,6 +241,11 @@ export default defineConfig({
 				// coverage is intentionally excluded to avoid mandating real
 				// TTS model assets in CI.
 				"**/pi-speak/src/index.ts",
+				// pi-headroom — entire package excluded. It is a copy from
+				// upstream (pi-extension/headroom) and its files (index, bridge,
+				// client, config, proxy-manager, menu) all require a live
+				// headroom proxy and/or pi-coding-agent runtime to test.
+				"**/pi-headroom/**",
 			],
 			// `json-summary` makes the coverage output machine-readable so CI or
 			// review tooling (e.g. gh-action coverage comments, pi-session-recap

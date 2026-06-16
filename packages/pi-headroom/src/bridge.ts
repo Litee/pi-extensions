@@ -34,7 +34,7 @@ export function buildCompressionPayload(messages: AgentMessage[], minMessageChar
 	}
 
 	return {
-		messages: mappings.map((mapping) => mapping!.message),
+		messages: mappings.map((mapping) => mapping.message),
 		mappings,
 		candidateCount,
 	};
@@ -50,20 +50,20 @@ export function applyCompressionResult(
 		return { ok: false, reason: "message-count-changed" };
 	}
 
-	const nextMessages = structuredClone(originalMessages) as AgentMessage[];
+	const nextMessages = structuredClone(originalMessages);
 	let appliedMessages = 0;
 
 	for (let index = 0; index < mappings.length; index++) {
 		const mapping = mappings[index]!;
 		const compressed = compressedMessages[index]!;
-		const validation = validateAlignedMessage(mapping.message!, compressed);
+		const validation = validateAlignedMessage(mapping.message, compressed);
 		if (!validation.ok) return validation;
 
 		const nextText = extractOpenAIText(compressed);
 		if (nextText === mapping.originalText) continue;
 
 		const target = nextMessages[mapping.sourceIndex] as AnyMessage;
-		if (!replaceTextContent(target, nextText, mapping.message!.role)) {
+		if (!replaceTextContent(target, nextText, mapping.message.role)) {
 			return { ok: false, reason: "target-content-unreplaceable" };
 		}
 		appliedMessages++;

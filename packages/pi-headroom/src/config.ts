@@ -39,7 +39,7 @@ export function loadHeadroomSettings(settingsPath: string = HEADROOM_SETTINGS_FI
 	try {
 		const raw = fs.readFileSync(settingsPath, "utf-8");
 		const parsed = JSON.parse(raw) as unknown;
-		if (parsed && typeof parsed === "object" && !Array.isArray(parsed)) return parsed as HeadroomSettings;
+		if (parsed && typeof parsed === "object" && !Array.isArray(parsed)) return parsed;
 	} catch {
 		// Missing or invalid settings.json falls back to env/defaults.
 	}

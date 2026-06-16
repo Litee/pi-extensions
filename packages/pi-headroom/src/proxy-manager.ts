@@ -1,12 +1,18 @@
 import { execFile, spawn } from "node:child_process";
-import type { HeadroomConfig } from "./types.ts";
+import type { HeadroomConfig, ProxyManager } from "./types.ts";
 
 export interface ProxyEndpoint {
 	host: string;
 	port: string;
 }
 
-export async function startPersistentHeadroomProxy(
+export function createDefaultProxyManager(): ProxyManager {
+	return {
+		startPersistentHeadroomProxy: defaultStartPersistentHeadroomProxy,
+	};
+}
+
+async function defaultStartPersistentHeadroomProxy(
 	config: HeadroomConfig,
 ): Promise<{ ok: true } | { ok: false; reason: string }> {
 	const endpoint = parseLocalEndpoint(config.baseUrl);

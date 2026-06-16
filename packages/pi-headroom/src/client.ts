@@ -1,4 +1,4 @@
-import type { CompressResult, OpenAIMessage } from "./types.ts";
+import type { CompressResult, HeadroomClient, OpenAIMessage } from "./types.ts";
 
 interface ProxyCompressResponse {
 	messages: OpenAIMessage[];
@@ -15,7 +15,7 @@ interface HeadroomClientOptions {
 	timeoutMs: number;
 }
 
-export class HeadroomHttpClient {
+export class HeadroomHttpClient implements HeadroomClient {
 	private readonly baseUrl: string;
 	private readonly timeoutMs: number;
 
@@ -80,7 +80,7 @@ export class HeadroomHttpClient {
 
 async function readJsonObject(response: Response): Promise<Record<string, unknown> | undefined> {
 	try {
-		const body = (await response.json()) as unknown;
+		const body = (await response.json());
 		return isRecord(body) ? body : undefined;
 	} catch {
 		return undefined;
@@ -89,7 +89,7 @@ async function readJsonObject(response: Response): Promise<Record<string, unknow
 
 async function readErrorMessage(response: Response): Promise<string | undefined> {
 	try {
-		const body = (await response.json()) as unknown;
+		const body = (await response.json());
 		if (!isRecord(body)) return undefined;
 		const error = body["error"];
 		if (isRecord(error) && typeof error["message"] === "string") return error["message"];
