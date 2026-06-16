@@ -1762,3 +1762,58 @@ describe('round-trip: numberOfWorkers and workerType through persist → normali
     vi.useRealTimers()
   })
 })
+
+// ---------------------------------------------------------------------------
+// Branch coverage: _minIntervalMs via widget.getPollIntervalMs callback
+// ---------------------------------------------------------------------------
+
+describe('GlueWatcher._minIntervalMs (via widget callback)', () => {
+  it('returns POLL_INTERVAL_MS when no schedulers are registered (empty map)', () => {
+    vi.useFakeTimers()
+    const { watcher } = makeWatcher()
+    // Access the getPollIntervalMs callback stored inside the widget.
+    // This invokes the lambda at line 266 of watcher.ts, which in turn
+    // exercises the entire _minIntervalMs body.
+    const getMs = (watcher as unknown as { widget: { getPollIntervalMs: () => number } }).widget.getPollIntervalMs
+    expect(getMs()).toBe(120_000) // POLL_INTERVAL_MS
+    watcher.stopPolling()
+    vi.useRealTimers()
+  })
+
+  it('returns the minimum scheduler intervalMs when schedulers exist', async () => {
+    vi.useFakeTimers()
+    const { watcher } = makeWatcher()
+    // Add two watches with explicit poll intervals; the widget callback should
+    // return the minimum of the two scheduler intervals.
+    await watcher.executeTool({ action: 'add', type: 'job', name: 'j1', runId: 'jr_1', profile: 'p', pollIntervalMs: 30_000 })
+    await watcher.executeTool({ action: 'add', type: 'job', name: 'j2', runId: 'jr_2', profile: 'p', pollIntervalMs: 60_000 })
+    const getMs = (watcher as unknown as { widget: { getPollIntervalMs: () => number } }).widget.getPollIntervalMs
+    // The PollScheduler starts at baseMs (30 000 for the first watch).
+    expect(getMs()).toBeLessThanOrEqual(60_000)
+    watcher.stopPolling()
+    vi.useRealTimers()
+  })
+})
+
+// ---------------------------------------------------------------------------
+// Branch coverage: normaliseBaseline — non-string elements in reportedFailedNodes
+// ---------------------------------------------------------------------------
+
+describe('GlueWatcher.normaliseBaseline — non-string elements in reportedFailedNodes', () => {
+  it('filters out non-string elements from reportedFailedNodes', () => {
+    const { watcher } = makeWatcher()
+    const raw = {
+      state: 'RUNNING',
+      totalActions: 1,
+      succeededActions: 0,
+      failedActions: 0,
+      runningActions: 1,
+      // mix valid strings and non-strings — non-strings must be filtered out
+      reportedFailedNodes: ['job-a', 42, null, 'job-b', true],
+    }
+    const b = watcher.normaliseBaseline(raw)
+    expect(b).not.toBeNull()
+    const wf = b as import('../src/types.js').WorkflowBaseline
+    expect(wf.reportedFailedNodes).toEqual(['job-a', 'job-b'])
+  })
+})

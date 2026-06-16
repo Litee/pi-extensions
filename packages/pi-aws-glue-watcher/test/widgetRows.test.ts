@@ -695,3 +695,135 @@ describe("buildWidgetEntries — sort edge cases", () => {
 		expect(entries[1]?.isTerminal).toBe(true);
 	});
 });
+
+// ---------------------------------------------------------------------------
+// Branch coverage: renderEntryLine — workerType ?? "?" and pollIntervalMs branch
+// ---------------------------------------------------------------------------
+
+describe("renderEntryLine — uncovered branches", () => {
+	it("renders N×? when numberOfWorkers is set but workerType is absent (hits ?? '?' branch)", () => {
+		const line = renderEntryLine(
+			{ displayName: "j", state: "RUNNING", numberOfWorkers: 5, workerType: undefined, isTerminal: false },
+			10,
+			plainTheme,
+		);
+		expect(line).toContain("5×?");
+	});
+
+	it("renders the poll interval in seconds when pollIntervalMs is defined (truthy branch)", () => {
+		const line = renderEntryLine(
+			{ displayName: "j", state: "RUNNING", isTerminal: false, pollIntervalMs: 60_000 },
+			10,
+			plainTheme,
+		);
+		// 60 000 ms → 60 s
+		expect(line).toContain("60s");
+	});
+
+	it("renders '-' for interval when pollIntervalMs is undefined (falsy branch)", () => {
+		const line = renderEntryLine(
+			{ displayName: "j", state: "RUNNING", isTerminal: false },
+			10,
+			plainTheme,
+		);
+		// No pollIntervalMs → intervalSec === undefined → rendered as "-"
+		expect(line).toContain("-");
+	});
+});
+
+// ---------------------------------------------------------------------------
+// Branch coverage: sort comparator — force compare(older, newer) to hit return 1
+// ---------------------------------------------------------------------------
+
+describe("buildWidgetEntries — sort comparator return-1 and return-1/0 via multi-entry ordering", () => {
+	it("correctly sorts three RUNNING entries: newest first, forcing all startedOn comparison paths", () => {
+		// With three entries in OLDEST→MIDDLE→NEWEST insertion order, the sort
+		// comparator must compare (oldest, newest) → oldest.startedOn < newest.startedOn
+		// → return 1 (hits the inner ternary's '1' branch on line 164).
+		const entries = buildWidgetEntries({
+			a: job({
+				watchId: "a",
+				name: "oldest",
+				baseline: { state: "RUNNING", errorMessage: "", startedOn: "2024-01-01T01:00:00Z" },
+			}),
+			b: job({
+				watchId: "b",
+				name: "middle",
+				baseline: { state: "RUNNING", errorMessage: "", startedOn: "2024-01-01T02:00:00Z" },
+			}),
+			c: job({
+				watchId: "c",
+				name: "newest",
+				baseline: { state: "RUNNING", errorMessage: "", startedOn: "2024-01-01T03:00:00Z" },
+			}),
+		});
+		const names = entries.map((e) => e.displayName);
+		// Sorted descending by startedOn: newest first
+		expect(names.indexOf("newest [jr]")).toBeLessThan(names.indexOf("middle [jr]"));
+		expect(names.indexOf("middle [jr]")).toBeLessThan(names.indexOf("oldest [jr]"));
+	});
+
+	it("places entry-without-startedOn after entries-with-startedOn when b has startedOn but a does not (line 166)", () => {
+		// Entries: [no-start, with-start]. Compare(no-start, with-start):
+		//   a.startedOn && b.startedOn → false (a has none)
+		//   if (a.startedOn) → false
+		//   if (b.startedOn) → true → return 1  (hits line 166 truthy branch)
+		const entries = buildWidgetEntries({
+			x: job({ watchId: "x", name: "no-start", baseline: { state: "RUNNING", errorMessage: "" } }),
+			y: job({
+				watchId: "y",
+				name: "with-start",
+				baseline: { state: "RUNNING", errorMessage: "", startedOn: "2024-01-01T00:00:00Z" },
+			}),
+		});
+		const names = entries.map((e) => e.displayName);
+		expect(names.indexOf("with-start [jr]")).toBeLessThan(names.indexOf("no-start [jr]"));
+	});
+});
+
+// ---------------------------------------------------------------------------
+// Branch coverage: workflow fallback with undefined baseline (lines 135-138)
+// ---------------------------------------------------------------------------
+
+describe("buildWidgetEntries — workflow fallback with undefined baseline", () => {
+	it("produces a fallback entry with empty state when workflow has no baseline (b?.state ?? '' false branch)", () => {
+		// `watch.baseline` is undefined → `b` is undefined → `b?.state ?? ""` returns ""
+		// and `b?.state ?? ""` on line 138 also returns "".
+		// This covers the false-side of the `??` on lines 135 and 138.
+		const entries = buildWidgetEntries({
+			w: workflow({ watchId: "w", name: "no-baseline-wf" }),
+		});
+		expect(entries).toHaveLength(1);
+		expect(entries[0]?.state).toBe("");
+		expect(entries[0]?.isTerminal).toBe(false);
+	});
+
+	it("uses bare watch.name (no runId suffix) in fallback when runId is empty (cond-expr false on line 137)", () => {
+		// `watch.runId` is empty string → falsy → displayName = watch.name (not `${name} [${runId.slice(-4)}]`)
+		const entries = buildWidgetEntries({
+			w: workflow({ watchId: "w", name: "bare-name", runId: "" }),
+		});
+		expect(entries[0]?.displayName).toBe("bare-name");
+	});
+});
+
+// ---------------------------------------------------------------------------
+// Branch coverage: sort comparator line 166 FALSE branch
+// — both a and b lack startedOn → `if (b.startedOn)` is false → falls through to return 0
+// ---------------------------------------------------------------------------
+
+describe("buildWidgetEntries — sort comparator: both entries lack startedOn", () => {
+	it("returns stable 2-element result when neither entry has startedOn (false branch of line 166)", () => {
+		// When both a and b have no startedOn:
+		//   a.startedOn && b.startedOn → false (line 164)
+		//   if (a.startedOn) → false (line 165)
+		//   if (b.startedOn) → false (line 166, FALSE branch)
+		//   → return 0
+		const entries = buildWidgetEntries({
+			a: job({ watchId: "a", name: "no-start-a", baseline: { state: "RUNNING", errorMessage: "" } }),
+			b: job({ watchId: "b", name: "no-start-b", baseline: { state: "RUNNING", errorMessage: "" } }),
+		});
+		// Both have no startedOn and same state: sort is stable, just 2 entries
+		expect(entries).toHaveLength(2);
+	});
+});

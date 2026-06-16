@@ -291,3 +291,125 @@ describe("createGlueClient", () => {
 		expect(result.JobRun.CompletedOn).toBeUndefined();
 	});
 });
+
+// ---------------------------------------------------------------------------
+// Branch coverage: getWorkflowRun — undefined Name / Type / JobRunState / State
+// hit the `?? ""` fallback branches in the node-mapping loop.
+// ---------------------------------------------------------------------------
+
+describe("createGlueClient — getWorkflowRun ?? fallback branches", () => {
+	let mockSend2: ReturnType<typeof vi.fn>;
+
+	beforeEach(() => {
+		vi.mocked(AwsGlueClient).mockClear();
+		mockSend2 = vi.fn();
+		vi.mocked(AwsGlueClient).mockImplementation(function (this: { send: unknown }) {
+			this.send = mockSend2;
+		});
+	});
+
+	it("falls back to empty string when node Name is undefined", async () => {
+		mockSend2.mockResolvedValue({
+			Run: {
+				Status: "RUNNING",
+				Graph: {
+					Nodes: [
+						{ Name: undefined, Type: "JOB", JobDetails: { JobRuns: [] } },
+					],
+				},
+			},
+		});
+		const client = createGlueClient();
+		const result = await client.getWorkflowRun("wf", "run", "prof", "us-east-1");
+		expect(result.Run.Graph?.Nodes?.[0]?.Name).toBe("");
+	});
+
+	it("falls back to empty string when node Type is undefined", async () => {
+		mockSend2.mockResolvedValue({
+			Run: {
+				Status: "RUNNING",
+				Graph: {
+					Nodes: [
+						{ Name: "n1", Type: undefined, JobDetails: { JobRuns: [] } },
+					],
+				},
+			},
+		});
+		const client = createGlueClient();
+		const result = await client.getWorkflowRun("wf", "run", "prof", "us-east-1");
+		expect(result.Run.Graph?.Nodes?.[0]?.Type).toBe("");
+	});
+
+	it("falls back to empty string when jr.JobRunState is undefined", async () => {
+		mockSend2.mockResolvedValue({
+			Run: {
+				Status: "RUNNING",
+				Graph: {
+					Nodes: [
+						{
+							Name: "j1",
+							Type: "JOB",
+							JobDetails: {
+								JobRuns: [{ JobRunState: undefined }],
+							},
+						},
+					],
+				},
+			},
+		});
+		const client = createGlueClient();
+		const result = await client.getWorkflowRun("wf", "run", "prof", "us-east-1");
+		expect(result.Run.Graph?.Nodes?.[0]?.JobDetails?.JobRuns?.[0]?.JobRunState).toBe("");
+	});
+
+	it("falls back to empty string when crawl State is undefined", async () => {
+		mockSend2.mockResolvedValue({
+			Run: {
+				Status: "RUNNING",
+				Graph: {
+					Nodes: [
+						{
+							Name: "c1",
+							Type: "CRAWLER",
+							CrawlerDetails: {
+								Crawls: [{ State: undefined }],
+							},
+						},
+					],
+				},
+			},
+		});
+		const client = createGlueClient();
+		const result = await client.getWorkflowRun("wf", "run", "prof", "us-east-1");
+		expect(result.Run.Graph?.Nodes?.[0]?.CrawlerDetails?.Crawls?.[0]?.State).toBe("");
+	});
+
+	it("falls back to empty string when run.Status is undefined (line 185 ?? branch)", async () => {
+		// Exercises `run?.Status ?? ""` when the response has no Status field.
+		mockSend2.mockResolvedValue({
+			Run: {
+				// Status intentionally absent → undefined → ?? "" fallback
+				Statistics: undefined,
+				Graph: { Nodes: [] },
+			},
+		});
+		const client = createGlueClient();
+		const result = await client.getWorkflowRun("wf", "run", "prof", "us-east-1");
+		expect(result.Run.Status).toBe("");
+	});
+
+	it("falls back to empty array when run.Graph.Nodes is undefined (line 196 ?? [] branch)", async () => {
+		// Exercises `run.Graph.Nodes ?? []` when Graph is defined but Nodes is absent.
+		mockSend2.mockResolvedValue({
+			Run: {
+				Status: "RUNNING",
+				Graph: {
+					// Nodes intentionally absent → undefined → ?? [] fallback
+				},
+			},
+		});
+		const client = createGlueClient();
+		const result = await client.getWorkflowRun("wf", "run", "prof", "us-east-1");
+		expect(result.Run.Graph?.Nodes).toEqual([]);
+	});
+});

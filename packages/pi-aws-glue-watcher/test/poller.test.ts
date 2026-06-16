@@ -535,3 +535,202 @@ describe("snapshotWorkflowRun — node optional fields", () => {
 		expect(baseline.reportedFailedNodes).not.toContain("trigger-node");
 	});
 });
+
+// ---------------------------------------------------------------------------
+// Branch coverage: snapshotWorkflowRun — partial stats (missing fields → ?? 0)
+// ---------------------------------------------------------------------------
+
+describe("snapshotWorkflowRun — partial statistics (missing stat fields hit ?? 0)", () => {
+	it("defaults failedActions and runningActions to 0 when absent from statistics", async () => {
+		// Exercises the `?? 0` fallback branches for FailedActions / RunningActions
+		// in snapshotWorkflowRun (poller.ts line ~115).
+		const client: GlueClient = {
+			getJobRun: vi.fn(),
+			getWorkflowRun: vi.fn().mockResolvedValue({
+				Run: {
+					Status: "RUNNING",
+					Statistics: {
+						TotalActions: 3,
+						SucceededActions: 1,
+						// FailedActions and RunningActions intentionally absent
+					},
+					Graph: { Nodes: [] },
+				},
+			} satisfies WorkflowRunResponse),
+			getLatestJobRunId: vi.fn(),
+			getLatestWorkflowRunId: vi.fn(),
+			stopJobRun: vi.fn(),
+			stopWorkflowRun: vi.fn(),
+		};
+		const baseline = await snapshotWorkflowRun(client, makeWorkflowWatch());
+		expect(baseline.totalActions).toBe(3);
+		expect(baseline.succeededActions).toBe(1);
+		expect(baseline.failedActions).toBe(0);   // ?? 0 branch
+		expect(baseline.runningActions).toBe(0);  // ?? 0 branch
+	});
+});
+
+// ---------------------------------------------------------------------------
+// Branch coverage: detectWorkflowChanges — node optional fields (completedOn, timeoutMinutes)
+// ---------------------------------------------------------------------------
+
+describe("detectWorkflowChanges — node completedOn and timeoutMinutes in new baseline", () => {
+	const runningBaseline: WorkflowBaseline = {
+		state: "RUNNING",
+		totalActions: 1,
+		succeededActions: 0,
+		failedActions: 0,
+		runningActions: 1,
+		reportedFailedNodes: [],
+	};
+
+	it("includes completedOn in node info when the job run has CompletedOn set", async () => {
+		// Exercises the truthy branch of `run?.CompletedOn !== undefined` (poller.ts ~line 273).
+		const nodes: WorkflowRunNode[] = [
+			{
+				Name: "step-done",
+				Type: "JOB",
+				JobDetails: {
+					JobRuns: [{
+						JobRunState: "SUCCEEDED",
+						StartedOn: "2024-01-01T00:00:00Z",
+						CompletedOn: "2024-01-01T00:05:00Z",
+					}],
+				},
+			},
+		];
+		const client = makeWorkflowClient("RUNNING", { TotalActions: 1 }, nodes);
+		const watch = makeWorkflowWatch(runningBaseline);
+		const { newBaseline } = await detectWorkflowChanges(client, watch);
+		const nodeInfo = (newBaseline as WorkflowBaseline).nodes?.find((n) => n.name === "step-done");
+		expect(nodeInfo?.completedOn).toBe("2024-01-01T00:05:00Z");
+	});
+
+	it("includes timeoutMinutes in node info when Timeout > 0", async () => {
+		// Exercises the truthy branch of `run?.Timeout != null && run.Timeout > 0`
+		// (poller.ts ~line 268) and the resulting `timeoutMinutes !== undefined` spread
+		// (poller.ts ~line 276).
+		const nodes: WorkflowRunNode[] = [
+			{
+				Name: "step-timeout",
+				Type: "JOB",
+				JobDetails: {
+					JobRuns: [{
+						JobRunState: "RUNNING",
+						Timeout: 45,
+					}],
+				},
+			},
+		];
+		const client = makeWorkflowClient("RUNNING", { TotalActions: 1 }, nodes);
+		const watch = makeWorkflowWatch(runningBaseline);
+		const { newBaseline } = await detectWorkflowChanges(client, watch);
+		const nodeInfo = (newBaseline as WorkflowBaseline).nodes?.find((n) => n.name === "step-timeout");
+		expect(nodeInfo?.timeoutMinutes).toBe(45);
+	});
+
+	it("omits timeoutMinutes from node info when Timeout is 0 (inherit job default)", async () => {
+		// Exercises the false branch of `run.Timeout > 0` (returns undefined → no spread).
+		const nodes: WorkflowRunNode[] = [
+			{
+				Name: "step-no-timeout",
+				Type: "JOB",
+				JobDetails: {
+					JobRuns: [{
+						JobRunState: "RUNNING",
+						Timeout: 0,
+					}],
+				},
+			},
+		];
+		const client = makeWorkflowClient("RUNNING", { TotalActions: 1 }, nodes);
+		const watch = makeWorkflowWatch(runningBaseline);
+		const { newBaseline } = await detectWorkflowChanges(client, watch);
+		const nodeInfo = (newBaseline as WorkflowBaseline).nodes?.find((n) => n.name === "step-no-timeout");
+		expect(nodeInfo?.timeoutMinutes).toBeUndefined();
+	});
+});
+
+// ---------------------------------------------------------------------------
+// Branch coverage: ?? "" fallback paths for undefined Status / JobRunState
+// ---------------------------------------------------------------------------
+
+describe("snapshotWorkflowRun — undefined Status ?? '' fallback (line 112)", () => {
+	it("defaults state to empty string when Run.Status is undefined", async () => {
+		// Exercises `resp.Run.Status ?? ""` when the API returns no Status field.
+		const client: GlueClient = {
+			getJobRun: vi.fn(),
+			getWorkflowRun: vi.fn().mockResolvedValue({
+				Run: {
+					// Status intentionally absent → undefined → ?? "" returns ""
+					Statistics: {},
+					Graph: { Nodes: [] },
+				},
+			} satisfies WorkflowRunResponse),
+			getLatestJobRunId: vi.fn(),
+			getLatestWorkflowRunId: vi.fn(),
+			stopJobRun: vi.fn(),
+			stopWorkflowRun: vi.fn(),
+		};
+		const baseline = await snapshotWorkflowRun(client, makeWorkflowWatch());
+		expect(baseline.state).toBe("");
+	});
+});
+
+describe("detectJobChanges — undefined JobRunState ?? '' fallback (lines 152-153)", () => {
+	it("defaults state and errorMessage to empty string when fields are absent from JobRun", async () => {
+		// Exercises `resp.JobRun.JobRunState ?? ""` and `resp.JobRun.ErrorMessage ?? ""`
+		// when the API returns a JobRun with undefined state/error fields.
+		const client: GlueClient = {
+			getJobRun: vi.fn().mockResolvedValue({
+				JobRun: {
+					// JobRunState and ErrorMessage intentionally absent
+					JobRunState: undefined as unknown as string,
+					ErrorMessage: undefined,
+				},
+			} satisfies JobRunResponse),
+			getWorkflowRun: vi.fn(),
+			getLatestJobRunId: vi.fn(),
+			getLatestWorkflowRunId: vi.fn(),
+			stopJobRun: vi.fn(),
+			stopWorkflowRun: vi.fn(),
+		};
+		const watch = makeJobWatch({ state: "RUNNING", errorMessage: "" });
+		const { newBaseline } = await detectJobChanges(client, watch);
+		const b = newBaseline as JobBaseline;
+		expect(b.state).toBe("");
+		expect(b.errorMessage).toBe("");
+	});
+});
+
+describe("detectWorkflowChanges — undefined Run.Status ?? '' fallback (line 215)", () => {
+	it("defaults nextState to empty string when Run.Status is absent", async () => {
+		// Exercises `resp.Run.Status ?? ""` in detectWorkflowChanges.
+		const client: GlueClient = {
+			getJobRun: vi.fn(),
+			getWorkflowRun: vi.fn().mockResolvedValue({
+				Run: {
+					Status: undefined as unknown as string,
+					Statistics: {},
+					Graph: { Nodes: [] },
+				},
+			} satisfies WorkflowRunResponse),
+			getLatestJobRunId: vi.fn(),
+			getLatestWorkflowRunId: vi.fn(),
+			stopJobRun: vi.fn(),
+			stopWorkflowRun: vi.fn(),
+		};
+		const runningBaseline: WorkflowBaseline = {
+			state: "RUNNING",
+			totalActions: 0,
+			succeededActions: 0,
+			failedActions: 0,
+			runningActions: 0,
+			reportedFailedNodes: [],
+		};
+		// prev state = "RUNNING", next state = "" → state_changed event
+		const { newBaseline } = await detectWorkflowChanges(client, makeWorkflowWatch(runningBaseline));
+		const wfBase = newBaseline as WorkflowBaseline;
+		expect(wfBase.state).toBe("");
+	});
+});
