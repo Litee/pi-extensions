@@ -466,6 +466,27 @@ describe("handleCcSkills (injectable picker)", () => {
 
 		expect(persist).not.toHaveBeenCalled();
 	});
+
+	it("passes cwd to discoverAllSkills when opts.cwd is defined", async () => {
+		// Covers the `opts.cwd !== undefined` branch of the ternary in handleCcSkills.
+		const cwd = mkdir(tmpRoot, "project-with-cwd");
+		writeSkill(join(cwd, ".claude", "skills", "proj-skill"), "proj-skill");
+		const ctx = makeCtx(cwd);
+		let capturedSkills: import("../src/types.js").DiscoveredSkill[] | undefined;
+
+		await handleCcSkills({
+			ctx,
+			claudeDir,
+			stateFile,
+			cwd,
+			picker: (args) => {
+				capturedSkills = args.skills;
+				return Promise.resolve();
+			},
+		});
+
+		expect(capturedSkills?.some((s) => s.pluginId === "@project")).toBe(true);
+	});
 });
 
 // -- issue #0007: replace heuristic dedup with ctx.getSystemPromptOptions() ----
@@ -557,6 +578,21 @@ describe("resources_discover dedup via ctx.getSystemPromptOptions() (issue #0007
 			expect.stringContaining("requires pi"),
 			"error",
 		);
+	});
+
+	it("returns all skills when getSystemPromptOptions returns no skills property (covers ?? [] branch)", async () => {
+		// When getSystemPromptOptions() returns an object without a `skills` key,
+		// `skills` is undefined → the `?? []` fallback branch is taken.
+		writeSkill(join(claudeDir, "skills", "alpha"), "alpha");
+		const pi = makeFakePi();
+		 
+		createExtension(pi as unknown as ExtensionAPI);
+		const ctx = makeCtx(mkdir(tmpRoot, "project"), vi.fn(), () => ({}));
+		const handler = pi.handlers.get("resources_discover")!;
+		const result = (await handler({ cwd: ctx.cwd, reason: "startup" }, ctx)) as {
+			skillPaths: string[];
+		};
+		expect(result.skillPaths).toEqual([join(claudeDir, "skills", "alpha")]);
 	});
 
 	it("returns all skills when getSystemPromptOptions returns an empty skills array", async () => {

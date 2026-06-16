@@ -32,6 +32,13 @@ describe("decoratePickerValue", () => {
 		expect(fallback).not.toHaveBeenCalled();
 	});
 
+	it("renders 'disabled' in theme error colour when not selected (no bold wrap)", () => {
+		const fallback = vi.fn((text: string, selected: boolean) => `FB(${text},${selected})`);
+		const out = decoratePickerValue("disabled", false, fakeTheme, fallback);
+		expect(out).toBe("FG:error(disabled)");
+		expect(fallback).not.toHaveBeenCalled();
+	});
+
 	it("delegates unknown value text to the fallback renderer verbatim", () => {
 		const fallback = vi.fn((text: string, selected: boolean) => `FB(${text},${selected})`);
 		const out = decoratePickerValue("other", false, fakeTheme, fallback);

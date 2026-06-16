@@ -145,6 +145,36 @@ describe("readActivePlugins", () => {
 		expect(readActivePlugins(claudeDir)).toEqual([]);
 	});
 
+	it("returns [] when plugins field is a non-object primitive (e.g. a number)", () => {
+		// Covers the `typeof plugins !== "object"` branch when plugins is truthy
+		// but not actually an object (nor an array, which is handled separately).
+		writeManifest(claudeDir, { plugins: 42 });
+		expect(readActivePlugins(claudeDir)).toEqual([]);
+
+		writeManifest(claudeDir, { plugins: "str" });
+		expect(readActivePlugins(claudeDir)).toEqual([]);
+	});
+
+	it("tolerates sort comparator with an entry lacking both lastUpdated and installedAt", () => {
+		// Covers the `?? ""` branch and the `|| 0` branch in the date-parse
+		// expression inside the sort comparator.  A two-entry array forces the
+		// comparator to actually run; the entry without any date fields exercises
+		// the `?? ""` fallback → Date.parse("") = NaN → NaN || 0 = 0.
+		writeManifest(claudeDir, {
+			plugins: {
+				"alpha@owner": [
+					{ scope: "user", installPath: "/a", lastUpdated: "2024-01-01T00:00:00Z" },
+					{ scope: "project", installPath: "/b" }, // neither lastUpdated nor installedAt
+				],
+			},
+		});
+		const result = readActivePlugins(claudeDir);
+		// user-scope entry wins regardless of sort order
+		expect(result).toEqual([
+			{ pluginKey: "alpha@owner", pluginName: "alpha", installPath: "/a" },
+		]);
+	});
+
 	it("returns one entry per plugin across many plugins", () => {
 		writeManifest(claudeDir, {
 			plugins: {

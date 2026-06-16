@@ -594,6 +594,78 @@ describe("loadEntries", () => {
 		expect(entries.map((e) => e.spec)).toEqual(["npm:pkg-one@1.0", "npm:ext-two@2.0"]);
 	});
 
+	it("settings with only extensions[] (no packages key) still reads extensions", () => {
+		// Covers: `settings.packages ?? []` right branch (packages key absent)
+		mockExists.mockImplementation((p) => {
+			if (p === USER_SETTINGS) return true;
+			if (String(p).endsWith("package.json")) return false;
+			return false;
+		});
+		mockRead.mockImplementation((p) => {
+			if (p === USER_SETTINGS)
+				return JSON.stringify({ extensions: ["npm:ext-only@1.0"] }); // no `packages` key
+			throw new Error(`unexpected read: ${String(p)}`);
+		});
+
+		const entries = loadEntries(CWD);
+		expect(entries).toHaveLength(1);
+		expect(entries[0]!.spec).toBe("npm:ext-only@1.0");
+	});
+
+	it("ignores a null entry in the packages array (else-if falsy guard)", () => {
+		// Covers: `entry &&` false branch in readPackageList's else-if chain
+		mockExists.mockImplementation((p) => {
+			if (p === USER_SETTINGS) return true;
+			return false;
+		});
+		mockRead.mockImplementation((p) => {
+			if (p === USER_SETTINGS)
+				return JSON.stringify({ packages: [null, "npm:real-pkg@1.0"] });
+			throw new Error(`unexpected read: ${String(p)}`);
+		});
+
+		const entries = loadEntries(CWD);
+		// null entry is silently skipped; only the npm string entry appears
+		expect(entries).toHaveLength(1);
+		expect(entries[0]!.spec).toBe("npm:real-pkg@1.0");
+	});
+
+	it("ignores an object entry without a 'source' field", () => {
+		// Covers: `"source" in entry` false branch in readPackageList's else-if chain
+		mockExists.mockImplementation((p) => {
+			if (p === USER_SETTINGS) return true;
+			return false;
+		});
+		mockRead.mockImplementation((p) => {
+			if (p === USER_SETTINGS)
+				return JSON.stringify({ packages: [{ path: "/some/path" }, "npm:real@1.0"] });
+			throw new Error(`unexpected read: ${String(p)}`);
+		});
+
+		const entries = loadEntries(CWD);
+		// The object without 'source' is skipped
+		expect(entries).toHaveLength(1);
+		expect(entries[0]!.spec).toBe("npm:real@1.0");
+	});
+
+	it("ignores a non-string extension entry in extensions[]", () => {
+		// Covers: `typeof entry === "string"` false branch in extensions loop
+		mockExists.mockImplementation((p) => {
+			if (p === USER_SETTINGS) return true;
+			return false;
+		});
+		mockRead.mockImplementation((p) => {
+			if (p === USER_SETTINGS)
+				return JSON.stringify({ extensions: [42, "npm:valid-ext@1.0"] });
+			throw new Error(`unexpected read: ${String(p)}`);
+		});
+
+		const entries = loadEntries(CWD);
+		// 42 is silently skipped; only the string extension appears
+		expect(entries).toHaveLength(1);
+		expect(entries[0]!.spec).toBe("npm:valid-ext@1.0");
+	});
+
 	it("handles corrupt JSON in settings file gracefully", () => {
 		mockExists.mockImplementation((p) => p === USER_SETTINGS);
 		mockRead.mockImplementation((p) => {

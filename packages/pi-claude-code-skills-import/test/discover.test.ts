@@ -274,4 +274,37 @@ describe("discoverAllSkills with alreadyLoadedSkills (issue #0007)", () => {
 		});
 		expect(result).toEqual([]);
 	});
+
+	it("excludes plugin skills matched by path in alreadyLoadedSkills", () => {
+		// Covers the `excludedByDir` true branch for plugin skills.
+		const installPath = mkdir(tmpRoot, "claude/plugins/cache/owner/p2/1.0.0");
+		writeSkill(join(installPath, "skills", "one"), "one");
+		writeSkill(join(installPath, "skills", "two"), "two");
+		writeFileSync(
+			join(claudeDir, "plugins", "installed_plugins.json"),
+			JSON.stringify({
+				plugins: {
+					"p2@owner": [{ scope: "user", installPath, lastUpdated: "2025-01-01T00:00:00Z" }],
+				},
+			}),
+		);
+		const oneDir = join(installPath, "skills", "one");
+		const result = discoverAllSkills({
+			claudeDir,
+			alreadyLoadedSkills: [{ name: "unrelated-name", path: oneDir }],
+		});
+		expect(result.map((s) => s.skillName)).toEqual(["two"]);
+	});
+
+	it("excludes project-local skills matched by name in alreadyLoadedSkills", () => {
+		// Covers the `excludedByName` true branch for project-local skills.
+		const cwd = mkdir(tmpRoot, "project2");
+		writeSkill(join(cwd, ".claude", "skills", "local"), "local");
+		const result = discoverAllSkills({
+			claudeDir,
+			cwd,
+			alreadyLoadedSkills: [{ name: "local", path: "/unrelated/path" }],
+		});
+		expect(result).toEqual([]);
+	});
 });
