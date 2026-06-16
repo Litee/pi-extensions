@@ -295,8 +295,7 @@ export function registerSessionDebugInfoTool(pi: ExtensionAPI): void {
 		promptSnippet:
 			"get_session_debug_info: view session metadata, token usage, extension entries, system prompt, or system prompt inputs",
 		parameters: ParamsSchema,
-		// eslint-disable-next-line @typescript-eslint/require-await -- Tool execute() must return a Promise; the work itself is synchronous.
-		async execute(
+		execute(
 			_toolCallId: string,
 			params: Params,
 			_signal: AbortSignal | undefined,
@@ -340,10 +339,10 @@ export function registerSessionDebugInfoTool(pi: ExtensionAPI): void {
 				filter: params.filter,
 			});
 
-			return {
+			return Promise.resolve({
 				content: [{ type: "text", text }],
 				details: { debugInfo: text },
-			};
+			});
 		},
 	});
 }

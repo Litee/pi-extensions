@@ -54,8 +54,7 @@ export function registerCommandsTool(pi: ExtensionAPI): void {
 			"Useful for investigating what commands extensions have registered.",
 		promptSnippet: "inspect_commands: list all registered slash commands and their descriptions",
 		parameters: Type.Object({}),
-		// eslint-disable-next-line @typescript-eslint/require-await -- Tool execute() must return a Promise; the work itself is synchronous.
-		async execute(
+		execute(
 			_toolCallId: string,
 			_params: Record<string, never>,
 			_signal: AbortSignal | undefined,
@@ -65,10 +64,10 @@ export function registerCommandsTool(pi: ExtensionAPI): void {
 			const commands = pi.getCommands();
 			const text = formatCommands(commands);
 
-			return {
+			return Promise.resolve({
 				content: [{ type: "text", text }],
 				details: { commands: text },
-			};
+			});
 		},
 	});
 }
