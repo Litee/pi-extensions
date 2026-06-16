@@ -8,7 +8,6 @@
  * detected change — use `remove` to stop a watch.
  */
 
-import { randomBytes } from "node:crypto";
 import { resolve } from "node:path";
 
 import {
@@ -17,6 +16,8 @@ import {
   MAX_POLL_MS,
   POLL_ERROR_THRESHOLD,
 } from "pi-watcher-core/base-watcher";
+import { mintWatchId } from "pi-watcher-core/mint-watch-id";
+import { formatTimeLeft } from "pi-watcher-core/time-left";
 import { PollScheduler } from "pi-watcher-core/poll-scheduler";
 import { createWatcherWidget } from "pi-watcher-core/watcher-widget";
 import type { ClassifiedWatcherError } from "pi-watcher-core/classify-error";
@@ -43,18 +44,7 @@ import type { GitBaseline, GitEvent, GitWatch, TargetCondition } from "./types.j
 // Display helpers
 // ---------------------------------------------------------------------------
 
-export function formatTimeLeft(timeoutAt: number | undefined, now: number): string {
-  if (timeoutAt === undefined) return "-";
-  const remainingMs = timeoutAt - now;
-  if (remainingMs <= 0) return "expired";
-  const s = Math.ceil(remainingMs / 1000);
-  const h = Math.floor(s / 3600);
-  const m = Math.floor((s % 3600) / 60);
-  const rem = s % 60;
-  if (h >= 1) return `${h}h left`;
-  if (m >= 1) return `${m}m left`;
-  return `${rem}s left`;
-}
+export { formatTimeLeft } from "pi-watcher-core/time-left";
 
 export function compressPath(path: string, maxWidth: number): string {
   if (path.length <= maxWidth) return path;
@@ -454,7 +444,7 @@ export class GitWatcher extends BaseWatcher<GitWatch, GitBaseline, GitEvent> {
     }
 
     // 7. Generate watchId
-    const watchId = randomBytes(4).toString("hex");
+    const watchId = mintWatchId();
 
     // 8. Build capped timeout
     const capped =

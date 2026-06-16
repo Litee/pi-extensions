@@ -5,13 +5,13 @@
  * BaseWatcher poll loop, persistence, and menu machinery.
  */
 
-import { randomBytes } from 'node:crypto'
-
-import { BaseWatcher, BASE_POLL_MS, MAX_POLL_MS, POLL_ERROR_THRESHOLD } from 'pi-watcher-core/base-watcher'
+import { AwsBaseWatcher, type AwsAddBaseParams } from 'pi-watcher-core/aws/base-watcher'
+import { POLL_ERROR_THRESHOLD } from 'pi-watcher-core/base-watcher'
+import { capTimeoutSeconds } from 'pi-watcher-core/timeout-cap'
 import { validateAwsProfile } from 'pi-watcher-core/validate-aws-profile'
-import { PollScheduler } from 'pi-watcher-core/poll-scheduler'
 import { createWatcherWidget } from 'pi-watcher-core/watcher-widget'
-import type { ClassifiedWatcherError } from 'pi-watcher-core/classify-error'
+export { formatTimeLeft } from 'pi-watcher-core/time-left'
+import { formatTimeLeft } from 'pi-watcher-core/time-left'
 import type {
   BaseWatcherOptions,
   BrowseViewOptions,
@@ -31,45 +31,6 @@ import type { S3Baseline, S3Event, S3Watch } from './types.js'
 import { compressS3Uri, parseS3Uri, S3UriError } from './uri.js'
 
 // ---------------------------------------------------------------------------
-// Display helpers
-// ---------------------------------------------------------------------------
-
-/**
- * Format the time remaining until a timeout, or special labels for
- * undefined / expired timeouts.
- */
-export function formatTimeLeft(timeoutAt: number | undefined, now: number): string {
-  if (timeoutAt === undefined) return '-'
-  const remainingMs = timeoutAt - now
-  if (remainingMs <= 0) return 'expired'
-  const s = Math.ceil(remainingMs / 1000)
-  const h = Math.floor(s / 3600)
-  const m = Math.floor((s % 3600) / 60)
-  const rem = s % 60
-  if (h >= 1) return `${h}h left`
-  if (m >= 1) return `${m}m left`
-  return `${rem}s left`
-}
-
-// ---------------------------------------------------------------------------
-// Error classification
-// ---------------------------------------------------------------------------
-
-const AUTH_ERROR_NAMES = new Set([
-  'CredentialsProviderError',
-  'TokenProviderError',
-  'ProviderError',
-  'ExpiredToken',
-  'ExpiredTokenException',
-])
-
-const THROTTLE_ERROR_NAMES = new Set([
-  'ThrottlingException',
-  'TooManyRequestsException',
-  'SlowDown',
-  'RequestLimitExceeded',
-])
-
 // ---------------------------------------------------------------------------
 // Helpers
 // ---------------------------------------------------------------------------
@@ -94,7 +55,7 @@ function normaliseBaselineField(raw: unknown): S3Baseline | undefined {
 // S3Watcher
 // ---------------------------------------------------------------------------
 
-export class S3Watcher extends BaseWatcher<S3Watch, S3Baseline, S3Event> {
+export class S3Watcher extends AwsBaseWatcher<S3Watch, S3Baseline, S3Event> {
   // ── Identity ───────────────────────────────────────────────────────────────
   readonly extensionName = 'pi-aws-s3-watcher'
   readonly toolName = 's3_watcher'
@@ -300,32 +261,6 @@ export class S3Watcher extends BaseWatcher<S3Watch, S3Baseline, S3Event> {
     return b
   }
 
-  classifyError(err: unknown): ClassifiedWatcherError {
-    const name = (err as Error)?.name ?? ''
-    if (AUTH_ERROR_NAMES.has(name)) {
-      return {
-        userMessage: 'authentication expired — refresh AWS credentials',
-        kind: 'auth',
-        shouldBackoff: false,
-        statusModifier: 'auth-error',
-      }
-    }
-    if (THROTTLE_ERROR_NAMES.has(name)) {
-      return {
-        userMessage: 'request throttled by AWS',
-        kind: 'throttle',
-        shouldBackoff: true,
-        statusModifier: 'throttled',
-      }
-    }
-    return {
-      userMessage: 'poll failed — check AWS connectivity',
-      kind: 'generic',
-      shouldBackoff: false,
-      statusModifier: 'none',
-    }
-  }
-
   buildChangeChatMessage(events: readonly S3Event[], now: Date): string {
     return formatChangeChatMessage(Array.from(events), now)
   }
@@ -334,11 +269,15 @@ export class S3Watcher extends BaseWatcher<S3Watch, S3Baseline, S3Event> {
     return events.some(e => e.isTerminal)
   }
 
-  // ── Add / Remove ───────────────────────────────────────────────────────────
-  async addWatch(params: Record<string, unknown>): Promise<ToolResult> {
+  // ── Add (AwsBaseWatcher hooks) ─────────────────────────────────────────────
+
+  protected override parseAddParams(
+    params: Record<string, unknown>,
+    base: AwsAddBaseParams,
+  ): Promise<{ watch: S3Watch } | { error: ToolResult }> {
     const uri = (typeof params['uri'] === 'string' ? params['uri'] : '').trim()
     if (!uri) {
-      return this._toolError("'add' requires 'uri' (s3://bucket/key).")
+      return Promise.resolve({ error: this._toolError("'add' requires 'uri' (s3://bucket/key).") })
     }
 
     let parsed: { bucket: string; key: string }
@@ -346,49 +285,33 @@ export class S3Watcher extends BaseWatcher<S3Watch, S3Baseline, S3Event> {
       parsed = parseS3Uri(uri)
     } catch (err) {
       const msg = err instanceof S3UriError ? err.message : String(err)
-      return this._toolError(msg)
+      return Promise.resolve({ error: this._toolError(msg) })
     }
 
     const target = (typeof params['target'] === 'string' ? params['target'] : '').trim()
     if (!(TARGETS as ReadonlySet<string>).has(target)) {
-      return this._toolError("'add' requires target to be 'creation', 'modification', or 'deletion'.")
+      return Promise.resolve({ error: this._toolError("'add' requires target to be 'creation', 'modification', or 'deletion'.") })
     }
 
-    const profile = (typeof params['profile'] === 'string' ? params['profile'] : '').trim()
-    if (!profile) {
-      return this._toolError("'add' requires a profile.")
-    }
-
-    const region =
-      typeof params['region'] === 'string' && params['region'].trim()
-        ? params['region'].trim()
-        : undefined
+    const profileError = validateAwsProfile(base.profile)
+    if (profileError) return Promise.resolve({ error: this._toolError(profileError) })
 
     const requestedSeconds =
       typeof params['timeoutSeconds'] === 'number' ? params['timeoutSeconds'] : undefined
     if (requestedSeconds !== undefined) {
       if (!Number.isFinite(requestedSeconds) || requestedSeconds <= 0) {
-        return this._toolError("'timeoutSeconds' must be a positive finite number.")
+        return Promise.resolve({ error: this._toolError("'timeoutSeconds' must be a positive finite number.") })
       }
     }
 
-    const profileError = validateAwsProfile(profile)
-    if (profileError) return this._toolError(profileError)
+    const { timeoutAt } = capTimeoutSeconds(requestedSeconds, MAX_TIMEOUT_SECONDS, this._now())
 
-    const capped = requestedSeconds !== undefined && requestedSeconds > MAX_TIMEOUT_SECONDS
-    const effectiveSeconds =
-      requestedSeconds !== undefined
-        ? Math.min(requestedSeconds, MAX_TIMEOUT_SECONDS)
-        : MAX_TIMEOUT_SECONDS
-    const timeoutAt = this._now() + effectiveSeconds * 1000
-
-    const watchId = randomBytes(4).toString('hex')
     const watch: S3Watch = {
-      watchId,
+      watchId: base.watchId,
       bucket: parsed.bucket,
       key: parsed.key,
-      profile,
-      region,
+      profile: base.profile,
+      region: base.region,
       target: target as S3Watch['target'],
       timeoutAt,
       addedAt: this._now(),
@@ -397,49 +320,35 @@ export class S3Watcher extends BaseWatcher<S3Watch, S3Baseline, S3Event> {
       terminal: false,
       consecutiveErrors: 0,
     }
+    return Promise.resolve({ watch })
+  }
 
-    let seedError: string | undefined
-    try {
-      watch.baseline = await this.snapshot(watch)
-    } catch (err) {
-      seedError = (err as Error).message
-    }
-
-    // target='modification' requires an existing baseline to diff against
-    if (target === 'modification' && watch.baseline !== undefined && !watch.baseline.exists) {
+  protected override validateAfterSeed(watch: S3Watch, baseline: S3Baseline): ToolResult | null {
+    if (watch.target === 'modification' && !baseline.exists) {
       return this._toolError(
         `target='modification' requires the object to exist at add-time, ` +
-          `but s3://${parsed.bucket}/${parsed.key} is currently absent.`,
+          `but s3://${watch.bucket}/${watch.key} is currently absent.`,
       )
     }
+    return null
+  }
 
-    this.watches.set(watchId, watch)
-    if (watch.baseline !== undefined) {
-      this.baselines.set(watchId, watch.baseline)
-    }
-
-    // Start per-watch scheduler immediately
-    const s = this.schedulerFor(watchId)
-    if (!s.isRunning) s.start(() => this.pollWatch(watchId))
-
-    const stateLabel =
-      watch.baseline === undefined ? '?' : watch.baseline.exists ? 'present' : 'absent'
+  protected override describeAddedWatch(
+    params: Record<string, unknown>,
+    watch: S3Watch,
+    baseline: S3Baseline | undefined,
+    seedError: string | undefined,
+  ): string {
+    const requestedSeconds =
+      typeof params['timeoutSeconds'] === 'number' ? params['timeoutSeconds'] : undefined
+    const effectiveSeconds = Math.round(((watch.timeoutAt ?? watch.addedAt) - watch.addedAt) / 1000)
+    const capped = requestedSeconds !== undefined && requestedSeconds > MAX_TIMEOUT_SECONDS
     const cappedNote = capped ? ` (capped from ${requestedSeconds}s)` : ''
     const timeoutLabel = ` timeout=${effectiveSeconds}s${cappedNote}`
-    const message = seedError
-      ? `s3-watcher: added watch ${watchId} for s3://${parsed.bucket}/${parsed.key} (target=${target}${timeoutLabel}), but seeding failed (${seedError}). Will retry on next poll.`
-      : `s3-watcher: added watch ${watchId} for s3://${parsed.bucket}/${parsed.key} (target=${target}${timeoutLabel}) — baseline=${stateLabel}.`
-
-    return {
-      content: [{ type: 'text', text: message }],
-      details: {
-        action: 'add',
-        ok: true,
-        message,
-        watchId,
-        watches: Array.from(this.watches.keys()),
-      },
-    }
+    const stateLabel = baseline === undefined ? '?' : baseline.exists ? 'present' : 'absent'
+    return seedError
+      ? `s3-watcher: added watch ${watch.watchId} for s3://${watch.bucket}/${watch.key} (target=${watch.target}${timeoutLabel}), but seeding failed (${seedError}). Will retry on next poll.`
+      : `s3-watcher: added watch ${watch.watchId} for s3://${watch.bucket}/${watch.key} (target=${watch.target}${timeoutLabel}) — baseline=${stateLabel}.`
   }
 
   // base class removeWatch provides the generic message; no domain-specific override needed
@@ -464,37 +373,5 @@ export class S3Watcher extends BaseWatcher<S3Watch, S3Baseline, S3Event> {
     }
   }
 
-  // ── Per-watch schedulers (Fix 3) ──────────────────────────────────────────
-  private readonly _watchSchedulers = new Map<string, PollScheduler>()
-
-  protected override schedulerFor(watchKey: string): PollScheduler {
-    let s = this._watchSchedulers.get(watchKey)
-    if (s === undefined) {
-      s = new PollScheduler({
-        baseMs: BASE_POLL_MS,
-        maxMs: MAX_POLL_MS,
-        idleMaxMs: MAX_POLL_MS,
-      })
-      this._watchSchedulers.set(watchKey, s)
-    }
-    return s
-  }
-
-  protected override noteSchedulerSuccess(anyChange: boolean, watchKey: string): void {
-    this.schedulerFor(watchKey).noteSuccess(anyChange)
-  }
-
-  override startPolling(): void {
-    for (const [key, watch] of this.watches) {
-      if (watch.terminal) continue
-      const s = this.schedulerFor(key)
-      if (!s.isRunning) s.start(() => this.pollWatch(key))
-    }
-  }
-
-  override stopPolling(): void {
-    for (const s of this._watchSchedulers.values()) s.stop()
-  }
 
 }
-

@@ -25,6 +25,15 @@
     "./watcher-widget": "./src/watcher-widget.ts",
     "./browse-view": "./src/browse-view.ts",
     "./validate-aws-profile": "./src/validate-aws-profile.ts",
+    "./time-left": "./src/time-left.ts",
+    "./mint-watch-id": "./src/mint-watch-id.ts",
+    "./timeout-cap": "./src/timeout-cap.ts",
+    "./aws": "./src/aws/index.ts",
+    "./aws/base-watcher": "./src/aws/base-watcher.ts",
+    "./aws/classify-error": "./src/aws/classify-error.ts",
+    "./aws/sdk-client-factory": "./src/aws/sdk-client-factory.ts",
+    "./aws/not-found": "./src/aws/not-found.ts",
+    "./aws/tool-fields": "./src/aws/tool-fields.ts",
     ".": "./src/lib.ts"
   },
   "peerDependencies": {

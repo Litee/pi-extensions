@@ -14,6 +14,8 @@
 
 import type { S3Client as AwsS3Client } from "@aws-sdk/client-s3";
 
+import { createCachedSdkClientFactory, makeIsNotFoundError } from "pi-watcher-core/aws";
+
 // ---------------------------------------------------------------------------
 // Response shapes
 // ---------------------------------------------------------------------------
@@ -55,17 +57,7 @@ const NOT_FOUND_NAMES = new Set(["NotFound", "NoSuchKey", "404"]);
  * Every OTHER error (403, throttling, auth-expiry, network) propagates so
  * the poll loop can classify it appropriately.
  */
-export function isNotFoundError(err: unknown): boolean {
-	if (!err || typeof err !== "object") return false;
-	const name = (err as { name?: unknown }).name;
-	if (typeof name === "string" && NOT_FOUND_NAMES.has(name)) return true;
-	const metadata = (err as { $metadata?: { httpStatusCode?: unknown } }).$metadata;
-	if (metadata && typeof metadata === "object") {
-		const status = metadata.httpStatusCode;
-		if (status === 404) return true;
-	}
-	return false;
-}
+export const isNotFoundError = makeIsNotFoundError(NOT_FOUND_NAMES);
 
 // ---------------------------------------------------------------------------
 // Factory
@@ -73,22 +65,14 @@ export function isNotFoundError(err: unknown): boolean {
 
 /** Create a real {@link S3Client} backed by the AWS SDK v3. */
 export function createS3Client(): S3Client {
-	const clientCache = new Map<string, AwsS3Client>();
-
-	async function getSdkClient(profile: string, region: string | undefined): Promise<AwsS3Client> {
-		const key = `${profile}:${region ?? "<default>"}`;
-		let c = clientCache.get(key);
-		if (!c) {
-			const { S3Client } = await import("@aws-sdk/client-s3");
-			const { fromIni } = await import("@aws-sdk/credential-providers");
-			c = new S3Client({
-				credentials: fromIni({ profile }),
-				...(region !== undefined ? { region } : {}),
-			});
-			clientCache.set(key, c);
-		}
-		return c;
-	}
+	const getSdkClient = createCachedSdkClientFactory(async (profile: string, region: string | undefined): Promise<AwsS3Client> => {
+		const { S3Client } = await import("@aws-sdk/client-s3");
+		const { fromIni } = await import("@aws-sdk/credential-providers");
+		return new S3Client({
+			credentials: fromIni({ profile }),
+			...(region !== undefined ? { region } : {}),
+		});
+	});
 
 	return {
 		async headObject(bucket, key, profile, region) {

@@ -8,6 +8,8 @@
 
 import type { EC2Client as AwsEc2Client } from "@aws-sdk/client-ec2";
 
+import { createCachedSdkClientFactory, makeIsNotFoundError } from "pi-watcher-core/aws";
+
 import type { Ec2InstanceState } from "./types.js";
 
 // ---------------------------------------------------------------------------
@@ -52,17 +54,7 @@ const NOT_FOUND_NAMES = new Set([
 /**
  * Detect the narrow "instance not found" case.
  */
-export function isNotFoundError(err: unknown): boolean {
-	if (!err || typeof err !== "object") return false;
-	const name = (err as { name?: unknown }).name;
-	if (typeof name === "string" && NOT_FOUND_NAMES.has(name)) return true;
-	const metadata = (err as { $metadata?: { httpStatusCode?: unknown } }).$metadata;
-	if (metadata && typeof metadata === "object") {
-		const status = metadata.httpStatusCode;
-		if (status === 404) return true;
-	}
-	return false;
-}
+export const isNotFoundError = makeIsNotFoundError(NOT_FOUND_NAMES);
 
 // ---------------------------------------------------------------------------
 // Factory
@@ -70,22 +62,14 @@ export function isNotFoundError(err: unknown): boolean {
 
 /** Create a real {@link Ec2Client} backed by the AWS SDK v3. */
 export function createEc2Client(): Ec2Client {
-	const clientCache = new Map<string, AwsEc2Client>();
-
-	async function getSdkClient(profile: string, region: string | undefined): Promise<AwsEc2Client> {
-		const key = `${profile}:${region ?? "<default>"}`;
-		let c = clientCache.get(key);
-		if (!c) {
-			const { EC2Client } = await import("@aws-sdk/client-ec2");
-			const { fromIni } = await import("@aws-sdk/credential-providers");
-			c = new EC2Client({
-				credentials: fromIni({ profile }),
-				...(region !== undefined ? { region } : {}),
-			});
-			clientCache.set(key, c);
-		}
-		return c;
-	}
+	const getSdkClient = createCachedSdkClientFactory(async (profile: string, region: string | undefined): Promise<AwsEc2Client> => {
+		const { EC2Client } = await import("@aws-sdk/client-ec2");
+		const { fromIni } = await import("@aws-sdk/credential-providers");
+		return new EC2Client({
+			credentials: fromIni({ profile }),
+			...(region !== undefined ? { region } : {}),
+		});
+	});
 
 	return {
 		stopInstance: async (instanceId, profile, region) => {

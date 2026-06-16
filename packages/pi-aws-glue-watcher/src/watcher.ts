@@ -5,14 +5,11 @@
  * BaseWatcher poll loop, persistence, and menu machinery.
  */
 
-import { randomBytes } from 'node:crypto'
-
 import type { ExtensionAPI } from '@earendil-works/pi-coding-agent'
-import { BaseWatcher, POLL_ERROR_THRESHOLD } from 'pi-watcher-core/base-watcher'
-import { PollScheduler } from 'pi-watcher-core/poll-scheduler'
+import { AwsBaseWatcher, type AwsAddBaseParams } from 'pi-watcher-core/aws/base-watcher'
+import { POLL_ERROR_THRESHOLD } from 'pi-watcher-core/base-watcher'
 import { createWatcherMessageRenderer } from 'pi-watcher-core/renderer'
 import { addToolToActive } from 'pi-watcher-core/tool-activation'
-import type { ClassifiedWatcherError } from 'pi-watcher-core/classify-error'
 import type {
   BaseWatcherOptions,
   BrowseViewOptions,
@@ -67,21 +64,6 @@ export const POLL_INTERVAL_MAX_MS = 900_000
 const MIN_POLL_MS = 5_000
 
 // ---------------------------------------------------------------------------
-// Error classification
-// ---------------------------------------------------------------------------
-
-const AUTH_ERROR_NAMES = new Set([
-  'CredentialsProviderError',
-  'TokenProviderError',
-  'ProviderError',
-])
-
-const THROTTLE_ERROR_NAMES = new Set([
-  'ThrottlingException',
-  'TooManyRequestsException',
-])
-
-// ---------------------------------------------------------------------------
 // Helpers
 // ---------------------------------------------------------------------------
 
@@ -93,7 +75,7 @@ function toFiniteNumber(v: unknown): number {
 // GlueWatcher
 // ---------------------------------------------------------------------------
 
-export class GlueWatcher extends BaseWatcher<GlueWatch, WatchBaseline, GlueEvent> {
+export class GlueWatcher extends AwsBaseWatcher<GlueWatch, WatchBaseline, GlueEvent> {
   // ── Identity ───────────────────────────────────────────────────────────────
   readonly extensionName = 'pi-aws-glue-watcher'
   readonly toolName = 'glue_watcher'
@@ -223,25 +205,28 @@ export class GlueWatcher extends BaseWatcher<GlueWatch, WatchBaseline, GlueEvent
     isRowDimmed: (w) => w.terminal,
   }
 
-  // ── Per-watch schedulers ──────────────────────────────────────────────────
-  private readonly _watchSchedulers = new Map<string, PollScheduler>()
+  // ── Scheduler configuration (per-watch intervals + startup stagger) ──────────
 
-  protected override schedulerFor(watchKey: string): PollScheduler {
-    let s = this._watchSchedulers.get(watchKey)
-    if (s === undefined) {
-      const baseMs = this.watches.get(watchKey)?.pollIntervalMs ?? POLL_INTERVAL_MS
-      s = new PollScheduler({
-        baseMs,
-        maxMs: POLL_INTERVAL_MAX_MS,
-        idleMaxMs: POLL_INTERVAL_MAX_MS,
-      })
-      this._watchSchedulers.set(watchKey, s)
-    }
-    return s
+  protected override schedulerBaseMs(watchKey: string): number {
+    return this.watches.get(watchKey)?.pollIntervalMs ?? POLL_INTERVAL_MS
   }
 
-  protected override noteSchedulerSuccess(anyChange: boolean, watchKey: string): void {
-    this.schedulerFor(watchKey).noteSuccess(anyChange)
+  protected override schedulerMaxMs(): number {
+    return POLL_INTERVAL_MAX_MS
+  }
+
+  protected override startupDelayMsForIndex(i: number): number {
+    return i * 2000
+  }
+
+  protected override awsAuthMessage(): string {
+    return 'authentication expired — run `aws sso login` to re-authenticate'
+  }
+
+  // stopPolling also clears the map (Glue restarts with fresh schedulers)
+  override stopPolling(): void {
+    super.stopPolling()
+    this._watchSchedulers.clear()
   }
 
   private _minIntervalMs(): number {
@@ -386,32 +371,6 @@ export class GlueWatcher extends BaseWatcher<GlueWatch, WatchBaseline, GlueEvent
     return null
   }
 
-  classifyError(err: unknown): ClassifiedWatcherError {
-    const name = (err as Error)?.name ?? ''
-    if (AUTH_ERROR_NAMES.has(name)) {
-      return {
-        userMessage: 'authentication expired — run `aws sso login` to re-authenticate',
-        kind: 'auth',
-        shouldBackoff: false,
-        statusModifier: 'auth-error',
-      }
-    }
-    if (THROTTLE_ERROR_NAMES.has(name)) {
-      return {
-        userMessage: 'request throttled by AWS',
-        kind: 'throttle',
-        shouldBackoff: true,
-        statusModifier: 'throttled',
-      }
-    }
-    return {
-      userMessage: 'poll failed — check AWS connectivity',
-      kind: 'generic',
-      shouldBackoff: false,
-      statusModifier: 'none',
-    }
-  }
-
   buildChangeChatMessage(events: readonly GlueEvent[], now: Date): string {
     return formatChangeChatMessage([...events], now)
   }
@@ -420,25 +379,23 @@ export class GlueWatcher extends BaseWatcher<GlueWatch, WatchBaseline, GlueEvent
     return events.some((e) => e.isTerminal)
   }
 
-  // ── Add / Remove ───────────────────────────────────────────────────────────
-  async addWatch(params: Record<string, unknown>): Promise<ToolResult> {
+  // ── Add (AwsBaseWatcher hooks) ───────────────────────────────────────────────
+
+  protected override async parseAddParams(
+    params: Record<string, unknown>,
+    base: AwsAddBaseParams,
+  ): Promise<{ watch: GlueWatch } | { error: ToolResult }> {
     if (params['type'] !== 'job' && params['type'] !== 'workflow') {
-      return this._toolError(
-        `'add' requires type to be 'job' or 'workflow', got ${JSON.stringify(params['type'] ?? '')}.`,
-      )
+      return {
+        error: this._toolError(
+          `'add' requires type to be 'job' or 'workflow', got ${JSON.stringify(params['type'] ?? '')}.`,
+        ),
+      }
     }
     const name = (typeof params['name'] === 'string' ? params['name'] : '').trim()
     if (!name) {
-      return this._toolError("'add' requires a non-empty name.")
+      return { error: this._toolError("'add' requires a non-empty name.") }
     }
-    const profile = (typeof params['profile'] === 'string' ? params['profile'] : '').trim()
-    if (!profile) {
-      return this._toolError("'add' requires a profile.")
-    }
-    const region =
-      typeof params['region'] === 'string' && params['region'].trim()
-        ? params['region'].trim()
-        : undefined
     const type = params['type']
 
     // Validate and clamp poll interval
@@ -446,9 +403,11 @@ export class GlueWatcher extends BaseWatcher<GlueWatch, WatchBaseline, GlueEvent
     if (params['pollIntervalMs'] !== undefined) {
       const ms = params['pollIntervalMs']
       if (typeof ms !== 'number' || !Number.isFinite(ms) || ms < MIN_POLL_MS) {
-        return this._toolError(
-          `'add' pollIntervalMs must be a finite number >= ${MIN_POLL_MS}ms.`,
-        )
+        return {
+          error: this._toolError(
+            `'add' pollIntervalMs must be a finite number >= ${MIN_POLL_MS}ms.`,
+          ),
+        }
       }
       watchPollMs = ms
     }
@@ -459,22 +418,21 @@ export class GlueWatcher extends BaseWatcher<GlueWatch, WatchBaseline, GlueEvent
       try {
         runId =
           type === 'job'
-            ? await client.getLatestJobRunId(name, profile, region)
-            : await client.getLatestWorkflowRunId(name, profile, region)
+            ? await client.getLatestJobRunId(name, base.profile, base.region)
+            : await client.getLatestWorkflowRunId(name, base.profile, base.region)
       } catch (err) {
         const msg = `Failed to fetch latest run ID for ${type} '${name}': ${(err as Error).message}`
-        return this._toolError(msg)
+        return { error: this._toolError(msg) }
       }
     }
 
-    const watchId = randomBytes(4).toString('hex')
     const watch = {
-      watchId,
+      watchId: base.watchId,
       type,
       name,
       runId,
-      profile,
-      region,
+      profile: base.profile,
+      region: base.region,
       addedAt: this._now(),
       lastPolledAt: undefined as number | undefined,
       baseline: undefined as WatchBaseline | undefined,
@@ -482,40 +440,23 @@ export class GlueWatcher extends BaseWatcher<GlueWatch, WatchBaseline, GlueEvent
       consecutiveErrors: 0,
       ...(watchPollMs !== undefined ? { pollIntervalMs: watchPollMs } : {}),
     } as GlueWatch
+    return { watch }
+  }
 
-    let seedError: string | undefined
-    try {
-      watch.baseline = await this.snapshot(watch)
-    } catch (err) {
-      seedError = (err as Error).message
-    }
-
-    this.watches.set(watchId, watch)
-    if (watch.baseline !== undefined) {
-      this.baselines.set(watchId, watch.baseline)
-    }
-
-    // Start per-watch scheduler immediately
-    const s = this.schedulerFor(watchId)
-    if (!s.isRunning) s.start(() => this.pollWatch(watchId))
-
+  protected override describeAddedWatch(
+    _params: Record<string, unknown>,
+    watch: GlueWatch,
+    baseline: WatchBaseline | undefined,
+    seedError: string | undefined,
+  ): string {
     const intervalNote =
-      watchPollMs !== undefined ? ` | poll: ${Math.round(watchPollMs / 1000)}s` : ''
-    const stateLabel = watch.baseline ? watch.baseline.state || '?' : '?'
-    const message = watch.baseline
-      ? `added ${type} '${name}' (${runId}) — state=${stateLabel}${intervalNote}. Watch ID: ${watchId}`
-      : `added ${type} '${name}' (${runId}), but seeding failed (${seedError ?? 'unknown'})${intervalNote}. Watch ID: ${watchId}`
-
-    return {
-      content: [{ type: 'text', text: message }],
-      details: {
-        action: 'add',
-        ok: true,
-        message,
-        watchId,
-        watches: Array.from(this.watches.keys()),
-      },
-    }
+      watch.pollIntervalMs !== undefined
+        ? ` | poll: ${Math.round(watch.pollIntervalMs / 1000)}s`
+        : ''
+    const stateLabel = baseline ? baseline.state || '?' : '?'
+    return baseline
+      ? `added ${watch.type} '${watch.name}' (${watch.runId}) — state=${stateLabel}${intervalNote}. Watch ID: ${watch.watchId}`
+      : `added ${watch.type} '${watch.name}' (${watch.runId}), but seeding failed (${seedError ?? 'unknown'})${intervalNote}. Watch ID: ${watch.watchId}`
   }
 
   override removeWatch(watch: GlueWatch): Promise<ToolResult> {
@@ -565,37 +506,7 @@ export class GlueWatcher extends BaseWatcher<GlueWatch, WatchBaseline, GlueEvent
         details: { action: 'set-interval', ok: true, message },
       }
     }
-    return super.executeTool(params)
-  }
-
-  // ── Polling ────────────────────────────────────────────────────────────────
-  override startPolling(): void {
-    let i = 0
-    for (const [key, watch] of this.watches) {
-      if (watch.terminal) continue
-      const s = this.schedulerFor(key)
-      if (s.isRunning) {
-        i++
-        continue
-      }
-      const delay = i * 2000
-      if (delay > 0) {
-        const captured = s
-        setTimeout(() => {
-          if (this._watchSchedulers.get(key) === captured && !captured.isRunning) {
-            captured.start(() => this.pollWatch(key))
-          }
-        }, delay)
-      } else {
-        s.start(() => this.pollWatch(key))
-      }
-      i++
-    }
-  }
-
-  override stopPolling(): void {
-    for (const s of this._watchSchedulers.values()) s.stop()
-    this._watchSchedulers.clear()
+    return await super.executeTool(params)
   }
 
   // ── Session start (legacy migration + crash recovery) ─────────────────────

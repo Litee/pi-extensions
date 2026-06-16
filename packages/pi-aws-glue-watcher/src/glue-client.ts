@@ -20,6 +20,8 @@
 
 import type { GlueClient as AwsGlueClient } from "@aws-sdk/client-glue";
 
+import { createCachedSdkClientFactory } from "pi-watcher-core/aws";
+
 // ---------------------------------------------------------------------------
 // Error types
 // ---------------------------------------------------------------------------
@@ -136,22 +138,14 @@ export interface GlueClient {
 
 /** Create a real {@link GlueClient} backed by the AWS SDK v3. */
 export function createGlueClient(): GlueClient {
-	const clientCache = new Map<string, AwsGlueClient>();
-
-	async function getSdkClient(profile: string, region: string | undefined): Promise<AwsGlueClient> {
-		const key = `${profile}:${region ?? "<default>"}`;
-		let c = clientCache.get(key);
-		if (!c) {
-			const { GlueClient } = await import("@aws-sdk/client-glue");
-			const { fromIni } = await import("@aws-sdk/credential-providers");
-			c = new GlueClient({
-				credentials: fromIni({ profile }),
-				...(region !== undefined ? { region } : {}),
-			});
-			clientCache.set(key, c);
-		}
-		return c;
-	}
+	const getSdkClient = createCachedSdkClientFactory(async (profile: string, region: string | undefined): Promise<AwsGlueClient> => {
+		const { GlueClient } = await import("@aws-sdk/client-glue");
+		const { fromIni } = await import("@aws-sdk/credential-providers");
+		return new GlueClient({
+			credentials: fromIni({ profile }),
+			...(region !== undefined ? { region } : {}),
+		});
+	});
 
 	return {
 		async getJobRun(jobName, runId, profile, region) {
