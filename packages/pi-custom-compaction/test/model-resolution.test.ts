@@ -154,8 +154,7 @@ describe("resolveSummaryModel", () => {
 		const ctx = {
 			modelRegistry: {
 				find: () => ({ provider: "openai", id: "gpt-4" }),
-				// eslint-disable-next-line @typescript-eslint/prefer-promise-reject-errors
-				getApiKeyAndHeaders: () => Promise.reject("string-error"),
+                getApiKeyAndHeaders: () => Promise.reject(new Error("string-error")),
 			},
 		} as never;
 
