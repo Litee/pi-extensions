@@ -1040,6 +1040,9 @@ function notify(ctx: ExtensionContext | ExtensionCommandContext, message: string
   }
 }
 
+/** Fixed overlay rows outside the transcript viewport (must match render() structure). */
+const BTW_OVERLAY_CHROME_LINES = 9;
+
 function getOverlayTitle(mode: BtwThreadMode): string {
   return mode === "tangent" ? "BTW tangent" : "BTW";
 }
@@ -1280,11 +1283,13 @@ class BtwOverlayComponent extends Container implements Focusable {
       // pi-tui Input hardcodes the prompt as "> " (see pi-tui components/input.js).
       // Strip it and replace with a focus-state glyph so the user sees, right next
       // to where they type, whether typing goes to BTW or to the main editor.
-      const inputLine = rawInputLine.startsWith("> ")
+      const replacedLine = rawInputLine.startsWith("> ")
         ? `${this.focusPrompt()} ${rawInputLine.slice(2)}`
         : rawInputLine;
+      const inputLine = truncateToWidth(replacedLine, targetWidth, "");
+      const padding = Math.max(0, targetWidth - visibleWidth(inputLine));
       const border = this.theme.fg(this.borderColor(), "\u2502");
-      return `${border}${inputLine}${border}`;
+      return `${border}${inputLine}${" ".repeat(padding)}${border}`;
     } finally {
       this.input.focused = previousFocused;
     }
@@ -1304,7 +1309,7 @@ class BtwOverlayComponent extends Container implements Focusable {
     const innerWidth = Math.max(22, dialogWidth - 2);
     const transcriptLines = this.wrapTranscript(innerWidth);
     const dialogHeight = this.getDialogHeight();
-    const chromeHeight = 8;
+    const chromeHeight = BTW_OVERLAY_CHROME_LINES;
     const transcriptHeight = Math.max(6, dialogHeight - chromeHeight);
     this.transcriptViewportHeight = transcriptHeight;
 
@@ -1349,7 +1354,11 @@ class BtwOverlayComponent extends Container implements Focusable {
     lines.push(this.frameLine(this.theme.fg("dim", this.hintsTextValue.trim()), innerWidth));
     lines.push(this.borderLine(innerWidth, "bottom"));
 
-    return lines;
+    return lines.map((line) => this.fitRenderedLine(line, width));
+  }
+
+  private fitRenderedLine(line: string, width: number): string {
+    return visibleWidth(line) > width ? truncateToWidth(line, width, "") : line;
   }
 
   setDraft(value: string): void {

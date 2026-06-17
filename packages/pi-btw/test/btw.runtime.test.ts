@@ -1,5 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import type { ExtensionAPI, ExtensionCommandContext, ExtensionContext, RegisteredCommand, CreateAgentSessionOptions } from "@earendil-works/pi-coding-agent";
+import { visibleWidth } from "@earendil-works/pi-tui";
 import btwExtension from "../src/index.js";
 
 type MockSessionOptions = {
@@ -23,6 +24,7 @@ type BtwOverlayComponent = {
   statusText: { text: string };
   handleInput: (data: string) => void;
   getDraft: () => string;
+  setDraft: (value: string) => void;
   hintsTextValue: unknown;
   focused: boolean;
   followTranscript: boolean;
@@ -2515,5 +2517,62 @@ describe("btw runtime behavior", () => {
         { role: "assistant", content: [{ type: "text", text: "keep assistant" }] },
       ],
     });
+  });
+
+  it("keeps every overlay line within the supplied width when the draft is longer than the terminal", async () => {
+    const harness = createHarness();
+    await harness.runSessionStart();
+    await harness.command("btw", "");
+    const overlay = harness.latestOverlayComponent();
+
+    overlay.setDraft("x".repeat(200));
+    const lines = overlay.render(79);
+    const inputLine = lines.at(-3) ?? "";
+
+    expect(lines.every((line) => visibleWidth(line) <= 79)).toBe(true);
+    expect(visibleWidth(inputLine)).toBe(79);
+    expect(inputLine.endsWith("\u2502")).toBe(true);
+  });
+
+  describe("overlay render height vs maxHeight", () => {
+    function resolveOverlayMaxHeight(rows: number): number {
+      const marginTop = 1;
+      const availHeight = Math.max(1, rows - marginTop);
+      const parsed = Math.floor((rows * 78) / 100);
+      return Math.max(1, Math.min(parsed, availHeight));
+    }
+
+    function withStdoutRows(rows: number): { restore: () => void } {
+      const stdout = process.stdout as NodeJS.WriteStream & { rows?: number };
+      const descriptor = Object.getOwnPropertyDescriptor(stdout, "rows");
+      Object.defineProperty(stdout, "rows", { value: rows, configurable: true });
+      return {
+        restore() {
+          if (descriptor) {
+            Object.defineProperty(stdout, "rows", descriptor);
+          } else {
+            delete (stdout as { rows?: number }).rows;
+          }
+        },
+      };
+    }
+
+    for (const rows of [24, 30, 35, 42, 50]) {
+      it(`render() fits maxHeight and keeps bottom border at ${rows} rows`, async () => {
+        const { restore } = withStdoutRows(rows);
+        try {
+          const harness = createHarness();
+          await harness.runSessionStart();
+          await harness.command("btw", "");
+          const overlay = harness.latestOverlayComponent();
+          const lines = overlay.render(80);
+          const maxHeight = resolveOverlayMaxHeight(rows);
+          expect(lines.length).toBeLessThanOrEqual(maxHeight);
+          expect(lines.at(-1)).toMatch(/\u2514/);
+        } finally {
+          restore();
+        }
+      });
+    }
   });
 });
