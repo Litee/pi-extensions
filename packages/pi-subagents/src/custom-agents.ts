@@ -60,6 +60,7 @@ function loadFromDir(dir: string, agents: Map<string, AgentConfig>, source: "pro
       ...(extSelectors ? { extSelectors } : {}),
       disallowedTools: csvListOptional(fm['disallowed_tools']),
       extensions: inheritField(fm['extensions'] ?? fm['inherit_extensions']),
+      ...{ ...(csvListOptional(fm['exclude_extensions']) !== undefined ? { excludeExtensions: csvListOptional(fm['exclude_extensions'])! } : {}) },
       skills: inheritField(fm['skills'] ?? fm['inherit_skills']),
       model: str(fm['model']),
       thinking: str(fm['thinking']) as ThinkingLevel | undefined,

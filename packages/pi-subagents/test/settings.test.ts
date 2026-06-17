@@ -312,6 +312,8 @@ describe("settings persistence", () => {
         setDefaultJoinMode: vi.fn(),
         setSchedulingEnabled: vi.fn(),
         setScopeModels: vi.fn(),
+        setDisableDefaultAgents: vi.fn(),
+        setToolDescriptionMode: vi.fn(),
       };
     });
 
@@ -414,6 +416,8 @@ describe("settings persistence", () => {
         setDefaultJoinMode: vi.fn(),
         setSchedulingEnabled: vi.fn(),
         setScopeModels: vi.fn(),
+        setDisableDefaultAgents: vi.fn(),
+        setToolDescriptionMode: vi.fn(),
       };
     });
 

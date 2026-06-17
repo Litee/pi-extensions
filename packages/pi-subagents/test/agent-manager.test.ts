@@ -658,7 +658,7 @@ describe("AgentManager — worktree cleanup on completion", () => {
 
   it("appends branch-merge message to result when worktree has changes", async () => {
     const { createWorktree, cleanupWorktree } = await import("../src/worktree.js");
-    vi.mocked(createWorktree).mockReturnValueOnce({ path: "/tmp/wt", branch: "subagent/abc", repoRoot: "/tmp" } as ReturnType<typeof import("../src/worktree.js").createWorktree>);
+    vi.mocked(createWorktree).mockReturnValueOnce({ path: "/tmp/wt", branch: "subagent/abc", baseSha: "abc123", workPath: "/tmp/wt" });
     vi.mocked(cleanupWorktree).mockReturnValueOnce({ hasChanges: true, branch: "subagent/abc" });
     const sess = mockSession();
     vi.mocked(runAgent).mockResolvedValue({ responseText: "initial", session: sess, aborted: false, steered: false });
