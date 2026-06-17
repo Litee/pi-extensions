@@ -20,8 +20,6 @@ describe("parseSubcommand", () => {
 		expect(parseSubcommand("status")).toBe("status");
 		expect(parseSubcommand("STATUS")).toBe("status");
 		expect(parseSubcommand("Status")).toBe("status");
-		expect(parseSubcommand("on")).toBe("on");
-		expect(parseSubcommand("off")).toBe("off");
 		expect(parseSubcommand("health")).toBe("health");
 		expect(parseSubcommand("stats")).toBe("stats");
 	});
@@ -32,7 +30,7 @@ describe("parseSubcommand", () => {
 	});
 
 	it('trims whitespace before matching', () => {
-		expect(parseSubcommand("  on  ")).toBe("on");
+		expect(parseSubcommand("  health  ")).toBe("health");
 	});
 });
 

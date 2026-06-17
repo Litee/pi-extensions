@@ -4,7 +4,7 @@ import { createDefaultMenu } from "./menu.ts";
 import type { HeadroomConfig, HeadroomRuntimeState } from "./types.ts";
 
 const STATUS_KEY = "headroom";
-const SUBCOMMANDS = ["status", "on", "off", "health", "stats"] as const;
+const SUBCOMMANDS = ["status", "health", "stats"] as const;
 
 type Subcommand = (typeof SUBCOMMANDS)[number] | null;
 
@@ -59,20 +59,6 @@ async function handleCommand(
 	command: Subcommand,
 	ctx: ExtensionContext,
 ): Promise<void> {
-	if (command === "on") {
-		state.enabled = true;
-		refreshStatus(ctx, config, state);
-		ctx.ui.notify("Headroom compression enabled.", "info");
-		return;
-	}
-
-	if (command === "off") {
-		state.enabled = false;
-		refreshStatus(ctx, config, state);
-		ctx.ui.notify("Headroom compression disabled for this session.", "info");
-		return;
-	}
-
 	if (command === "health") {
 		ctx.ui.notify(
 			isRemoteBlocked(config) ? renderRemoteBlocked(config) : `Headroom proxy: ${config.baseUrl}`,

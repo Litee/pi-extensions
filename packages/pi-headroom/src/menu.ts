@@ -9,7 +9,7 @@
 import type { ExtensionContext } from "@earendil-works/pi-coding-agent";
 import { DynamicBorder, getSettingsListTheme } from "@earendil-works/pi-coding-agent";
 import { Container, Input, type SettingItem, SettingsList, Spacer, Text, truncateToWidth } from "@earendil-works/pi-tui";
-import { deleteHeadroomSettings, loadHeadroomConfig, saveHeadroomSettings } from "./config.ts";
+import { deleteHeadroomSettings, isLocalHeadroomUrl, loadHeadroomConfig, saveHeadroomSettings } from "./config.ts";
 import type { HeadroomRuntime } from "./types.ts";
 
 export function createDefaultMenu(): { openHeadroomMenu(ctx: unknown, runtime: HeadroomRuntime): Promise<void> } {
@@ -50,15 +50,50 @@ function makeNumberSubmenu(
 }
 
 // ---------------------------------------------------------------------------
+// String input submenu factory
+// ---------------------------------------------------------------------------
+
+function makeStringSubmenu(
+	label: string,
+	currentValue: string,
+	done: (v?: string) => void,
+) {
+	const input = new Input();
+	input.setValue(currentValue);
+	input.onSubmit = (v) => {
+		const trimmed = v.trim();
+		if (trimmed.length > 0) done(trimmed);
+		else done(); // empty — cancel
+	};
+	input.onEscape = () => done();
+	return {
+		render: (width: number) => [
+			truncateToWidth(`  ${label}:`, width),
+			...input.render(width),
+			truncateToWidth("  enter to save · esc to cancel", width),
+		],
+		handleInput: (data: string) => {
+			input.handleInput(data);
+		},
+		invalidate: () => {
+			input.invalidate();
+		},
+	};
+}
+
+// ---------------------------------------------------------------------------
 // Settings persistence helper
 // ---------------------------------------------------------------------------
 
 function buildSettingsToSave(runtime: HeadroomRuntime) {
 	const defaults = loadHeadroomConfig({});
-	const s: { enabled?: boolean; minContextTokens?: number; minMessageChars?: number } = {};
+	const s: { enabled?: boolean; baseUrl?: string; allowRemote?: boolean; minContextTokens?: number; minMessageChars?: number; timeoutMs?: number } = {};
 	if (runtime.state.enabled !== defaults.enabled) s.enabled = runtime.state.enabled;
+	if (runtime.config.baseUrl !== defaults.baseUrl) s.baseUrl = runtime.config.baseUrl;
+	if (runtime.config.allowRemote !== defaults.allowRemote) s.allowRemote = runtime.config.allowRemote;
 	if (runtime.config.minContextTokens !== defaults.minContextTokens) s.minContextTokens = runtime.config.minContextTokens;
 	if (runtime.config.minMessageChars !== defaults.minMessageChars) s.minMessageChars = runtime.config.minMessageChars;
+	if (runtime.config.timeoutMs !== defaults.timeoutMs) s.timeoutMs = runtime.config.timeoutMs;
 	return s;
 }
 
@@ -96,12 +131,41 @@ function handleChange(
 		return;
 	}
 
+	if (id === "baseUrl") {
+		runtime.config.baseUrl = newValue;
+		if (!runtime.config.allowRemote && !isLocalHeadroomUrl(newValue)) {
+			ctx.ui.notify("Warning: remote URL set but Allow remote is off — Headroom will be blocked", "warning");
+		}
+		runtime.refreshStatus(ctx);
+		saveHeadroomSettings(buildSettingsToSave(runtime));
+		settingsList.updateValue("baseUrl", runtime.config.baseUrl);
+		return;
+	}
+
+	if (id === "allowRemote") {
+		runtime.config.allowRemote = newValue === "on";
+		runtime.refreshStatus(ctx);
+		saveHeadroomSettings(buildSettingsToSave(runtime));
+		settingsList.updateValue("allowRemote", runtime.config.allowRemote ? "on" : "off");
+		return;
+	}
+
+	if (id === "timeoutMs") {
+		runtime.config.timeoutMs = Number.parseInt(newValue, 10);
+		saveHeadroomSettings(buildSettingsToSave(runtime));
+		settingsList.updateValue("timeoutMs", String(runtime.config.timeoutMs));
+		return;
+	}
+
 	if (id === "reset" && newValue === "confirm") {
 		deleteHeadroomSettings();
 		const fresh = loadHeadroomConfig(process.env);
 		runtime.config.enabled = fresh.enabled;
+		runtime.config.baseUrl = fresh.baseUrl;
+		runtime.config.allowRemote = fresh.allowRemote;
 		runtime.config.minContextTokens = fresh.minContextTokens;
 		runtime.config.minMessageChars = fresh.minMessageChars;
+		runtime.config.timeoutMs = fresh.timeoutMs;
 		runtime.state.enabled = fresh.enabled;
 		runtime.refreshStatus(ctx);
 		ctx.ui.notify("Headroom settings reset to defaults", "info");
@@ -143,6 +207,29 @@ export async function defaultOpenHeadroomMenu(ctx: ExtensionContext, runtime: He
 				currentValue: String(runtime.config.minMessageChars),
 				submenu: (currentValue, submenuDone) =>
 					makeNumberSubmenu("Min message chars", currentValue, 1, submenuDone),
+			},
+			{
+				id: "baseUrl",
+				label: "Proxy URL",
+				description: "URL of the Headroom proxy server",
+				currentValue: runtime.config.baseUrl,
+				submenu: (currentValue, submenuDone) =>
+					makeStringSubmenu("Proxy URL", currentValue, submenuDone),
+			},
+			{
+				id: "allowRemote",
+				label: "Allow remote",
+				description: "Allow connecting to non-localhost Headroom servers",
+				currentValue: runtime.config.allowRemote ? "on" : "off",
+				values: ["off", "on"],
+			},
+			{
+				id: "timeoutMs",
+				label: "Timeout (ms)",
+				description: "Request timeout in milliseconds (min 100)",
+				currentValue: String(runtime.config.timeoutMs),
+				submenu: (currentValue, submenuDone) =>
+					makeNumberSubmenu("Timeout (ms)", currentValue, 100, submenuDone),
 			},
 			{
 				id: "reset",
