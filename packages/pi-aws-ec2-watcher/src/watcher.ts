@@ -423,7 +423,5 @@ export class Ec2Watcher extends AwsBaseWatcher<Ec2Watch, Ec2Baseline, Ec2Event> 
   }
 
   // ── Session start override ─────────────────────────────────────────────────
-  override async onSessionStart(ctx: unknown): Promise<void> {
-    await super.onSessionStart(ctx)
-  }
+
 }
