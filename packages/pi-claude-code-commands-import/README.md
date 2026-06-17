@@ -1,4 +1,4 @@
-# pi-claude-code-import-commands
+# pi-claude-code-commands-import
 
 Pi extension that imports Claude Code slash commands into pi as prompt templates, so the commands you already maintain for Claude Code are automatically available in pi with no extra configuration.
 
@@ -26,5 +26,5 @@ Pi's prompt-template discovery is **non-recursive**. Only `.md` files placed *di
 ```bash
 # from repo root
 npm install
-npx vitest run packages/pi-claude-code-import-commands
+npx vitest run packages/pi-claude-code-commands-import
 ```
