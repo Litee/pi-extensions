@@ -203,7 +203,7 @@ export class Ec2Watcher extends AwsBaseWatcher<Ec2Watch, Ec2Baseline, Ec2Event> 
   async snapshot(watch: Ec2Watch): Promise<Ec2Baseline> {
     const result = await snapshotInstance(this._client as Ec2Client, watch)
     if (result.notFound) return { state: 'not_found' }
-    if (!result.state) return { state: 'not_found' }
+    if (!result.state) throw new Error('DescribeInstances returned a response with no instance state')
     const baseline: Ec2Baseline = { state: result.state }
     if (result.nameTag !== undefined) baseline.nameTag = result.nameTag
     if (result.stateTransitionReason !== undefined) baseline.stateTransitionReason = result.stateTransitionReason

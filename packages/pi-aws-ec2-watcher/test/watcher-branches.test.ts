@@ -92,14 +92,14 @@ describe("Ec2Watcher.snapshot()", () => {
 		expect(result.state).toBe("not_found");
 	});
 
-	it("returns { state: 'not_found' } when state is empty/falsy (L241)", async () => {
-		// AWS returned a response but state is absent (undefined / empty string).
+	it("throws when state is empty/falsy (L241)", async () => {
+		// AWS returned a response but state is absent — snapshot throws so addWatch
+		// can add the watch without a baseline rather than treating it as not_found.
 		const { watcher } = makeWatcher({} /* no state field */);
 		const watch = makeBaseWatch();
-		const result = await (
-			watcher as unknown as { snapshot(w: Ec2Watch): Promise<{ state: string }> }
-		).snapshot(watch);
-		expect(result.state).toBe("not_found");
+		await expect(
+			(watcher as unknown as { snapshot(w: Ec2Watch): Promise<{ state: string }> }).snapshot(watch),
+		).rejects.toThrow("no instance state");
 	});
 
 	it("returns baseline with state only when no optional fields (L242 base case)", async () => {
