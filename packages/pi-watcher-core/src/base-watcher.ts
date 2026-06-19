@@ -497,7 +497,7 @@ export abstract class BaseWatcher<
    * appropriate base-class or subclass handler.
    *
    * Actions handled entirely by the base class (no override needed):
-   *   list, pause, resume, status
+   *   list, status
    *
    * Actions delegated to subclass abstract methods:
    *   add    → addWatch(params)
@@ -1107,8 +1107,8 @@ export abstract class BaseWatcher<
    * Built-in items (in order):
    *   - Browse <noun>s (N)
    *   - Refresh                — scan watchers only
-   *   - Paused: on/off
    *   - Display mode: widget/statusline  — hasWidget only
+   *   - User default display mode        — hasWidget only
    *   - Close
    */
   buildMenu(): MenuItem[] {

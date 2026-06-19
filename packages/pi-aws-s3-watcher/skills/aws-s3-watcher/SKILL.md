@@ -44,20 +44,20 @@ All watches have a maximum duration of 72 h — `timeoutSeconds` defaults to
 s3_watcher({
   "action": "add",
   "uri":     "s3://my-bucket/path/to/object.json",
-  "target":  "exists" | "updated" | "removed",
+  "target":  "creation" | "modification" | "deletion",
   "profile": "my-aws-profile",
   "region":  "us-east-1",          // optional, inferred from profile if omitted
   "timeoutSeconds": 3600,  // optional; defaults to 72 h; capped at 72 h if higher
 })
 ```
 
-| Target    | Fires when |
-|-----------|------------|
-| `exists`  | Object was absent at add time, now present |
-| `updated` | Object existed at add time, same key but ETag or size changed |
-| `removed` | Object existed at add time, now absent (404) |
+| Target         | Fires when |
+|----------------|------------|
+| `creation`     | Object was absent at add time, now present |
+| `modification` | Object existed at add time, same key but ETag or size changed |
+| `deletion`     | Object existed at add time, now absent (404) |
 
-`updated` is rejected if the object is absent at add time (no ETag to diff against).
+`modification` is rejected if the object is absent at add time (no ETag to diff against).
 
 ### remove
 
@@ -73,22 +73,13 @@ s3_watcher({"action": "list"})
 
 Returns one line per watch: `[id] uri target state`.
 
-### pause / resume
-
-```
-s3_watcher({"action": "pause"})
-s3_watcher({"action": "resume"})
-```
-
-Global toggle, persisted across session reload.
-
 ### status
 
 ```
 s3_watcher({"action": "status"})
 ```
 
-Shows paused/active state, watch count, and current poll interval.
+Shows watch count and current poll interval.
 
 ## Authentication
 
@@ -116,10 +107,15 @@ Auth errors during polling (after `add` succeeds) are back-off'd silently and do
    ```
 2. On the next turn, add a watch:
    ```
-   s3_watcher({"action": "add", "uri": "s3://bucket/key", "target": "exists", "profile": "default"})
+   s3_watcher({"action": "add", "uri": "s3://bucket/key", "target": "creation", "profile": "default"})
    ```
 3. The agent returns immediately. When the condition is met, a chat
    notification is injected automatically and a new LLM turn starts.
+
+## Known limitations
+
+- **Missed intermediate transitions** — because polling is interval-based, an object that is created and then immediately deleted within one poll cycle may only be observed in the final state. You will receive a notification when the condition you registered is first matched, but transient intermediate states (e.g., object briefly existed before deletion) may not be visible.
+- **Single-object only** — `s3_watcher` targets one S3 key per watch; for prefix or bucket-level notifications prefer SNS/SQS with S3 event notifications.
 
 ## Related Skills
 

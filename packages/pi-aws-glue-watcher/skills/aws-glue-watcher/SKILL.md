@@ -37,10 +37,13 @@ use `manage_tools` for that. Tool activation is independent of the menu.
 ## What the tool does
 
 `glue_watcher` polls `GetJobRun` / `GetWorkflowRun` on a back-off
-schedule (60 s base, doubling to a 15 min cap) and injects one chat
-notification per state change. When a terminal state is detected
-(SUCCEEDED, FAILED, STOPPED, TIMEOUT, ERROR) the watch is marked
-terminal and polling for it stops.
+schedule (120 s base, doubling to a 15 min cap) and injects one chat
+notification per state change. When a terminal state is detected the
+watch is marked terminal and polling for it stops.
+
+**Job terminal states:** `SUCCEEDED`, `FAILED`, `STOPPED`, `ERROR`, `TIMEOUT`
+
+**Workflow terminal states:** `COMPLETED`, `STOPPED`, `ERROR`
 
 ## Actions
 
@@ -60,6 +63,20 @@ glue_watcher({
 Fetches a baseline snapshot immediately. If `runId` is omitted the most
 recent run for the given job or workflow name is used.
 
+### set-interval
+
+Update the poll interval for a specific watch without removing and re-adding it.
+
+```
+glue_watcher({
+  "action": "set-interval",
+  "watchId": "<id from list>",
+  "pollIntervalMs": 30000  // minimum 5000 ms
+})
+```
+
+Useful when a job's expected runtime changes after it was added, or to trade responsiveness against API call volume.
+
 ### remove
 
 ```
@@ -74,22 +91,13 @@ glue_watcher({"action": "list"})
 
 Returns one line per watch: `[id] type/name runId state`.
 
-### pause / resume
-
-```
-glue_watcher({"action": "pause"})
-glue_watcher({"action": "resume"})
-```
-
-Global toggle, persisted across session reload.
-
 ### status
 
 ```
 glue_watcher({"action": "status"})
 ```
 
-Shows enabled/paused state, watch counts, and current poll interval.
+Shows watch count and current poll interval.
 
 ## Authentication
 
@@ -122,6 +130,11 @@ Call `status` if a watch seems stale.
    ```
 3. The agent returns immediately. When the run state changes, a chat
    notification is injected automatically and a new LLM turn starts.
+
+## Known limitations
+
+- **Missed intermediate transitions** — because polling is interval-based, a run that moves through multiple states (e.g., `RUNNING → STOPPING → STOPPED`) within a single poll window may only surface the final state. You still receive a notification, but intermediate states may not be reported.
+- **Base interval is 120 s** — `glue_watcher` is tuned for long-running jobs; use `set-interval` to lower the poll frequency for short-running jobs where tighter responsiveness matters.
 
 ## Related Skills
 
