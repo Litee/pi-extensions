@@ -94,8 +94,8 @@ export class S3Watcher extends AwsBaseWatcher<S3Watch, S3Baseline, S3Event> {
         : w.consecutiveErrors >= POLL_ERROR_THRESHOLD ? 'error' : 'accent'
       return [
         { name: 'uri',          text: `s3://${w.bucket}/${w.key}`, color: uriColor },
-        { name: 'watch-status', text: watchText, width: 12, color: watchColor },
         { name: 'target',       text: w.target, width: 10, color: 'dim' },
+        { name: 'watch-status', text: watchText, width: 12, color: watchColor },
       ]
     },
 

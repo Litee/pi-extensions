@@ -628,12 +628,12 @@ describe('S3Watcher view', () => {
       expect(cols.find(c => c.name === 'watch-status')!.color).toBe('error')
     })
 
-    it('columns are ordered: uri, watch-status, target', () => {
+    it('columns are ordered: uri, target, watch-status', () => {
       const w = { ...base, terminal: false, consecutiveErrors: 0 }
       const cols = watcher.view.renderItemRowTUI(w, { theme: stubTheme as never, width: 80 })
       expect(cols[0]!.name).toBe('uri')
-      expect(cols[1]!.name).toBe('watch-status')
-      expect(cols[2]!.name).toBe('target')
+      expect(cols[1]!.name).toBe('target')
+      expect(cols[2]!.name).toBe('watch-status')
     })
   })
 

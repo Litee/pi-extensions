@@ -606,13 +606,14 @@ describe("FsWatcher view", () => {
     expect(cols[0]?.color).toBe("warning");
   });
 
-  it("renderItemRowTUI columns: path, watch-status", () => {
+  it("renderItemRowTUI columns: path, target, watch-status", () => {
     const cols = watcher.view.renderItemRowTUI(mockWatch, {
       theme: {} as never,
       width: 80,
     });
     expect(cols[0]!.name).toBe("path");
-    expect(cols[1]!.name).toBe("watch-status");
+    expect(cols[1]!.name).toBe("target");
+    expect(cols[2]!.name).toBe("watch-status");
   });
 
   it("renderItemDetail includes expected fields", () => {

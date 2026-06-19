@@ -100,8 +100,8 @@ export class FsWatcher extends BaseWatcher<FsWatch, FsBaseline, FsEvent> {
         : w.consecutiveErrors >= POLL_ERROR_THRESHOLD ? 'error' : 'accent'
       return [
         { name: 'path',         text: w.path,    color: pathColor },
-        { name: 'watch-status', text: watchText, width: 12, color: watchColor },
         { name: 'target',       text: w.target,  width: 12, color: 'dim' },
+        { name: 'watch-status', text: watchText, width: 12, color: watchColor },
       ];
     },
 
