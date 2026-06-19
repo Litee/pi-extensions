@@ -491,25 +491,22 @@ describe('S3Watcher view', () => {
 
   it('renderItemRowText formats correctly', () => {
     const text = watcher.view.renderItemRowText(mockWatch)
-    expect(text).toBe('s3://my-bucket/some/key.txt  WATCHING  -  creation')
+    expect(text).toBe('s3://my-bucket/some/key.txt  🔔  creation')
   })
 
-  it('renderItemRowText shows ✓ done for terminal watches', () => {
+  it('renderItemRowText shows bell-off for terminal watches', () => {
     const text = watcher.view.renderItemRowText({ ...mockWatch, terminal: true })
-    expect(text).toContain('DONE')
+    expect(text).toContain('🔕')
   })
 
-  it('renderItemRowText: timed-out watch shows DONE in status and expired in timeout', () => {
+  it('renderItemRowText: timed-out watch shows bell-off', () => {
     const text = watcher.view.renderItemRowText({ ...mockWatch, terminal: true, timeoutAt: Date.now() - 1000 })
-    expect(text).toContain('DONE')
-    expect(text).toContain('expired')
-    expect(text).not.toContain('EXPIRED')
+    expect(text).toContain('🔕')
   })
 
-  it('renderItemRowText shows DONE for target-met-early (future timeoutAt)', () => {
+  it('renderItemRowText shows bell-off for target-met-early (future timeoutAt)', () => {
     const text = watcher.view.renderItemRowText({ ...mockWatch, terminal: true, timeoutAt: Date.now() + 60_000 })
-    expect(text).toContain('DONE')
-    expect(text).not.toContain('EXPIRED')
+    expect(text).toContain('🔕')
   })
 
   it('renderItemRowTUI returns RowColumn array with URI in first column', () => {
@@ -582,63 +579,61 @@ describe('S3Watcher view', () => {
       lastPolledAt: undefined, baseline: undefined,
     }
 
-    it('active watch shows WATCHING', () => {
+    it('active watch shows bell', () => {
       const w = { ...base, terminal: false, consecutiveErrors: 0 }
       const cols = watcher.view.renderItemRowTUI(w, { theme: stubTheme as never, width: 80 })
-      expect(cols.find(c => c.name === 'status')!.text).toBe('WATCHING')
+      expect(cols.find(c => c.name === 'watch-status')!.text).toBe('🔔')
     })
 
-    it('terminal watch shows DONE', () => {
+    it('terminal watch shows bell-off', () => {
       const w = { ...base, terminal: true, consecutiveErrors: 0 }
       const cols = watcher.view.renderItemRowTUI(w, { theme: stubTheme as never, width: 80 })
-      expect(cols.find(c => c.name === 'status')!.text).toBe('DONE')
+      expect(cols.find(c => c.name === 'watch-status')!.text).toBe('🔕')
     })
 
-    it('timed-out watch shows DONE in status and expired in timeout', () => {
+    it('timed-out watch shows bell-off', () => {
       const w = { ...base, terminal: true, consecutiveErrors: 0, timeoutAt: Date.now() - 1000 }
       const cols = watcher.view.renderItemRowTUI(w, { theme: stubTheme as never, width: 80 })
-      expect(cols.find(c => c.name === 'status')!.text).toBe('DONE')
-      expect(cols.find(c => c.name === 'timeout')!.text).toBe('expired')
-      expect(cols.find(c => c.name === 'status')!.text).not.toBe('EXPIRED')
+      expect(cols.find(c => c.name === 'watch-status')!.text).toBe('🔕')
     })
 
-    it('terminal watch with future timeoutAt (target met early) shows DONE', () => {
+    it('terminal watch with future timeoutAt (target met early) shows bell-off', () => {
       const w = { ...base, terminal: true, consecutiveErrors: 0, timeoutAt: Date.now() + 60_000 }
       const cols = watcher.view.renderItemRowTUI(w, { theme: stubTheme as never, width: 80 })
-      expect(cols.find(c => c.name === 'status')!.text).toBe('DONE')
+      expect(cols.find(c => c.name === 'watch-status')!.text).toBe('🔕')
     })
 
-    it('error watch shows ERROR', () => {
+    it('error watch shows bell with error color', () => {
       const w = { ...base, terminal: false, consecutiveErrors: POLL_ERROR_THRESHOLD }
       const cols = watcher.view.renderItemRowTUI(w, { theme: stubTheme as never, width: 80 })
-      expect(cols.find(c => c.name === 'status')!.text).toBe('ERROR')
+      expect(cols.find(c => c.name === 'watch-status')!.text).toBe('🔔')
+      expect(cols.find(c => c.name === 'watch-status')!.color).toBe('error')
     })
 
-    it('active watch status uses warning color', () => {
+    it('active watch-status uses accent color', () => {
       const w = { ...base, terminal: false, consecutiveErrors: 0 }
       const cols = watcher.view.renderItemRowTUI(w, { theme: stubTheme as never, width: 80 })
-      expect(cols.find(c => c.name === 'status')!.color).toBe('warning')
+      expect(cols.find(c => c.name === 'watch-status')!.color).toBe('accent')
     })
 
-    it('terminal watch status uses warning color', () => {
+    it('terminal watch-status uses dim color', () => {
       const w = { ...base, terminal: true, consecutiveErrors: 0 }
       const cols = watcher.view.renderItemRowTUI(w, { theme: stubTheme as never, width: 80 })
-      expect(cols.find(c => c.name === 'status')!.color).toBe('warning')
+      expect(cols.find(c => c.name === 'watch-status')!.color).toBe('dim')
     })
 
-    it('error watch status uses error color', () => {
+    it('error watch-status uses error color', () => {
       const w = { ...base, terminal: false, consecutiveErrors: POLL_ERROR_THRESHOLD }
       const cols = watcher.view.renderItemRowTUI(w, { theme: stubTheme as never, width: 80 })
-      expect(cols.find(c => c.name === 'status')!.color).toBe('error')
+      expect(cols.find(c => c.name === 'watch-status')!.color).toBe('error')
     })
 
-    it('columns are ordered: uri, status, timeout, target', () => {
+    it('columns are ordered: uri, watch-status, target', () => {
       const w = { ...base, terminal: false, consecutiveErrors: 0 }
       const cols = watcher.view.renderItemRowTUI(w, { theme: stubTheme as never, width: 80 })
       expect(cols[0]!.name).toBe('uri')
-      expect(cols[1]!.name).toBe('status')
-      expect(cols[2]!.name).toBe('timeout')
-      expect(cols[3]!.name).toBe('target')
+      expect(cols[1]!.name).toBe('watch-status')
+      expect(cols[2]!.name).toBe('target')
     })
   })
 
@@ -1008,13 +1003,13 @@ describe('formatTimeLeft', () => {
     expect(formatTimeLeft(1000, 2000)).toBe('expired')
   })
   it('returns Xs left for seconds', () => {
-    expect(formatTimeLeft(31_000, 1_000)).toBe('30s left')
+    expect(formatTimeLeft(31_000, 1_000)).toBe('30s')
   })
   it('returns Xm left for minutes', () => {
-    expect(formatTimeLeft(121_000, 1_000)).toBe('2m left')
+    expect(formatTimeLeft(121_000, 1_000)).toBe('2m')
   })
   it('returns Xh left for hours', () => {
-    expect(formatTimeLeft(3_601_000, 1_000)).toBe('1h left')
+    expect(formatTimeLeft(3_601_000, 1_000)).toBe('1h')
   })
 })
 
@@ -1032,53 +1027,53 @@ describe('timeout column in renderItemRowTUI', () => {
     lastPolledAt: undefined, baseline: undefined,
   }
 
-  it('includes timeout column named "timeout"', () => {
+  it('includes watch-status column', () => {
     const w = { ...base, timeoutAt: Date.now() + 300_000, terminal: false, consecutiveErrors: 0 }
     const cols = watcher.view.renderItemRowTUI(w, { theme: {} as never, width: 100 })
-    expect(cols.find(c => c.name === 'timeout')).toBeDefined()
+    expect(cols.find(c => c.name === 'watch-status')).toBeDefined()
   })
 
-  it('shows "-" when no timeoutAt', () => {
+  it('shows bell when no timeoutAt', () => {
     const w = { ...base, timeoutAt: undefined, terminal: false, consecutiveErrors: 0 }
     const cols = watcher.view.renderItemRowTUI(w, { theme: {} as never, width: 100 })
-    expect(cols.find(c => c.name === 'timeout')!.text).toBe('-')
+    expect(cols.find(c => c.name === 'watch-status')!.text).toBe('🔔')
   })
 
-  it('shows "expired" when timeoutAt is in the past', () => {
+  it('shows bell with expired when timeoutAt is in the past (active watch)', () => {
     const w = { ...base, timeoutAt: Date.now() - 1000, terminal: false, consecutiveErrors: 0 }
     const cols = watcher.view.renderItemRowTUI(w, { theme: {} as never, width: 100 })
-    expect(cols.find(c => c.name === 'timeout')!.text).toBe('expired')
+    expect(cols.find(c => c.name === 'watch-status')!.text).toBe('🔔 expired')
   })
 
-  it('shows time left for future timeouts', () => {
+  it('shows bell with time left for future timeouts', () => {
     const w = { ...base, timeoutAt: Date.now() + 90_000, terminal: false, consecutiveErrors: 0 }
     const cols = watcher.view.renderItemRowTUI(w, { theme: {} as never, width: 100 })
-    const timeout = cols.find(c => c.name === 'timeout')!
-    expect(timeout.text).toMatch(/\d+[smh] left/)
+    const watchStatus = cols.find(c => c.name === 'watch-status')!
+    expect(watchStatus.text).toMatch(/🔔 \d+[smh]/)
   })
 
-  it('uses warning color when < 5 min remaining and non-terminal', () => {
+  it('uses accent color for active non-error watch-status', () => {
     const w = { ...base, timeoutAt: Date.now() + 2 * 60_000, terminal: false, consecutiveErrors: 0 }
     const cols = watcher.view.renderItemRowTUI(w, { theme: {} as never, width: 100 })
-    expect(cols.find(c => c.name === 'timeout')!.color).toBe('warning')
+    expect(cols.find(c => c.name === 'watch-status')!.color).toBe('accent')
   })
 
-  it('uses dim color when >= 5 min remaining and non-terminal', () => {
+  it('uses accent color when >= 5 min remaining and non-terminal', () => {
     const w = { ...base, timeoutAt: Date.now() + 10 * 60_000, terminal: false, consecutiveErrors: 0 }
     const cols = watcher.view.renderItemRowTUI(w, { theme: {} as never, width: 100 })
-    expect(cols.find(c => c.name === 'timeout')!.color).toBe('dim')
+    expect(cols.find(c => c.name === 'watch-status')!.color).toBe('accent')
   })
 
-  it('uses warning color for terminal watches with < 5 min remaining', () => {
+  it('uses dim color for terminal watch-status', () => {
     const w = { ...base, timeoutAt: Date.now() + 10_000, terminal: true, consecutiveErrors: 0 }
     const cols = watcher.view.renderItemRowTUI(w, { theme: {} as never, width: 100 })
-    expect(cols.find(c => c.name === 'timeout')!.color).toBe('warning')
+    expect(cols.find(c => c.name === 'watch-status')!.color).toBe('dim')
   })
 
-  it('timeout column width is 10', () => {
+  it('watch-status column width is 12', () => {
     const w = { ...base, timeoutAt: undefined, terminal: false, consecutiveErrors: 0 }
     const cols = watcher.view.renderItemRowTUI(w, { theme: {} as never, width: 100 })
-    expect(cols.find(c => c.name === 'timeout')!.width).toBe(10)
+    expect(cols.find(c => c.name === 'watch-status')!.width).toBe(12)
   })
 })
 
@@ -1153,10 +1148,10 @@ describe('S3Watcher view — additional branch coverage', () => {
     expect(watcher.view.itemGroup?.(baseWatch)).toBe('my-bucket')
   })
 
-  it('renderItemRowText shows ERROR when consecutiveErrors hits threshold', () => {
+  it('renderItemRowText shows bell for active watches (error state)', () => {
     const w = { ...baseWatch, consecutiveErrors: 5 }
     const text = watcher.view.renderItemRowText(w)
-    expect(text).toContain('ERR')
+    expect(text).toContain('🔔')
   })
 
   it('renderItemDetail shows polled timestamp when lastPolledAt is set', () => {

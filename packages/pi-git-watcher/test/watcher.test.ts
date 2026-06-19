@@ -899,13 +899,13 @@ describe("formatTimeLeft", () => {
     expect(formatTimeLeft(1000, 2000)).toBe("expired");
   });
   it("returns Xs left for seconds", () => {
-    expect(formatTimeLeft(31_000, 1_000)).toBe("30s left");
+    expect(formatTimeLeft(31_000, 1_000)).toBe("30s");
   });
   it("returns Xm left for minutes", () => {
-    expect(formatTimeLeft(121_000, 1_000)).toBe("2m left");
+    expect(formatTimeLeft(121_000, 1_000)).toBe("2m");
   });
   it("returns Xh left for hours", () => {
-    expect(formatTimeLeft(3_601_000, 1_000)).toBe("1h left");
+    expect(formatTimeLeft(3_601_000, 1_000)).toBe("1h");
   });
 });
 

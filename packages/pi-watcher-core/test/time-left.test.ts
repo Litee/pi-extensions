@@ -15,23 +15,23 @@ describe('formatTimeLeft', () => {
   })
 
   it('returns Xs left for sub-minute remainder', () => {
-    expect(formatTimeLeft(31_000, 1_000)).toBe('30s left')
+    expect(formatTimeLeft(31_000, 1_000)).toBe('30s')
   })
 
   it('returns Xm left for remainder < 1 h', () => {
-    expect(formatTimeLeft(121_000, 1_000)).toBe('2m left')
+    expect(formatTimeLeft(121_000, 1_000)).toBe('2m')
   })
 
   it('returns Xh left for remainder >= 1 h', () => {
-    expect(formatTimeLeft(3_601_000, 1_000)).toBe('1h left')
+    expect(formatTimeLeft(3_601_000, 1_000)).toBe('1h')
   })
 
   it('rounds up partial seconds', () => {
     // 30.5 s remaining → ceil → 31 s
-    expect(formatTimeLeft(31_500, 1_000)).toBe('31s left')
+    expect(formatTimeLeft(31_500, 1_000)).toBe('31s')
   })
 
   it('returns Xh left for multi-hour remainder', () => {
-    expect(formatTimeLeft(3 * 3600_000 + 1_000, 0)).toBe('3h left')
+    expect(formatTimeLeft(3 * 3600_000 + 1_000, 0)).toBe('3h')
   })
 })

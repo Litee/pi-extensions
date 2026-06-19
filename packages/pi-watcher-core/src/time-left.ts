@@ -20,7 +20,7 @@ export function formatTimeLeft(timeoutAt: number | undefined, now: number): stri
   const h = Math.floor(s / 3600)
   const m = Math.floor((s % 3600) / 60)
   const rem = s % 60
-  if (h >= 1) return `${h}h left`
-  if (m >= 1) return `${m}m left`
-  return `${rem}s left`
+  if (h >= 1) return `${h}h`
+  if (m >= 1) return `${m}m`
+  return `${rem}s`
 }

@@ -549,29 +549,26 @@ describe("FsWatcher view", () => {
   it("renderItemRowText formats correctly", () => {
     const text = watcher.view.renderItemRowText(mockWatch);
     expect(text).toContain("/tmp/output.json");
-    expect(text).toContain("WATCHING");
+    expect(text).toContain("🔔");
     expect(text).toContain("creation");
   });
 
-  it("renderItemRowText shows DONE for terminal watches", () => {
+  it("renderItemRowText shows bell-off for terminal watches", () => {
     const text = watcher.view.renderItemRowText({
       ...mockWatch,
       terminal: true,
     });
-    expect(text).toContain("DONE");
+    expect(text).toContain("🔕");
   });
 
-  it("renderItemRowText: timed-out watch shows DONE in status and expired in timeout", () => {
+  it("renderItemRowText: timed-out watch shows bell-off", () => {
     const text = watcher.view.renderItemRowText({ ...mockWatch, terminal: true, timeoutAt: Date.now() - 1000 });
-    expect(text).toContain("DONE");
-    expect(text).toContain("expired");
-    expect(text).not.toContain("EXPIRED");
+    expect(text).toContain("🔕");
   });
 
-  it("renderItemRowText shows DONE for target-met-early (future timeoutAt)", () => {
+  it("renderItemRowText shows bell-off for target-met-early (future timeoutAt)", () => {
     const text = watcher.view.renderItemRowText({ ...mockWatch, terminal: true, timeoutAt: Date.now() + 60_000 });
-    expect(text).toContain("DONE");
-    expect(text).not.toContain("EXPIRED");
+    expect(text).toContain("🔕");
   });
 
   it("renderItemRowTUI returns columns with path first", () => {
@@ -593,20 +590,12 @@ describe("FsWatcher view", () => {
     expect(cols[0]?.color).toBe("accent");
   });
 
-  it("renderItemRowTUI uses warning color for terminal watch status column", () => {
+  it("renderItemRowTUI uses dim color for terminal watch-status column", () => {
     const cols = watcher.view.renderItemRowTUI(
       { ...mockWatch, terminal: true },
       { theme: {} as never, width: 80 },
     );
-    expect(cols[1]?.color).toBe("warning");
-  });
-
-  it("renderItemRowTUI uses dim color for terminal watch timeout column (timeoutAt undefined)", () => {
-    const cols = watcher.view.renderItemRowTUI(
-      { ...mockWatch, terminal: true },
-      { theme: {} as never, width: 80 },
-    );
-    expect(cols[2]?.color).toBe("dim");
+    expect(cols[1]?.color).toBe("dim");
   });
 
   it("renderItemRowTUI uses warning color at error threshold", () => {
@@ -617,15 +606,13 @@ describe("FsWatcher view", () => {
     expect(cols[0]?.color).toBe("warning");
   });
 
-  it("renderItemRowTUI columns: path, status, timeout, target", () => {
+  it("renderItemRowTUI columns: path, watch-status", () => {
     const cols = watcher.view.renderItemRowTUI(mockWatch, {
       theme: {} as never,
       width: 80,
     });
     expect(cols[0]!.name).toBe("path");
-    expect(cols[1]!.name).toBe("status");
-    expect(cols[2]!.name).toBe("timeout");
-    expect(cols[3]!.name).toBe("target");
+    expect(cols[1]!.name).toBe("watch-status");
   });
 
   it("renderItemDetail includes expected fields", () => {
@@ -715,45 +702,43 @@ describe("FsWatcher view status column", () => {
     ({ watcher } = makeWatcher());
   });
 
-  it("active watch shows WATCHING", () => {
+  it("active watch shows bell", () => {
     const w = { ...baseW, terminal: false, consecutiveErrors: 0 };
     const cols = watcher.view.renderItemRowTUI(w, {
       theme: {} as never,
       width: 80,
     });
-    expect(cols.find((c) => c.name === "status")!.text).toBe("WATCHING");
+    expect(cols.find((c) => c.name === "watch-status")!.text).toBe("🔔");
   });
 
-  it("terminal watch shows DONE", () => {
+  it("terminal watch shows bell-off", () => {
     const w = { ...baseW, terminal: true, consecutiveErrors: 0 };
     const cols = watcher.view.renderItemRowTUI(w, {
       theme: {} as never,
       width: 80,
     });
-    expect(cols.find((c) => c.name === "status")!.text).toBe("DONE");
+    expect(cols.find((c) => c.name === "watch-status")!.text).toBe("🔕");
   });
 
-  it("timed-out watch shows DONE in status and expired in timeout", () => {
+  it("timed-out watch shows bell-off", () => {
     const w = { ...baseW, terminal: true, consecutiveErrors: 0, timeoutAt: Date.now() - 1000 };
     const cols = watcher.view.renderItemRowTUI(w, {
       theme: {} as never,
       width: 80,
     });
-    expect(cols.find((c) => c.name === "status")!.text).toBe("DONE");
-    expect(cols.find((c) => c.name === "timeout")!.text).toBe("expired");
-    expect(cols.find((c) => c.name === "status")!.text).not.toBe("EXPIRED");
+    expect(cols.find((c) => c.name === "watch-status")!.text).toBe("🔕");
   });
 
-  it("terminal watch with future timeoutAt (target met early) shows DONE", () => {
+  it("terminal watch with future timeoutAt (target met early) shows bell-off", () => {
     const w = { ...baseW, terminal: true, consecutiveErrors: 0, timeoutAt: Date.now() + 60_000 };
     const cols = watcher.view.renderItemRowTUI(w, {
       theme: {} as never,
       width: 80,
     });
-    expect(cols.find((c) => c.name === "status")!.text).toBe("DONE");
+    expect(cols.find((c) => c.name === "watch-status")!.text).toBe("🔕");
   });
 
-  it("error threshold watch shows ERROR", () => {
+  it("error threshold watch shows bell with error color", () => {
     const w = {
       ...baseW,
       terminal: false,
@@ -763,7 +748,8 @@ describe("FsWatcher view status column", () => {
       theme: {} as never,
       width: 80,
     });
-    expect(cols.find((c) => c.name === "status")!.text).toBe("ERROR");
+    expect(cols.find((c) => c.name === "watch-status")!.text).toBe("🔔");
+    expect(cols.find((c) => c.name === "watch-status")!.color).toBe("error");
   });
 });
 
@@ -786,46 +772,46 @@ describe("FsWatcher view timeout column", () => {
     ({ watcher } = makeWatcher());
   });
 
-  it("shows '-' when no timeoutAt", () => {
+  it("shows bell when no timeoutAt", () => {
     const w = { ...baseW, timeoutAt: undefined, terminal: false, consecutiveErrors: 0 };
     const cols = watcher.view.renderItemRowTUI(w, { theme: {} as never, width: 100 });
-    expect(cols.find((c) => c.name === "timeout")!.text).toBe("-");
+    expect(cols.find((c) => c.name === "watch-status")!.text).toBe("🔔");
   });
 
-  it("shows 'expired' when timeoutAt is in the past", () => {
+  it("shows bell with expired when timeoutAt is in the past (active watch)", () => {
     const w = { ...baseW, timeoutAt: Date.now() - 1000, terminal: false, consecutiveErrors: 0 };
     const cols = watcher.view.renderItemRowTUI(w, { theme: {} as never, width: 100 });
-    expect(cols.find((c) => c.name === "timeout")!.text).toBe("expired");
+    expect(cols.find((c) => c.name === "watch-status")!.text).toBe("🔔 expired");
   });
 
-  it("shows time left for future timeouts", () => {
+  it("shows bell with time left for future timeouts", () => {
     const w = { ...baseW, timeoutAt: Date.now() + 90_000, terminal: false, consecutiveErrors: 0 };
     const cols = watcher.view.renderItemRowTUI(w, { theme: {} as never, width: 100 });
-    expect(cols.find((c) => c.name === "timeout")!.text).toMatch(/\d+[smh] left/);
+    expect(cols.find((c) => c.name === "watch-status")!.text).toMatch(/🔔 \d+[smh]/);
   });
 
-  it("uses warning color < 5 min remaining", () => {
+  it("uses accent color for active non-error watch-status", () => {
     const w = { ...baseW, timeoutAt: Date.now() + 2 * 60_000, terminal: false, consecutiveErrors: 0 };
     const cols = watcher.view.renderItemRowTUI(w, { theme: {} as never, width: 100 });
-    expect(cols.find((c) => c.name === "timeout")!.color).toBe("warning");
+    expect(cols.find((c) => c.name === "watch-status")!.color).toBe("accent");
   });
 
-  it("uses dim color >= 5 min remaining", () => {
+  it("uses accent color when >= 5 min remaining and non-terminal", () => {
     const w = { ...baseW, timeoutAt: Date.now() + 10 * 60_000, terminal: false, consecutiveErrors: 0 };
     const cols = watcher.view.renderItemRowTUI(w, { theme: {} as never, width: 100 });
-    expect(cols.find((c) => c.name === "timeout")!.color).toBe("dim");
+    expect(cols.find((c) => c.name === "watch-status")!.color).toBe("accent");
   });
 
-  it("uses warning color for terminal watch with < 5 min remaining", () => {
+  it("uses dim color for terminal watch-status", () => {
     const w = { ...baseW, timeoutAt: Date.now() + 10_000, terminal: true, consecutiveErrors: 0 };
     const cols = watcher.view.renderItemRowTUI(w, { theme: {} as never, width: 100 });
-    expect(cols.find((c) => c.name === "timeout")!.color).toBe("warning");
+    expect(cols.find((c) => c.name === "watch-status")!.color).toBe("dim");
   });
 
-  it("timeout column width is 10", () => {
+  it("watch-status column width is 12", () => {
     const w = { ...baseW, timeoutAt: undefined, terminal: false, consecutiveErrors: 0 };
     const cols = watcher.view.renderItemRowTUI(w, { theme: {} as never, width: 100 });
-    expect(cols.find((c) => c.name === "timeout")!.width).toBe(10);
+    expect(cols.find((c) => c.name === "watch-status")!.width).toBe(12);
   });
 });
 
@@ -1230,13 +1216,13 @@ describe("formatTimeLeft", () => {
     expect(formatTimeLeft(1000, 2000)).toBe("expired");
   });
   it("returns Xs left for seconds", () => {
-    expect(formatTimeLeft(31_000, 1_000)).toBe("30s left");
+    expect(formatTimeLeft(31_000, 1_000)).toBe("30s");
   });
   it("returns Xm left for minutes", () => {
-    expect(formatTimeLeft(121_000, 1_000)).toBe("2m left");
+    expect(formatTimeLeft(121_000, 1_000)).toBe("2m");
   });
   it("returns Xh left for hours", () => {
-    expect(formatTimeLeft(3_601_000, 1_000)).toBe("1h left");
+    expect(formatTimeLeft(3_601_000, 1_000)).toBe("1h");
   });
 });
 
@@ -1340,10 +1326,10 @@ describe("FsWatcher view — additional branch coverage", () => {
     consecutiveErrors: 0,
   };
 
-  it("renderItemRowText shows ERROR for consecutiveErrors >= threshold", () => {
+  it("renderItemRowText shows bell for consecutiveErrors >= threshold", () => {
     const w = { ...baseWatch, consecutiveErrors: 5 };
     const text = watcher.view.renderItemRowText(w);
-    expect(text).toContain("ERR");
+    expect(text).toContain("🔔");
   });
 
   it("renderItemDetail shows polled timestamp when lastPolledAt is set", () => {

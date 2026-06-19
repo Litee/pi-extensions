@@ -82,30 +82,26 @@ export class FsWatcher extends BaseWatcher<FsWatch, FsBaseline, FsEvent> {
     itemSortKey: (w) => w.path,
 
     renderItemRowText(w) {
-      const statusText = w.terminal ? "DONE" : w.consecutiveErrors >= POLL_ERROR_THRESHOLD ? "ERROR" : "WATCHING";
-      const timeLeft = formatTimeLeft(w.timeoutAt, Date.now());
-      return `${w.path}  ${statusText}  ${timeLeft}  ${w.target}`;
+      const watchIcon = w.terminal ? '🔕' : '🔔'
+      const ttl = !w.terminal ? formatTimeLeft(w.timeoutAt, Date.now()) : ''
+      const watchText = (ttl && ttl !== '-') ? `${watchIcon} ${ttl}` : watchIcon
+      return `${w.path}  ${watchText}  ${w.target}`;
     },
 
     renderItemRowTUI(w, _ctx): RowColumn[] {
       const pathColor = w.consecutiveErrors >= POLL_ERROR_THRESHOLD
         ? "warning"
         : "accent";
-      const statusText = w.terminal ? "DONE" : w.consecutiveErrors >= POLL_ERROR_THRESHOLD ? "ERROR" : "WATCHING";
-      const statusColor =
-        w.consecutiveErrors >= POLL_ERROR_THRESHOLD
-          ? "error"
-          : "warning";
-      const timeLeft = formatTimeLeft(w.timeoutAt, Date.now());
-      const timeColor: string =
-        w.timeoutAt !== undefined && w.timeoutAt - Date.now() < 5 * 60 * 1000
-          ? "warning"
-          : "dim";
+      const watchIcon = w.terminal ? '🔕' : '🔔'
+      const ttl = !w.terminal ? formatTimeLeft(w.timeoutAt, Date.now()) : ''
+      const watchText = (ttl && ttl !== '-') ? `${watchIcon} ${ttl}` : watchIcon
+      const watchColor = w.terminal
+        ? 'dim'
+        : w.consecutiveErrors >= POLL_ERROR_THRESHOLD ? 'error' : 'accent'
       return [
-        { name: "path",    text: w.path,      color: pathColor },
-        { name: "status",  text: statusText,  width: 10, color: statusColor },
-        { name: "timeout", text: timeLeft,    width: 10, color: timeColor },
-        { name: "target",  text: w.target, width: 10, color: "dim" },
+        { name: 'path',         text: w.path,    color: pathColor },
+        { name: 'watch-status', text: watchText, width: 12, color: watchColor },
+        { name: 'target',       text: w.target,  width: 12, color: 'dim' },
       ];
     },
 

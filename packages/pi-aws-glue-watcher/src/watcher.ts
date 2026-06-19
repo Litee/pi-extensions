@@ -132,22 +132,12 @@ export class GlueWatcher extends AwsBaseWatcher<GlueWatch, WatchBaseline, GlueEv
 
     renderItemRowText(w): string {
       const state = (w.baseline?.state ?? '?').toUpperCase()
-      const status = w.terminal
-        ? 'DONE'
-        : w.consecutiveErrors >= POLL_ERROR_THRESHOLD
-          ? 'ERROR'
-          : 'WATCHING'
-      return `${w.type} ${w.name} [${w.runId.slice(-4)}]  ${state}  ${status}`
+      const watchText = w.terminal ? '🔕' : '🔔'
+      return `${w.type} ${w.name} [${w.runId.slice(-4)}]  ${state}  ${watchText}`
     },
 
     renderItemRowTUI(w, _ctx): RowColumn[] {
       const state = (w.baseline?.state ?? '?').toUpperCase()
-      const status = w.terminal
-        ? 'DONE'
-        : w.consecutiveErrors >= POLL_ERROR_THRESHOLD
-          ? 'ERROR'
-          : 'WATCHING'
-
       let elapsed = '-'
       let workers = '-'
       if (w.type === 'job') {
@@ -158,17 +148,16 @@ export class GlueWatcher extends AwsBaseWatcher<GlueWatch, WatchBaseline, GlueEv
         }
       }
 
+      const watchText = w.terminal ? '🔕' : '🔔'
+      const watchColor = w.terminal
+        ? 'dim'
+        : w.consecutiveErrors >= POLL_ERROR_THRESHOLD ? 'error' : 'accent'
       return [
         { name: 'name', text: `${w.type} ${w.name} [${w.runId.slice(-4)}]`, color: 'accent' },
         { name: 'state', text: state, width: 14, color: stateColor(state) },
         { name: 'elapsed', text: elapsed, width: 7 },
         { name: 'workers', text: workers, width: 10 },
-        {
-          name: 'status',
-          text: status,
-          width: 10,
-          color: w.consecutiveErrors >= POLL_ERROR_THRESHOLD ? 'error' : 'warning',
-        },
+        { name: 'watch-status', text: watchText, width: 4, color: watchColor },
       ]
     },
 

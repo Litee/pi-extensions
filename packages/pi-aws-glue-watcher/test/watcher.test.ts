@@ -1049,31 +1049,31 @@ describe('view.renderItemRowText', () => {
     }
   }
 
-  it('shows WATCHING for an active non-error watch', () => {
+  it('shows bell for an active non-error watch', () => {
     const w = makeJobWatch({ baseline: { state: 'RUNNING', errorMessage: '' } })
     const text = watcher.view.renderItemRowText(w)
-    expect(text).toContain('WATCHING')
+    expect(text).toContain('🔔')
     expect(text).toContain('RUNNING')
   })
 
-  it('shows DONE for a terminal watch', () => {
+  it('shows bell-off for a terminal watch', () => {
     const w = makeJobWatch({ terminal: true, baseline: { state: 'SUCCEEDED', errorMessage: '' } })
     const text = watcher.view.renderItemRowText(w)
-    expect(text).toContain('DONE')
+    expect(text).toContain('🔕')
     expect(text).toContain('SUCCEEDED')
   })
 
-  it('shows ERROR when consecutiveErrors exceeds threshold', () => {
+  it('shows bell when consecutiveErrors exceeds threshold (still watching)', () => {
     const w = makeJobWatch({ consecutiveErrors: POLL_ERROR_THRESHOLD })
     const text = watcher.view.renderItemRowText(w)
-    expect(text).toContain('ERROR')
+    expect(text).toContain('🔔')
   })
 
   it('uses "?" for state when baseline is absent', () => {
     const w = makeJobWatch()
     const text = watcher.view.renderItemRowText(w)
     expect(text).toContain('?')
-    expect(text).toContain('WATCHING')
+    expect(text).toContain('🔔')
   })
 
   it('includes last 4 chars of runId', () => {
@@ -1111,20 +1111,20 @@ describe('view.renderItemRowTUI — status column', () => {
     }
   }
 
-  it('status column shows DONE and color warning for terminal watch', () => {
+  it('watch-status column shows bell-off and dim color for terminal watch', () => {
     const w = makeJobWatch({ terminal: true })
     const cols = watcher.view.renderItemRowTUI(w, { theme: {} as never, width: 120 })
-    const status = cols.find((c) => c.name === 'status')
-    expect(status?.text).toBe('DONE')
-    expect(status?.color).toBe('warning')
+    const watchStatus = cols.find((c) => c.name === 'watch-status')
+    expect(watchStatus?.text).toBe('🔕')
+    expect(watchStatus?.color).toBe('dim')
   })
 
-  it('status column shows ERROR and color error when consecutiveErrors >= threshold', () => {
+  it('watch-status column shows bell and error color when consecutiveErrors >= threshold', () => {
     const w = makeJobWatch({ consecutiveErrors: POLL_ERROR_THRESHOLD })
     const cols = watcher.view.renderItemRowTUI(w, { theme: {} as never, width: 120 })
-    const status = cols.find((c) => c.name === 'status')
-    expect(status?.text).toBe('ERROR')
-    expect(status?.color).toBe('error')
+    const watchStatus = cols.find((c) => c.name === 'watch-status')
+    expect(watchStatus?.text).toBe('🔔')
+    expect(watchStatus?.color).toBe('error')
   })
 })
 

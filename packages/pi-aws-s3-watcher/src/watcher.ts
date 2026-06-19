@@ -76,26 +76,26 @@ export class S3Watcher extends AwsBaseWatcher<S3Watch, S3Baseline, S3Event> {
     itemGroup: (w) => w.bucket,
 
     renderItemRowText(w) {
-      const statusText = w.terminal ? 'DONE' : w.consecutiveErrors >= POLL_ERROR_THRESHOLD ? 'ERROR' : 'WATCHING'
-      const timeLeft = formatTimeLeft(w.timeoutAt, Date.now())
-      return `s3://${w.bucket}/${w.key}  ${statusText}  ${timeLeft}  ${w.target}`
+      const watchIcon = w.terminal ? '🔕' : '🔔'
+      const ttl = !w.terminal ? formatTimeLeft(w.timeoutAt, Date.now()) : ''
+      const watchText = (ttl && ttl !== '-') ? `${watchIcon} ${ttl}` : watchIcon
+      return `s3://${w.bucket}/${w.key}  ${watchText}  ${w.target}`
     },
 
     renderItemRowTUI(w, _ctx): RowColumn[] {
       const uriColor = w.consecutiveErrors >= POLL_ERROR_THRESHOLD
         ? 'warning'
         : 'accent'
-      const statusText = w.terminal ? 'DONE' : w.consecutiveErrors >= POLL_ERROR_THRESHOLD ? 'ERROR' : 'WATCHING'
-      const statusColor = w.consecutiveErrors >= POLL_ERROR_THRESHOLD ? 'error' : 'warning'
-      const timeLeft = formatTimeLeft(w.timeoutAt, Date.now())
-      const timeColor: string = w.timeoutAt !== undefined && w.timeoutAt - Date.now() < 5 * 60 * 1000
-        ? 'warning'
-        : 'dim'
+      const watchIcon = w.terminal ? '🔕' : '🔔'
+      const ttl = !w.terminal ? formatTimeLeft(w.timeoutAt, Date.now()) : ''
+      const watchText = (ttl && ttl !== '-') ? `${watchIcon} ${ttl}` : watchIcon
+      const watchColor = w.terminal
+        ? 'dim'
+        : w.consecutiveErrors >= POLL_ERROR_THRESHOLD ? 'error' : 'accent'
       return [
-        { name: 'uri',     text: `s3://${w.bucket}/${w.key}`, color: uriColor },
-        { name: 'status',  text: statusText,              width: 10, color: statusColor },
-        { name: 'timeout', text: timeLeft,                width: 10, color: timeColor },
-        { name: 'target',  text: w.target, width: 10, color: 'dim' },
+        { name: 'uri',          text: `s3://${w.bucket}/${w.key}`, color: uriColor },
+        { name: 'watch-status', text: watchText, width: 12, color: watchColor },
+        { name: 'target',       text: w.target, width: 10, color: 'dim' },
       ]
     },
 
