@@ -31,6 +31,7 @@ import {
 } from './poller.js'
 import { GlueWatcherParams } from './toolParams.js'
 import type { GlueEvent, GlueWatch, JobBaseline, WatchBaseline, WatchMap, WorkflowBaseline } from './types.js'
+import { JOB_TERMINAL_STATES, WORKFLOW_TERMINAL_STATES } from './types.js'
 import { formatElapsed, GlueWidget } from './ui/glue-widget.js'
 
 // ---------------------------------------------------------------------------
@@ -134,7 +135,9 @@ export class GlueWatcher extends AwsBaseWatcher<GlueWatch, WatchBaseline, GlueEv
 
     renderItemRowText(w): string {
       const state = (w.baseline?.state ?? '?').toUpperCase()
-      const watchText = w.terminal ? '🔕' : '🔔'
+      const terminalStates = w.type === 'job' ? JOB_TERMINAL_STATES : WORKFLOW_TERMINAL_STATES
+      const stateIsTerminal = w.baseline?.state != null && terminalStates.has(w.baseline.state)
+      const watchText = (w.terminal || stateIsTerminal) ? '🔕' : '🔔'
       return `${w.type} ${w.name} [${w.runId.slice(-4)}]  ${state}  ${watchText}`
     },
 
@@ -150,8 +153,10 @@ export class GlueWatcher extends AwsBaseWatcher<GlueWatch, WatchBaseline, GlueEv
         }
       }
 
-      const watchText = w.terminal ? '🔕' : '🔔'
-      const watchColor = w.terminal
+      const terminalStates = w.type === 'job' ? JOB_TERMINAL_STATES : WORKFLOW_TERMINAL_STATES
+      const stateIsTerminal = w.baseline?.state != null && terminalStates.has(w.baseline.state)
+      const watchText = (w.terminal || stateIsTerminal) ? '🔕' : '🔔'
+      const watchColor = (w.terminal || stateIsTerminal)
         ? 'dim'
         : w.consecutiveErrors >= POLL_ERROR_THRESHOLD ? 'error' : 'accent'
       return [
