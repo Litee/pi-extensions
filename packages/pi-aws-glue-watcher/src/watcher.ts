@@ -7,7 +7,9 @@
 
 import type { ExtensionAPI } from '@earendil-works/pi-coding-agent'
 import { AwsBaseWatcher, type AwsAddBaseParams } from 'pi-watcher-core/aws/base-watcher'
+import { classifyAwsError } from 'pi-watcher-core/aws/classify-error'
 import { POLL_ERROR_THRESHOLD } from 'pi-watcher-core/base-watcher'
+import { validateAwsProfile } from 'pi-watcher-core/validate-aws-profile'
 import { createWatcherMessageRenderer } from 'pi-watcher-core/renderer'
 import { addToolToActive } from 'pi-watcher-core/tool-activation'
 import type {
@@ -401,6 +403,9 @@ export class GlueWatcher extends AwsBaseWatcher<GlueWatch, WatchBaseline, GlueEv
       watchPollMs = ms
     }
 
+    const profileError = validateAwsProfile(base.profile)
+    if (profileError) return { error: this._toolError(profileError) }
+
     let runId = (typeof params['runId'] === 'string' ? params['runId'] : '').trim()
     const client = this._client as GlueClient
     if (!runId) {
@@ -410,7 +415,11 @@ export class GlueWatcher extends AwsBaseWatcher<GlueWatch, WatchBaseline, GlueEv
             ? await client.getLatestJobRunId(name, base.profile, base.region)
             : await client.getLatestWorkflowRunId(name, base.profile, base.region)
       } catch (err) {
-        const msg = `Failed to fetch latest run ID for ${type} '${name}': ${(err as Error).message}`
+        const classified = classifyAwsError(err, this.awsAuthMessage())
+        const msg =
+          classified.kind === 'auth'
+            ? `Failed to fetch latest run for ${type} '${name}' — ${classified.userMessage}`
+            : `Failed to reach AWS Glue to fetch latest run for ${type} '${name}' — check credentials and region`
         return { error: this._toolError(msg) }
       }
     }

@@ -27,6 +27,11 @@ vi.mock('pi-watcher-core/renderer', async (importOriginal) => {
   }
 })
 
+vi.mock('pi-watcher-core/validate-aws-profile', () => ({
+  validateAwsProfile: vi.fn().mockReturnValue(null),
+}))
+import { validateAwsProfile } from 'pi-watcher-core/validate-aws-profile'
+
 vi.mock('../src/config.js', () => ({
   loadConfig: vi.fn(() => ({})),
   saveConfig: vi.fn(() => true),
@@ -204,7 +209,9 @@ describe('GlueWatcher.addWatch — latest run id', () => {
       profile: 'p',
     })
     expect(result.details['ok']).toBe(false)
-    expect((result.content[0] as { text: string }).text).toContain('no runs found')
+    const text = (result.content[0] as { text: string }).text
+    expect(text).toContain("my-job")
+    expect(text).not.toContain('no runs found')
   })
 })
 
