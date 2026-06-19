@@ -381,7 +381,7 @@ describe("renderEntryLine", () => {
 			10,
 			plainTheme,
 		);
-		expect(line).toMatch(/-\s*$/);
+		expect(line).toMatch(/- +🔔\s*$/);
 	});
 
 	it("renders N×type for workers when present", () => {

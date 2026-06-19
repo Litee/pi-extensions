@@ -18,8 +18,9 @@ export const COL_STATE = 12;
 export const COL_STARTED = 7;
 export const COL_WORKERS = 10;
 export const COL_INTERVAL = 6;
-/** 1 leading + 4 separators = 5 */
-export const COL_FIXED_OVERHEAD = COL_STATE + COL_STARTED + COL_WORKERS + COL_INTERVAL + 5;
+export const COL_BELL = 3;
+/** 1 leading + 5 separators = 6 */
+export const COL_FIXED_OVERHEAD = COL_STATE + COL_STARTED + COL_WORKERS + COL_INTERVAL + COL_BELL + 6;
 export const COL_NAME_MIN = 20;
 
 // ---------------------------------------------------------------------------
@@ -203,6 +204,8 @@ export function renderEntryLine(
 		: undefined;
 	const intervalStr = theme.fg("dim", (intervalSec !== undefined ? `${intervalSec}s` : "-").padEnd(COL_INTERVAL));
 
-	const line = ` ${name} ${stateStr} ${started} ${workers} ${intervalStr}`;
+  const bell = entry.isTerminal ? '🔕' : '🔔';
+
+	const line = ` ${name} ${stateStr} ${started} ${workers} ${intervalStr} ${bell}`;
 	return entry.isTerminal ? theme.fg("dim", line) : line;
 }
