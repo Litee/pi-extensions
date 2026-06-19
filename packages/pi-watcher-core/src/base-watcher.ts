@@ -768,6 +768,7 @@ export abstract class BaseWatcher<
     const scheduler = this.schedulerFor(watchKey)
     const allEvents: TEvent[] = []
     let anyObservedChange = false
+    let pollSucceeded = false
 
     try {
       const result = await this.detectChanges(watch)
@@ -799,6 +800,7 @@ export abstract class BaseWatcher<
         // For user-tool watchers mark terminal only when the batch is terminal
         if (this.itemSource === 'user-tool' && this.containsTerminalStateEvent(result.events)) watch.terminal = true
       }
+      pollSucceeded = true
     } catch (err) {
       watch.consecutiveErrors += 1
       const classified = this.classifyError(err)
@@ -843,7 +845,7 @@ export abstract class BaseWatcher<
       this.writeState()
     }
 
-    this.noteSchedulerSuccess(anyObservedChange, watchKey)
+    if (pollSucceeded) this.noteSchedulerSuccess(anyObservedChange, watchKey)
 
     // Stop per-watch scheduler when the watch goes terminal
     // (no-op for the shared scheduler; meaningful for subclass per-watch schedulers)

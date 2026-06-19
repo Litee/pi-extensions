@@ -893,6 +893,49 @@ describe('noteSchedulerSuccess', () => {
 })
 
 // ---------------------------------------------------------------------------
+// Fix — noteSchedulerSuccess must NOT be called on error path
+// ---------------------------------------------------------------------------
+
+describe('backoff state machine: noteSchedulerSuccess skipped on error', () => {
+  it('keeps the backed-off interval when poll throws shouldBackoff=true', async () => {
+    const { watcher } = makeWatcher()
+
+    // Override classifyError to signal a throttle/auth error
+    ;(watcher as unknown as { classifyError(e: unknown): ClassifiedWatcherError }).classifyError = () => ({
+      userMessage: 'throttled',
+      kind: 'throttle',
+      statusModifier: 'none',
+      shouldBackoff: true,
+    })
+
+    watcher.detectChangesFn = () => Promise.reject(new Error('429 throttled'))
+
+    // Pre-seed the scheduler with a large interval so that noteSuccess(false)
+    // (which resets to idleMs) would produce a clearly different value.
+    const scheduler = watcher.testScheduler
+    // Set intervalMs to 8× base so noteBackoff doubles it to 16×.
+    // noteSuccess(false) would instead reset it to 2× base.
+    scheduler.forceInterval(8_000)
+
+    watcher.testWatches.set('w1', { id: 'w1', label: 'L', terminal: false, consecutiveErrors: 0 })
+    await watcher.pollWatch('w1')
+
+    // noteBackoff doubled 8000 → 16000.
+    // If noteSchedulerSuccess had been called it would have reset to idleMs*2 = 2000.
+    expect(scheduler.intervalMs).toBe(16_000)
+    expect(scheduler.intervalMs).not.toBe(scheduler.idleIntervalMs * 2)
+  })
+
+  it('still calls noteSchedulerSuccess on the success path', async () => {
+    const { watcher } = makeWatcher()
+    const successSpy = vi.spyOn(watcher.testScheduler, 'noteSuccess')
+    watcher.testWatches.set('w1', { id: 'w1', label: 'L', terminal: false, consecutiveErrors: 0 })
+    await watcher.pollWatch('w1')
+    expect(successSpy).toHaveBeenCalledOnce()
+  })
+})
+
+// ---------------------------------------------------------------------------
 // Fix 3 — defaultDisplayMode applied in onSessionStart
 // ---------------------------------------------------------------------------
 
