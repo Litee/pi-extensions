@@ -40,6 +40,7 @@ import { PollScheduler } from "pi-watcher-core/poll-scheduler";
 import { changedPaths, diffSnapshots } from "./diff.js";
 import {
 	buildChatMessageContent,
+	buildFirstUpdateContent,
 	buildMissingDbRootChatMessage,
 	buildMissingDbRootStatus,
 	buildParseFailureToast,
@@ -435,6 +436,25 @@ export function forceRefresh(rt: Runtime): void {
 		rt.ui.notify(buildParseFailureToast(failureCount), "warning");
 		rt.parseFailureToastState.hasToasted = true;
 	}
+	// Cold-start: no previous baseline — emit a first-update summary instead
+	// of diffing against {} which would flood chat with a "new" notification
+	// for every file on disk.
+	if (Object.keys(rt.snapshot).length === 0) {
+		if (Object.keys(next).length > 0) {
+			rt.pi.sendMessage(
+				{
+					customType: CUSTOM_MESSAGE_TYPE,
+					content: buildFirstUpdateContent(next, new Date()),
+					display: true,
+				},
+				{ deliverAs: "followUp", triggerTurn: false },
+			);
+			persistSnapshot(rt.pi, next);
+		}
+		rt.snapshot = next;
+		refreshStatusLine(rt.ui, rt, "active", next);
+		return;
+	}
 	const changes = diffSnapshots(rt.snapshot, next);
 	if (changes.length > 0) {
 		rt.pi.sendMessage(
@@ -561,5 +581,5 @@ export default function issueWatcher(pi: ExtensionAPI): void {
 export { STATE_ENTRY_TYPE, ENABLED_ENTRY_TYPE } from "./persistence.js";
 export { scanIssueFiles } from "./scanner.js";
 export { diffSnapshots, changedPaths, formatChange } from "./diff.js";
-export { buildChatMessageContent, buildMissingDbRootStatus, buildStartupAnnouncement, buildStartupChatMessage, buildStatusDetailMessage, formatStatusSummary, type WatcherState } from "./format.js";
+export { buildChatMessageContent, buildFirstUpdateContent, buildMissingDbRootStatus, buildStartupAnnouncement, buildStartupChatMessage, buildStatusDetailMessage, formatStatusSummary, type WatcherState } from "./format.js";
 export { resolveDbRoot };

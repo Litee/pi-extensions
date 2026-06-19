@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { buildChatMessageContent, buildMissingDbRootChatMessage, buildMissingDbRootStatus, buildStartupAnnouncement, buildStartupChatMessage, buildStatusDetailMessage, formatStatusSummary } from "../src/format.js";
+import { buildChatMessageContent, buildFirstUpdateContent, buildMissingDbRootChatMessage, buildMissingDbRootStatus, buildStartupAnnouncement, buildStartupChatMessage, buildStatusDetailMessage, formatStatusSummary } from "../src/format.js";
 import type { Change } from "../src/diff.js";
 import type { Snapshot } from "../src/types.js";
 
@@ -305,5 +305,84 @@ describe("buildMissingDbRootChatMessage", () => {
 	it("is a multi-line string", () => {
 		const msg = buildMissingDbRootChatMessage("/abs/db");
 		expect(msg.split("\n").length).toBeGreaterThan(2);
+	});
+});
+
+// ---------------------------------------------------------------------------
+// buildFirstUpdateContent — first-scan summary with open-issues listing
+// ---------------------------------------------------------------------------
+
+describe("buildFirstUpdateContent", () => {
+	const NOW = new Date(2026, 4, 3, 14, 7, 0); // 14:07
+
+	function makeIssue(overrides: Partial<Snapshot[string]>): Snapshot[string] {
+		return {
+			mtimeNs: 1n,
+			issueId: "0001",
+			status: "open",
+			title: "default title",
+			description: "",
+			comments: [],
+			skill: "skill-a",
+			skillVersion: "1.0.0",
+			...overrides,
+		};
+	}
+
+	it("(a) lists only open issues from a mixed snapshot, correct header and bullets ordered by path", () => {
+		const snap: Snapshot = {
+			"/db/skill-b/0002-b.json": makeIssue({ issueId: "0002", skill: "skill-b", title: "beta", status: "open" }),
+			"/db/skill-a/0001-a.json": makeIssue({ issueId: "0001", skill: "skill-a", title: "alpha", status: "open" }),
+			"/db/skill-c/0003-c.json": makeIssue({ issueId: "0003", skill: "skill-c", title: "gamma", status: "done" }),
+			"/db/skill-d/0004-d.json": makeIssue({ issueId: "0004", skill: "skill-d", title: "delta", status: "wont_fix" }),
+		};
+		const out = buildFirstUpdateContent(snap, NOW);
+		const lines = out.split("\n");
+		// Header: tracking 2 open issues:
+		expect(lines[0]).toBe("[14:07] tracking 2 open issues:");
+		// Bullets sorted by path — skill-a path comes before skill-b path
+		expect(lines[1]).toBe(`- issue #0001 (skill-a): "alpha" [open]`);
+		expect(lines[2]).toBe(`- issue #0002 (skill-b): "beta" [open]`);
+		expect(lines).toHaveLength(3);
+		// No done / wont_fix issues
+		expect(out).not.toContain("gamma");
+		expect(out).not.toContain("delta");
+		expect(out).not.toContain("done");
+		expect(out).not.toContain("wont_fix");
+	});
+
+	it("(b) zero open issues → header-only with no colon and no bullets", () => {
+		const snap: Snapshot = {
+			"/db/skill-a/0001-a.json": makeIssue({ status: "done" }),
+			"/db/skill-b/0002-b.json": makeIssue({ status: "wont_fix" }),
+		};
+		const out = buildFirstUpdateContent(snap, NOW);
+		expect(out).toBe("[14:07] tracking 0 open issues");
+		// No trailing colon after the header (the timestamp's ":" is fine)
+		expect(out.endsWith("issues")).toBe(true);
+		expect(out.split("\n")).toHaveLength(1);
+	});
+
+	it("(b) empty snapshot → header-only for zero open issues", () => {
+		const out = buildFirstUpdateContent({}, NOW);
+		expect(out).toBe("[14:07] tracking 0 open issues");
+	});
+
+	it("(c) single open issue → singular 'issue' (not 'issues')", () => {
+		const snap: Snapshot = {
+			"/db/skill-a/0001-a.json": makeIssue({ issueId: "0042", skill: "my-skill", title: "Fix bug", status: "open" }),
+		};
+		const out = buildFirstUpdateContent(snap, NOW);
+		const lines = out.split("\n");
+		expect(lines[0]).toBe("[14:07] tracking 1 open issue:");
+		expect(lines[1]).toBe(`- issue #0042 (my-skill): "Fix bug" [open]`);
+		expect(lines).toHaveLength(2);
+		expect(out).not.toContain("issues:");
+	});
+
+	it("zero-pads the time correctly", () => {
+		const earlyMorning = new Date(2026, 0, 1, 1, 2, 3);
+		const out = buildFirstUpdateContent({}, earlyMorning);
+		expect(out).toMatch(/^\[01:02\]/);
 	});
 });

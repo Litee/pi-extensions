@@ -189,10 +189,37 @@ export function formatCompactStatusSummary(snapshot: Snapshot): string {
 }
 
 /**
+ * Build the "first update" message posted when the watcher starts diffing
+ * against an empty baseline (no previous state). Lists ONLY open issues so a
+ * large tracker does not flood chat with a per-issue "new" notification for
+ * every file (the cold-start flood, fixed by listing open issues only).
+ *
+ * Format:
+ *   [HH:MM] tracking N open issue(s):
+ *   - issue #<id> (<skill>): "<title>" [open]
+ *   ...
+ *
+ * When there are zero open issues, returns a single header line with no
+ * trailing colon and no bullets: `[HH:MM] tracking 0 open issues`.
+ */
+export function buildFirstUpdateContent(snapshot: Snapshot, now: Date): string {
+	const openEntries = Object.entries(snapshot)
+		.filter(([, info]) => (info.status || "") === "open")
+		.sort(([a], [b]) => (a < b ? -1 : a > b ? 1 : 0));
+	const n = openEntries.length;
+	const time = formatShortTime(now);
+	if (n === 0) return `[${time}] tracking 0 open issues`;
+	const noun = n === 1 ? "issue" : "issues";
+	const header = `[${time}] tracking ${n} open ${noun}:`;
+	const bullets = openEntries.map(
+		([, info]) => `- issue #${info.issueId} (${info.skill}): "${info.title}" [open]`,
+	);
+	return [header, ...bullets].join("\n");
+}
+
+/**
  * Build the `content` field of the `pi.sendMessage` payload the watcher
  * delivers whenever it detects ≥ 1 change. Structure:
- *
- *     [HH:MM] N update(s):
  *     - <rendered change 1>
  *     - <rendered change 2>
  *     ...

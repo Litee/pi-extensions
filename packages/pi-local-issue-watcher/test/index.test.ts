@@ -826,9 +826,10 @@ describe("/local-issue-watcher command", () => {
 		expect(notifies.some((m) => m.includes("refreshed"))).toBe(true);
 	});
 
-	it("'Refresh' with a disk change vs rt.snapshot → exactly one sendMessage with triggerTurn:true", async () => {
-		// rt.snapshot starts as {} (no session_start). Writing a file means Refresh
-		// will diff {} vs the on-disk state and emit a 'new issue' message.
+	it("cold-start Refresh (empty rt.snapshot, single open issue) → first-update message with triggerTurn:false and display:true", async () => {
+		// rt.snapshot starts as {} because session_start was never called (watcher
+		// enabled mid-session). The fix emits a concise first-update listing instead
+		// of flooding chat with per-issue 'new' notifications.
 		mkdirSync(join(dbRoot, "skill-a"), { recursive: true });
 		writeFileSync(
 			join(dbRoot, "skill-a", "0001-a.json"),
@@ -845,11 +846,76 @@ describe("/local-issue-watcher command", () => {
 		);
 		expect(diffCalls).toHaveLength(1);
 		const [payload, opts] = diffCalls[0] as [
-			{ customType: string; content: string },
+			{ customType: string; content: string; display?: boolean; details?: unknown },
 			{ triggerTurn?: boolean },
 		];
-		expect(payload.content).toMatch(/update:|new issue/i);
-		expect(opts.triggerTurn).toBe(true);
+		// New behavior: first-update format, NOT the normal diff format
+		expect(payload.content).toMatch(/tracking 1 open issue/);
+		expect(payload.content).not.toMatch(/update:|new issue/i);
+		expect(payload.display).toBe(true);
+		expect(payload.details).toBeUndefined();
+		expect(opts.triggerTurn).toBe(false);
+	});
+
+	it("cold-start Refresh with multiple issues of mixed statuses → first-update lists only open issues, no flood", async () => {
+		// 2 open + 1 done + 1 wont_fix on disk; rt.snapshot = {} (no prior session_start)
+		mkdirSync(join(dbRoot, "skill-a"), { recursive: true });
+		mkdirSync(join(dbRoot, "skill-b"), { recursive: true });
+		writeFileSync(
+			join(dbRoot, "skill-a", "0001-a.json"),
+			JSON.stringify({ id: "0001", status: "open", title: "Alpha", skill: "skill-a" }),
+		);
+		writeFileSync(
+			join(dbRoot, "skill-a", "0002-b.json"),
+			JSON.stringify({ id: "0002", status: "open", title: "Beta", skill: "skill-a" }),
+		);
+		writeFileSync(
+			join(dbRoot, "skill-b", "0003-c.json"),
+			JSON.stringify({ id: "0003", status: "done", title: "Gamma", skill: "skill-b" }),
+		);
+		writeFileSync(
+			join(dbRoot, "skill-b", "0004-d.json"),
+			JSON.stringify({ id: "0004", status: "wont_fix", title: "Delta", skill: "skill-b" }),
+		);
+		const pi = makeFakePi();
+		extensionWithDbRoot(pi, dbRoot);
+		// Do NOT call sessionStartHandler so rt.snapshot remains {}
+		const ctx = makeFakeCtx();
+		await refreshViaMenu(pi, ctx);
+
+		const watcherCalls = pi.sendMessage.mock.calls.filter(
+			(c) => (c[0] as { customType?: string }).customType === "pi-local-issue-watcher",
+		);
+		// Exactly one message emitted (no flood)
+		expect(watcherCalls).toHaveLength(1);
+		const [payload, opts] = watcherCalls[0] as [
+			{ customType: string; content: string; display?: boolean; details?: unknown },
+			{ triggerTurn?: boolean },
+		];
+		// Header lists 2 open issues
+		expect(payload.content).toContain("tracking 2 open issues:");
+		// Both open issues appear as bullets
+		expect(payload.content).toContain("issue #0001");
+		expect(payload.content).toContain("issue #0002");
+		// done and wont_fix issues are NOT mentioned
+		expect(payload.content).not.toContain("issue #0003");
+		expect(payload.content).not.toContain("issue #0004");
+		expect(payload.content).not.toContain("Gamma");
+		expect(payload.content).not.toContain("Delta");
+		// No 'new issue' flood
+		expect(payload.content).not.toMatch(/new issue/i);
+		// Delivery opts: display:true, triggerTurn:false
+		expect(payload.display).toBe(true);
+		expect(payload.details).toBeUndefined();
+		expect(opts.triggerTurn).toBe(false);
+
+		// Baseline is now established — a second identical Refresh emits NO further watcher message
+		pi.sendMessage.mockClear();
+		await refreshViaMenu(pi, ctx);
+		const watcherCalls2 = pi.sendMessage.mock.calls.filter(
+			(c) => (c[0] as { customType?: string }).customType === "pi-local-issue-watcher",
+		);
+		expect(watcherCalls2).toHaveLength(0);
 	});
 
 	it("'Refresh' with missing dbRoot → notify warning, no sendMessage", async () => {
