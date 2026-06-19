@@ -30,7 +30,7 @@ vi.mock('pi-watcher-core/renderer', async (importOriginal) => {
 vi.mock('pi-watcher-core/validate-aws-profile', () => ({
   validateAwsProfile: vi.fn().mockReturnValue(null),
 }))
-import { validateAwsProfile } from 'pi-watcher-core/validate-aws-profile'
+import { validateAwsProfile as _validateAwsProfile } from 'pi-watcher-core/validate-aws-profile'
 
 vi.mock('../src/config.js', () => ({
   loadConfig: vi.fn(() => ({})),
