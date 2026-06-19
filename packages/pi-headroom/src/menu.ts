@@ -184,6 +184,31 @@ export async function defaultOpenHeadroomMenu(ctx: ExtensionContext, runtime: He
 		container.addChild(new Text(theme.fg("accent", theme.bold("Headroom Settings")), 1, 0));
 		container.addChild(new Spacer(1));
 
+		// Status block — static snapshot at menu open time
+		const { proxyOnline, stats } = runtime.state;
+		const proxyText =
+			proxyOnline === true
+				? theme.fg("success", "● online")
+				: proxyOnline === false
+					? theme.fg("dim", "○ offline")
+					: theme.fg("dim", "○ unknown");
+		const statusLines = [
+			`  ${theme.fg("dim", "Proxy")}        ${proxyText}`,
+			`  ${theme.fg("dim", "Attempts")}     ${stats.attempts}   applied: ${stats.applied}`,
+			`  ${theme.fg("dim", "Tokens saved")} ${stats.tokensSaved.toLocaleString()}`,
+		];
+		if (stats.last !== undefined) {
+			const pct = Math.round((1 - stats.last.compressionRatio) * 100);
+			statusLines.push(
+				`  ${theme.fg("dim", "Last")}         ${stats.last.tokensBefore.toLocaleString()} → ${stats.last.tokensAfter.toLocaleString()}  (-${pct}%)`,
+			);
+		}
+		container.addChild({
+			render: (w: number) => statusLines.map((l) => truncateToWidth(l, w)),
+			invalidate: () => {},
+		});
+		container.addChild(new Spacer(1));
+
 		const items: SettingItem[] = [
 			{
 				id: "enabled",
@@ -233,7 +258,7 @@ export async function defaultOpenHeadroomMenu(ctx: ExtensionContext, runtime: He
 			},
 			{
 				id: "reset",
-				label: "↺ Reset to defaults",
+				label: "Reset to defaults",
 				description: "Delete pi-headroom.json — press Enter to confirm",
 				currentValue: "",
 				values: ["confirm"],
