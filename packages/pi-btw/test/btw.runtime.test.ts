@@ -651,6 +651,7 @@ function createHarness(
     },
     model,
     getSystemPrompt: () => "system",
+    getSystemPromptOptions: () => ({ customPrompt: "system", cwd: "/" }),
     isIdle: () => idle,
   };
 

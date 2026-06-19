@@ -182,19 +182,12 @@ function isCustomEntry(entry: unknown, customType: string): entry is { type: "cu
   return !!entry && typeof entry === "object" && (entry as { type?: string }).type === "custom" && (entry as { customType?: string }).customType === customType;
 }
 
-function stripDynamicSystemPromptFooter(systemPrompt: string): string {
-  return systemPrompt
-    .replace(/\nCurrent date and time:[^\n]*(?:\nCurrent working directory:[^\n]*)?$/u, "")
-    .replace(/\nCurrent working directory:[^\n]*$/u, "")
-    .trim();
-}
-
 function createBtwResourceLoader(
   ctx: ExtensionCommandContext,
   appendSystemPrompt: string[] = [BTW_SYSTEM_PROMPT],
 ): ResourceLoader {
   const extensionsResult = { extensions: [], errors: [], runtime: createExtensionRuntime() };
-  const systemPrompt = stripDynamicSystemPromptFooter(ctx.getSystemPrompt());
+  const systemPrompt = ctx.getSystemPromptOptions().customPrompt ?? "";
 
   return {
     getExtensions: () => extensionsResult,
