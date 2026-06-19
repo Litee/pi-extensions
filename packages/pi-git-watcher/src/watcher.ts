@@ -79,42 +79,30 @@ export class GitWatcher extends BaseWatcher<GitWatch, GitBaseline, GitEvent> {
     itemGroup: (w) => w.repoPath,
 
     renderItemRowText(w) {
-      const statusText =
-        w.terminal
-          ? "DONE"
-          : w.consecutiveErrors >= POLL_ERROR_THRESHOLD
-            ? "ERROR"
-            : "WATCHING";
-      const timeLeft = formatTimeLeft(w.timeoutAt, Date.now());
-      return `${w.repoPath} [${w.branch}]  ${statusText}  ${timeLeft}  ${w.targets.join(",")}`;
+      const watchIcon = w.terminal ? "🔕" : "🔔";
+      const ttl = !w.terminal ? formatTimeLeft(w.timeoutAt, Date.now()) : "";
+      const watchText = (ttl && ttl !== "-") ? `${watchIcon} ${ttl}` : watchIcon;
+      return `${w.repoPath} [${w.branch}]  ${watchText}  ${w.targets.join(",")}`;
     },
 
     renderItemRowTUI(w, _ctx): RowColumn[] {
       const repoColor =
         w.consecutiveErrors >= POLL_ERROR_THRESHOLD ? "warning" : "accent";
-      const statusText =
-        w.terminal
-          ? "DONE"
-          : w.consecutiveErrors >= POLL_ERROR_THRESHOLD
-            ? "ERROR"
-            : "WATCHING";
-      const statusColor =
-        w.consecutiveErrors >= POLL_ERROR_THRESHOLD ? "error" : "warning";
-      const timeLeft = formatTimeLeft(w.timeoutAt, Date.now());
-      const timeColor: string =
-        w.timeoutAt !== undefined && w.timeoutAt - Date.now() < 5 * 60 * 1000
-          ? "warning"
-          : "dim";
+      const watchIcon = w.terminal ? "🔕" : "🔔";
+      const ttl = !w.terminal ? formatTimeLeft(w.timeoutAt, Date.now()) : "";
+      const watchText = (ttl && ttl !== "-") ? `${watchIcon} ${ttl}` : watchIcon;
+      const watchColor = w.terminal
+        ? "dim"
+        : w.consecutiveErrors >= POLL_ERROR_THRESHOLD ? "error" : "accent";
       const headText = w.baseline?.headSha
         ? w.baseline.headSha.slice(0, 7)
         : "n/a";
       const targetsText = w.targets.join(",");
       return [
-        { name: "repo",    text: `${w.repoPath} [${w.branch}]`, color: repoColor },
-        { name: "head",    text: headText,   width: 9,  color: "dim" },
-        { name: "targets", text: targetsText, width: 14, color: "dim" },
-        { name: "status",  text: statusText, width: 10, color: statusColor },
-        { name: "timeout", text: timeLeft,   width: 10, color: timeColor },
+        { name: "repo",         text: `${w.repoPath} [${w.branch}]`, color: repoColor },
+        { name: "head",         text: headText,   width: 9,  color: "dim" },
+        { name: "targets",      text: targetsText, width: 14, color: "dim" },
+        { name: "watch-status", text: watchText,  width: 12, color: watchColor },
       ];
     },
 

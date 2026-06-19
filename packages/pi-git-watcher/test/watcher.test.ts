@@ -519,7 +519,7 @@ describe("GitWatcher.view", () => {
       terminal: true,
       consecutiveErrors: 0,
     };
-    expect(watcher.view.renderItemRowText(watch)).toContain("DONE");
+    expect(watcher.view.renderItemRowText(watch)).toContain("🔕");
   });
 
   it("renderEventRow returns event.formatted", () => {
@@ -803,13 +803,12 @@ describe("GitWatcher view rendering", () => {
       { name: "repo", text: `${longPath} [main]` },
       { name: "head", text: "abc1234", width: 9 },
       { name: "targets", text: "new_commit", width: 14 },
-      { name: "status", text: "WATCHING", width: 10 },
-      { name: "timeout", text: "-", width: 10 },
+      { name: "watch-status", text: "🔔", width: 12 },
     ];
     const result = watcher.view.compressColumns!(cols, 80);
     const repoCol = result.find((c) => c.name === "repo")!;
     // Should be truncated
-    expect(repoCol.text.length).toBeLessThanOrEqual(37); // 80 - 9 - 14 - 10 - 10 - 4*2 separators
+    expect(repoCol.text.length).toBeLessThanOrEqual(43); // 80 - 9 - 14 - 12 - 3*2 separators
   });
 
   it("itemSortKey returns repoPath + branch", () => {
@@ -977,24 +976,24 @@ describe("GitWatcher view — additional branch coverage", () => {
     expect(fields.find((f) => f.label === "terminal")?.value).toBe("yes");
   });
 
-  it("renderItemRowText shows ERROR when consecutiveErrors hits threshold", () => {
+  it("renderItemRowText shows bell when consecutiveErrors hits threshold", () => {
     const w = makeWatch({ consecutiveErrors: 5 }); // POLL_ERROR_THRESHOLD = 5
     const text = watcher.view.renderItemRowText(w);
-    expect(text).toContain("ERROR");
+    expect(text).toContain("🔔");
   });
 
-  it("renderItemRowTUI status column shows DONE for terminal watch", () => {
+  it("renderItemRowTUI watch-status column shows crossed bell for terminal watch", () => {
     const w = makeWatch({ terminal: true });
     const cols = watcher.view.renderItemRowTUI(w, { theme: {} as never, width: 80 });
-    const status = cols.find((c) => c.name === "status");
-    expect(status?.text).toBe("DONE");
+    const status = cols.find((c) => c.name === "watch-status");
+    expect(status?.text).toBe("🔕");
   });
 
-  it("renderItemRowTUI status column shows ERROR and color error at threshold", () => {
+  it("renderItemRowTUI watch-status column shows bell with error color at threshold", () => {
     const w = makeWatch({ consecutiveErrors: 5 });
     const cols = watcher.view.renderItemRowTUI(w, { theme: {} as never, width: 80 });
-    const status = cols.find((c) => c.name === "status");
-    expect(status?.text).toBe("ERROR");
+    const status = cols.find((c) => c.name === "watch-status");
+    expect(status?.text).toBe("🔔");
     expect(status?.color).toBe("error");
   });
 
@@ -1012,10 +1011,10 @@ describe("GitWatcher view — additional branch coverage", () => {
     expect(repo?.color).toBe("warning");
   });
 
-  it("renderItemRowTUI shows timeout warning color when timeoutAt is < 5min away", () => {
+  it("renderItemRowTUI shows TTL in watch-status when timeoutAt is set", () => {
     const w = makeWatch({ timeoutAt: Date.now() + 2 * 60 * 1000 }); // 2 minutes from now
     const cols = watcher.view.renderItemRowTUI(w, { theme: {} as never, width: 80 });
-    const timeout = cols.find((c) => c.name === "timeout");
-    expect(timeout?.color).toBe("warning");
+    const watchStatus = cols.find((c) => c.name === "watch-status");
+    expect(watchStatus?.text).toMatch(/🔔 \d+m/);
   });
 });
