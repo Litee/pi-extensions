@@ -4,22 +4,18 @@
  *
  * Triggers:
  *   - `session_start` (startup, resume, reload, fork): reset guards, attempt
- *     an immediate rename if the session has a name, then (re)start a 15-second
- *     idle poll so that name changes made while the agent is idle (e.g. via the
- *     built-in `/name` command) are picked up without waiting for a turn.
+ *     an immediate rename if the session has a name.
  *   - `agent_end`: check whether the session name changed since the last
  *     successful rename (catches `/name` and any other way the name can be
  *     set, e.g. pi.setSessionName() from another extension or RPC).
  *     NOTE: the `input` event does NOT fire for built-in commands like `/name`
  *     (they are handled at the TUI layer before extension routing). Registering
  *     an extension command called "name" conflicts with the built-in and is
- *     also skipped. `agent_end` is therefore the only reliable hook for
- *     turn-boundary updates; the poll is the fallback for idle periods.
- *   - 15-second poll: idle safety net started inside `session_start`.
- *     Reads `pi.getSessionName()` (cheap, in-process) and calls
- *     `tryRenameWithName` only when the name differs from what was last applied.
- *   - `session_shutdown`: clears the poll interval so the timer never outlives
- *     the session.
+ *     also skipped. `agent_end` is therefore the reliable hook for turn-boundary
+ *     updates.
+ *   - `/name-session-and-space <label>` command: sets the pi session name AND
+ *     immediately renames the herdr workspace in the same keystroke — no waiting
+ *     for the next turn.
  *
  * Failure backoff: when a rename fails (workspace unresolvable or herdr CLI
  * error), the attempted name is recorded in `lastAttemptedName`. Subsequent
@@ -30,7 +26,7 @@
  * No-op when `HERDR_ENV !== "1"` (not running inside herdr).
  */
 
-import type { ExtensionAPI, ExtensionContext } from "@earendil-works/pi-coding-agent";
+import type { ExtensionAPI, ExtensionCommandContext, ExtensionContext } from "@earendil-works/pi-coding-agent";
 
 import { isInsideHerdr, renameWorkspace, resolveWorkspaceId } from "./herdr.js";
 import type { ExecFn } from "./herdr.js";
@@ -45,9 +41,6 @@ import { STATE_CUSTOM_TYPE } from "./state.js";
  */
 const SUBAGENT_NAME_RE = /^[\w-]+#[0-9a-f]{6,}$/i;
 
-/** Interval between idle-poll rename checks (ms). */
-const POLL_INTERVAL_MS = 15_000;
-
 export default function createExtension(pi: ExtensionAPI): void {
 	/** The most recently successfully applied name — guards against re-renaming. */
 	let lastAppliedName: string | undefined;
@@ -57,8 +50,6 @@ export default function createExtension(pi: ExtensionAPI): void {
 	 * until the name changes or `session_start` resets this to `undefined`.
 	 */
 	let lastAttemptedName: string | undefined;
-	/** Handle for the idle-poll interval; cleared on session_shutdown. */
-	let pollTimer: ReturnType<typeof setInterval> | undefined;
 
 	/**
 	 * Build an ExecFn that delegates to pi.exec.
@@ -69,16 +60,19 @@ export default function createExtension(pi: ExtensionAPI): void {
 	/**
 	 * Core rename logic. Idempotent: bails out if already applied,
 	 * not inside herdr, name is falsy, or workspace cannot be resolved.
+	 * Pass `opts.force = true` to bypass the `lastAttemptedName` backoff guard
+	 * (used by the explicit command handler so a user can retry a failed rename).
 	 */
 	async function tryRenameWithName(
 		name: string,
 		ctx: ExtensionContext,
+		opts?: { force?: boolean },
 	): Promise<void> {
 		if (!isInsideHerdr(process.env)) return;
 		if (!name) return;
 		if (SUBAGENT_NAME_RE.test(name)) return;
 		if (name === lastAppliedName) return;
-		if (name === lastAttemptedName) return;
+		if (!opts?.force && name === lastAttemptedName) return;
 		lastAttemptedName = name;
 
 		const workspaceId = await resolveWorkspaceId(execFn, process.env);
@@ -119,41 +113,9 @@ export default function createExtension(pi: ExtensionAPI): void {
 		lastAttemptedName = undefined;
 		lastAppliedName = undefined;
 
-		// (Re)start the idle poll only when inside herdr — HERDR_ENV is fixed for the
-		// process lifetime, so a non-herdr session never needs the recurring timer.
-		// Always clear any prior timer first so repeated session_start events
-		// (/reload, fork) never leak multiple timers.
-		// ctx is captured in the closure — it remains valid for the lifetime of
-		// this session (each session_start produces a fresh ctx).
-		if (pollTimer !== undefined) {
-			clearInterval(pollTimer);
-			pollTimer = undefined;
-		}
-		if (isInsideHerdr(process.env)) {
-			pollTimer = setInterval(() => {
-				const name = pi.getSessionName();
-				if (!name) return;
-				// Wrap in a promise and swallow rejections so the interval callback
-				// never surfaces an unhandled-rejection even if tryRenameWithName
-				// throws unexpectedly.
-				Promise.resolve(tryRenameWithName(name, ctx)).catch(() => {});
-			}, POLL_INTERVAL_MS);
-			// unref so the timer never keeps the Node process alive on its own.
-			pollTimer?.unref?.();
-		}
-
 		const name = pi.getSessionName();
 		if (!name) return;
 		await tryRenameWithName(name, ctx);
-	});
-
-	// ---- session_shutdown ----------------------------------------------------
-
-	pi.on("session_shutdown", () => {
-		if (pollTimer !== undefined) {
-			clearInterval(pollTimer);
-			pollTimer = undefined;
-		}
 	});
 
 	// ---- agent_end -----------------------------------------------------------
@@ -162,5 +124,20 @@ export default function createExtension(pi: ExtensionAPI): void {
 		const name = pi.getSessionName();
 		if (!name) return;
 		await tryRenameWithName(name, ctx);
+	});
+
+	// ---- /name-session-and-space command ------------------------------------
+
+	pi.registerCommand("name-session-and-space", {
+		description: "Set the pi session name and rename the herdr workspace to match.",
+		handler: async (args: string, ctx: ExtensionCommandContext) => {
+			const name = args.trim();
+			if (!name) {
+				ctx.ui.notify("usage: /name-session-and-space <label>", "warning");
+				return;
+			}
+			pi.setSessionName(name);
+			await tryRenameWithName(name, ctx, { force: true });
+		},
 	});
 }

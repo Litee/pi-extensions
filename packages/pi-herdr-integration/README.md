@@ -7,15 +7,22 @@ session display name. It is a no-op outside herdr (`HERDR_ENV !== "1"`).
 
 | Event | Behaviour |
 |-------|-----------|
-| `session_start` (startup, resume, reload, fork) | Resets guards, attempts an immediate rename with the current session name, then starts (or restarts) the 15-second idle poll. |
+| `session_start` (startup, resume, reload, fork) | Resets guards and attempts an immediate rename with the current session name. |
 | `agent_end` | Checks whether the session name changed since the last successful rename; renames if so. Catches `/name` and any other name-change mechanism that takes effect before a turn ends. |
-| 15-second poll (idle safety net) | Started inside `session_start`. Reads `pi.getSessionName()` (cheap, in-process) every 15 s and calls `tryRenameWithName` only when the name differs from what was last applied. Picks up `/name` and `pi.setSessionName()` calls made while the agent is idle, without waiting for the next turn. |
-| `session_shutdown` | Clears the poll interval so the timer does not outlive the session. |
 
-The poll callback relies entirely on the existing idempotency guards inside
-`tryRenameWithName` (`name === lastAppliedName`, `name === lastAttemptedName`) to
-avoid spurious subprocess calls — a steady-state poll with no name change is a
-pure no-op.
+## Commands
+
+### `/name-session-and-space <label>`
+
+Sets the pi session name **and** immediately renames the herdr workspace to match — no waiting
+for the next turn.
+
+```
+/name-session-and-space my feature branch
+```
+
+Outside herdr, the command still calls `pi.setSessionName()` to name the pi session; the herdr
+rename is a no-op (guards inside `tryRenameWithName` short-circuit when `HERDR_ENV !== "1"`).
 
 ## Environment variables
 
@@ -43,10 +50,10 @@ new herdr context (startup, resume, fork, reload).
 ## Caveats
 
 - The built-in `/name` command is handled at the TUI layer before extension routing, so the
-  `input` event never fires for it. The extension therefore relies on `agent_end` (picks up
-  the change at the end of the next turn) and the 15-second idle poll (picks up the change
-  within ~15 s even when the agent is idle). The same applies to `pi.setSessionName()` calls
-  from other extensions or RPC `set_session_name` messages.
+  `input` event never fires for it. The extension picks up the new name at `agent_end` (end of
+  the next turn). The same applies to `pi.setSessionName()` calls from other extensions or RPC
+  `set_session_name` messages. Use `/name-session-and-space` when you want the herdr workspace
+  renamed immediately without waiting for a turn.
 - Rename failures are silently retried only when the session name changes or a new
   `session_start` fires. The backoff guard (`lastAttemptedName`) prevents repeated CLI
   calls and warning toasts for the same failing name.

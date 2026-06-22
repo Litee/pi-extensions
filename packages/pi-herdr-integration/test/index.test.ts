@@ -1,4 +1,4 @@
-import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 
 import createExtension from "../src/index.js";
 import { STATE_CUSTOM_TYPE } from "../src/state.js";
@@ -37,7 +37,9 @@ interface StubPi {
 	getSessionName: ReturnType<typeof vi.fn>;
 	setSessionName: ReturnType<typeof vi.fn>;
 	appendEntry: ReturnType<typeof vi.fn>;
+	registerCommand: ReturnType<typeof vi.fn>;
 	readonly handlers: Map<string, (...args: unknown[]) => unknown>;
+	readonly commands: Map<string, (args: string, ctx: unknown) => Promise<void>>;
 }
 
 function makeFakePi(overrides?: {
@@ -45,6 +47,7 @@ function makeFakePi(overrides?: {
 	execImpl?: (cmd: string, args: string[]) => Promise<{ code: number; stdout: string; stderr: string }>;
 }): StubPi {
 	const handlers = new Map<string, (...args: unknown[]) => unknown>();
+	const commands = new Map<string, (args: string, ctx: unknown) => Promise<void>>();
 
 	// Default exec: pane get → rename (both succeed)
 	const defaultExec = vi.fn()
@@ -63,7 +66,11 @@ function makeFakePi(overrides?: {
 		getSessionName: vi.fn().mockReturnValue(overrides?.sessionName),
 		setSessionName: vi.fn(),
 		appendEntry: vi.fn(),
+		registerCommand: vi.fn((name: string, opts: { description: string; handler: (args: string, ctx: unknown) => Promise<void> }) => {
+			commands.set(name, opts.handler);
+		}),
 		handlers,
+		commands,
 	};
 }
 
@@ -113,15 +120,16 @@ async function fireAgentEnd(
 // ---------------------------------------------------------------------------
 
 describe("pi-herdr-integration — wiring", () => {
-	it("subscribes to session_start, agent_end, and session_shutdown; does NOT register an extension /name command", () => {
+	it("subscribes to session_start and agent_end; does NOT subscribe to session_shutdown or input; registers /name-session-and-space command", () => {
 		const pi = makeFakePi();
 		createExtension(pi as never);
 
 		const subscribed = pi.on.mock.calls.map((c: unknown[]) => c[0] as string);
 		expect(subscribed).toContain("session_start");
 		expect(subscribed).toContain("agent_end");
-		expect(subscribed).toContain("session_shutdown");
+		expect(subscribed).not.toContain("session_shutdown");
 		expect(subscribed).not.toContain("input");
+		expect(pi.commands.has("name-session-and-space")).toBe(true);
 	});
 });
 
@@ -417,151 +425,153 @@ describe("pi-herdr-integration — agent_end", () => {
 });
 
 // ---------------------------------------------------------------------------
-// Idle poll (15-second interval)
+// /name-session-and-space command
 // ---------------------------------------------------------------------------
 
-describe("pi-herdr-integration — idle poll", () => {
-	// Persist herdr env variables across the async timer callbacks that fire
-	// after withEnv has already restored the original env.
-	let savedEnv: Record<string, string | undefined>;
-	beforeEach(() => {
-		savedEnv = { HERDR_ENV: process.env["HERDR_ENV"], HERDR_PANE_ID: process.env["HERDR_PANE_ID"] };
-		process.env["HERDR_ENV"] = "1";
-		process.env["HERDR_PANE_ID"] = "p_6";
-	});
-	afterEach(() => {
-		if (savedEnv["HERDR_ENV"] === undefined) delete process.env["HERDR_ENV"];
-		else process.env["HERDR_ENV"] = savedEnv["HERDR_ENV"];
-		if (savedEnv["HERDR_PANE_ID"] === undefined) delete process.env["HERDR_PANE_ID"];
-		else process.env["HERDR_PANE_ID"] = savedEnv["HERDR_PANE_ID"];
-		vi.useRealTimers();
-	});
-
-	it("idle poll renames when name changes without an agent_end", async () => {
-		vi.useFakeTimers();
-		const pi = makeFakePi({ sessionName: "initial" });
+describe("pi-herdr-integration — /name-session-and-space command", () => {
+	it("sets session name and renames herdr workspace (inside herdr)", async () => {
+		const pi = makeFakePi({ sessionName: "old name" });
 		const ctx = makeFakeCtx();
 		createExtension(pi as never);
 
-		// Fire session_start — initial rename consumes the first two exec mocks.
-		await pi.handlers.get("session_start")?.({ type: "session_start", reason: "startup" }, ctx);
-		expect(pi.exec).toHaveBeenCalledTimes(2);
+		const handler = pi.commands.get("name-session-and-space")!;
+		await withEnv({ HERDR_ENV: "1", HERDR_PANE_ID: "p_6" }, async () => {
+			await handler("my label", ctx);
+		});
 
-		// Change name without firing agent_end.
-		pi.getSessionName.mockReturnValue("new name");
-		// Re-arm exec for the poll-triggered rename (pane get + rename).
-		pi.exec.mockResolvedValueOnce({ code: 0, stdout: PANE_GET_JSON, stderr: "" });
-		pi.exec.mockResolvedValue({ code: 0, stdout: "", stderr: "" });
+		expect(pi.setSessionName).toHaveBeenCalledWith("my label");
+		expect(pi.exec.mock.calls[0]).toEqual(["herdr", ["pane", "get", "p_6"], { timeout: 5000 }]);
+		expect(pi.exec.mock.calls[1]).toEqual(["herdr", ["workspace", "rename", WS_ID, "my label"], { timeout: 5000 }]);
+	});
 
-		// Advance 15 s — the poll callback fires and renames.
-		await vi.advanceTimersByTimeAsync(15000);
+	it("trims whitespace from args", async () => {
+		const pi = makeFakePi();
+		const ctx = makeFakeCtx();
+		createExtension(pi as never);
+
+		const handler = pi.commands.get("name-session-and-space")!;
+		await withEnv({ HERDR_ENV: "1", HERDR_PANE_ID: "p_6" }, async () => {
+			await handler("  spaced  ", ctx);
+		});
+
+		expect(pi.setSessionName).toHaveBeenCalledWith("spaced");
+		expect(pi.exec.mock.calls[1]?.[1]).toEqual(["workspace", "rename", WS_ID, "spaced"]);
+	});
+
+	it("empty arg is a usage no-op: does not set name or exec", async () => {
+		const pi = makeFakePi();
+		const ctx = makeFakeCtx();
+		createExtension(pi as never);
+
+		const handler = pi.commands.get("name-session-and-space")!;
+		await handler("", ctx);
+
+		expect(pi.setSessionName).not.toHaveBeenCalled();
+		expect(pi.exec).not.toHaveBeenCalled();
+		expect(ctx.ui.notify).toHaveBeenCalledWith(
+			expect.stringContaining("usage"),
+			"warning",
+		);
+	});
+
+	it("whitespace-only arg is a usage no-op: does not set name or exec", async () => {
+		const pi = makeFakePi();
+		const ctx = makeFakeCtx();
+		createExtension(pi as never);
+
+		const handler = pi.commands.get("name-session-and-space")!;
+		await handler("   ", ctx);
+
+		expect(pi.setSessionName).not.toHaveBeenCalled();
+		expect(pi.exec).not.toHaveBeenCalled();
+		expect(ctx.ui.notify).toHaveBeenCalledWith(
+			expect.stringContaining("usage"),
+			"warning",
+		);
+	});
+
+	it("outside herdr: still sets session name but does not exec herdr rename", async () => {
+		const pi = makeFakePi();
+		const ctx = makeFakeCtx();
+		createExtension(pi as never);
+
+		const handler = pi.commands.get("name-session-and-space")!;
+		const saved = { ...process.env };
+		delete process.env["HERDR_ENV"];
+		try {
+			await handler("label", ctx);
+		} finally {
+			Object.assign(process.env, saved);
+		}
+
+		expect(pi.setSessionName).toHaveBeenCalledWith("label");
+		expect(pi.exec).not.toHaveBeenCalled();
+	});
+
+	it("forces a rename past the failure backoff (explicit invocation bypasses lastAttemptedName)", async () => {
+		const pi = makeFakePi({
+			sessionName: "X",
+			execImpl: (_cmd, args) => {
+				if (args[1] === "get") return Promise.resolve({ code: 0, stdout: PANE_GET_JSON, stderr: "" });
+				return Promise.resolve({ code: 1, stdout: "", stderr: "rename failed" });
+			},
+		});
+		const ctx = makeFakeCtx();
+		createExtension(pi as never);
+
+		// Arm lastAttemptedName = "X" via a failing agent_end rename
+		await fireAgentEnd(pi, ctx, { HERDR_ENV: "1", HERDR_PANE_ID: "p_6" });
+		const execCallsAfterAgentEnd = pi.exec.mock.calls.length;
+
+		// Re-arm exec to succeed for the forced command invocation
+		pi.exec
+			.mockResolvedValueOnce({ code: 0, stdout: PANE_GET_JSON, stderr: "" })
+			.mockResolvedValueOnce({ code: 0, stdout: "", stderr: "" });
+
+		const handler = pi.commands.get("name-session-and-space")!;
+		await withEnv({ HERDR_ENV: "1", HERDR_PANE_ID: "p_6" }, async () => {
+			await handler("X", ctx);
+		});
+
+		// A rename must have been attempted after the command (not suppressed)
+		expect(pi.exec.mock.calls.length).toBeGreaterThan(execCallsAfterAgentEnd);
+		const renameCalls = pi.exec.mock.calls.filter(
+			(c: unknown[]) => Array.isArray(c[1]) && (c[1] as string[])[1] === "rename",
+		);
+		const lastRenameCall = renameCalls[renameCalls.length - 1];
+		expect(lastRenameCall).toEqual(["herdr", ["workspace", "rename", WS_ID, "X"], { timeout: 5000 }]);
+	});
+
+	it("running the command twice with the same successful label renames herdr only once", async () => {
+		const pi = makeFakePi();
+		const ctx = makeFakeCtx();
+		createExtension(pi as never);
+
+		const handler = pi.commands.get("name-session-and-space")!;
+		await withEnv({ HERDR_ENV: "1", HERDR_PANE_ID: "p_6" }, async () => {
+			await handler("Y", ctx);
+			await handler("Y", ctx);
+		});
 
 		const renameCalls = pi.exec.mock.calls.filter(
 			(c: unknown[]) => Array.isArray(c[1]) && (c[1] as string[])[1] === "rename",
 		);
-		expect(renameCalls[renameCalls.length - 1]?.[1]).toEqual(["workspace", "rename", WS_ID, "new name"]);
+		expect(renameCalls).toHaveLength(1);
+		expect(pi.setSessionName).toHaveBeenCalledTimes(2);
+		expect(pi.setSessionName).toHaveBeenCalledWith("Y");
 	});
 
-	it("idle poll is a no-op when name has not changed since last rename", async () => {
-		vi.useFakeTimers();
-		const pi = makeFakePi({ sessionName: "my session" });
+	it("a subagent-pattern label sets the session name but does not rename herdr", async () => {
+		const pi = makeFakePi();
 		const ctx = makeFakeCtx();
 		createExtension(pi as never);
 
-		await pi.handlers.get("session_start")?.({ type: "session_start", reason: "startup" }, ctx);
-		expect(vi.getTimerCount()).toBe(1);
-		const execAfterStart = pi.exec.mock.calls.length; // 2 calls for the initial rename
+		const handler = pi.commands.get("name-session-and-space")!;
+		await withEnv({ HERDR_ENV: "1", HERDR_PANE_ID: "p_6" }, async () => {
+			await handler("agent#abcdef", ctx);
+		});
 
-		// Advance 45 s (3 poll ticks) with the same name — should be a no-op each time.
-		await vi.advanceTimersByTimeAsync(45000);
-
-		expect(pi.exec.mock.calls.length).toBe(execAfterStart);
-	});
-
-	it("no timer leak: only one interval is active after multiple session_start events", async () => {
-		vi.useFakeTimers();
-		const pi = makeFakePi({ sessionName: "name1" });
-		const ctx = makeFakeCtx();
-		createExtension(pi as never);
-
-		// session_start #1
-		await pi.handlers.get("session_start")?.({ type: "session_start", reason: "startup" }, ctx);
-
-		// Exactly one interval should be armed after the first session_start.
-		expect(vi.getTimerCount()).toBe(1);
-
-		// session_start #2 (/reload) — re-arm exec for the second immediate rename.
-		pi.exec.mockResolvedValueOnce({ code: 0, stdout: PANE_GET_JSON, stderr: "" });
-		pi.exec.mockResolvedValue({ code: 0, stdout: "", stderr: "" });
-		await pi.handlers.get("session_start")?.({ type: "session_start", reason: "reload" }, ctx);
-
-		// Still exactly one interval — the previous one was cleared, not leaked.
-		expect(vi.getTimerCount()).toBe(1);
-
-		// Change name and re-arm for the single poll tick.
-		pi.getSessionName.mockReturnValue("new name");
-		pi.exec.mockResolvedValueOnce({ code: 0, stdout: PANE_GET_JSON, stderr: "" });
-		pi.exec.mockResolvedValue({ code: 0, stdout: "", stderr: "" });
-		const execBeforePoll = pi.exec.mock.calls.length;
-
-		// Advance 15 s — exactly ONE interval should fire (previous was cleared).
-		await vi.advanceTimersByTimeAsync(15000);
-
-		// One rename = 2 exec calls (pane get + rename). A leaked second timer
-		// would have shown up as getTimerCount() === 2 above.
-		expect(pi.exec.mock.calls.length).toBe(execBeforePoll + 2);
-	});
-
-	it("idle poll is a no-op when the session has no name", async () => {
-		vi.useFakeTimers();
-		const pi = makeFakePi({ sessionName: undefined });
-		const ctx = makeFakeCtx();
-		createExtension(pi as never);
-
-		// session_start with no name: starts the timer but performs no rename.
-		await pi.handlers.get("session_start")?.({ type: "session_start", reason: "startup" }, ctx);
-		expect(vi.getTimerCount()).toBe(1);
-		expect(pi.exec).not.toHaveBeenCalled();
-
-		// Poll fires while the name is still absent — must short-circuit, no exec.
-		await vi.advanceTimersByTimeAsync(30000);
-		expect(pi.exec).not.toHaveBeenCalled();
-	});
-
-	it("session_shutdown stops the poll timer", async () => {
-		vi.useFakeTimers();
-		const pi = makeFakePi({ sessionName: "initial" });
-		const ctx = makeFakeCtx();
-		createExtension(pi as never);
-
-		await pi.handlers.get("session_start")?.({ type: "session_start", reason: "startup" }, ctx);
-
-		// Tear down the session.
-		await pi.handlers.get("session_shutdown")?.({ type: "session_shutdown" }, ctx);
-		expect(vi.getTimerCount()).toBe(0);
-
-		// Change name and record exec count after shutdown.
-		pi.getSessionName.mockReturnValue("after shutdown");
-		const execAfterShutdown = pi.exec.mock.calls.length;
-
-		// Advance 30 s — no timer should fire.
-		await vi.advanceTimersByTimeAsync(30000);
-
-		expect(pi.exec.mock.calls.length).toBe(execAfterShutdown);
-	});
-
-	it("does not arm the poll timer when not inside herdr", async () => {
-		vi.useFakeTimers();
-		// Remove herdr env for this test only (beforeEach set it).
-		delete process.env["HERDR_ENV"];
-		const pi = makeFakePi({ sessionName: "my session" });
-		const ctx = makeFakeCtx();
-		createExtension(pi as never);
-
-		await pi.handlers.get("session_start")?.({ type: "session_start", reason: "startup" }, ctx);
-
-		// No timer scheduled outside herdr, and no exec attempted.
-		expect(vi.getTimerCount()).toBe(0);
+		expect(pi.setSessionName).toHaveBeenCalledWith("agent#abcdef");
 		expect(pi.exec).not.toHaveBeenCalled();
 	});
 });

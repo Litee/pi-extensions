@@ -2,7 +2,7 @@
   "name": "pi-herdr-integration",
   "version": "0.1.0",
   "private": true,
-  "description": "Pi extension that auto-syncs the herdr workspace label to the pi session display name on session start, at turn boundaries, and via a 15-second idle poll.",
+  "description": "Pi extension that auto-syncs the herdr workspace label to the pi session display name on session start, at turn boundaries, and instantly via the /name-session-and-space command.",
   "type": "module",
   "keywords": [
     "pi-package"
