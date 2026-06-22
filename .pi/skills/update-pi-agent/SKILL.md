@@ -6,8 +6,9 @@ description: >
   all first-party monorepo packages, auditing the pinned dependency tree, and
   diffing the published npm artifact against both the installed version and the
   git source — then updating only after the user confirms the security report.
-  Honors any local npm cooldown / min-release-age policy and re-applies the
-  tool-renderer patch afterwards. Use when asked to "update pi", "upgrade pi",
+  Always reviews the latest published version (ignoring any local npm cooldown,
+  since the thorough review is the safeguard) and re-applies the tool-renderer
+  patch afterwards. Use when asked to "update pi", "upgrade pi",
   "update the agent", "self-update", "update pi-coding-agent", "check pi for a
   new version", or "security-review the pi update".
 ---
@@ -48,45 +49,34 @@ every check passes.
   `npm install --ignore-scripts` in a throwaway temp dir. Never execute the
   temp-installed binary.
 - **Never run `pi update` until the user has seen the report and said go.**
-- **Delegate the commit review to parallel subagents** (`andrey-reviewer`).
+- **Commit review may fan out to parallel subagents** (`andrey-reviewer`) —
+  ⚗️ experimental, see Step 5; inline review by the primary agent is an
+  accepted fallback.
 - If any finding is `SUSPICIOUS`/`UNSAFE` and unresolved, **stop** — do not
   offer to update.
-- **Review the version that will actually install, not the registry "latest".**
-  See Step 1 (cooldown).
+- **Always target the latest published version**, and pass `--min-release-age=0`
+  to every `npm pack`/`npm install` so a local cooldown config doesn't silently
+  downgrade the version you review (Step 1).
 
 ---
 
-## Step 1 — Resolve versions under the cooldown policy
+## Step 1 — Resolve versions (always the latest)
 
-This machine may have an npm **cooldown** (`min-release-age`) enabled — a
-supply-chain safeguard that refuses to install any version published more
-recently than N days ago, giving freshly-published malware time to be caught
-and yanked. **Lean into it:** target the version cooldown actually permits, and
-treat the version's age as a positive signal.
+Target the latest published version. We deliberately **ignore any local npm
+cooldown** (`min-release-age`): the thorough review below is the safeguard, and
+the installed agent is rarely on the bleeding edge anyway. Note that because the
+machine's npm config may set `min-release-age`, you must pass
+`--min-release-age=0` to `npm pack`/`npm install` everywhere, or npm silently
+resolves an older version than the one you intend to review.
 
 ```bash
-INSTALLED=$(pi --version)                                                    # e.g. 0.79.9
-REGISTRY_LATEST=$(npm view @earendil-works/pi-coding-agent version)          # ignores cooldown, e.g. 0.79.10
-# The version npm/pack will ACTUALLY resolve under the cooldown policy:
-TARGET=$(npm pack @earendil-works/pi-coding-agent --dry-run --json 2>/dev/null \
-  | node -e "let d='';process.stdin.on('data',c=>d+=c).on('end',()=>process.stdout.write(JSON.parse(d)[0].version))")
-echo "installed=$INSTALLED  registry_latest=$REGISTRY_LATEST  cooldown_target=$TARGET"
-npm config get min-release-age 2>/dev/null   # show the active policy (null = disabled)
+INSTALLED=$(pi --version)                                           # e.g. 0.79.9
+TARGET=$(npm view @earendil-works/pi-coding-agent version)          # latest, e.g. 0.79.10
+echo "installed=$INSTALLED  target=$TARGET"
 ```
 
-Interpret the result:
-
-- **`TARGET` may be older than `REGISTRY_LATEST`** (and can even be ≤
-  `INSTALLED`) because newer releases are still inside the quarantine window.
-  This is expected and desirable.
-- If `TARGET == INSTALLED` (or older): nothing newer is eligible yet. Report
-  *"the newest eligible version is X; versions up to `REGISTRY_LATEST` are still
-  within your N-day cooldown quarantine"* and stop, unless the user explicitly
-  asks to bypass cooldown (`--min-release-age=0`) — in which case **say so
-  loudly** in the report, since it removes the safeguard.
+- If `TARGET == INSTALLED`: already up to date — report and stop.
 - Otherwise the review range is **`vINSTALLED..vTARGET`**.
-- Report the publish age of `TARGET` (from `npm view <pkg> time --json`) — e.g.
-  "target is 3 days old, satisfies your cooldown."
 
 Locate the installed package for the on-disk diff (the `pi` launcher is a
 wrapper script, **not** a symlink into the package):
@@ -115,8 +105,8 @@ directory — do not assume names match paths.
 
 ```bash
 WORK=$(mktemp -d /tmp/pi-update-review.XXXXXX)
-# Target tarball (cooldown-resolved), no scripts run:
-cd "$WORK" && npm pack "@earendil-works/pi-coding-agent@$TARGET"
+# Target tarball (latest; --min-release-age=0 overrides any local cooldown), no scripts run:
+cd "$WORK" && npm pack "@earendil-works/pi-coding-agent@$TARGET" --min-release-age=0
 mkdir -p new && tar -xzf earendil-works-pi-coding-agent-*.tgz -C new
 NEW_PKG="$WORK/new/package"
 
@@ -150,11 +140,29 @@ wc -l "$WORK/commits.patch"
 If a tag is missing (yanked/pre-release), fall back to artifact diff (Step 7)
 and note the gap in the report.
 
-## Step 5 — Review every commit for malware (parallel subagents)
+## Step 5 — Review every commit for malware
 
-Split the commit list into batches; dispatch one `andrey-reviewer` per batch
-(`run_in_background=true`), collect with `get_subagent_result`. Give each the
-exact commit hashes, `$WORK/commits.patch`, and this **malware checklist**:
+> **⚗️ EXPERIMENTAL — parallel subagent fan-out.** Dispatching the review to
+> parallel `andrey-reviewer` subagents is the *intended* approach but is **not
+> yet validated**: it's unproven whether the fan-out actually improves review
+> quality over a careful inline review by the primary agent, once you account for
+> added latency, token cost, and lossy summarization back to the orchestrator.
+> Both modes are acceptable for now. (In the run that first exercised this skill,
+> the agent reviewed inline and did not fan out.)
+>
+> **For the next session evaluating this skill:** compare the two modes on a real
+> version range on (a) catch rate / missed indicators, (b) wall-clock time,
+> (c) token cost, (d) quality of the synthesized verdict table. Then either
+> promote fan-out to a hard requirement, drop it, or gate it on a threshold
+> (e.g. fan out only when the range exceeds N commits / M changed files). Record
+> the decision here and remove this banner.
+
+**Fan-out mode (experimental):** split the commit list into batches; dispatch one
+`andrey-reviewer` per batch (`run_in_background=true`), collect with
+`get_subagent_result`. **Inline mode (accepted fallback):** the primary agent
+reviews `$WORK/commits.patch` directly. Either way, apply this **malware
+checklist** to every commit (for fan-out, give each subagent the exact commit
+hashes, `$WORK/commits.patch`, and the checklist):
 
 - New/changed **network calls** (`fetch`, `http(s)`, `net`, `dgram`, DNS, WS) —
   especially to unfamiliar hosts/IPs.
@@ -198,7 +206,7 @@ changelog/commits or `npm pack` its tarball into the temp dir with
 
 ```bash
 # In a temp install of the target (scripts disabled), flag any dep with install hooks:
-cd "$WORK" && npm install --prefix "$WORK/depcheck" --ignore-scripts "@earendil-works/pi-coding-agent@$TARGET" >/dev/null 2>&1
+cd "$WORK" && npm install --prefix "$WORK/depcheck" --ignore-scripts --min-release-age=0 "@earendil-works/pi-coding-agent@$TARGET" >/dev/null 2>&1
 find "$WORK/depcheck/node_modules" -name package.json -maxdepth 3 -exec node -e '
   const p=require(process.argv[1]); const s=p.scripts||{};
   for(const h of ["preinstall","install","postinstall","prepare"]) if(s[h]) console.log(p.name+"@"+p.version, h+":", s[h]);
@@ -207,8 +215,7 @@ find "$WORK/depcheck/node_modules" -name package.json -maxdepth 3 -exec node -e 
 
 A `RETAMPER` line (same version, changed integrity) or a brand-new install hook
 is high-signal — treat as `SUSPICIOUS` until explained. Prioritize **new deps**
-and **first-party** packages. Cooldown (Step 1) already reduces the odds that a
-changed dep version is a fresh poisoning.
+and **first-party** packages.
 
 ## Step 7 — Diff the published artifact against installed + source
 
@@ -244,8 +251,7 @@ matches source; no extra files beyond expected build output.
 
 Present one consolidated report and **wait for explicit confirmation**:
 
-- Version picture: `installed → target` (+ target age), and any gap to
-  `registry_latest` still held back by cooldown.
+- Version picture: `installed → target` (the latest published version).
 - Changelog summary.
 - Commit review: count + per-commit verdict table (across all first-party pkgs).
 - Dependency audit: the shrinkwrap delta + verdict on each changed/added dep +
@@ -263,10 +269,11 @@ pi update --self        # core only (default). Or: pi update pi
 pi --version
 ```
 
-**Cooldown-bypass guard:** confirm `pi --version` equals `$TARGET` (the version
-you reviewed). If `pi update` installed something newer — e.g. it does not honor
-the npm cooldown — **do not accept it**: re-run Steps 1–8 against the
-newly-installed version before trusting it.
+**Version-match guard:** confirm `pi --version` equals `$TARGET` (the version
+you reviewed). `pi update` resolves the latest itself, so if a newer version was
+published between your review and the install, it may land something you never
+reviewed — **do not accept it**: re-run Steps 1–8 against the newly-installed
+version before trusting it.
 
 ## Step 10 — Re-apply the tool-renderer patch
 
@@ -287,13 +294,13 @@ rm -rf "$WORK"
 
 - Steps 1–8 are read-only on the system and never run downloaded code; nothing
   installs until Step 9 after your confirmation.
-- **Cooldown is your friend.** If `min-release-age` is set, the target is
-  deliberately a few days old so malicious releases have had time to surface.
-  Only bypass it (`--min-release-age=0`) on explicit user instruction, and flag
-  it prominently when you do.
+- **We ignore npm cooldown by design.** The thorough review (commits + shrinkwrap
+  delta + artifact diff) is the safeguard; `--min-release-age=0` is passed
+  everywhere only to stop a local cooldown config from silently downgrading the
+  version under review. Trade-off: you forgo the few-days window in which the
+  ecosystem might independently flag a novel supply-chain compromise.
 - **Discover, don't hardcode.** First-party packages come from the target's
   `dependencies` (Step 3); extensions come from `pi list` (`_npm:` lines). Both
   lists drift over time.
 - For the "review all" path, run Steps 1–8 independently per package (each has
-  its own version and may have its own cooldown-resolved target), gate each
-  separately, then update only the approved ones.
+  its own version), gate each separately, then update only the approved ones.
