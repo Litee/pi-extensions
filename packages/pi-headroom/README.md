@@ -75,7 +75,9 @@ Boolean values accept `true/false`, `1/0`, `yes/no`, or `on/off`.
 
 - Restructured to monorepo conventions: sources in `src/`, tests in `test/`.
 - Package renamed from `@ryan_nookpi/pi-extension-headroom` to `pi-headroom`.
+- Settings path changed to `~/.pi/agent/pi-headroom.json` (upstream uses `~/.headroom/settings.json`).
 - Removed `autoStart` / automatic proxy launch — proxy is started externally.
 - Removed `files`, `publishConfig`, `homepage`, `bugs` from `package.json`.
 - TUI menu expanded with proxy URL, allow remote, timeout, and session stats display.
 - `/headroom on` and `/headroom off` subcommands removed — use the menu instead.
+- Proxy health is checked automatically on `session_start` (upstream only checks on `/headroom health`).
