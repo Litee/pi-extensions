@@ -3,15 +3,23 @@
  * session display name.
  *
  * Triggers:
- *   - `session_start` (startup, resume, reload, fork): restore persisted state
- *     then attempt rename if the session has a name.
+ *   - `session_start` (startup, resume, reload, fork): reset guards, attempt
+ *     an immediate rename if the session has a name, then (re)start a 15-second
+ *     idle poll so that name changes made while the agent is idle (e.g. via the
+ *     built-in `/name` command) are picked up without waiting for a turn.
  *   - `agent_end`: check whether the session name changed since the last
  *     successful rename (catches `/name` and any other way the name can be
  *     set, e.g. pi.setSessionName() from another extension or RPC).
  *     NOTE: the `input` event does NOT fire for built-in commands like `/name`
  *     (they are handled at the TUI layer before extension routing). Registering
  *     an extension command called "name" conflicts with the built-in and is
- *     also skipped. `agent_end` is therefore the only reliable hook.
+ *     also skipped. `agent_end` is therefore the only reliable hook for
+ *     turn-boundary updates; the poll is the fallback for idle periods.
+ *   - 15-second poll: idle safety net started inside `session_start`.
+ *     Reads `pi.getSessionName()` (cheap, in-process) and calls
+ *     `tryRenameWithName` only when the name differs from what was last applied.
+ *   - `session_shutdown`: clears the poll interval so the timer never outlives
+ *     the session.
  *
  * Failure backoff: when a rename fails (workspace unresolvable or herdr CLI
  * error), the attempted name is recorded in `lastAttemptedName`. Subsequent
@@ -37,6 +45,9 @@ import { STATE_CUSTOM_TYPE } from "./state.js";
  */
 const SUBAGENT_NAME_RE = /^[\w-]+#[0-9a-f]{6,}$/i;
 
+/** Interval between idle-poll rename checks (ms). */
+const POLL_INTERVAL_MS = 15_000;
+
 export default function createExtension(pi: ExtensionAPI): void {
 	/** The most recently successfully applied name — guards against re-renaming. */
 	let lastAppliedName: string | undefined;
@@ -46,6 +57,8 @@ export default function createExtension(pi: ExtensionAPI): void {
 	 * until the name changes or `session_start` resets this to `undefined`.
 	 */
 	let lastAttemptedName: string | undefined;
+	/** Handle for the idle-poll interval; cleared on session_shutdown. */
+	let pollTimer: ReturnType<typeof setInterval> | undefined;
 
 	/**
 	 * Build an ExecFn that delegates to pi.exec.
@@ -99,16 +112,48 @@ export default function createExtension(pi: ExtensionAPI): void {
 	// ---- session_start -------------------------------------------------------
 
 	pi.on("session_start", async (_event, ctx) => {
-			// Reset both guards: every session_start is a new herdr context where
+		// Reset both guards: every session_start is a new herdr context where
 		// the workspace may not be labeled yet (startup, resume, fork, reload).
 		// Never restore lastAppliedName from state — we cannot know whether the
 		// current herdr workspace already carries the correct label.
 		lastAttemptedName = undefined;
 		lastAppliedName = undefined;
 
+		// (Re)start the idle poll only when inside herdr — HERDR_ENV is fixed for the
+		// process lifetime, so a non-herdr session never needs the recurring timer.
+		// Always clear any prior timer first so repeated session_start events
+		// (/reload, fork) never leak multiple timers.
+		// ctx is captured in the closure — it remains valid for the lifetime of
+		// this session (each session_start produces a fresh ctx).
+		if (pollTimer !== undefined) {
+			clearInterval(pollTimer);
+			pollTimer = undefined;
+		}
+		if (isInsideHerdr(process.env)) {
+			pollTimer = setInterval(() => {
+				const name = pi.getSessionName();
+				if (!name) return;
+				// Wrap in a promise and swallow rejections so the interval callback
+				// never surfaces an unhandled-rejection even if tryRenameWithName
+				// throws unexpectedly.
+				Promise.resolve(tryRenameWithName(name, ctx)).catch(() => {});
+			}, POLL_INTERVAL_MS);
+			// unref so the timer never keeps the Node process alive on its own.
+			pollTimer?.unref?.();
+		}
+
 		const name = pi.getSessionName();
 		if (!name) return;
 		await tryRenameWithName(name, ctx);
+	});
+
+	// ---- session_shutdown ----------------------------------------------------
+
+	pi.on("session_shutdown", () => {
+		if (pollTimer !== undefined) {
+			clearInterval(pollTimer);
+			pollTimer = undefined;
+		}
 	});
 
 	// ---- agent_end -----------------------------------------------------------
