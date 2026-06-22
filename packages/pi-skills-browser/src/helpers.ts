@@ -12,7 +12,7 @@ import { join } from "node:path";
 export type SortMode = "name" | "tokens";
 
 /** Source directory from which a skill was loaded. */
-export type SkillScope = "project" | "user-skills" | "user-agents";
+export type SkillScope = "project" | "user-skills";
 
 /** A resolved skill entry ready for display. */
 export interface SkillEntry {
@@ -33,7 +33,6 @@ export interface SkillEntry {
 /**
  * Classify a skill's source directory from its file path.
  *
- * - `user-agents` — `~/.pi/agent/agents/` (user-level agent skills)
  * - `user-skills` — `~/.pi/agent/skills/` (user-level skills)
  * - `project`     — any other location (typically `.pi/skills/`)
  */
@@ -42,13 +41,6 @@ export function detectScope(path: string): SkillScope {
 	let normalized = path;
 	if (normalized.startsWith("~/")) {
 		normalized = join(homedir(), normalized.slice(2));
-	}
-	// Check for user-agents first (more specific)
-	if (
-		normalized.includes("/.pi/agent/agents/") ||
-		normalized.includes(".pi\\agent\\agents")
-	) {
-		return "user-agents";
 	}
 	// Check for user-skills
 	if (

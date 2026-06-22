@@ -298,3 +298,78 @@ describe("SkillEntry name: 'skill:' prefix stripping and inPrompt matching", () 
 		expect(rows[0]).not.toContain("●");
 	});
 });
+
+// ---------------------------------------------------------------------------
+// Scope grouping: USER-SKILLS vs PROJECT sections
+// ---------------------------------------------------------------------------
+
+describe("scope grouping: USER-SKILLS and PROJECT sections", () => {
+	it("groups skills into USER-SKILLS and PROJECT sections in order", async () => {
+		const userSkillCommand = {
+			name: "alpha",
+			description: "A user skill.",
+			source: "skill",
+			sourceInfo: { path: "/home/user/.pi/agent/skills/alpha/SKILL.md" },
+		};
+		const projectSkillCommand = {
+			name: "beta",
+			description: "An agents skill.",
+			source: "skill",
+			sourceInfo: { path: "/home/user/.agents/skills/beta/SKILL.md" },
+		};
+		const { handler } = setup([userSkillCommand, projectSkillCommand]);
+		const custom = vi.fn().mockResolvedValue(undefined);
+		const ctx = makeCtx({ ui: { notify: vi.fn(), custom } });
+
+		await handler("", ctx);
+
+		const render = captureRender(custom);
+		const output = render(120).join("\n");
+
+		expect(output).toContain("USER-SKILLS");
+		expect(output).toContain("PROJECT");
+		expect(output.indexOf("USER-SKILLS")).toBeLessThan(output.indexOf("PROJECT"));
+	});
+
+	it("renders a project skill from an imported/non-standard path under PROJECT", async () => {
+		const importedSkillCommand = {
+			name: "imported",
+			description: "A Claude Code imported skill.",
+			source: "skill",
+			sourceInfo: { path: "/home/user/.claude/skills/imported/SKILL.md" },
+		};
+		const { handler } = setup([importedSkillCommand]);
+		const custom = vi.fn().mockResolvedValue(undefined);
+		const ctx = makeCtx({ ui: { notify: vi.fn(), custom } });
+
+		await handler("", ctx);
+
+		const render = captureRender(custom);
+		const output = render(120).join("\n");
+
+		expect(output).toContain("PROJECT");
+		expect(output).toContain("imported");
+		expect(output).not.toContain("USER-SKILLS");
+	});
+
+	it("never renders a USER-AGENTS section, even for skills under ~/.pi/agent/agents/", async () => {
+		const agentSkillCommand = {
+			name: "agentish",
+			description: "A skill living under the agents path.",
+			source: "skill",
+			sourceInfo: { path: "/home/user/.pi/agent/agents/some-agent/SKILL.md" },
+		};
+		const { handler } = setup([agentSkillCommand]);
+		const custom = vi.fn().mockResolvedValue(undefined);
+		const ctx = makeCtx({ ui: { notify: vi.fn(), custom } });
+
+		await handler("", ctx);
+
+		const render = captureRender(custom);
+		const output = render(120).join("\n");
+
+		expect(output).not.toContain("USER-AGENTS");
+		expect(output).toContain("PROJECT");
+		expect(output).toContain("agentish");
+	});
+});

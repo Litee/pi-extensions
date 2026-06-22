@@ -261,15 +261,14 @@ describe("detectScope", () => {
 		).toBe("user-skills");
 	});
 
-	it("detects user-agents scope from ~/.pi/agent/agents path", () => {
+	it("paths under ~/.pi/agent/agents/ fall through to project scope", () => {
 		expect(
 			detectScope("/home/user/.pi/agent/agents/my-agent/SKILL.md"),
-		).toBe("user-agents");
+		).toBe("project");
 	});
 
 	it("handles tilde-prefixed paths", () => {
 		expect(detectScope("~/.pi/agent/skills/my-skill/SKILL.md")).toBe("user-skills");
-		expect(detectScope("~/.pi/agent/agents/my-agent/SKILL.md")).toBe("user-agents");
 	});
 
 	it("defaults to project for unknown paths", () => {
@@ -280,9 +279,6 @@ describe("detectScope", () => {
 		expect(
 			detectScope("C:\\Users\\user\\.pi\\agent\\skills\\my-skill\\SKILL.md"),
 		).toBe("user-skills");
-		expect(
-			detectScope("C:\\Users\\user\\.pi\\agent\\agents\\my-agent\\SKILL.md"),
-		).toBe("user-agents");
 	});
 
 	it("identifies skills in a directory named 'user-agents-extra' as user-skills", () => {

@@ -206,19 +206,13 @@ export default function skillsBrowserExtension(pi: ExtensionAPI) {
 							truncateToWidth(theme.fg("warning", "  No skills match your filter"), width),
 						);
 					} else {
-						// Group by scope: user-agents first, then user-skills, then project
-						const userAgents = filtered.filter((s) => s.scope === "user-agents");
+						// Group by scope: user-skills first, then project
 						const userSkills = filtered.filter((s) => s.scope === "user-skills");
 						const projectSkills = filtered.filter((s) => s.scope === "project");
 
 						let offset = 0;
 
-						if (userAgents.length > 0) {
-							renderSection(userAgents, "USER-AGENTS", offset);
-							offset += userAgents.length;
-						}
 						if (userSkills.length > 0) {
-							if (offset > 0) lines.push("");
 							renderSection(userSkills, "USER-SKILLS", offset);
 							offset += userSkills.length;
 						}
