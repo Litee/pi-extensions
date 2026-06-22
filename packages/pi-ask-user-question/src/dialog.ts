@@ -27,21 +27,18 @@ import {
 	matchesKey,
 	truncateToWidth,
 	visibleWidth,
+	wrapTextWithAnsi,
 } from "@earendil-works/pi-tui";
 
 import { DialogController } from "./controller.js";
 import type { Result } from "./format.js";
 import { dispatchKey, type KeyAction, type KeyId, type KeyProbe } from "./inputRouter.js";
 import {
-	padRight,
-	renderHelp,
-	renderOptionList,
-	renderSubmitTab,
-	renderTabBar,
+	composePanel,
+	fitPreviewLines,
 	type LayoutProbe,
 	type PanelTheme,
 } from "./renderPanel.js";
-import type { Row } from "./rows.js";
 import type { TQuestion } from "./schema.js";
 
 /** Bridge from router `KeyId` strings onto pi-tui's `matchesKey` + `Key` constants. */
@@ -96,7 +93,7 @@ export function runDialog(ctx: ExtensionContext, questions: TQuestion[]): Promis
 		};
 
 		const panelTheme: PanelTheme = theme as unknown as PanelTheme;
-		const layout: LayoutProbe = { truncateToWidth, visibleWidth };
+		const layout: LayoutProbe = { truncateToWidth, visibleWidth, wrapTextWithAnsi };
 
 		function openEditorForNote(): void {
 			editor.setText(ctrl.getCurrentNoteDraft());
@@ -169,147 +166,36 @@ export function runDialog(ctx: ExtensionContext, questions: TQuestion[]): Promis
 
 		// ---- rendering --------------------------------------------------------
 
-		function renderPreviewPane(preview: string, width: number, maxHeight: number): string[] {
+		function renderPreviewPane(preview: string, width: number, maxHeight?: number): string[] {
 			const md = getPreview(preview);
 			md.invalidate();
 			let mdLines: string[] = [];
 			try {
-				mdLines = md.render(Math.max(10, width));
+				mdLines = md.render(Math.max(1, width));
 			} catch {
 				mdLines = preview.split("\n");
 			}
-			if (mdLines.length > maxHeight) mdLines = mdLines.slice(0, maxHeight);
-			while (mdLines.length < maxHeight) mdLines.push("");
-			return mdLines.map((l) => truncateToWidth(l, width));
-		}
-
-		function renderSideBySide(rows: Row[], activePreview: string, width: number): string[] {
-			const s = ctrl.getState();
-			const q = questions[s.currentTab];
-			const multi = q?.multiSelect === true;
-			const leftWidth = Math.max(20, Math.floor(width * 0.5));
-			const rightWidth = Math.max(20, width - leftWidth - 3);
-			const leftLines = renderOptionList({
-				rows,
-				state: s,
-				multi,
-				width: leftWidth,
-				theme: panelTheme,
-				layout,
-			});
-			const maxH = leftLines.length;
-			const rightLines = renderPreviewPane(activePreview, rightWidth, maxH);
-			const out: string[] = [];
-			for (let i = 0; i < maxH; i++) {
-				const l = leftLines[i] ?? "";
-				const r = rightLines[i] ?? "";
-				const sep = theme.fg("dim", "│");
-				out.push(padRight(l, leftWidth, layout) + " " + sep + " " + padRight(r, rightWidth, layout));
-			}
-			return out;
-		}
-
-		function renderInputPanel(label: string, width: number): string[] {
-			const lines: string[] = [];
-			lines.push("");
-			lines.push(truncateToWidth(theme.fg("muted", ` ${label}:`), width));
-			for (const l of editor.render(Math.max(10, width - 2))) {
-				lines.push(truncateToWidth(` ${l}`, width));
-			}
-			lines.push("");
-			lines.push(truncateToWidth(theme.fg("dim", " Enter to submit • Esc to cancel"), width));
-			return lines;
+			return fitPreviewLines(mdLines, width, maxHeight, layout);
 		}
 
 		function render(width: number): string[] {
 			const s = ctrl.getState();
-			const lines: string[] = [];
-			const sep = theme.fg("accent", "─".repeat(Math.max(4, width)));
-			lines.push(sep);
-			for (const l of renderTabBar({
+			const rows = ctrl.currentRows();
+			const activeRow = rows[s.rowIndex];
+			const activePreview = activeRow?.kind === "option" ? activeRow.preview : undefined;
+			return composePanel({
 				state: s,
 				questions,
 				isSubmitTab: ctrl.isSubmitTab(),
 				allAnswered: ctrl.allAnswered(),
+				rows,
 				width,
 				theme: panelTheme,
 				layout,
-			})) {
-				lines.push(l);
-			}
-
-			if (ctrl.isSubmitTab()) {
-				for (const l of renderSubmitTab({
-					state: s,
-					questions,
-					allAnswered: ctrl.allAnswered(),
-					width,
-					theme: panelTheme,
-					layout,
-				})) {
-					lines.push(l);
-				}
-				lines.push("");
-				for (const l of renderHelp({
-					state: s,
-					activeQuestion: undefined,
-					isSubmitTab: true,
-					hasMultipleQuestions: questions.length > 1,
-					width,
-					theme: panelTheme,
-					layout,
-				})) {
-					lines.push(l);
-				}
-				lines.push(sep);
-				return lines;
-			}
-
-			const q = questions[s.currentTab]!;
-			const rows = ctrl.currentRows();
-			lines.push(truncateToWidth(theme.fg("text", theme.bold(` ${q.question}`)), width));
-			if (q.description) lines.push(truncateToWidth(theme.fg("muted", ` ${q.description}`), width));
-			lines.push("");
-
-			const activeRow = rows[s.rowIndex];
-			const activePreview = activeRow?.kind === "option" ? activeRow.preview : undefined;
-			if (activePreview) {
-				for (const l of renderSideBySide(rows, activePreview, width)) lines.push(l);
-			} else {
-				for (const l of renderOptionList({
-					rows,
-					state: s,
-					multi: q.multiSelect === true,
-					width,
-					theme: panelTheme,
-					layout,
-				})) {
-					lines.push(l);
-				}
-			}
-
-			if (s.inputMode === "text") {
-				for (const l of renderInputPanel("Your answer", width)) lines.push(l);
-			} else if (s.inputMode === "note") {
-				for (const l of renderInputPanel("Note for this option", width)) lines.push(l);
-			} else if (s.inputMode === "chat") {
-				for (const l of renderInputPanel("What would you like to chat about?", width)) lines.push(l);
-			}
-
-			lines.push("");
-			for (const l of renderHelp({
-				state: s,
-				activeQuestion: q,
-				isSubmitTab: false,
-				hasMultipleQuestions: questions.length > 1,
-				width,
-				theme: panelTheme,
-				layout,
-			})) {
-				lines.push(l);
-			}
-			lines.push(sep);
-			return lines;
+				getEditorLines: (w) => editor.render(w),
+				getPreviewLines: (w, h) =>
+					activePreview ? renderPreviewPane(activePreview, w, h) : [],
+			});
 		}
 
 		return {
