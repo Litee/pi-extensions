@@ -46,9 +46,7 @@ function setup(skillCommands: object[] = []) {
 }
 
 /**
- * Builds a minimal ctx mock.  By default includes a working
- * `getSystemPromptOptions` so tests that don't care about that guard don't
- * need to worry about it.
+ * Builds a minimal ctx mock.
  */
 function makeCtx(overrides: Record<string, unknown> = {}): ExtensionCommandContext {
 	return {
@@ -57,7 +55,6 @@ function makeCtx(overrides: Record<string, unknown> = {}): ExtensionCommandConte
 			notify: vi.fn(),
 			custom: vi.fn().mockResolvedValue(undefined),
 		},
-		getSystemPromptOptions: vi.fn().mockReturnValue({ skills: [] }),
 		...overrides,
 	} as unknown as ExtensionCommandContext;
 }
@@ -95,55 +92,6 @@ describe("skillsBrowserExtension /skills handler", () => {
 	});
 
 	// -----------------------------------------------------------------------
-	// Guard: getSystemPromptOptions absent (pi < 0.78.0)
-	// -----------------------------------------------------------------------
-
-	it("notifies with 'error' when getSystemPromptOptions is absent", async () => {
-		const { handler } = setup();
-		const notify = vi.fn();
-		// Build ctx without getSystemPromptOptions — simulates pi < 0.78.0
-		const ctx = {
-			hasUI: true,
-			ui: { notify, custom: vi.fn().mockResolvedValue(undefined) },
-		} as unknown as ExtensionCommandContext;
-
-		await handler("", ctx);
-
-		expect(notify).toHaveBeenCalledWith(
-			"This feature requires pi 0.78.0 or later",
-			"error",
-		);
-	});
-
-	it("does not open the TUI when getSystemPromptOptions is absent", async () => {
-		const { handler } = setup();
-		const custom = vi.fn().mockResolvedValue(undefined);
-		const ctx = {
-			hasUI: true,
-			ui: { notify: vi.fn(), custom },
-		} as unknown as ExtensionCommandContext;
-
-		await handler("", ctx);
-
-		expect(custom).not.toHaveBeenCalled();
-	});
-
-	it("does not notify with error when getSystemPromptOptions IS present", async () => {
-		// No skill commands → will hit the "No skills registered" warning instead,
-		// but NOT the "requires pi 0.78.0" error.
-		const { handler } = setup([]);
-		const notify = vi.fn();
-		const ctx = makeCtx({ ui: { notify, custom: vi.fn().mockResolvedValue(undefined) } });
-
-		await handler("", ctx);
-
-		expect(notify).not.toHaveBeenCalledWith(
-			"This feature requires pi 0.78.0 or later",
-			"error",
-		);
-	});
-
-	// -----------------------------------------------------------------------
 	// Guard: no skills registered
 	// -----------------------------------------------------------------------
 
@@ -158,7 +106,7 @@ describe("skillsBrowserExtension /skills handler", () => {
 	});
 
 	// -----------------------------------------------------------------------
-	// Happy path: getSystemPromptOptions influences inPrompt
+	// Happy path: opens the TUI
 	// -----------------------------------------------------------------------
 
 	it("opens the TUI when at least one skill is registered", async () => {
@@ -179,7 +127,7 @@ describe("skillsBrowserExtension /skills handler", () => {
 });
 
 // ---------------------------------------------------------------------------
-// SkillEntry name: "skill:" prefix stripping and inPrompt matching
+// SkillEntry name: "skill:" prefix stripping
 // ---------------------------------------------------------------------------
 
 /**
@@ -205,7 +153,7 @@ function captureRender(
 	return controller.render;
 }
 
-describe("SkillEntry name: 'skill:' prefix stripping and inPrompt matching", () => {
+describe("SkillEntry name: 'skill:' prefix stripping", () => {
 	it("strips 'skill:' prefix so the display name does not start with 'skill:'", async () => {
 		const skillCommand = {
 			name: "skill:my-skill",
@@ -245,61 +193,6 @@ describe("SkillEntry name: 'skill:' prefix stripping and inPrompt matching", () 
 		expect(output).toContain("my-skill");
 	});
 
-	it("marks a skill inPrompt when its bare name is in the system prompt skills", async () => {
-		const skillCommand = {
-			name: "skill:my-skill",
-			description: "A prefixed skill.",
-			source: "skill",
-			sourceInfo: { path: "/home/user/.pi/agent/skills/my-skill/SKILL.md" },
-		};
-		const { handler } = setup([skillCommand]);
-		const custom = vi.fn().mockResolvedValue(undefined);
-		const ctx = makeCtx({
-			ui: { notify: vi.fn(), custom },
-			// pi always stores the BARE name in opts.skills — never the prefixed form
-			getSystemPromptOptions: vi.fn().mockReturnValue({
-				skills: [{ name: "my-skill" }],
-			}),
-		});
-
-		await handler("", ctx);
-
-		const render = captureRender(custom);
-		const output = render(120).join("\n");
-
-		// buildRowLine emits "● " (via theme.fg("success", "● ")) for inPrompt rows.
-		// Filter to the specific skill row (not the footer legend) to verify it.
-		const rows = output.split("\n").filter((l) => l.includes("my-skill"));
-		expect(rows.length).toBeGreaterThan(0);
-		expect(rows[0]).toContain("●");
-	});
-
-	it("does NOT mark a skill inPrompt when its name is absent from the system prompt skills", async () => {
-		const skillCommand = {
-			name: "skill:my-skill",
-			description: "A prefixed skill.",
-			source: "skill",
-			sourceInfo: { path: "/home/user/.pi/agent/skills/my-skill/SKILL.md" },
-		};
-		const { handler } = setup([skillCommand]);
-		const custom = vi.fn().mockResolvedValue(undefined);
-		const ctx = makeCtx({
-			ui: { notify: vi.fn(), custom },
-			// Only the stripped name — should NOT trigger inPrompt
-			getSystemPromptOptions: vi.fn().mockReturnValue({
-				skills: [],
-			}),
-		});
-
-		await handler("", ctx);
-
-		const render = captureRender(custom);
-		const output = render(120).join("\n");
-
-		const rows = output.split("\n").filter((l) => l.includes("my-skill"));
-		expect(rows.length).toBeGreaterThan(0);
-		expect(rows[0]).not.toContain("●");
-	});
 });
 
 // ---------------------------------------------------------------------------

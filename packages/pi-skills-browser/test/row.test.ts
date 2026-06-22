@@ -2,7 +2,6 @@ import { describe, expect, it } from "vitest";
 
 import {
 	ARROW_COL_WIDTH,
-	PROMPT_INDICATOR_WIDTH,
 	buildRowLine,
 	computeNameColWidth,
 	computePathColWidth,
@@ -16,8 +15,8 @@ const markerTheme: RowTheme = {
 	fg: (color, text) => `<${color}>${text}</>`,
 };
 
-function mkSkill(name: string, tokens: number, inPrompt = false): SkillEntry {
-	return { name, description: "", tokens, path: "", pathDisplay: "", inPrompt, scope: "project" };
+function mkSkill(name: string, tokens: number): SkillEntry {
+	return { name, description: "", tokens, path: "", pathDisplay: "", scope: "project" };
 }
 
 // ---------------------------------------------------------------------------
@@ -33,15 +32,15 @@ describe("computeNameColWidth", () => {
 });
 
 describe("computePathColWidth", () => {
-	it("returns the remaining width after arrow, name, indicator, and badge", () => {
+	it("returns the remaining width after arrow, name, and badge", () => {
 		const nameW = computeNameColWidth(80); // 40
-		expect(computePathColWidth(80, nameW)).toBe(80 - 2 - 40 - 2 - 2 - 12); // 39
+		expect(computePathColWidth(80, nameW)).toBe(80 - 2 - 40 - 2 - 12); // 24
 	});
 
 	it("grows on wider terminals", () => {
 		const nameW = computeNameColWidth(120); // 40
 		expect(nameW).toBe(40);
-		expect(computePathColWidth(120, nameW)).toBe(120 - 2 - 40 - 2 - 2 - 12); // 79
+		expect(computePathColWidth(120, nameW)).toBe(120 - 2 - 40 - 2 - 12); // 64
 	});
 });
 
@@ -145,8 +144,8 @@ describe("buildRowLine", () => {
 		const pathW = computePathColWidth(80, nameW);
 		const raw = buildRowLine(mkSkill("ab", 5), false, nameW, pathW, 12, markerTheme)
 			.replace(/<[^>]+>/g, "");
-		// Total visible = arrow(2) + name+path(nameW+pathW) + indicator(2) + badge(12)
-		expect(raw.length).toBe(ARROW_COL_WIDTH + nameW + 2 + pathW + PROMPT_INDICATOR_WIDTH + 12);
+		// Total visible = arrow(2) + name+sep+path(nameW+2+pathW) + badge(12)
+		expect(raw.length).toBe(ARROW_COL_WIDTH + nameW + 2 + pathW + 12);
 	});
 
 	it("renders the token badge via formatTokens (k-suffix for large values)", () => {
@@ -164,52 +163,15 @@ describe("buildRowLine", () => {
 });
 
 // ---------------------------------------------------------------------------
-// buildRowLine — prompt-status indicator
+// buildRowLine — no prompt indicator
 // ---------------------------------------------------------------------------
 
-describe("buildRowLine inPrompt indicator", () => {
-	it("shows no indicator text for skills not in the system prompt", () => {
+describe("buildRowLine has no prompt indicator", () => {
+	it("never contains ● in the row output", () => {
 		const nameW = computeNameColWidth(80);
 		const pathW = computePathColWidth(80, nameW);
-		const raw = buildRowLine(mkSkill("alpha", 10, false), false, nameW, pathW, 12, markerTheme)
+		const raw = buildRowLine(mkSkill("alpha", 10), false, nameW, pathW, 12, markerTheme)
 			.replace(/<[^>]+>/g, "");
 		expect(raw).not.toContain("●");
-	});
-
-	it("renders ● for skills active in the system prompt", () => {
-		const nameW = computeNameColWidth(80);
-		const pathW = computePathColWidth(80, nameW);
-		const line = buildRowLine(mkSkill("alpha", 10, true), false, nameW, pathW, 12, markerTheme);
-		expect(line).toContain("●");
-	});
-
-	it("colours the indicator with 'success' theme colour", () => {
-		const nameW = computeNameColWidth(80);
-		const pathW = computePathColWidth(80, nameW);
-		const line = buildRowLine(mkSkill("alpha", 10, true), false, nameW, pathW, 12, markerTheme);
-		expect(line).toContain("<success>\u25cf </>");
-	});
-
-	it("indicator is present after name+path column", () => {
-		const nameW = computeNameColWidth(80);
-		const pathW = computePathColWidth(80, nameW);
-		const withIndicator = buildRowLine(mkSkill("ab", 5, true), false, nameW, pathW, 12, markerTheme)
-			.replace(/<[^>]+>/g, "");
-		const withoutIndicator = buildRowLine(mkSkill("ab", 5, false), false, nameW, pathW, 12, markerTheme)
-			.replace(/<[^>]+>/g, "");
-		// Both must be the same total length
-		expect(withIndicator.length).toBe(withoutIndicator.length);
-		// The indicator starts at ARROW_COL_WIDTH + nameW + pathW
-		const indicatorStart = ARROW_COL_WIDTH + nameW + 2 + pathW;
-		expect(withIndicator[indicatorStart]).toBe("●");
-		expect(withoutIndicator[indicatorStart]).toBe(" ");
-	});
-
-	it("inPrompt indicator is unaffected by selection state", () => {
-		const nameW = computeNameColWidth(80);
-		const pathW = computePathColWidth(80, nameW);
-		const selectedInPrompt = buildRowLine(mkSkill("alpha", 10, true), true, nameW, pathW, 12, markerTheme);
-		expect(selectedInPrompt).toContain("<accent>> </>");
-		expect(selectedInPrompt).toContain("<success>\u25cf </>");
 	});
 });

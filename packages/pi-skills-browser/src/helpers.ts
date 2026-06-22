@@ -24,8 +24,6 @@ export interface SkillEntry {
 	path: string;
 	/** Displayable relative path to the skill's root directory. */
 	pathDisplay: string;
-	/** True when this skill appears in the current system prompt. */
-	inPrompt: boolean;
 	/** Source directory from which this skill was loaded. */
 	scope: SkillScope;
 }

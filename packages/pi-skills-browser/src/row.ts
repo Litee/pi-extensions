@@ -19,11 +19,6 @@ export interface RowTheme {
 
 /** Arrow + space prefix per row ("  " or "> "). */
 export const ARROW_COL_WIDTH = 2;
-/**
- * Prompt-status indicator column: "● " when the skill is active in the
- * current system prompt, "  " otherwise.
- */
-export const PROMPT_INDICATOR_WIDTH = 2;
 /** Token badge column: wide enough for "[9.9k tok]" plus a leading space. */
 export const TOKEN_COL_WIDTH = 12;
 
@@ -40,11 +35,11 @@ export function computeNameColWidth(_width: number): number {
 }
 
 /**
- * Compute the path column width: everything left after arrow, name, indicator,
+ * Compute the path column width: everything left after arrow, name,
  * and badge columns.
  */
 export function computePathColWidth(width: number, nameColWidth: number): number {
-	return width - ARROW_COL_WIDTH - nameColWidth - 2 - PROMPT_INDICATOR_WIDTH - TOKEN_COL_WIDTH;
+	return width - ARROW_COL_WIDTH - nameColWidth - 2 - TOKEN_COL_WIDTH;
 }
 
 /**
@@ -56,11 +51,10 @@ function truncate(str: string, maxLen: number): string {
 
 /**
  * Build a single list row:
- * `"{arrow}{nameCol}{pathCol}{padding}{indicator}{badge}"`.
+ * `"{arrow}{nameCol}{pathCol}{badge}"`.
  *
  * - The name column is left-aligned, truncated at `nameColWidth`.
  * - The path column is left-aligned, truncated at `pathColWidth`, dimmed.
- * - Padding fills the gap between the path column and the indicator column.
  * - Selected rows get the `"accent"` colour; unselected badges get `"dim"`.
  * - The badge is `.padStart(tokenColWidth)` so badges right-align under the
  *   column.
@@ -96,16 +90,11 @@ export function buildRowLine(
 		? theme.fg("dim", paddedPath)
 		: paddedPath;
 
-	// Prompt-status indicator: "● " when the skill is in the system prompt.
-	const promptIndicator = skill.inPrompt
-		? theme.fg("success", "● ")
-		: "  ";
-
 	const badge = `[${formatTokens(skill.tokens)} tok]`;
 	const paddedBadge = badge.padStart(tokenColWidth);
 	const styledBadge = isSelected
 		? theme.fg("accent", paddedBadge)
 		: theme.fg("dim", paddedBadge);
 
-	return `${arrow}${styledName}  ${styledPath}${promptIndicator}${styledBadge}`;
+	return `${arrow}${styledName}  ${styledPath}${styledBadge}`;
 }
