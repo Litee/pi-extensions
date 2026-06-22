@@ -75,7 +75,7 @@ export function headroomExtension(pi: ExtensionAPI): void {
 			);
 			return;
 		}
-		runtime.refreshStatus(ctx);
+		void runtime.updateHealth(ctx);
 	});
 
 	pi.on("context", (event, ctx) => handleContextCompression(runtime, event, ctx));
