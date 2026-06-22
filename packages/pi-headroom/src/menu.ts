@@ -200,7 +200,7 @@ export async function defaultOpenHeadroomMenu(ctx: ExtensionContext, runtime: He
 		if (stats.last !== undefined) {
 			const pct = Math.round((1 - stats.last.compressionRatio) * 100);
 			statusLines.push(
-				`  ${theme.fg("dim", "Last")}         ${stats.last.tokensBefore.toLocaleString()} → ${stats.last.tokensAfter.toLocaleString()}  (-${pct}%)`,
+				`  ${theme.fg("dim", "Last call")}         ${stats.last.tokensBefore.toLocaleString()} → ${stats.last.tokensAfter.toLocaleString()}  (-${pct}%)`,
 			);
 		}
 		container.addChild({
