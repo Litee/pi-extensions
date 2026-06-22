@@ -67,7 +67,8 @@ export default tseslint.config(
 			"packages/*/dist/**",
 			"packages/*/src/vendor/**",
 			"packages/*/firefox-addon/**",
-			"*.js",
+			"**/*.js",
+			"**/*.cjs",
 		],
 	},
 

@@ -1,0 +1,28 @@
+{
+  "name": "pi-ponytail",
+  "version": "0.0.1",
+  "private": true,
+  "description": "Pi extension for Ponytail — forces the laziest solution that actually works. Lazy senior dev mode, over-engineering review, debt tracking, and more. (copy of https://github.com/DietrichGebert/ponytail)",
+  "license": "MIT",
+  "author": "DietrichGebert (upstream); ported by Andrey Lipatkin",
+  "type": "module",
+  "keywords": ["pi-package"],
+  "pi": {
+    "extensions": ["./index.js"],
+    "skills": [
+      "./skills/ponytail",
+      "./skills/ponytail-audit",
+      "./skills/ponytail-debt",
+      "./skills/ponytail-gain",
+      "./skills/ponytail-help",
+      "./skills/ponytail-review"
+    ]
+  },
+  "scripts": {
+    "test": "node --test ./test/*.test.js"
+  },
+  "peerDependencies": {
+    "@earendil-works/pi-ai": "*",
+    "@earendil-works/pi-coding-agent": "*"
+  }
+}
