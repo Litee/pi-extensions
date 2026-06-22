@@ -64,7 +64,7 @@ export default function skillsBrowserExtension(pi: ExtensionAPI) {
 						path: c.sourceInfo.path,
 						pathDisplay: detectPathDisplay(c.sourceInfo.path, process.cwd()),
 						scope: detectScope(c.sourceInfo.path),
-						inPrompt: skillsInPrompt.has(c.name),
+						inPrompt: skillsInPrompt.has(displayName),
 					};
 				});
 

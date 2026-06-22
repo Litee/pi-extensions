@@ -245,7 +245,7 @@ describe("SkillEntry name: 'skill:' prefix stripping and inPrompt matching", () 
 		expect(output).toContain("my-skill");
 	});
 
-	it("marks a skill inPrompt when getSystemPromptOptions contains the prefixed name", async () => {
+	it("marks a skill inPrompt when its bare name is in the system prompt skills", async () => {
 		const skillCommand = {
 			name: "skill:my-skill",
 			description: "A prefixed skill.",
@@ -256,9 +256,9 @@ describe("SkillEntry name: 'skill:' prefix stripping and inPrompt matching", () 
 		const custom = vi.fn().mockResolvedValue(undefined);
 		const ctx = makeCtx({
 			ui: { notify: vi.fn(), custom },
-			// Provide the original prefixed name — inPrompt must match on c.name
+			// pi always stores the BARE name in opts.skills — never the prefixed form
 			getSystemPromptOptions: vi.fn().mockReturnValue({
-				skills: [{ name: "skill:my-skill" }],
+				skills: [{ name: "my-skill" }],
 			}),
 		});
 
@@ -268,10 +268,13 @@ describe("SkillEntry name: 'skill:' prefix stripping and inPrompt matching", () 
 		const output = render(120).join("\n");
 
 		// buildRowLine emits "● " (via theme.fg("success", "● ")) for inPrompt rows.
-		expect(output).toContain("●");
+		// Filter to the specific skill row (not the footer legend) to verify it.
+		const rows = output.split("\n").filter((l) => l.includes("my-skill"));
+		expect(rows.length).toBeGreaterThan(0);
+		expect(rows[0]).toContain("●");
 	});
 
-	it("does NOT mark a skill inPrompt when only the stripped name appears in getSystemPromptOptions", async () => {
+	it("does NOT mark a skill inPrompt when its name is absent from the system prompt skills", async () => {
 		const skillCommand = {
 			name: "skill:my-skill",
 			description: "A prefixed skill.",
