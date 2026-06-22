@@ -22,10 +22,26 @@ after each `pi` upgrade.
 
 ## Step 1 — Locate the pi package
 
+Resolve the package via the global module root — this is robust regardless of
+how `pi` is launched:
+
 ```bash
-PI_DIST=$(dirname $(realpath $(which pi)))
+PI_DIST="$(npm root -g)/@earendil-works/pi-coding-agent/dist"
 # e.g. /Users/you/.local/share/mise/installs/node/24.x.x/lib/node_modules/@earendil-works/pi-coding-agent/dist
 # OR:   /usr/local/lib/node_modules/@earendil-works/pi-coding-agent/dist
+```
+
+Do **not** use `dirname $(realpath $(which pi))`: if `pi` on your PATH is a
+wrapper shell script (e.g. one that sets env vars and then calls the real
+binary), `realpath` dead-ends at the script — it only follows symlinks, not
+script indirection — and `PI_DIST` resolves to the wrong directory. Only when
+`which pi` is itself the symlink into the package does that method work; the
+fallback below covers that case explicitly:
+
+```bash
+# Fallback if `npm root -g` is unavailable but the inner binary is a symlink
+# into the package (note: resolve the inner mise/npm binary, not a PATH wrapper):
+# PI_DIST=$(dirname "$(dirname "$(realpath /path/to/node/bin/pi)")")/lib/... # adjust to your layout
 ```
 
 Confirm the target files exist:
