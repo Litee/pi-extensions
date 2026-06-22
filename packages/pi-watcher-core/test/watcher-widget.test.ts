@@ -59,8 +59,13 @@ describe('formatWidgetFooter', () => {
 
 type SimpleWatch = WatchLike & { id: string }
 
-function makeWidget(watches: SimpleWatch[]) {
-  const setWidget = vi.fn()
+function makeWidget(watches: SimpleWatch[], { invokeTuiFactory = false } = {}) {
+  const fakeTui = { requestRender: vi.fn() }
+  const setWidget = vi.fn((_id: unknown, factory: unknown) => {
+    if (invokeTuiFactory && typeof factory === 'function') {
+      ;(factory as (tui: unknown, theme: unknown) => unknown)(fakeTui, {})
+    }
+  })
   const ctx = { ui: { setWidget } }
 
   let listener: (() => void) | undefined
@@ -85,7 +90,7 @@ function makeWidget(watches: SimpleWatch[]) {
   } as unknown as Parameters<typeof createWatcherWidget>[0]
 
   const widget = createWatcherWidget(piEvents, view, opts)
-  return { widget, ctx, setWidget, fireChange: () => listener?.() }
+  return { widget, ctx, setWidget, fireChange: () => listener?.(), fakeTui }
 }
 
 describe('WatcherWidgetImpl — setWidget guard (#0002)', () => {
@@ -227,5 +232,49 @@ describe('_renderWidget faint dimming', () => {
     expect(terminalLine).toContain('\x1b[2m')
     expect(terminalLine).toContain('\x1b[22m')
     expect(activeLine).not.toContain('\x1b[2m')
+  })
+})
+
+// ---------------------------------------------------------------------------
+// requestRender on change
+// ---------------------------------------------------------------------------
+
+describe('requestRender on change', () => {
+  it('calls tui.requestRender N times on N change events after show(), and does NOT call setWidget again', () => {
+    const watches: SimpleWatch[] = [{ id: 'w1', terminal: false, consecutiveErrors: 0 }]
+    const { widget, ctx, setWidget, fireChange, fakeTui } = makeWidget(watches, { invokeTuiFactory: true })
+
+    widget.show(ctx)
+    setWidget.mockClear()
+
+    fireChange()
+    fireChange()
+    fireChange()
+
+    // The fix: requestRender is called once per change event
+    expect(fakeTui.requestRender).toHaveBeenCalledTimes(3)
+    // The #0002 invariant: setWidget must NOT be called on the change path
+    expect(setWidget).not.toHaveBeenCalled()
+  })
+
+  it('does NOT call requestRender after hide()', () => {
+    const watches: SimpleWatch[] = [{ id: 'w1', terminal: false, consecutiveErrors: 0 }]
+    const { widget, ctx, fireChange, fakeTui } = makeWidget(watches, { invokeTuiFactory: true })
+
+    widget.show(ctx)
+    widget.hide(ctx)
+
+    fakeTui.requestRender.mockClear()
+    fireChange()
+
+    expect(fakeTui.requestRender).not.toHaveBeenCalled()
+  })
+
+  it('does not throw when change fires before show() (no tui captured yet)', () => {
+    const watches: SimpleWatch[] = [{ id: 'w1', terminal: false, consecutiveErrors: 0 }]
+    const { fireChange } = makeWidget(watches)
+
+    // No show() called — _tui is null; optional-chaining guard must prevent throw
+    expect(() => fireChange()).not.toThrow()
   })
 })

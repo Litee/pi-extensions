@@ -70,6 +70,13 @@ class WatcherWidgetImpl<TWatch extends WatchLike, TEvent> implements WatcherWidg
    * which would cause pi to reorder panels (#0002).
    */
   private _registered = false
+  /**
+   * Reference to the pi TUI instance captured when the widget factory is
+   * invoked by pi. Used in `refresh()` to request a repaint without
+   * re-calling `setWidget` (which would reorder panels, regression #0002).
+   * Nulled on `hide()`, `destroy()`, and when the widget is disposed by pi.
+   */
+  private _tui: { requestRender(): void } | null = null
 
   constructor(
     private readonly piEvents: Pick<ExtensionAPI['events'], 'on' | 'emit'>,
@@ -96,10 +103,14 @@ class WatcherWidgetImpl<TWatch extends WatchLike, TEvent> implements WatcherWidg
       const anyCtx = ctx as { ui?: { setWidget?: (...args: unknown[]) => void } }
       anyCtx.ui?.setWidget?.(
         this.widgetId,
-        (_tui: unknown, theme: unknown) => ({
-          render: (width: number) => this._renderWidget(width, theme),
-          invalidate: () => {},
-        }),
+        (tui: { requestRender(): void }, theme: unknown) => {
+          this._tui = tui
+          return {
+            render: (width: number) => this._renderWidget(width, theme),
+            invalidate: () => {},
+            dispose: () => { this._tui = null },
+          }
+        },
         { placement: 'belowEditor' },
       )
       this._registered = true
@@ -117,6 +128,7 @@ class WatcherWidgetImpl<TWatch extends WatchLike, TEvent> implements WatcherWidg
     const anyCtx = ctx as { ui?: { setWidget?: (...args: unknown[]) => void } }
     anyCtx.ui?.setWidget?.(this.widgetId, undefined)
     this._registered = false
+    this._tui = null
     this.ctx = undefined
     if (this.refreshInterval !== undefined) {
       clearInterval(this.refreshInterval)
@@ -126,6 +138,7 @@ class WatcherWidgetImpl<TWatch extends WatchLike, TEvent> implements WatcherWidg
 
   destroy(): void {
     this.unsubscribe()
+    this._tui = null
     if (this.refreshInterval !== undefined) {
       clearInterval(this.refreshInterval)
       this.refreshInterval = undefined
@@ -138,10 +151,12 @@ class WatcherWidgetImpl<TWatch extends WatchLike, TEvent> implements WatcherWidg
         // Widget was hidden (e.g. watch list was empty); re-register now that
         // watches are present again.
         this.show(this.ctx)
+      } else {
+        // Already registered — request a repaint so pi calls our render
+        // callback on the next paint pass. Do NOT call setWidget here; that
+        // would cause pi to reorder panels on every poll cycle (#0002).
+        this._tui?.requestRender()
       }
-      // else: already registered — render callback already reads live watch
-      // state via getWatches(), so no setWidget call needed. Skipping it
-      // prevents pi from reordering panels on every poll cycle (#0002).
     }
   }
 
