@@ -6,6 +6,8 @@ vi.mock("node:fs", () => ({
 	readFileSync: vi.fn(),
 	readdirSync: vi.fn(),
 	statSync: vi.fn(),
+	mkdirSync: vi.fn(),
+	writeFileSync: vi.fn(),
 }));
 
 // Mock os module
@@ -18,9 +20,9 @@ vi.mock("@earendil-works/pi-coding-agent", () => ({
 	getAgentDir: () => "/fake",
 }));
 
-import { existsSync, readFileSync, readdirSync, statSync } from "node:fs";
+import { existsSync, mkdirSync, readFileSync, readdirSync, statSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
-import { assetsReady, configFilePath, discoverAssetsDir, findHfCachedModel, loadConfig, resolveExplicitAssetsDir } from "../src/config.js";
+import { assetsReady, configFilePath, discoverAssetsDir, findHfCachedModel, loadConfig, resolveExplicitAssetsDir, saveConfig } from "../src/config.js";
 
 const mockExistsSync = vi.mocked(existsSync);
 const mockReadFileSync = vi.mocked(readFileSync);
@@ -197,5 +199,141 @@ describe("assetsReady", () => {
 	it("returns false when sentinel file is missing", () => {
 		mockExistsSync.mockReturnValue(false);
 		expect(assetsReady("/my/assets")).toBe(false);
+	});
+});
+
+// ---------------------------------------------------------------------------
+// saveConfig
+// ---------------------------------------------------------------------------
+
+describe("saveConfig", () => {
+	const mockMkdirSync = vi.mocked(mkdirSync);
+	const mockWriteFileSync = vi.mocked(writeFileSync as unknown as (p: string, d: string, e: string) => void);
+
+	beforeEach(() => {
+		vi.resetAllMocks();
+		// loadConfig calls readFileSync; make it return an empty-object config by default
+		vi.mocked(readFileSync).mockReturnValue("{}");
+	});
+
+	it("returns true when writeFileSync succeeds", () => {
+		mockMkdirSync.mockReturnValue(undefined);
+		mockWriteFileSync.mockReturnValue(undefined);
+
+		expect(saveConfig({ defaultVoice: "F1" })).toBe(true);
+		expect(mockMkdirSync).toHaveBeenCalledWith("/fake", { recursive: true });
+		expect(mockWriteFileSync).toHaveBeenCalledWith(
+			"/fake/pi-speak.json",
+			expect.stringContaining('"defaultVoice": "F1"'),
+			"utf-8",
+		);
+	});
+
+	it("returns false when writeFileSync throws", () => {
+		mockMkdirSync.mockReturnValue(undefined);
+		mockWriteFileSync.mockImplementation(() => { throw new Error("disk full"); });
+
+		expect(saveConfig({ defaultVoice: "F1" })).toBe(false);
+	});
+
+	it("merges partial with the current config", () => {
+		vi.mocked(readFileSync).mockReturnValue(JSON.stringify({ defaultVoice: "M1" }));
+		mockMkdirSync.mockReturnValue(undefined);
+
+		let written = "";
+		mockWriteFileSync.mockImplementation((_p: string, d: string) => { written = d; });
+
+		expect(saveConfig({ defaultLang: "en" })).toBe(true);
+		const parsed = JSON.parse(written) as Record<string, string>;
+		expect(parsed).toEqual({ defaultVoice: "M1", defaultLang: "en" });
+	});
+});
+
+// ---------------------------------------------------------------------------
+// loadConfig — individual field branches not yet covered above
+// ---------------------------------------------------------------------------
+
+describe("loadConfig — all supported fields", () => {
+	beforeEach(() => {
+		vi.resetAllMocks();
+	});
+
+	it("picks up defaultVoice when valid string", () => {
+		vi.mocked(readFileSync).mockReturnValue(JSON.stringify({ defaultVoice: "M1" }));
+		expect(loadConfig()).toEqual({ defaultVoice: "M1" });
+	});
+
+	it("ignores defaultVoice when wrong type", () => {
+		vi.mocked(readFileSync).mockReturnValue(JSON.stringify({ defaultVoice: 99 }));
+		expect(loadConfig()).toEqual({});
+	});
+
+	it("picks up defaultLang when valid string", () => {
+		vi.mocked(readFileSync).mockReturnValue(JSON.stringify({ defaultLang: "fr" }));
+		expect(loadConfig()).toEqual({ defaultLang: "fr" });
+	});
+
+	it("picks up defaultSpeed when valid number", () => {
+		vi.mocked(readFileSync).mockReturnValue(JSON.stringify({ defaultSpeed: 1.2 }));
+		expect(loadConfig()).toEqual({ defaultSpeed: 1.2 });
+	});
+
+	it("ignores defaultSpeed when wrong type (string)", () => {
+		vi.mocked(readFileSync).mockReturnValue(JSON.stringify({ defaultSpeed: "fast" }));
+		expect(loadConfig()).toEqual({});
+	});
+
+	it("picks up defaultSteps when valid number", () => {
+		vi.mocked(readFileSync).mockReturnValue(JSON.stringify({ defaultSteps: 16 }));
+		expect(loadConfig()).toEqual({ defaultSteps: 16 });
+	});
+
+	it("ignores defaultSteps when wrong type", () => {
+		vi.mocked(readFileSync).mockReturnValue(JSON.stringify({ defaultSteps: true }));
+		expect(loadConfig()).toEqual({});
+	});
+
+	it("returns an object with null root as {} (Array.isArray guard)", () => {
+		vi.mocked(readFileSync).mockReturnValue("null");
+		expect(loadConfig()).toEqual({});
+	});
+});
+
+// ---------------------------------------------------------------------------
+// findHfCachedModel — candidate path existsSync false branch (line 89)
+// ---------------------------------------------------------------------------
+
+describe("findHfCachedModel — candidate does not exist at snapshot path", () => {
+	const origHfHome = process.env["HF_HOME"];
+	const origHfHubCache = process.env["HUGGINGFACE_HUB_CACHE"];
+
+	beforeEach(() => {
+		vi.resetAllMocks();
+		delete process.env["HF_HOME"];
+		delete process.env["HUGGINGFACE_HUB_CACHE"];
+	});
+
+	afterEach(() => {
+		if (origHfHome === undefined) delete process.env["HF_HOME"];
+		else process.env["HF_HOME"] = origHfHome;
+		if (origHfHubCache === undefined) delete process.env["HUGGINGFACE_HUB_CACHE"];
+		else process.env["HUGGINGFACE_HUB_CACHE"] = origHfHubCache;
+	});
+
+	it("returns undefined when snapshotsDir exists but the chosen snapshot path does not", () => {
+		// existsSync(snapshotsDir) returns true, but existsSync(candidate) returns false
+		const snapshotsDirPath = join(
+			"/home/testuser", ".cache", "huggingface", "hub",
+			"models--Supertone--supertonic-3", "snapshots",
+		);
+		mockExistsSync.mockImplementation((p) => {
+			// snapshotsDir itself exists, but the actual snapshot subdirectory does not
+			if (p === snapshotsDirPath) return true;
+			return false; // candidate path doesn't exist
+		});
+		mockReaddirSync.mockReturnValue(["abc123"]);
+		mockStatSync.mockReturnValue({ mtimeMs: 1000 });
+
+		expect(findHfCachedModel()).toBeUndefined();
 	});
 });

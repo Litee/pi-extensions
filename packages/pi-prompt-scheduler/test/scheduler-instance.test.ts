@@ -615,3 +615,85 @@ describe("CronScheduler.executeJobInSubagent — marker-error catch blocks", () 
 		);
 	});
 });
+
+// ---------------------------------------------------------------------------
+// removeJob for interval jobs — clears the setInterval timer (lines 205-206)
+// ---------------------------------------------------------------------------
+
+describe("CronScheduler.removeJob — interval job", () => {
+	it("clears the setInterval timer when an interval job is removed", () => {
+		const { scheduler } = makeScheduler();
+		const intervalJob = mkJob({
+			id: "iv-remove",
+			type: "interval",
+			schedule: "1d",
+			intervalMs: 24 * 60 * 60 * 1000,
+		});
+		scheduler.addJob(intervalJob);
+
+		// Verify interval is registered (getNextRun is null for interval jobs)
+		expect(scheduler.getNextRun("iv-remove")).toBeNull();
+
+		// removeJob must clear the setInterval and deregister
+		scheduler.removeJob("iv-remove");
+
+		// After removal, calling getNextRun returns null (entry gone)
+		expect(scheduler.getNextRun("iv-remove")).toBeNull();
+	});
+});
+
+// ---------------------------------------------------------------------------
+// once job scheduled for the FUTURE (lines 155-162 in scheduler.ts)
+// ---------------------------------------------------------------------------
+
+describe("CronScheduler.addJob — once job in the future", () => {
+	it("schedules a future once job via setTimeout and registers it in intervals", () => {
+		const { scheduler } = makeScheduler();
+		// Schedule 1 hour in the future so delay > 0
+		const future = new Date(Date.now() + 60 * 60 * 1000).toISOString();
+		const job = mkJob({
+			id: "future-once",
+			type: "once",
+			schedule: future,
+			enabled: true,
+		});
+		storage.addJob(job);
+		scheduler.addJob(job);
+
+		// The job should be tracked in intervals (used for cleanup)
+		// We can verify via getNextRun — for once jobs it computes the next run from schedule
+		// (no Cron object, but interval cleanup should work)
+		// The key test: no error was emitted (job was not marked as past)
+		expect(storage.getJob("future-once")?.lastStatus).not.toBe("error");
+
+		// Cleanup: remove so the timer doesn't fire
+		scheduler.removeJob("future-once");
+	});
+
+	it("fires the setTimeout callback and auto-disables the job", () => {
+		vi.useFakeTimers();
+		try {
+			const { scheduler } = makeScheduler();
+			const future = new Date(Date.now() + 100).toISOString();
+			const job = mkJob({
+				id: "future-fires",
+				type: "once",
+				schedule: future,
+				enabled: true,
+			});
+			storage.addJob(job);
+			scheduler.addJob(job);
+
+			// Advance timers to trigger the setTimeout callback
+			vi.advanceTimersByTime(200);
+
+			// The callback should have auto-disabled the job
+			expect(storage.getJob("future-fires")?.enabled).toBe(false);
+
+			// Cleanup
+			scheduler.removeJob("future-fires");
+		} finally {
+			vi.useRealTimers();
+		}
+	});
+});

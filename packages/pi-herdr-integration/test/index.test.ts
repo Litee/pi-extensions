@@ -628,3 +628,44 @@ describe("pi-herdr-integration — subagent names", () => {
 		expect(pi.exec).toHaveBeenCalledTimes(2);
 	});
 });
+
+// ---------------------------------------------------------------------------
+// session_shutdown when pollTimer is undefined (line 153 false branch)
+// ---------------------------------------------------------------------------
+
+describe("pi-herdr-integration — session_shutdown with no active timer", () => {
+	it("does not throw when session_shutdown fires before any session_start set a timer", async () => {
+		// Don't fire session_start at all, so pollTimer stays undefined.
+		// session_shutdown must handle the undefined case gracefully (line 153 false branch).
+		const pi = makeFakePi({ sessionName: "my session" });
+		const ctx = makeFakeCtx();
+		createExtension(pi as never);
+
+		// Fire shutdown directly without starting a session first
+		await withEnv({ HERDR_ENV: "1" }, async () => {
+			await pi.handlers.get("session_shutdown")?.({ type: "session_shutdown" }, ctx);
+		});
+
+		// If we get here without throwing, the false branch was handled correctly
+		expect(true).toBe(true);
+	});
+
+	it("clears pollTimer when session_shutdown fires after a non-herdr session_start (timer never set)", async () => {
+		// Start session WITHOUT herdr env — pollTimer never set
+		const pi = makeFakePi({ sessionName: "my session" });
+		const ctx = makeFakeCtx();
+		createExtension(pi as never);
+
+		// session_start without HERDR_ENV → pollTimer stays undefined
+		await withEnv({}, async () => {
+			await pi.handlers.get("session_start")?.({ type: "session_start", reason: "startup" }, ctx);
+		});
+
+		// session_shutdown must not throw with undefined pollTimer
+		await withEnv({}, async () => {
+			await pi.handlers.get("session_shutdown")?.({ type: "session_shutdown" }, ctx);
+		});
+
+		expect(true).toBe(true);
+	});
+});

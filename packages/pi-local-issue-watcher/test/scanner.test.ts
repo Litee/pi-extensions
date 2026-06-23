@@ -1,4 +1,4 @@
-import { mkdirSync, mkdtempSync, readdirSync, rmSync, writeFileSync } from "node:fs";
+import { chmodSync, mkdirSync, mkdtempSync, readdirSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
@@ -321,5 +321,82 @@ describe("scanIssueFiles", () => {
 		expect(() => {
 			scanIssueFiles(dbRoot, first, throwingCallback);
 		}).not.toThrow();
+	});
+
+	// -- readdirSync throws on skill subdir (line 61: continue in catch) --
+
+	it("continues when readdirSync throws on an unreadable skill subdir (line 61)", () => {
+		// Create an unreadable skill dir — readdirSync will throw EACCES.
+		// This is the only reliable cross-platform way to hit line 61 (the catch
+		// around readdirSync(skillDir)).
+		const badSkill = join(dbRoot, "bad-skill");
+		mkdirSync(badSkill);
+		// Make it unreadable so readdirSync throws
+		chmodSync(badSkill, 0o000);
+
+		// Add a readable skill in parallel so the test isn't trivially empty.
+		const goodSkill = join(dbRoot, "good-skill2");
+		mkdirSync(goodSkill);
+		writeFileSync(
+			join(goodSkill, "0099-ok.json"),
+			JSON.stringify({ id: "0099", skill: "good-skill2" }),
+			"utf8",
+		);
+
+		try {
+			const snap = scanIssueFiles(dbRoot);
+			// bad-skill produced no entries (graceful skip).
+			expect(Object.keys(snap).filter((k) => k.includes("bad-skill"))).toHaveLength(0);
+			// good-skill2 was still scanned.
+			expect(Object.keys(snap)).toContain(join(goodSkill, "0099-ok.json"));
+		} finally {
+			// Restore permissions so afterEach can rmSync cleanly.
+			chmodSync(badSkill, 0o755);
+		}
+	});
+
+	// -- stat/read failure with onError=undefined and previous=undefined (lines 85-87) --
+
+	it("carries forward nothing and does not throw when read fails, onError is undefined, previous is undefined", () => {
+		const skillDir = join(dbRoot, "skill-stat-fail");
+		mkdirSync(skillDir);
+		const filePath = join(skillDir, "0050-unreadable.json");
+
+		// Create a file with a valid issue-filename pattern but make it unreadable
+		// so readFileSync throws EACCES → hits the outer catch at lines 75-88
+		writeFileSync(filePath, JSON.stringify({ id: "0050", status: "open", title: "t", skill: "s" }), "utf8");
+		chmodSync(filePath, 0o000);
+
+		try {
+			// onError=undefined, previous=undefined
+			// → lines 80-81: onError?.() short-circuits (undefined → skip)
+			// → line 85: previous?.[filePath] = undefined
+			// → line 86: carried === undefined → snapshot[filePath] not set
+			const snap = scanIssueFiles(dbRoot, undefined, undefined);
+			expect(snap[filePath]).toBeUndefined();
+		} finally {
+			chmodSync(filePath, 0o644);
+		}
+	});
+
+	// -- non-file entries inside a skill dir (line 66: if (!file.isFile()) continue) --
+
+	it("skips subdirectories inside a skill dir (line 66)", () => {
+		const skillDir = join(dbRoot, "skill-with-subdir");
+		mkdirSync(skillDir);
+		// Create a subdirectory inside the skillDir — this is not a file
+		mkdirSync(join(skillDir, "nested-subdir"));
+		// Also create a valid issue file
+		writeFileSync(
+			join(skillDir, "0099-valid.json"),
+			JSON.stringify({ id: "0099", skill: "skill-with-subdir" }),
+			"utf8",
+		);
+
+		const snap = scanIssueFiles(dbRoot);
+		// Only the real file shows up; the subdir is silently skipped
+		expect(Object.keys(snap)).toContain(join(skillDir, "0099-valid.json"));
+		// No entries for the subdir
+		expect(Object.keys(snap).filter((k) => k.includes("nested-subdir"))).toHaveLength(0);
 	});
 });

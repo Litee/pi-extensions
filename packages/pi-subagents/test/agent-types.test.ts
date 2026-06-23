@@ -10,9 +10,11 @@ import {
   getReadOnlyMemoryToolNames,
   getToolNamesForType,
   getUserAgentNames,
+  isDefaultsDisabled,
   isValidType,
   registerAgents,
   resolveType,
+  setDefaultsDisabled,
 } from "../src/agent-types.js";
 import { DEFAULT_AGENTS } from "../src/default-agents.js";
 import type { AgentConfig } from "../src/types.js";
@@ -338,4 +340,24 @@ describe("getToolNamesForType — disabled agent falls back to built-ins", () =>
     expect(names).toContain("read");
     expect(names).toContain("bash");
   });
+});
+
+// ---------------------------------------------------------------------------
+// isDefaultsDisabled / setDefaultsDisabled (lines 31-34 in agent-types.ts)
+// ---------------------------------------------------------------------------
+
+describe("isDefaultsDisabled / setDefaultsDisabled", () => {
+	it("can set and read the defaults-disabled flag", () => {
+		// Save original state
+		const original = isDefaultsDisabled();
+		try {
+			setDefaultsDisabled(false);
+			expect(isDefaultsDisabled()).toBe(false);
+			setDefaultsDisabled(true);
+			expect(isDefaultsDisabled()).toBe(true);
+		} finally {
+			// Restore
+			setDefaultsDisabled(original);
+		}
+	});
 });

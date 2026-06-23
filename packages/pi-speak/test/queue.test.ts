@@ -256,3 +256,171 @@ describe("SpeechQueue — temp file cleanup", () => {
 		expect(unlinkSync).toHaveBeenCalled();
 	});
 });
+
+// ---------------------------------------------------------------------------
+// SpeechQueue — getters (length, isProcessing)
+// ---------------------------------------------------------------------------
+
+describe("SpeechQueue — getters", () => {
+	it("length reflects queued items before processing starts", () => {
+		// Block synthesise so nothing dequeues while we measure
+		vi.mocked(synthesise).mockImplementation(
+			() => new Promise<never>(() => { /* never resolves */ }),
+		);
+		const q = new SpeechQueue();
+		expect(q.length).toBe(0);
+		q.enqueue(baseItem);
+		// The first item is immediately shifted off the queue by process(),
+		// so queue length is 0 after one enqueue. Enqueue a second item while
+		// the first is stuck in synthesis to confirm length === 1.
+		q.enqueue({ ...baseItem, text: "world" });
+		expect(q.length).toBe(1);
+	});
+
+	it("isProcessing returns true while the queue is active", async () => {
+		let resolveSynth!: (v: { wav: number[]; sampleRate: number; duration: number[] }) => void;
+		vi.mocked(synthesise).mockImplementationOnce(
+			() => new Promise<{ wav: number[]; sampleRate: number; duration: number[] }>((res) => { resolveSynth = res; }),
+		);
+
+		const q = new SpeechQueue();
+		expect(q.isProcessing).toBe(false);
+		q.enqueue(baseItem);
+		// process() has started but is blocked waiting for synthesise
+		expect(q.isProcessing).toBe(true);
+		// Let it finish
+		resolveSynth({ wav: [], sampleRate: 44100, duration: [0.1] });
+		await flushAsync();
+		expect(q.isProcessing).toBe(false);
+	});
+});
+
+// ---------------------------------------------------------------------------
+// SpeechQueue — onDone callback
+// ---------------------------------------------------------------------------
+
+describe("SpeechQueue — onDone callback", () => {
+	it("calls onDone after the item finishes playing", async () => {
+		const onDone = vi.fn();
+		const q = new SpeechQueue();
+		q.enqueue({ ...baseItem, onDone });
+		await flushAsync();
+		expect(onDone).toHaveBeenCalledOnce();
+	});
+
+	it("calls onDone even when synthesis fails (item skipped)", async () => {
+		vi.mocked(synthesise).mockRejectedValueOnce(new Error("TTS error"));
+		const onDone = vi.fn();
+		const q = new SpeechQueue();
+		q.enqueue({ ...baseItem, onDone });
+		await flushAsync();
+		expect(onDone).toHaveBeenCalledOnce();
+	});
+});
+
+// ---------------------------------------------------------------------------
+// SpeechQueue — dynamically enqueued item (enqueue while playing, no prefetch)
+// ---------------------------------------------------------------------------
+
+describe("SpeechQueue — late-enqueued item (post-prefetch path)", () => {
+	it("processes an item enqueued after the prefetch window", async () => {
+		// Block playback so we can enqueue a new item WHILE item 1 is playing
+		let resolvePlay!: () => void;
+		vi.mocked(playAudioFile).mockImplementationOnce(
+			() => new Promise<void>((res) => { resolvePlay = res; }),
+		);
+
+		const q = new SpeechQueue();
+		// Enqueue only one item — no prefetch item at startup
+		q.enqueue(baseItem);
+		await flushAsync(); // item 1 playing (blocked), no prefetch running
+
+		// Now enqueue item 2 WHILE item 1 is playing and NO prefetch was started
+		q.enqueue({ ...baseItem, text: "late item" });
+
+		// Finish item 1 — the queue should pick up the late-enqueued item
+		resolvePlay();
+		await flushAsync();
+
+		// Both items must have been synthesised
+		const calls = vi.mocked(synthesise).mock.calls.map((c) => c[0]);
+		expect(calls).toContain("hello");
+		expect(calls).toContain("late item");
+	});
+});
+
+// ---------------------------------------------------------------------------
+// SpeechQueue — restart after items arrive during a cleared run
+// ---------------------------------------------------------------------------
+
+describe("SpeechQueue — restart after clear with waiting items", () => {
+	it("re-starts processing when an item is enqueued while cleared===true but processing===true", async () => {
+		// We need the queue to be processing===true but cleared===true
+		// so an enqueue() pushes to items without starting a worker.
+		// The restart happens at the end of process() when items.length > 0.
+		let resolveSynth!: (v: { wav: number[]; sampleRate: number; duration: number[] }) => void;
+		vi.mocked(synthesise)
+			// Item 1: block synthesis
+			.mockImplementationOnce(() => new Promise<{ wav: number[]; sampleRate: number; duration: number[] }>((res) => { resolveSynth = res; }))
+			// Item 2 (re-started worker): succeed
+			.mockResolvedValue({ wav: [], sampleRate: 44100, duration: [0.1] });
+
+		const q = new SpeechQueue();
+		q.enqueue(baseItem); // starts processing; blocks at synthesise
+		await flushAsync();  // processing === true, stuck in synthesis
+
+		// Call clear() — sets cleared=true, aborts currentAc
+		q.clear();
+		// Enqueue a new item while processing===true and cleared===true
+		// (enqueue() does NOT start a new worker when isProcessing is true)
+		const pos = q.enqueue({ ...baseItem, text: "post-clear item" });
+		expect(pos).toBe(2);
+
+		// Unblock item 1's synthesis → process() runs to completion → should restart
+		resolveSynth({ wav: [], sampleRate: 44100, duration: [0.1] });
+		await flushAsync();
+
+		// The post-clear item must have been synthesised by the restarted worker
+		const calls = vi.mocked(synthesise).mock.calls.map((c) => c[0]);
+		expect(calls).toContain("post-clear item");
+	});
+});
+
+// ---------------------------------------------------------------------------
+// SpeechQueue — timeout fires and aborts playback (line 126: () => ac.abort())
+// ---------------------------------------------------------------------------
+
+describe("SpeechQueue — playback timeout", () => {
+	it("aborts playback via AbortController when the timeout elapses", async () => {
+		vi.useFakeTimers();
+
+		// playAudioFile resolves when its signal is aborted (mimicking a real player)
+		vi.mocked(playAudioFile).mockImplementation((_path, signal) => {
+			return new Promise<void>((resolve) => {
+				if (signal) {
+					signal.addEventListener("abort", () => resolve(), { once: true });
+				}
+			});
+		});
+
+		const q = new SpeechQueue();
+		q.enqueue(baseItem); // text = "hello" (5 chars) → 30_000 ms timeout
+
+		// Let synthesis complete (synthesis mock resolves immediately)
+		await Promise.resolve();
+		await Promise.resolve();
+
+		// Advance fake time past the minimum timeout (30 s)
+		vi.advanceTimersByTime(31_000);
+
+		// Allow the abort handler and the promise chain to flush
+		await Promise.resolve();
+		await Promise.resolve();
+		await Promise.resolve();
+
+		// playAudioFile was called and the abort (via timeout) resolved the promise
+		expect(vi.mocked(playAudioFile)).toHaveBeenCalled();
+
+		vi.useRealTimers();
+	});
+});

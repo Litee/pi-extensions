@@ -1,4 +1,4 @@
-import { mkdirSync, mkdtempSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
+import { chmodSync, mkdirSync, mkdtempSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
@@ -233,5 +233,20 @@ describe("preloadSkills", () => {
     const result = preloadSkills(["evil-inner"], tmpDir);
     expect(result[0]!.content).toContain("not found");
     expect(result[0]!.content).not.toContain("TOP SECRET");
+  });
+
+  it("skips an unreadable directory during skills scan (line 75 in skill-loader.ts)", () => {
+    // Create a subdirectory inside .pi/skills and make it unreadable.
+    // The skill loader tries to readdirSync it; when it fails, the dir is silently skipped.
+    const subDir = join(projectRoot(), "unreadable-skill-dir");
+    mkdirSync(subDir, { recursive: true });
+    chmodSync(subDir, 0o000);
+
+    try {
+      // preloadSkills should not throw even though the dir is unreadable
+      expect(() => preloadSkills(["unreadable-skill-dir"], tmpDir)).not.toThrow();
+    } finally {
+      chmodSync(subDir, 0o755);
+    }
   });
 });

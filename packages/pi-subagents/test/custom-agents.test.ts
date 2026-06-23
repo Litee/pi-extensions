@@ -1,4 +1,4 @@
-import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { chmodSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
@@ -502,4 +502,69 @@ Bad isolation.`);
     expect(config!.extSelectors).toBeUndefined();
   });
 });
+});
+
+describe("loadCustomAgents — error recovery", () => {
+  let tmpDir2: string;
+  let savedHome: string | undefined;
+  let savedAgentDir: string | undefined;
+
+  beforeEach(() => {
+    tmpDir2 = mkdtempSync(join(tmpdir(), "pi-test-agents-error-"));
+    savedHome = process.env['HOME'];
+    savedAgentDir = process.env['PI_CODING_AGENT_DIR'];
+    process.env['HOME'] = tmpDir2;
+    process.env['PI_CODING_AGENT_DIR'] = join(tmpDir2, '.pi', 'agent');
+  });
+
+  afterEach(() => {
+    if (savedHome !== undefined) process.env['HOME'] = savedHome;
+    else delete process.env['HOME'];
+    if (savedAgentDir !== undefined) process.env['PI_CODING_AGENT_DIR'] = savedAgentDir;
+    else delete process.env['PI_CODING_AGENT_DIR'];
+    rmSync(tmpDir2, { recursive: true, force: true });
+  });
+
+  it("returns empty map when the agents directory does not exist (readdirSync throws)", () => {
+    // No .pi/agents directory created — readdirSync will throw ENOENT
+    const result = loadCustomAgents(tmpDir2);
+    expect(result.size).toBe(0);
+  });
+
+  it("skips individual .md files that are unreadable (readFileSync throws)", () => {
+    const agentDir2 = join(tmpDir2, ".pi", "agents");
+    mkdirSync(agentDir2, { recursive: true });
+
+    // Create a readable agent file
+    writeFileSync(join(agentDir2, "good-agent.md"), "---\ndescription: Good\n---\nBody.");
+
+    // Create an unreadable agent file
+    const badFile = join(agentDir2, "bad-agent.md");
+    writeFileSync(badFile, "---\ndescription: Bad\n---\nBody.");
+    chmodSync(badFile, 0o000);
+
+    try {
+      const result = loadCustomAgents(tmpDir2);
+      // good-agent was loaded; bad-agent was skipped
+      expect(result.has("good-agent")).toBe(true);
+      expect(result.has("bad-agent")).toBe(false);
+    } finally {
+      chmodSync(badFile, 0o644);
+    }
+  });
+
+  it("returns empty map when readdirSync throws on an existing agents dir (line 38)", () => {
+    // Create agents directory but make it unreadable → readdirSync throws EACCES
+    const agentDir3 = join(tmpDir2, ".pi", "agents");
+    mkdirSync(agentDir3, { recursive: true });
+    chmodSync(agentDir3, 0o000);
+
+    try {
+      const result = loadCustomAgents(tmpDir2);
+      // The readdirSync failure is swallowed — returns an empty/partial map
+      expect(result.size).toBe(0);
+    } finally {
+      chmodSync(agentDir3, 0o755);
+    }
+  });
 });

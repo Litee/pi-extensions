@@ -760,3 +760,72 @@ describe("AgentWidget — status bar text with queued count", () => {
     expect(lastStatus).toContain("queued");
   });
 });
+
+// ---------------------------------------------------------------------------
+// Overflow with queued + finished agents (lines 424-425, 430-434)
+// ---------------------------------------------------------------------------
+
+describe("AgentWidget — overflow with queued and finished agents", () => {
+  function makeRunningRec(id: string): AgentRecord {
+    return {
+      id,
+      type: "general-purpose",
+      description: `running-${id}`,
+      status: "running",
+      toolUses: 0,
+      startedAt: Date.now() - 500,
+      lifetimeUsage: { input: 0, output: 0, cacheWrite: 0 },
+      compactionCount: 0,
+    };
+  }
+
+  function makeFinishedRec(id: string): AgentRecord {
+    return {
+      id,
+      type: "general-purpose",
+      description: `done-${id}`,
+      status: "completed",
+      toolUses: 0,
+      startedAt: Date.now() - 3000,
+      completedAt: Date.now() - 1000,
+      lifetimeUsage: { input: 0, output: 0, cacheWrite: 0 },
+      compactionCount: 0,
+    };
+  }
+
+  function makeQueuedRec(id: string): AgentRecord {
+    return {
+      id,
+      type: "general-purpose",
+      description: `queued-${id}`,
+      status: "queued",
+      toolUses: 0,
+      startedAt: Date.now(),
+      lifetimeUsage: { input: 0, output: 0, cacheWrite: 0 },
+      compactionCount: 0,
+    };
+  }
+
+  it("pushes queued line and hides overflow finished agents when budget is tight", () => {
+    // 5 finished + 3 running (6 lines) + 1 queued = 12 total body → overflow (maxBody=11)
+    // Budget=10; running takes 6 → budget=4; queued takes 1 → budget=3; finished: 3 fit, 2 hidden.
+    const finished = ["f1", "f2", "f3", "f4", "f5"].map(makeFinishedRec);
+    const running = ["r1", "r2", "r3"].map(makeRunningRec);
+    const queued = [makeQueuedRec("q1")];
+
+    const allRecs = [...finished, ...running, ...queued];
+    const { widget, getFactory } = makeStubWidget(allRecs);
+
+    // Register finished agents
+    for (const rec of finished) {
+      widget.markFinished(rec.id);
+    }
+    widget.update();
+    const lines = getFactory()!(stubTui, plainTheme).render();
+
+    // Should show overflow indicator
+    expect(lines.some(l => l.includes("more"))).toBe(true);
+    // Should include queued indicator
+    expect(lines.some(l => l.includes("queued"))).toBe(true);
+  });
+});

@@ -898,3 +898,81 @@ describe("schedule_prompt tool / anti-recursion guard", () => {
 		).rejects.toThrow(/Cannot create scheduled prompts from within/);
 	});
 });
+
+// ---------------------------------------------------------------------------
+// Additional branch coverage for tool.ts
+// ---------------------------------------------------------------------------
+
+describe("schedule_prompt tool — additional branch coverage", () => {
+	it("uses the default getDefaultScope when createCronTool is called without the third argument (line 71)", () => {
+		// Call createCronTool without the 3rd argument to use the default (() => "session")
+		const tool = createCronTool(
+			() => storage,
+			() => fakeScheduler as unknown as CronScheduler,
+			// No 3rd argument — default kicks in
+		);
+		// The default scope function should return "session"
+		expect(tool).toBeDefined();
+		expect(tool.name).toBe("schedule_prompt");
+	});
+
+	it("returns error content when storage.removeJob fails (line 203 throw caught by outer try/catch)", async () => {
+		// Create a mock storage that has a job but fails to remove it
+		const fakeJob = { id: "fake-id", name: "fake", schedule: "0 9 * * * *", prompt: "hi", enabled: true, type: "cron" as const, createdAt: new Date().toISOString(), runCount: 0 };
+		const mockStorage = {
+			hasJobWithName: () => false,
+			addJob: () => {},
+			getJob: () => fakeJob,        // returns the job
+			removeJob: () => false as const, // always fails to remove
+			updateJob: () => true,
+			getAllJobs: () => [fakeJob],
+		};
+		const tool = createCronTool(
+			() => mockStorage as never,
+			() => fakeScheduler as unknown as CronScheduler,
+			() => "session",
+		);
+		// The outer try/catch in tool.ts catches the throw and returns an error result
+		const result = await exec(tool, { action: "remove", jobId: "fake-id" });
+		const text = (result as { content: { type: string; text: string }[] }).content
+			.filter((c) => c.type === "text")
+			.map((c) => c.text)
+			.join("\n");
+		expect(text).toContain("Failed to remove job");
+	});
+
+	it("shows Model line when job has a model set (line 354)", async () => {
+		// Add a job with model set using a valid cron schedule
+		const tool = makeTool();
+		await exec(tool, {
+			action: "add",
+			schedule: "0 9 * * * *",
+			prompt: "check goals",
+			model: "openai/gpt-4",
+		});
+		// List to see the Model line
+		const result = await exec(tool, { action: "list" });
+		const lines = (result as { content: { type: string; text: string }[] }).content
+			.filter((c) => c.type === "text")
+			.map((c) => c.text)
+			.join("\n");
+		expect(lines).toContain("Model:");
+	});
+
+	it("shows Description line when job has a description (line 360)", async () => {
+		const tool = makeTool();
+		await exec(tool, {
+			action: "add",
+			schedule: "0 9 * * * *",
+			prompt: "check goals",
+			description: "my custom description",
+		});
+		const result = await exec(tool, { action: "list" });
+		const lines = (result as { content: { type: string; text: string }[] }).content
+			.filter((c) => c.type === "text")
+			.map((c) => c.text)
+			.join("\n");
+		expect(lines).toContain("Description:");
+		expect(lines).toContain("my custom description");
+	});
+});

@@ -776,3 +776,138 @@ describe("plan-mode — applyPlanModeConfig edge cases", () => {
 		expect(pi.setThinkingLevel).not.toHaveBeenCalled();
 	});
 });
+
+// ---------------------------------------------------------------------------
+// context event handler — branch coverage (lines 218-219 in index.ts)
+// ---------------------------------------------------------------------------
+
+describe("plan-mode context handler", () => {
+	it("returns early (undefined) when plan mode is enabled — filters are bypassed", async () => {
+		const pi = makeFakePi();
+		const ctx = makeFakeCtx();
+		planModeExtension(pi as never);
+
+		// Enable plan mode by calling the /plan command handler
+		const commandCalls = pi.registerCommand.mock.calls as Array<
+			[string, { handler: (args: unknown, ctx: unknown) => Promise<void> }]
+		>;
+		const planHandler = commandCalls.find(([name]) => name === "plan")![1].handler;
+		// Select "Stay in plan mode" so the handler enables plan mode and leaves
+		ctx.ui.select = vi.fn(() => "Stay in plan mode");
+		await planHandler({}, ctx);
+
+		// Retrieve the "context" handler
+		const onCalls = pi.on.mock.calls as Array<[string, (...args: unknown[]) => unknown]>;
+		const contextHandler = onCalls.find(([e]) => e === "context")?.[1];
+		expect(contextHandler).toBeDefined();
+
+		// When plan mode is enabled, the handler must return early (falsy / undefined)
+		// so pi doesn't apply the filter that strips plan-mode messages.
+		const fakeMessages = [{ role: "assistant", content: "plan mode content" }];
+		const result = contextHandler?.({ messages: fakeMessages });
+		expect(result).toBeUndefined();
+	});
+
+	it("returns filtered messages when plan mode is disabled", () => {
+		const pi = makeFakePi();
+		planModeExtension(pi as never);
+
+		// Plan mode starts disabled; retrieve the context handler
+		const onCalls = pi.on.mock.calls as Array<[string, (...args: unknown[]) => unknown]>;
+		const contextHandler = onCalls.find(([e]) => e === "context")?.[1];
+		expect(contextHandler).toBeDefined();
+
+		// With plan mode disabled the handler should return a filtered messages object
+		const fakeMessages: unknown[] = [];
+		const result = contextHandler?.({ messages: fakeMessages });
+		// The result is { messages: [...] }; we only care that it's not undefined
+		expect(result).toMatchObject({ messages: expect.any(Array) as unknown });
+	});
+});
+
+// ---------------------------------------------------------------------------
+// before_agent_start event handler — branch coverage (lines 224-225 in index.ts)
+// ---------------------------------------------------------------------------
+
+describe("plan-mode before_agent_start handler", () => {
+	it("returns undefined when plan mode is disabled", () => {
+		const pi = makeFakePi();
+		planModeExtension(pi as never);
+
+		const onCalls = pi.on.mock.calls as Array<[string, (...args: unknown[]) => unknown]>;
+		const handler = onCalls.find(([e]) => e === "before_agent_start")?.[1];
+		expect(handler).toBeDefined();
+
+		// Plan mode is disabled by default — handler should return undefined
+		expect(handler?.()).toBeUndefined();
+	});
+
+	it("returns a plan-mode context message when plan mode is enabled", async () => {
+		const pi = makeFakePi();
+		const ctx = makeFakeCtx();
+		planModeExtension(pi as never);
+
+		// Enable plan mode
+		const commandCalls = pi.registerCommand.mock.calls as Array<
+			[string, { handler: (args: unknown, ctx: unknown) => Promise<void> }]
+		>;
+		const planHandler = commandCalls.find(([name]) => name === "plan")![1].handler;
+		ctx.ui.select = vi.fn(() => "Stay in plan mode");
+		await planHandler({}, ctx);
+
+		// Retrieve the before_agent_start handler
+		const onCalls = pi.on.mock.calls as Array<[string, (...args: unknown[]) => unknown]>;
+		const handler = onCalls.find(([e]) => e === "before_agent_start")?.[1];
+		expect(handler).toBeDefined();
+
+		// Should return a { message: ... } object
+		const result = handler?.() as { message?: unknown } | undefined;
+		expect(result).not.toBeUndefined();
+		expect(result).toMatchObject({ message: expect.anything() as unknown });
+	});
+});
+
+// ---------------------------------------------------------------------------
+// Shortcut handler coverage (lines 196-197, 208-209 in index.ts)
+// ---------------------------------------------------------------------------
+
+describe("plan-mode shortcut handlers", () => {
+	it("ctrl+alt+p shortcut handler toggles plan mode and persists state", async () => {
+		const pi = makeFakePi();
+		const ctx = makeFakeCtx();
+		// Set select to "Stay in plan mode" so that toggling into plan mode works
+		ctx.ui.select = vi.fn(() => "Stay in plan mode");
+		planModeExtension(pi as never);
+
+		const calls = pi.registerShortcut.mock.calls as Array<
+			[string, { description: string; handler: (ctx: unknown) => Promise<void> }]
+		>;
+		const ctrlAltP = calls.find(([key]) => key === "ctrl+alt+p");
+		expect(ctrlAltP).toBeDefined();
+
+		// Calling the handler should toggle plan mode (lines 196-197)
+		await ctrlAltP![1].handler(ctx);
+
+		// Verify appendEntry was called (persistState writes a session entry)
+		expect(pi.appendEntry).toHaveBeenCalled();
+	});
+
+	it("shift+tab shortcut handler toggles plan mode and persists state", async () => {
+		const pi = makeFakePi();
+		const ctx = makeFakeCtx();
+		ctx.ui.select = vi.fn(() => "Stay in plan mode");
+		planModeExtension(pi as never);
+
+		const calls = pi.registerShortcut.mock.calls as Array<
+			[string, { description: string; handler: (ctx: unknown) => Promise<void> }]
+		>;
+		const shiftTab = calls.find(([key]) => key === "shift+tab");
+		expect(shiftTab).toBeDefined();
+
+		// Calling the handler should toggle plan mode (lines 208-209)
+		await shiftTab![1].handler(ctx);
+
+		// Verify appendEntry was called (persistState writes a session entry)
+		expect(pi.appendEntry).toHaveBeenCalled();
+	});
+});

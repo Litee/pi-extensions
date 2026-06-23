@@ -408,3 +408,53 @@ describe("JobsView — lastStatus icon variants", () => {
 		expect(lines.some(l => l.includes("error-job") && l.includes("!"))).toBe(true);
 	});
 });
+
+// ---------------------------------------------------------------------------
+// Additional branch coverage
+// ---------------------------------------------------------------------------
+
+describe("JobsView — selected footer with lastRun set (line 215 true branch)", () => {
+	it("shows Last: when the selected job has a lastRun timestamp", () => {
+		storage.addJob(mkJob({ id: "a", name: "ran-before", lastRun: "2025-01-01T00:00:00.000Z" }));
+		const view = makeView();
+		const joined = renderLines(view).join("\n");
+		expect(joined).toContain("Last:");
+	});
+});
+
+describe("JobsView — selected footer with next run available (line 214 true branch)", () => {
+	it("shows Next: when getNextRun returns a Date", () => {
+		storage.addJob(mkJob({ id: "a", name: "has-next" }));
+		// Override mock to return a specific Date
+		vi.mocked(scheduler.getNextRun).mockReturnValue(new Date("2099-06-01T12:00:00.000Z"));
+		const view = makeView();
+		const joined = renderLines(view).join("\n");
+		expect(joined).toContain("Next:");
+	});
+});
+
+describe("JobsView — foreign job icon variants (line 246 branches)", () => {
+	it("shows '✗' for a disabled foreign job", () => {
+		storage.addJob(mkJob({ id: "a", name: "mine", session: "sess-A" }));
+		storage.addJob(mkJob({ id: "b", name: "foreign-disabled", session: "sess-B", enabled: false }));
+		const view = makeView("sess-A");
+		const joined = renderLines(view).join("\n");
+		expect(joined).toContain("✗");
+	});
+
+	it("shows '!' for a foreign job with lastStatus=error", () => {
+		storage.addJob(mkJob({ id: "a", name: "mine", session: "sess-A" }));
+		storage.addJob(mkJob({ id: "b", name: "foreign-err", session: "sess-B", lastStatus: "error" }));
+		const view = makeView("sess-A");
+		const joined = renderLines(view).join("\n");
+		expect(joined).toContain("!");
+	});
+
+	it("shows '✓' for an enabled foreign job with no error status", () => {
+		storage.addJob(mkJob({ id: "a", name: "mine", session: "sess-A" }));
+		storage.addJob(mkJob({ id: "b", name: "foreign-ok", session: "sess-B", enabled: true }));
+		const view = makeView("sess-A");
+		const joined = renderLines(view).join("\n");
+		expect(joined).toContain("✓");
+	});
+});

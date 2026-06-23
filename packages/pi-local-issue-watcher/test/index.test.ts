@@ -1957,6 +1957,42 @@ describe("/local-issue-watcher message renderer (#0028)", () => {
 			}
 		}
 	});
+
+	it("renderer handles array content — filters non-text parts and joins text parts", () => {
+		// This covers the defensive branch in the renderer where message.content is an
+		// array of content blocks instead of a plain string (index.ts lines 553-554).
+		const pi = makeFakePi();
+		extensionWithDbRoot(pi, dbRoot);
+
+		const [customType, renderer] = pi.registerMessageRenderer.mock.calls[0] as [
+			string,
+			(
+				message: { customType: string; content: unknown },
+				options: { expanded: boolean },
+				theme: typeof fakeTheme,
+			) => unknown,
+		];
+
+		// Array-form content: two text parts and one non-text part
+		const arrayContent = [
+			{ type: "text", text: "first line" },
+			{ type: "image", url: "http://example.com/img.png" }, // non-text — should be filtered
+			{ type: "text", text: "second line" },
+		];
+		const result = renderer(
+			{ customType, content: arrayContent },
+			{ expanded: false },
+			fakeTheme,
+		);
+		const lines = renderText(result);
+		const joined = lines.join("\n");
+
+		// Both text entries must appear; the image entry must be filtered out
+		expect(joined).toContain("first line");
+		expect(joined).toContain("second line");
+		// Extension header still shown
+		expect(joined).toContain(customType);
+	});
 });
 
 // ---------------------------------------------------------------------------
@@ -2209,3 +2245,5 @@ describe("one-shot parse-failure toast (#0029)", () => {
 		expect(parseFailureCalls[0]?.[1]).toBe("warning");
 	});
 });
+
+

@@ -102,3 +102,41 @@ describe("detectEnv", () => {
     }
   });
 });
+
+  it("falls back to branch='unknown' when pi.exec throws for git branch", async () => {
+    // Simulate a pi.exec that succeeds for rev-parse (isGitRepo=true) but
+    // throws for git branch --show-current (mimicking a timeout or crash).
+    let callCount = 0;
+    const faultyPi = {
+      exec: (_cmd: string, args: string[]) => {
+        callCount++;
+        if (args.includes("--is-inside-work-tree")) {
+          return Promise.resolve({ stdout: "true", stderr: "", code: 0, killed: false });
+        }
+        // git branch --show-current throws
+        return Promise.reject(new Error("git process timed out"));
+      },
+    } as unknown as ExtensionAPI;
+
+    const env = await detectEnv(faultyPi, import.meta.dirname);
+    expect(env.isGitRepo).toBe(true);
+    expect(env.branch).toBe("unknown");
+    expect(callCount).toBe(2);
+  });
+
+  it("falls back to branch='unknown' when git branch --show-current returns non-zero exit code", async () => {
+    // git is found and repo is valid, but branch command fails with non-zero code
+    const nonZeroPi = {
+      exec: (_cmd: string, args: string[]) => {
+        if (args.includes("--is-inside-work-tree")) {
+          return Promise.resolve({ stdout: "true", stderr: "", code: 0, killed: false });
+        }
+        // git branch --show-current returns non-zero (e.g., detached HEAD in some older gits)
+        return Promise.resolve({ stdout: "", stderr: "", code: 128, killed: false });
+      },
+    } as unknown as ExtensionAPI;
+
+    const env = await detectEnv(nonZeroPi, import.meta.dirname);
+    expect(env.isGitRepo).toBe(true);
+    expect(env.branch).toBe("unknown");
+  });

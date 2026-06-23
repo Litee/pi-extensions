@@ -147,3 +147,34 @@ describe("playAudioFile — win32", () => {
 		);
 	});
 });
+
+// ---------------------------------------------------------------------------
+// playAudioFile — AbortSignal branch (opts = { signal })
+// ---------------------------------------------------------------------------
+
+describe("playAudioFile — with AbortSignal (opts branch)", () => {
+	beforeEach(() => {
+		vi.resetAllMocks();
+		mockPlatform.mockReturnValue("darwin");
+	});
+
+	it("passes opts with signal when an AbortSignal is provided (darwin path)", async () => {
+		// Capture the options argument passed to execFile
+		let capturedOpts: unknown = undefined;
+		mockExecFile.mockImplementation((_cmd, _args, optsOrCb?: unknown, maybeCb?: unknown) => {
+			// Three-argument form: execFile(cmd, args, opts, cb) or execFile(cmd, args, cb)
+			if (typeof optsOrCb === "object" && optsOrCb !== null) {
+				capturedOpts = optsOrCb;
+			}
+			const cb = (typeof optsOrCb === "function" ? optsOrCb : maybeCb) as ExecFileCallback | undefined;
+			cb?.(null, "", "");
+			return {} as ReturnType<typeof execFile>;
+		});
+
+		const ac = new AbortController();
+		await playAudioFile("/tmp/test.wav", ac.signal);
+
+		// The signal must have been forwarded inside opts
+		expect(capturedOpts).toMatchObject({ signal: ac.signal });
+	});
+});

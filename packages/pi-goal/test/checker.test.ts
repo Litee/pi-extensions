@@ -302,3 +302,49 @@ describe("createCompletionChecker.run", () => {
 		expect(result).toBeUndefined();
 	});
 });
+
+  it("passes reasoning:'minimal' option when model.reasoning is true (line 178)", async () => {
+    const reasoningModel = { reasoning: true, id: "claude-opus" };
+    const capturedOptions: Array<Record<string, unknown>> = [];
+    const completeSimple = vi.fn((_model: unknown, _config: unknown, opts: Record<string, unknown>) => {
+      capturedOptions.push(opts ?? {});
+      return {
+        content: [{ type: "text", text: '{"verdict":"incomplete","confidence":"low","reason":""}' }],
+      };
+    });
+
+    const checker = createCompletionChecker({
+      completeSimple: completeSimple as never,
+      getModel: (() => undefined) as never,
+      ctx: fakeCtx({ model: reasoningModel, apiKey: "k" }),
+      config: { modelOverride: () => undefined },
+    });
+
+    const ctrl = new AbortController();
+    await checker.run({ objective: "x", transcript: "y", signal: ctrl.signal });
+
+    // The reasoning option should have been set to "minimal"
+    expect(capturedOptions[0]?.["reasoning"]).toBe("minimal");
+  });
+
+  it("returns undefined when signal is aborted after completeSimple resolves (line 199)", async () => {
+    const ctrl = new AbortController();
+    const completeSimple = vi.fn(() => {
+      // Abort the signal mid-execution, just before the aborted check
+      ctrl.abort();
+      return {
+        content: [{ type: "text", text: '{"verdict":"complete","confidence":"high","reason":"done"}' }],
+      };
+    });
+
+    const checker = createCompletionChecker({
+      completeSimple: completeSimple as never,
+      getModel: (() => undefined) as never,
+      ctx: fakeCtx({ apiKey: "k" }),
+      config: { modelOverride: () => undefined },
+    });
+
+    const result = await checker.run({ objective: "x", transcript: "y", signal: ctrl.signal });
+    // Signal was aborted after completeSimple, so checker returns undefined
+    expect(result).toBeUndefined();
+  });

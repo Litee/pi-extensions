@@ -1,5 +1,5 @@
 import { execFileSync } from "node:child_process";
-import { existsSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
@@ -229,6 +229,28 @@ describe("worktree", () => {
     }, 30000);
   });
 
+  describe("createWorktree — subdir (workPath)", () => {
+    it("sets workPath to a subdirectory of the worktree when cwd is inside a monorepo package", () => {
+      // Create a subdirectory inside the repo and use that as cwd
+      const pkgDir = join(repoDir, "packages", "my-pkg");
+      mkdirSync(pkgDir, { recursive: true });
+
+      const wt = createWorktree(pkgDir, "subdir-1");
+      if (wt) createdWorktreePaths.push(wt.path);
+
+      expect(wt).toBeDefined();
+      // workPath must point inside the worktree at the same relative path
+      expect(wt!.workPath).toBe(join(wt!.path, "packages", "my-pkg"));
+      // workPath must differ from path (it's a subdir, not the root)
+      expect(wt!.workPath).not.toBe(wt!.path);
+
+      // Inline cleanup
+      try {
+        execFileSync("git", ["worktree", "remove", "--force", wt!.path], { cwd: repoDir, stdio: "pipe" });
+      } catch { /* ignore */ }
+    }, 30000);
+  });
+
   describe("pruneWorktrees", () => {
     it("does not throw on a clean repo", () => {
       expect(() => pruneWorktrees(repoDir)).not.toThrow();
@@ -242,5 +264,26 @@ describe("worktree", () => {
         rmSync(nonGit, { recursive: true, force: true });
       }
     });
+  });
+
+  describe("cleanupWorktree — error recovery", () => {
+    it("returns hasChanges:false when git commands fail inside the worktree", () => {
+      // Create a real worktree so existsSync(worktree.path) returns true,
+      // then corrupt the .git pointer so every git command inside the
+      // worktree throws. This exercises the outer catch block (lines 162-163).
+      const wt = createWorktree(repoDir, "error-recovery-1")!;
+      if (wt) createdWorktreePaths.push(wt.path);
+      expect(wt).toBeDefined();
+
+      // Each worktree contains a `.git` text file that points back to the
+      // main repo. Overwriting it with a broken path makes all git subcommands
+      // run inside the worktree fail (git status, etc.).
+      const gitFile = join(wt.path, ".git");
+      writeFileSync(gitFile, "gitdir: /nonexistent/path/.git", "utf8");
+
+      // cleanupWorktree must NOT throw and must report no changes.
+      const result = cleanupWorktree(repoDir, wt, "error recovery test");
+      expect(result.hasChanges).toBe(false);
+    }, 30000);
   });
 });

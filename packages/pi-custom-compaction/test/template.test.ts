@@ -225,3 +225,47 @@ describe("discoverTemplate — tilde path expansion in explicit template", () =>
 		assert.ok(result.fallbackReason?.includes("not found") ?? result.fallbackReason !== undefined);
 	});
 });
+
+// ---------------------------------------------------------------------------
+// discoverTemplate — profileName branch (lines 41-45 in template.ts)
+// ---------------------------------------------------------------------------
+
+describe("discoverTemplate — named profile lookup", () => {
+	let cwd = "";
+
+	beforeEach(() => {
+		cwd = mkdtempSync(join(tmpdir(), "pi-cc-template-profile-"));
+	});
+
+	afterEach(() => {
+		if (cwd) rmSync(cwd, { recursive: true, force: true });
+	});
+
+	it("uses the project-level profile template when profileName is provided and file exists", () => {
+		// TEMPLATE_DIR = "compaction-templates", profileSuffix = "" (empty for main template)
+		// profileFile = "myprofile.md"
+		const profileDir = resolve(cwd, ".pi", "compaction-templates");
+		mkdirSync(profileDir, { recursive: true });
+		const profilePath = join(profileDir, "myprofile.md");
+		writeFileSync(profilePath, "Profile template content", "utf8");
+
+		const result = discoverTemplate(cwd, "myprofile");
+		assert.equal(result.template, "Profile template content");
+		assert.equal(result.resolvedPath, profilePath);
+	});
+
+	it("falls through to default template when profile file does not exist", (t) => {
+		// Profile file does NOT exist → should fall back to default template
+		// (no project .pi/compaction-template.md either → empty result)
+		const globalDefault = join(homedir(), ".pi", "agent", "compaction-template.md");
+		if (existsSync(globalDefault)) {
+			t.skip("global default template exists, cannot assert empty fallback");
+			return;
+		}
+
+		const result = discoverTemplate(cwd, "nonexistent-profile");
+		// Template is not found; result has no template key (or fallbackReason)
+		assert.ok(result.template === undefined || result.fallbackReason !== undefined || Object.keys(result).length === 0,
+			`Expected no template in result, got: ${JSON.stringify(result)}`);
+	});
+});

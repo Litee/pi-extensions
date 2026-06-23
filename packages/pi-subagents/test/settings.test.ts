@@ -497,3 +497,54 @@ describe("settings persistence", () => {
     });
   });
 });
+// ---------------------------------------------------------------------------
+// Coverage for settings.ts lines 133-137 (disableDefaultAgents, toolDescriptionMode)
+// ---------------------------------------------------------------------------
+
+describe("sanitizer — disableDefaultAgents and toolDescriptionMode", () => {
+  let projectDir2: string;
+  let projectFile2: () => string;
+
+  beforeEach(() => {
+    projectDir2 = mkdtempSync(join(tmpdir(), "pi-subagent-settings-extra-"));
+    projectFile2 = () => join(projectDir2, ".pi", "subagents.json");
+  });
+
+  afterEach(() => {
+    rmSync(projectDir2, { recursive: true, force: true });
+  });
+
+  function write2(obj: unknown): void {
+    mkdirSync(join(projectDir2, ".pi"), { recursive: true });
+    writeFileSync(projectFile2(), JSON.stringify(obj), "utf8");
+  }
+
+  it("accepts disableDefaultAgents: true", () => {
+    write2({ disableDefaultAgents: true });
+    expect(loadSettings(projectDir2)).toEqual({ disableDefaultAgents: true });
+  });
+
+  it("accepts disableDefaultAgents: false", () => {
+    write2({ disableDefaultAgents: false });
+    expect(loadSettings(projectDir2)).toEqual({ disableDefaultAgents: false });
+  });
+
+  it("drops non-boolean disableDefaultAgents", () => {
+    write2({ disableDefaultAgents: "yes" });
+    expect(loadSettings(projectDir2).disableDefaultAgents).toBeUndefined();
+  });
+
+  it("accepts valid toolDescriptionMode values", () => {
+    for (const mode of ["full", "compact", "custom"]) {
+      write2({ toolDescriptionMode: mode });
+      expect(loadSettings(projectDir2)).toEqual({ toolDescriptionMode: mode });
+    }
+  });
+
+  it("drops invalid toolDescriptionMode values", () => {
+    write2({ toolDescriptionMode: "verbose" });
+    expect(loadSettings(projectDir2).toolDescriptionMode).toBeUndefined();
+    write2({ toolDescriptionMode: 42 });
+    expect(loadSettings(projectDir2).toolDescriptionMode).toBeUndefined();
+  });
+});
