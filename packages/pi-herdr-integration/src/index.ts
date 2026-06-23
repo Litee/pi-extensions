@@ -23,7 +23,8 @@
  * calls and warning toasts. A retry fires when the session name changes, or
  * when `session_start` fires (which always resets `lastAttemptedName`).
  *
- * No-op when `HERDR_ENV !== "1"` (not running inside herdr).
+ * Outside herdr (`HERDR_ENV !== "1"`), the extension registers nothing — no
+ * command, no event handlers — so it is completely invisible to pi.
  */
 
 import type { ExtensionAPI, ExtensionCommandContext, ExtensionContext } from "@earendil-works/pi-coding-agent";
@@ -42,6 +43,11 @@ import { STATE_CUSTOM_TYPE } from "./state.js";
 const SUBAGENT_NAME_RE = /^[\w-]+#[0-9a-f]{6,}$/i;
 
 export default function createExtension(pi: ExtensionAPI): void {
+	// Everything this extension does requires herdr. Outside herdr, register
+	// nothing — no command, no handlers — so /name-session-and-space does not
+	// appear in pi's command palette and no inert event handlers run.
+	if (!isInsideHerdr(process.env)) return;
+
 	/** The most recently successfully applied name — guards against re-renaming. */
 	let lastAppliedName: string | undefined;
 	/**
@@ -68,7 +74,6 @@ export default function createExtension(pi: ExtensionAPI): void {
 		ctx: ExtensionContext,
 		opts?: { force?: boolean },
 	): Promise<void> {
-		if (!isInsideHerdr(process.env)) return;
 		if (!name) return;
 		if (SUBAGENT_NAME_RE.test(name)) return;
 		if (name === lastAppliedName) return;

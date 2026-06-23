@@ -94,6 +94,23 @@ async function withEnv<T>(env: Record<string, string>, fn: () => Promise<T>): Pr
 	}
 }
 
+/**
+ * Call createExtension with HERDR_ENV deterministically set to "1", regardless
+ * of the ambient process env. This ensures handler/command registration always
+ * happens in tests that need the extension wired up — whether the test runs
+ * inside herdr (HERDR_ENV=1) or in CI (HERDR_ENV unset).
+ */
+function createExtensionInHerdr(pi: StubPi): void {
+	const saved = process.env["HERDR_ENV"];
+	process.env["HERDR_ENV"] = "1";
+	try {
+		createExtension(pi as never);
+	} finally {
+		if (saved === undefined) delete process.env["HERDR_ENV"];
+		else process.env["HERDR_ENV"] = saved;
+	}
+}
+
 async function fireSessionStart(
 	pi: StubPi,
 	ctx: ReturnType<typeof makeFakeCtx>,
@@ -116,13 +133,44 @@ async function fireAgentEnd(
 }
 
 // ---------------------------------------------------------------------------
+// Herdr gating — registration-time gate
+// ---------------------------------------------------------------------------
+
+describe("pi-herdr-integration — herdr gating", () => {
+	it("registers nothing when not running inside herdr", () => {
+		const pi = makeFakePi();
+		const saved = process.env["HERDR_ENV"];
+		delete process.env["HERDR_ENV"];
+		try {
+			createExtension(pi as never);
+		} finally {
+			if (saved === undefined) delete process.env["HERDR_ENV"];
+			else process.env["HERDR_ENV"] = saved;
+		}
+
+		expect(pi.on).not.toHaveBeenCalled();
+		expect(pi.registerCommand).not.toHaveBeenCalled();
+		expect(pi.commands.has("name-session-and-space")).toBe(false);
+	});
+
+	it("registers handlers and the command when inside herdr", () => {
+		const pi = makeFakePi();
+		createExtensionInHerdr(pi);
+
+		expect(pi.on).toHaveBeenCalledWith("session_start", expect.any(Function));
+		expect(pi.on).toHaveBeenCalledWith("agent_end", expect.any(Function));
+		expect(pi.commands.has("name-session-and-space")).toBe(true);
+	});
+});
+
+// ---------------------------------------------------------------------------
 // Wiring
 // ---------------------------------------------------------------------------
 
 describe("pi-herdr-integration — wiring", () => {
 	it("subscribes to session_start and agent_end; does NOT subscribe to session_shutdown or input; registers /name-session-and-space command", () => {
 		const pi = makeFakePi();
-		createExtension(pi as never);
+		createExtensionInHerdr(pi);
 
 		const subscribed = pi.on.mock.calls.map((c: unknown[]) => c[0] as string);
 		expect(subscribed).toContain("session_start");
@@ -138,26 +186,10 @@ describe("pi-herdr-integration — wiring", () => {
 // ---------------------------------------------------------------------------
 
 describe("pi-herdr-integration — session_start", () => {
-	it("skips when not in herdr (HERDR_ENV not set)", async () => {
-		const pi = makeFakePi({ sessionName: "my session" });
-		const ctx = makeFakeCtx();
-		createExtension(pi as never);
-
-		const saved = { ...process.env };
-		delete process.env["HERDR_ENV"];
-		try {
-			await pi.handlers.get("session_start")?.({ type: "session_start", reason: "startup" }, ctx);
-		} finally {
-			Object.assign(process.env, saved);
-		}
-
-		expect(pi.exec).not.toHaveBeenCalled();
-	});
-
 	it("skips when no session name", async () => {
 		const pi = makeFakePi({ sessionName: undefined });
 		const ctx = makeFakeCtx();
-		createExtension(pi as never);
+		createExtensionInHerdr(pi);
 
 		await fireSessionStart(pi, ctx, { HERDR_ENV: "1", HERDR_PANE_ID: "p_6" });
 
@@ -167,7 +199,7 @@ describe("pi-herdr-integration — session_start", () => {
 	it("always renames on session_start regardless of any previous state", async () => {
 		const pi = makeFakePi({ sessionName: "my session" });
 		const ctx = makeFakeCtx();
-		createExtension(pi as never);
+		createExtensionInHerdr(pi);
 
 		await fireSessionStart(pi, ctx, { HERDR_ENV: "1", HERDR_PANE_ID: "p_6" });
 
@@ -184,7 +216,7 @@ describe("pi-herdr-integration — session_start", () => {
 	it("renames on every session_start — each start is a new herdr context", async () => {
 		const pi = makeFakePi({ sessionName: "my session" });
 		const ctx = makeFakeCtx();
-		createExtension(pi as never);
+		createExtensionInHerdr(pi);
 
 		await fireSessionStart(pi, ctx, { HERDR_ENV: "1", HERDR_PANE_ID: "p_6" });
 		const afterFirst = pi.exec.mock.calls.length;
@@ -199,7 +231,7 @@ describe("pi-herdr-integration — session_start", () => {
 	it("renames on fork — fork session may be in a different workspace", async () => {
 		const pi = makeFakePi({ sessionName: "my session" });
 		const ctx = makeFakeCtx();
-		createExtension(pi as never);
+		createExtensionInHerdr(pi);
 
 		await fireSessionStart(pi, ctx, { HERDR_ENV: "1", HERDR_PANE_ID: "p_6" }, "fork");
 
@@ -210,7 +242,7 @@ describe("pi-herdr-integration — session_start", () => {
 	it("renames on resume — resumed session may be in a different workspace than when last run", async () => {
 		const pi = makeFakePi({ sessionName: "my session" });
 		const ctx = makeFakeCtx();
-		createExtension(pi as never);
+		createExtensionInHerdr(pi);
 
 		await fireSessionStart(pi, ctx, { HERDR_ENV: "1", HERDR_PANE_ID: "p_6" }, "resume");
 
@@ -224,7 +256,7 @@ describe("pi-herdr-integration — session_start", () => {
 			execImpl: () => Promise.resolve({ code: 1, stdout: "", stderr: "herdr error" }),
 		});
 		const ctx = makeFakeCtx();
-		createExtension(pi as never);
+		createExtensionInHerdr(pi);
 
 		await fireSessionStart(pi, ctx, { HERDR_ENV: "1", HERDR_PANE_ID: "p_6" });
 
@@ -245,7 +277,7 @@ describe("pi-herdr-integration — session_start", () => {
 			},
 		});
 		const ctx = makeFakeCtx();
-		createExtension(pi as never);
+		createExtensionInHerdr(pi);
 
 		await fireSessionStart(pi, ctx, { HERDR_ENV: "1", HERDR_PANE_ID: "p_6" });
 
@@ -268,7 +300,7 @@ describe("pi-herdr-integration — session_start", () => {
 			execImpl: () => Promise.resolve({ code: 1, stdout: "", stderr: "herdr error" }),
 		});
 		const ctx = makeFakeCtx();
-		createExtension(pi as never);
+		createExtensionInHerdr(pi);
 
 		await fireSessionStart(pi, ctx, { HERDR_ENV: "1", HERDR_PANE_ID: "p_6" });
 
@@ -287,7 +319,7 @@ describe("pi-herdr-integration — session_start", () => {
 			},
 		});
 		const ctx = makeFakeCtx();
-		createExtension(pi as never);
+		createExtensionInHerdr(pi);
 
 		await fireSessionStart(pi, ctx, { HERDR_ENV: "1", HERDR_PANE_ID: "p_6" });
 
@@ -309,7 +341,7 @@ describe("pi-herdr-integration — backoff guard", () => {
 			execImpl: () => Promise.resolve({ code: 1, stdout: "", stderr: "herdr error" }),
 		});
 		const ctx = makeFakeCtx();
-		createExtension(pi as never);
+		createExtensionInHerdr(pi);
 
 		await fireAgentEnd(pi, ctx, { HERDR_ENV: "1", HERDR_PANE_ID: "p_6" });
 		const callCountAfterFirst = pi.exec.mock.calls.length;
@@ -327,7 +359,7 @@ describe("pi-herdr-integration — backoff guard", () => {
 			},
 		});
 		const ctx = makeFakeCtx();
-		createExtension(pi as never);
+		createExtensionInHerdr(pi);
 
 		await fireAgentEnd(pi, ctx, { HERDR_ENV: "1", HERDR_PANE_ID: "p_6" });
 		const callCountAfterFirst = pi.exec.mock.calls.length;
@@ -342,7 +374,7 @@ describe("pi-herdr-integration — backoff guard", () => {
 			execImpl: () => Promise.resolve({ code: 1, stdout: "", stderr: "herdr error" }),
 		});
 		const ctx = makeFakeCtx();
-		createExtension(pi as never);
+		createExtensionInHerdr(pi);
 
 		await fireAgentEnd(pi, ctx, { HERDR_ENV: "1", HERDR_PANE_ID: "p_6" });
 		const callCountAfterFirst = pi.exec.mock.calls.length;
@@ -361,7 +393,7 @@ describe("pi-herdr-integration — agent_end", () => {
 	it("renames when getSessionName returns a new name after a turn", async () => {
 		const pi = makeFakePi({ sessionName: "new name" });
 		const ctx = makeFakeCtx();
-		createExtension(pi as never);
+		createExtensionInHerdr(pi);
 
 		await fireAgentEnd(pi, ctx, { HERDR_ENV: "1", HERDR_PANE_ID: "p_6" });
 
@@ -372,7 +404,7 @@ describe("pi-herdr-integration — agent_end", () => {
 	it("no-op on agent_end when name has not changed since last rename", async () => {
 		const pi = makeFakePi({ sessionName: "my session" });
 		const ctx = makeFakeCtx();
-		createExtension(pi as never);
+		createExtensionInHerdr(pi);
 
 		// First rename via session_start
 		await fireSessionStart(pi, ctx, { HERDR_ENV: "1", HERDR_PANE_ID: "p_6" });
@@ -386,7 +418,7 @@ describe("pi-herdr-integration — agent_end", () => {
 	it("renames when name changed between session_start and agent_end (i.e. user ran /name)", async () => {
 		const pi = makeFakePi({ sessionName: "original" });
 		const ctx = makeFakeCtx();
-		createExtension(pi as never);
+		createExtensionInHerdr(pi);
 
 		await fireSessionStart(pi, ctx, { HERDR_ENV: "1", HERDR_PANE_ID: "p_6" });
 
@@ -406,7 +438,7 @@ describe("pi-herdr-integration — agent_end", () => {
 	it("skips when no session name", async () => {
 		const pi = makeFakePi({ sessionName: undefined });
 		const ctx = makeFakeCtx();
-		createExtension(pi as never);
+		createExtensionInHerdr(pi);
 
 		await fireAgentEnd(pi, ctx, { HERDR_ENV: "1", HERDR_PANE_ID: "p_6" });
 
@@ -416,8 +448,9 @@ describe("pi-herdr-integration — agent_end", () => {
 	it("skips when not in herdr", async () => {
 		const pi = makeFakePi({ sessionName: "my session" });
 		const ctx = makeFakeCtx();
-		createExtension(pi as never);
+		createExtensionInHerdr(pi);
 
+		// No HERDR_PANE_ID → resolveWorkspaceId returns null immediately (no exec)
 		await fireAgentEnd(pi, ctx, {});
 
 		expect(pi.exec).not.toHaveBeenCalled();
@@ -432,7 +465,7 @@ describe("pi-herdr-integration — /name-session-and-space command", () => {
 	it("sets session name and renames herdr workspace (inside herdr)", async () => {
 		const pi = makeFakePi({ sessionName: "old name" });
 		const ctx = makeFakeCtx();
-		createExtension(pi as never);
+		createExtensionInHerdr(pi);
 
 		const handler = pi.commands.get("name-session-and-space")!;
 		await withEnv({ HERDR_ENV: "1", HERDR_PANE_ID: "p_6" }, async () => {
@@ -447,7 +480,7 @@ describe("pi-herdr-integration — /name-session-and-space command", () => {
 	it("trims whitespace from args", async () => {
 		const pi = makeFakePi();
 		const ctx = makeFakeCtx();
-		createExtension(pi as never);
+		createExtensionInHerdr(pi);
 
 		const handler = pi.commands.get("name-session-and-space")!;
 		await withEnv({ HERDR_ENV: "1", HERDR_PANE_ID: "p_6" }, async () => {
@@ -461,7 +494,7 @@ describe("pi-herdr-integration — /name-session-and-space command", () => {
 	it("empty arg is a usage no-op: does not set name or exec", async () => {
 		const pi = makeFakePi();
 		const ctx = makeFakeCtx();
-		createExtension(pi as never);
+		createExtensionInHerdr(pi);
 
 		const handler = pi.commands.get("name-session-and-space")!;
 		await handler("", ctx);
@@ -477,7 +510,7 @@ describe("pi-herdr-integration — /name-session-and-space command", () => {
 	it("whitespace-only arg is a usage no-op: does not set name or exec", async () => {
 		const pi = makeFakePi();
 		const ctx = makeFakeCtx();
-		createExtension(pi as never);
+		createExtensionInHerdr(pi);
 
 		const handler = pi.commands.get("name-session-and-space")!;
 		await handler("   ", ctx);
@@ -490,24 +523,6 @@ describe("pi-herdr-integration — /name-session-and-space command", () => {
 		);
 	});
 
-	it("outside herdr: still sets session name but does not exec herdr rename", async () => {
-		const pi = makeFakePi();
-		const ctx = makeFakeCtx();
-		createExtension(pi as never);
-
-		const handler = pi.commands.get("name-session-and-space")!;
-		const saved = { ...process.env };
-		delete process.env["HERDR_ENV"];
-		try {
-			await handler("label", ctx);
-		} finally {
-			Object.assign(process.env, saved);
-		}
-
-		expect(pi.setSessionName).toHaveBeenCalledWith("label");
-		expect(pi.exec).not.toHaveBeenCalled();
-	});
-
 	it("forces a rename past the failure backoff (explicit invocation bypasses lastAttemptedName)", async () => {
 		const pi = makeFakePi({
 			sessionName: "X",
@@ -517,7 +532,7 @@ describe("pi-herdr-integration — /name-session-and-space command", () => {
 			},
 		});
 		const ctx = makeFakeCtx();
-		createExtension(pi as never);
+		createExtensionInHerdr(pi);
 
 		// Arm lastAttemptedName = "X" via a failing agent_end rename
 		await fireAgentEnd(pi, ctx, { HERDR_ENV: "1", HERDR_PANE_ID: "p_6" });
@@ -545,7 +560,7 @@ describe("pi-herdr-integration — /name-session-and-space command", () => {
 	it("running the command twice with the same successful label renames herdr only once", async () => {
 		const pi = makeFakePi();
 		const ctx = makeFakeCtx();
-		createExtension(pi as never);
+		createExtensionInHerdr(pi);
 
 		const handler = pi.commands.get("name-session-and-space")!;
 		await withEnv({ HERDR_ENV: "1", HERDR_PANE_ID: "p_6" }, async () => {
@@ -564,7 +579,7 @@ describe("pi-herdr-integration — /name-session-and-space command", () => {
 	it("a subagent-pattern label sets the session name but does not rename herdr", async () => {
 		const pi = makeFakePi();
 		const ctx = makeFakeCtx();
-		createExtension(pi as never);
+		createExtensionInHerdr(pi);
 
 		const handler = pi.commands.get("name-session-and-space")!;
 		await withEnv({ HERDR_ENV: "1", HERDR_PANE_ID: "p_6" }, async () => {
@@ -584,7 +599,7 @@ describe("pi-herdr-integration — subagent names", () => {
 	it("skips rename when session name matches subagent pattern <agent>#<hex>", async () => {
 		const pi = makeFakePi({ sessionName: "andrey-implementer#763834d1" });
 		const ctx = makeFakeCtx();
-		createExtension(pi as never);
+		createExtensionInHerdr(pi);
 
 		await fireSessionStart(pi, ctx, { HERDR_ENV: "1", HERDR_PANE_ID: "p_6" });
 		await fireAgentEnd(pi, ctx, { HERDR_ENV: "1", HERDR_PANE_ID: "p_6" });
@@ -597,7 +612,7 @@ describe("pi-herdr-integration — subagent names", () => {
 		for (const sessionName of names) {
 			const pi = makeFakePi({ sessionName });
 			const ctx = makeFakeCtx();
-			createExtension(pi as never);
+			createExtensionInHerdr(pi);
 			await fireSessionStart(pi, ctx, { HERDR_ENV: "1", HERDR_PANE_ID: "p_6" });
 			expect(pi.exec).not.toHaveBeenCalled();
 		}
@@ -606,7 +621,7 @@ describe("pi-herdr-integration — subagent names", () => {
 	it("does not skip a human-chosen name that happens to contain a hash", async () => {
 		const pi = makeFakePi({ sessionName: "fix #123" });
 		const ctx = makeFakeCtx();
-		createExtension(pi as never);
+		createExtensionInHerdr(pi);
 
 		await fireSessionStart(pi, ctx, { HERDR_ENV: "1", HERDR_PANE_ID: "p_6" });
 
