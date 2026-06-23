@@ -23,6 +23,7 @@ import type {
 
 import {
   buildChangeChatMessage as formatChangeChatMessage,
+  targetConditionIcon,
 } from './format.js'
 import { buildTimeoutEvent, detectChanges as pollerDetectChanges, snapshotObject } from './poller.js'
 import type { S3Client } from './s3-client.js'
@@ -79,7 +80,7 @@ export class S3Watcher extends AwsBaseWatcher<S3Watch, S3Baseline, S3Event> {
       const watchIcon = w.terminal ? '🔕' : '🔔'
       const ttl = !w.terminal ? formatTimeLeft(w.timeoutAt, Date.now()) : ''
       const watchText = (ttl && ttl !== '-') ? `${watchIcon} ${ttl}` : watchIcon
-      return `s3://${w.bucket}/${w.key}  ${watchText}  ${w.target}`
+      return `s3://${w.bucket}/${w.key}  ${watchText}  ${targetConditionIcon(w.target)}`
     },
 
     renderItemRowTUI(w, _ctx): RowColumn[] {
@@ -94,7 +95,7 @@ export class S3Watcher extends AwsBaseWatcher<S3Watch, S3Baseline, S3Event> {
         : w.consecutiveErrors >= POLL_ERROR_THRESHOLD ? 'error' : 'accent'
       return [
         { name: 'uri',          text: `s3://${w.bucket}/${w.key}`, color: uriColor },
-        { name: 'target',       text: w.target, width: 10, color: 'dim' },
+        { name: 'target',       text: targetConditionIcon(w.target), width: 10, color: 'dim' },
         { name: 'watch-status', text: watchText, width: 12, color: watchColor },
       ]
     },
@@ -104,7 +105,7 @@ export class S3Watcher extends AwsBaseWatcher<S3Watch, S3Baseline, S3Event> {
         w.baseline === undefined ? 'unknown' : w.baseline.exists ? 'present' : 'absent'
       return [
         { label: 'uri',      value: `s3://${w.bucket}/${w.key}` },
-        { label: 'target',   value: w.target },
+        { label: 'target',   value: targetConditionIcon(w.target) },
         { label: 'profile',  value: w.profile },
         { label: 'region',   value: w.region ?? 'default' },
         { label: 'state',    value: state },

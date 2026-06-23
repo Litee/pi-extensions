@@ -4,6 +4,7 @@ import {
 	buildChangeChatMessage,
 	buildStartupChatMessage,
 	buildStatusLine,
+	targetConditionIcon,
 } from "../src/format.js";
 import type { S3Event, S3Watch, WatchMap } from "../src/types.js";
 
@@ -24,6 +25,18 @@ function makeWatch(overrides: Partial<S3Watch> = {}): S3Watch {
 		...overrides,
 	};
 }
+
+describe("targetConditionIcon", () => {
+	it("creation → 🐣", () => {
+		expect(targetConditionIcon("creation")).toBe("🐣");
+	});
+	it("modification → ✏️", () => {
+		expect(targetConditionIcon("modification")).toBe("✏️");
+	});
+	it("deletion → 💀", () => {
+		expect(targetConditionIcon("deletion")).toBe("💀");
+	});
+});
 
 describe("buildStatusLine", () => {
 	it("idle → muted when no watches", () => {

@@ -4,10 +4,19 @@
  * Pure functions — no I/O, no timers, no runtime state.
  */
 
-import type { S3Event, WatchMap } from "./types.js";
+import type { S3Event, TargetCondition, WatchMap } from "./types.js";
 import { formatShortTime } from "pi-watcher-core/time";
 import { statusLineColorAlias, type StatusLineColorAlias } from "pi-watcher-core/status-line";
 export type { StatusLineColorAlias } from "pi-watcher-core/status-line";
+
+/** Maps a TargetCondition to its display emoji. */
+export function targetConditionIcon(target: TargetCondition): string {
+	switch (target) {
+		case "creation": return "🐣";
+		case "modification": return "✏️";
+		case "deletion": return "💀";
+	}
+}
 
 export interface StatusLineResult {
 	text: string;

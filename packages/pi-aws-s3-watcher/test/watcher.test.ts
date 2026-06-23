@@ -491,7 +491,7 @@ describe('S3Watcher view', () => {
 
   it('renderItemRowText formats correctly', () => {
     const text = watcher.view.renderItemRowText(mockWatch)
-    expect(text).toBe('s3://my-bucket/some/key.txt  🔔  creation')
+    expect(text).toBe('s3://my-bucket/some/key.txt  🔔  🐣')
   })
 
   it('renderItemRowText shows bell-off for terminal watches', () => {
@@ -648,32 +648,32 @@ describe('S3Watcher view', () => {
 
     it('maps exists → creation in renderItemRowText', () => {
       const w = { ...baseW, target: 'creation' as const, terminal: false, consecutiveErrors: 0 }
-      expect(watcher.view.renderItemRowText(w)).toContain('creation')
+      expect(watcher.view.renderItemRowText(w)).toContain('🐣')
       expect(watcher.view.renderItemRowText(w)).not.toContain('exists')
     })
     it('maps removed → deletion in renderItemRowText', () => {
       const w = { ...baseW, target: 'deletion' as const, terminal: false, consecutiveErrors: 0 }
-      expect(watcher.view.renderItemRowText(w)).toContain('deletion')
+      expect(watcher.view.renderItemRowText(w)).toContain('💀')
     })
     it('shows modification in renderItemRowText for updated', () => {
       const w = { ...baseW, target: 'modification' as const, terminal: false, consecutiveErrors: 0 }
-      expect(watcher.view.renderItemRowText(w)).toContain('modification')
+      expect(watcher.view.renderItemRowText(w)).toContain('✏️')
     })
     it('renderItemDetail target field shows creation not exists', () => {
       const w = { ...baseW, target: 'creation' as const, terminal: false, consecutiveErrors: 0 }
       const fields = watcher.view.renderItemDetail(w, { theme: {} as never, width: 80 })
       const targetField = fields.find(f => f.label === 'target')!
-      expect(targetField.value).toBe('creation')
+      expect(targetField.value).toBe('🐣')
     })
     it('renderItemDetail target field shows deletion for removed', () => {
       const w = { ...baseW, target: 'deletion' as const, terminal: false, consecutiveErrors: 0 }
       const fields = watcher.view.renderItemDetail(w, { theme: {} as never, width: 80 })
-      expect(fields.find(f => f.label === 'target')!.value).toBe('deletion')
+      expect(fields.find(f => f.label === 'target')!.value).toBe('💀')
     })
     it('renderItemDetail target field shows modification for updated', () => {
       const w = { ...baseW, target: 'modification' as const, terminal: false, consecutiveErrors: 0 }
       const fields = watcher.view.renderItemDetail(w, { theme: {} as never, width: 80 })
-      expect(fields.find(f => f.label === 'target')!.value).toBe('modification')
+      expect(fields.find(f => f.label === 'target')!.value).toBe('✏️')
     })
   })
 
