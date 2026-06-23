@@ -214,3 +214,58 @@ describe("renderResult() — collapse / expand", () => {
 		expect(line).not.toContain("Line 3");
 	});
 });
+
+describe("renderResult() — harness-injected error (empty details)", () => {
+	const BLOB = [
+		'Validation failed for tool "ask_user_question":',
+		"  - questions.1.question: must have required properties question",
+		"",
+		"Received arguments:",
+		'{ "questions": [ { "options": [{"label":"Yes"},{"label":"No"}] } ] }',
+	].join("\n");
+
+	function harnessResult() {
+		return {
+			content: [{ type: "text" as const, text: BLOB }],
+			details: {} as unknown as import("../src/format.js").Result,
+		};
+	}
+
+	it("collapsed: single line, contains first-line text, styled error", () => {
+		const theme = makeTheme();
+		const comp = renderResult(harnessResult(), false, theme);
+		const line = firstLine(comp);
+		expect(line.split("\n")).toHaveLength(1);
+		expect(line).toContain("Validation failed for tool");
+		expect(line).toContain("<fg:error>");
+	});
+
+	it("collapsed: does NOT contain later lines or json dump", () => {
+		const theme = makeTheme();
+		const comp = renderResult(harnessResult(), false, theme);
+		const line = firstLine(comp);
+		expect(line).not.toContain("Received arguments");
+		expect(line).not.toContain("{");
+	});
+
+	it("collapsed: contains ctrl-o to expand hint", () => {
+		const theme = makeTheme();
+		const comp = renderResult(harnessResult(), false, theme);
+		expect(firstLine(comp)).toContain("ctrl-o to expand");
+	});
+
+	it("expanded: contains full blob including Received arguments and json brace", () => {
+		const theme = makeTheme();
+		const comp = renderResult(harnessResult(), true, theme);
+		const out = allText(comp);
+		expect(out).toContain("Received arguments");
+		expect(out).toContain("{");
+		expect(out).toContain("Validation failed for tool");
+	});
+
+	it("expanded: does NOT contain ctrl-o to expand hint", () => {
+		const theme = makeTheme();
+		const comp = renderResult(harnessResult(), true, theme);
+		expect(allText(comp)).not.toContain("ctrl-o to expand");
+	});
+});

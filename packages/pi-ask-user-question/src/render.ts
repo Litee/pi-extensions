@@ -38,7 +38,7 @@ export function renderResult(
 	theme: RenderTheme,
 ): Text {
 	const details = result.details;
-	if (!details || (details.error !== undefined && details.error !== "")) {
+	if (!details || (details.error !== undefined && details.error !== "") || !Array.isArray((details as { answers?: unknown }).answers)) {
 		const first = result.content[0];
 		const msg = first !== undefined && first.type === "text" ? first.text : "error";
 		if (!expanded) {
