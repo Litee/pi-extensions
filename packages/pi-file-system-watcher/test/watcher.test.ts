@@ -550,7 +550,25 @@ describe("FsWatcher view", () => {
     const text = watcher.view.renderItemRowText(mockWatch);
     expect(text).toContain("/tmp/output.json");
     expect(text).toContain("🔔");
-    expect(text).toContain("creation");
+    expect(text).toContain("🐣");
+  });
+
+  it("renderItemRowText shows 🐣 for creation target", () => {
+    const text = watcher.view.renderItemRowText({ ...mockWatch, target: "creation" });
+    expect(text).toContain("🐣");
+    expect(text).not.toContain("creation");
+  });
+
+  it("renderItemRowText shows ✏️ for modification target", () => {
+    const text = watcher.view.renderItemRowText({ ...mockWatch, target: "modification" });
+    expect(text).toContain("✏️");
+    expect(text).not.toContain("modification");
+  });
+
+  it("renderItemRowText shows 💀 for deletion target", () => {
+    const text = watcher.view.renderItemRowText({ ...mockWatch, target: "deletion" });
+    expect(text).toContain("💀");
+    expect(text).not.toContain("deletion");
   });
 
   it("renderItemRowText shows bell-off for terminal watches", () => {
@@ -614,6 +632,30 @@ describe("FsWatcher view", () => {
     expect(cols[0]!.name).toBe("path");
     expect(cols[1]!.name).toBe("target");
     expect(cols[2]!.name).toBe("watch-status");
+  });
+
+  it("renderItemRowTUI target column shows 🐣 for creation", () => {
+    const cols = watcher.view.renderItemRowTUI(
+      { ...mockWatch, target: "creation" },
+      { theme: {} as never, width: 80 },
+    );
+    expect(cols.find((c) => c.name === "target")!.text).toBe("🐣");
+  });
+
+  it("renderItemRowTUI target column shows ✏️ for modification", () => {
+    const cols = watcher.view.renderItemRowTUI(
+      { ...mockWatch, target: "modification" },
+      { theme: {} as never, width: 80 },
+    );
+    expect(cols.find((c) => c.name === "target")!.text).toBe("✏️");
+  });
+
+  it("renderItemRowTUI target column shows 💀 for deletion", () => {
+    const cols = watcher.view.renderItemRowTUI(
+      { ...mockWatch, target: "deletion" },
+      { theme: {} as never, width: 80 },
+    );
+    expect(cols.find((c) => c.name === "target")!.text).toBe("💀");
   });
 
   it("renderItemDetail includes expected fields", () => {

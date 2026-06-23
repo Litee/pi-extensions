@@ -26,7 +26,7 @@ export default function fsWatcher(pi: ExtensionAPI): void {
 // Re-exports for external consumers and tests
 // ---------------------------------------------------------------------------
 
-export { FsWatcher, formatTimeLeft, compressPath } from "./watcher.js";
+export { FsWatcher, formatTimeLeft, compressPath, targetIcon } from "./watcher.js";
 export { snapshotPath, detectChanges, buildTimeoutEvent } from "./poller.js";
 export { createFsClient } from "./fs-client.js";
 export { FsWatcherParams, MAX_TIMEOUT_SECONDS } from "./toolAction.js";

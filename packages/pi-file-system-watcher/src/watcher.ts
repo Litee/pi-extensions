@@ -42,6 +42,15 @@ import type { FsClient } from "./fs-client.js";
 /** Format the time remaining until a timeout, or special labels. */
 export { formatTimeLeft } from "pi-watcher-core/time-left";
 
+/** Map a TargetCondition to its display emoji. */
+export function targetIcon(target: TargetCondition): string {
+  switch (target) {
+    case "creation":    return "🐣";
+    case "modification": return "✏️";
+    case "deletion":    return "💀";
+  }
+}
+
 /** Shorten a long path for display, truncating from the left: `…/b/c/d`. */
 export function compressPath(path: string, maxWidth: number): string {
   if (path.length <= maxWidth) return path;
@@ -85,7 +94,7 @@ export class FsWatcher extends BaseWatcher<FsWatch, FsBaseline, FsEvent> {
       const watchIcon = w.terminal ? '🔕' : '🔔'
       const ttl = !w.terminal ? formatTimeLeft(w.timeoutAt, Date.now()) : ''
       const watchText = (ttl && ttl !== '-') ? `${watchIcon} ${ttl}` : watchIcon
-      return `${w.path}  ${watchText}  ${w.target}`;
+      return `${w.path}  ${watchText}  ${targetIcon(w.target)}`;
     },
 
     renderItemRowTUI(w, _ctx): RowColumn[] {
@@ -100,7 +109,7 @@ export class FsWatcher extends BaseWatcher<FsWatch, FsBaseline, FsEvent> {
         : w.consecutiveErrors >= POLL_ERROR_THRESHOLD ? 'error' : 'accent'
       return [
         { name: 'path',         text: w.path,    color: pathColor },
-        { name: 'target',       text: w.target,  width: 12, color: 'dim' },
+        { name: 'target',       text: targetIcon(w.target), width: 12, color: 'dim' },
         { name: 'watch-status', text: watchText, width: 12, color: watchColor },
       ];
     },
