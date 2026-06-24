@@ -1,0 +1,18 @@
+{
+  "name": "pi-llm-response-length-guard",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Pi extension that monitors streaming LLM output (thinking and response) and interrupts when either exceeds a configurable length threshold (default: thinking 8K chars, response 32K chars), sending a corrective steer message to keep responses concise.",
+  "type": "module",
+  "keywords": [
+    "pi-package"
+  ],
+  "pi": {
+    "extensions": [
+      "./src/index.ts"
+    ]
+  },
+  "peerDependencies": {
+    "@earendil-works/pi-coding-agent": "^0.79.1"
+  }
+}
