@@ -104,10 +104,10 @@ describe('compressS3Uri — ellipsis strategy', () => {
 	})
 
 	it('real-world example: long DynamoDB export path', () => {
-		const uri = 's3://andreyli-experiments-825765387814-us-east-1/2026-03-16-ims-dump/20260317-ims-ddb-export/20260317/AWSDynamoDB/01773752049869-f6f098b7/_started'
+		const uri = 's3://example-exports-123456789012-us-east-1/2024-01-15-table-dump/20240116-ddb-export/20240116/AWSDynamoDB/01700000000000-abcd1234/_started'
 		const result = compressS3Uri(uri, 80)
 		expect(result.length).toBeLessThanOrEqual(80)
-		expect(result).toContain('andreyli-experiments-825765387814-us-east-1')  // bucket preserved
+		expect(result).toContain('example-exports-123456789012-us-east-1')  // bucket preserved
 		expect(result).toContain('_started')  // last segment preserved
 		expect(result).toContain('…')
 	})
