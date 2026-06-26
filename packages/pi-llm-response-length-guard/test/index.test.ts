@@ -6,9 +6,12 @@ import lengthGuardExtension from "../src/index.js";
  */
 function createMockAPI() {
 	const registeredHandlers: Record<string, Array<(...args: unknown[]) => unknown>> = {};
+	const registeredCommands: Record<string, { description: string; handler: (...args: unknown[]) => unknown }> = {};
 
 	const pi = {
-		registerCommand: vi.fn(),
+		registerCommand: vi.fn((name: string, spec: { description: string; handler: (...args: unknown[]) => unknown }) => {
+			registeredCommands[name] = spec;
+		}),
 		registerTool: vi.fn(),
 		registerMessageRenderer: vi.fn(),
 		registerShortcut: vi.fn(),
@@ -41,6 +44,7 @@ function createMockAPI() {
 	return {
 		pi,
 		handlers: registeredHandlers,
+		commands: registeredCommands,
 	};
 }
 
@@ -109,10 +113,24 @@ describe("pi-llm-response-length-guard", () => {
 				if (!handlers[event]) handlers[event] = [];
 				handlers[event].push(handler);
 			},
+			registerCommand: vi.fn(),
 		} as unknown as import("@earendil-works/pi-coding-agent").ExtensionAPI);
 
 		expect(Object.keys(handlers)).toContain("message_update");
 		expect(Object.keys(handlers)).toContain("turn_end");
+	});
+
+	it("registers the /llm-response-length-guard slash command", () => {
+		const { commands } = createMockAPI();
+		lengthGuardExtension({
+			registerCommand: vi.fn((name: string, spec: { description: string; handler: (...args: unknown[]) => unknown }) => {
+				commands[name] = spec;
+			}),
+			on: vi.fn(),
+		} as unknown as import("@earendil-works/pi-coding-agent").ExtensionAPI);
+
+		expect(commands).toHaveProperty("llm-response-length-guard");
+		expect(commands["llm-response-length-guard"]!.description).toContain("length guard statistics");
 	});
 
 	it("does not interrupt when output is within limits", async () => {
@@ -328,5 +346,107 @@ describe("pi-llm-response-length-guard", () => {
 
 		expect(ctx._getCallHistory()).not.toContain("abort");
 		expect((pi as unknown as { sendMessageCalls: number }).sendMessageCalls).toBe(0);
+	});
+
+	it("tracks interruption count in stats", async () => {
+		const { pi, handlers } = createMockAPI();
+		lengthGuardExtension(pi);
+
+		const handler = handlers["message_update"]?.[0];
+		const ctx = makeMockContext();
+
+		// First interruption
+		const chunk1 = "x".repeat(8200);
+		await handler?.(
+			makeMessageUpdateEvent(makeAssistantEvent("thinking_start")),
+			ctx,
+		);
+		await handler?.(
+			makeMessageUpdateEvent(makeAssistantEvent("thinking_delta", chunk1)),
+			ctx,
+		);
+		expect(ctx._getCallHistory()).toContain("abort");
+
+		// End turn and start new one
+		const turnEndHandler = handlers["turn_end"]?.[0];
+		await turnEndHandler?.(undefined, undefined);
+
+		// Second interruption
+		const ctx2 = makeMockContext();
+		const chunk2 = "x".repeat(8200);
+		await handler?.(
+			makeMessageUpdateEvent(makeAssistantEvent("thinking_start")),
+			ctx2,
+		);
+		await handler?.(
+			makeMessageUpdateEvent(makeAssistantEvent("thinking_delta", chunk2)),
+			ctx2,
+		);
+		expect(ctx2._getCallHistory()).toContain("abort");
+	});
+
+	it("tracks total chars monitored across turns", async () => {
+		const { pi, handlers } = createMockAPI();
+		lengthGuardExtension(pi);
+
+		const handler = handlers["message_update"]?.[0];
+		const turnEndHandler = handlers["turn_end"]?.[0];
+		const ctx = makeMockContext();
+
+		// First turn: short thinking + short response
+		await handler?.(
+			makeMessageUpdateEvent(makeAssistantEvent("thinking_start")),
+			ctx,
+		);
+		await handler?.(
+			makeMessageUpdateEvent(makeAssistantEvent("thinking_delta", "100chars".padEnd(100, "a"))),
+			ctx,
+		);
+		await handler?.(
+			makeMessageUpdateEvent(makeAssistantEvent("text_start")),
+			ctx,
+		);
+		await handler?.(
+			makeMessageUpdateEvent(makeAssistantEvent("text_delta", "200chars".padEnd(200, "b"))),
+			ctx,
+		);
+
+		// End turn
+		await turnEndHandler?.(undefined, undefined);
+
+		// Second turn: another short response
+		const ctx2 = makeMockContext();
+		await handler?.(
+			makeMessageUpdateEvent(makeAssistantEvent("text_start")),
+			ctx2,
+		);
+		await handler?.(
+			makeMessageUpdateEvent(makeAssistantEvent("text_delta", "300chars".padEnd(300, "c"))),
+			ctx2,
+		);
+	});
+
+	it("slash command handler calls ui.notify with stats", async () => {
+		const { commands } = createMockAPI();
+		lengthGuardExtension({
+			registerCommand: vi.fn((name: string, spec: { description: string; handler: (...args: unknown[]) => unknown }) => {
+				commands[name] = spec;
+			}),
+			on: vi.fn(),
+		} as unknown as import("@earendil-works/pi-coding-agent").ExtensionAPI);
+
+		const notifyMock = vi.fn();
+		const ctx = {
+			ui: { notify: notifyMock },
+		} as unknown as import("@earendil-works/pi-coding-agent").ExtensionCommandContext;
+
+		await commands["llm-response-length-guard"]!.handler({}, ctx);
+
+		expect(notifyMock).toHaveBeenCalled();
+		const notified = (notifyMock as ReturnType<typeof vi.fn>).mock.calls[0]![0] as string;
+		expect(notified).toContain("LLM Response Length Guard");
+		expect(notified).toContain("**Interruptions:** 0");
+		expect(notified).toContain("Thresholds:");
+		expect(notified).toContain("Corrective message:");
 	});
 });
