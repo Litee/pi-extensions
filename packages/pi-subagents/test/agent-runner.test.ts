@@ -6,13 +6,17 @@ const {
   defaultResourceLoaderCtor,
   getAgentDir,
   sessionManagerInMemory,
+  sessionManagerCreate,
+  settingsManagerGetSessionDir,
   settingsManagerCreate,
 } = vi.hoisted(() => ({
   createAgentSession: vi.fn(),
   defaultResourceLoaderCtor: vi.fn(),
   getAgentDir: vi.fn(() => "/mock/agent-dir"),
   sessionManagerInMemory: vi.fn(() => ({ kind: "memory-session-manager" })),
-  settingsManagerCreate: vi.fn(() => ({ kind: "settings-manager" })),
+  sessionManagerCreate: vi.fn(() => ({ kind: "persistent-session-manager" })),
+  settingsManagerGetSessionDir: vi.fn(() => undefined as string | undefined),
+  settingsManagerCreate: vi.fn(() => ({ kind: "settings-manager", getSessionDir: settingsManagerGetSessionDir })),
 }));
 
 vi.mock("@earendil-works/pi-coding-agent", () => ({
@@ -27,7 +31,7 @@ vi.mock("@earendil-works/pi-coding-agent", () => ({
     getExtensions() { return { extensions: [] }; }
   },
   getAgentDir,
-  SessionManager: { inMemory: sessionManagerInMemory },
+  SessionManager: { inMemory: sessionManagerInMemory, create: sessionManagerCreate },
   SettingsManager: { create: settingsManagerCreate },
 }));
 
@@ -116,6 +120,9 @@ beforeEach(() => {
   defaultResourceLoaderCtor.mockClear();
   getAgentDir.mockClear();
   sessionManagerInMemory.mockClear();
+  sessionManagerCreate.mockClear();
+  settingsManagerGetSessionDir.mockReset();
+  settingsManagerGetSessionDir.mockReturnValue(undefined);
   settingsManagerCreate.mockClear();
 });
 
@@ -482,6 +489,69 @@ describe("agent-runner — extensions as array", () => {
     expect(sessionCallOpts.tools).not.toContain("Agent");
     // Mock loader returns no extensions, so no extension tools surface
     expect(sessionCallOpts.tools).not.toContain("other-ext:tool");
+  });
+});
+
+function makeAgentConfig(overrides: Record<string, unknown> = {}) {
+  return {
+    name: "test-agent",
+    description: "Test",
+    builtinToolNames: ["read", "bash", "edit", "write", "grep", "find", "ls"],
+    extensions: true as boolean | string[],
+    skills: false as boolean | string[],
+    systemPrompt: "Test.",
+    promptMode: "replace" as const,
+    inheritContext: false,
+    runInBackground: false,
+    isolated: false,
+    ...overrides,
+  };
+}
+
+describe("agent-runner session persistence", () => {
+  it("uses an in-memory session by default", async () => {
+    vi.mocked(getAgentConfig).mockReturnValueOnce(makeAgentConfig());
+    const { session } = createSession("OK");
+    createAgentSession.mockResolvedValue({ session });
+
+    await runAgent(ctx, "Explore", "go", { pi });
+
+    expect(sessionManagerInMemory).toHaveBeenCalledWith("/tmp");
+    expect(sessionManagerCreate).not.toHaveBeenCalled();
+    expect(createAgentSession).toHaveBeenCalledWith(expect.objectContaining({
+      sessionManager: { kind: "memory-session-manager" },
+    }));
+  });
+
+  it("uses pi's normal persistent session location when persistSession is true", async () => {
+    vi.mocked(getAgentConfig).mockReturnValueOnce(makeAgentConfig({ persistSession: true }));
+    settingsManagerGetSessionDir.mockReturnValue("/normal/pi/sessions");
+    const { session } = createSession("OK");
+    createAgentSession.mockResolvedValue({ session });
+
+    await runAgent(ctx, "Explore", "go", { pi });
+
+    expect(sessionManagerInMemory).not.toHaveBeenCalled();
+    expect(sessionManagerCreate).toHaveBeenCalledWith("/tmp", "/normal/pi/sessions");
+    expect(createAgentSession).toHaveBeenCalledWith(expect.objectContaining({
+      sessionManager: { kind: "persistent-session-manager" },
+    }));
+  });
+
+  it("uses a frontmatter sessionDir when persistSession is true and sessionDir is configured", async () => {
+    vi.mocked(getAgentConfig).mockReturnValueOnce(
+      makeAgentConfig({ persistSession: true, sessionDir: ".seams/pi-sessions/seam-plan-reviewer" }),
+    );
+    settingsManagerGetSessionDir.mockReturnValue("/normal/pi/sessions");
+    const { session } = createSession("OK");
+    createAgentSession.mockResolvedValue({ session });
+
+    await runAgent(ctx, "Explore", "go", { pi, cwd: "/repo" });
+
+    expect(sessionManagerCreate).toHaveBeenCalledWith(
+      "/repo",
+      "/repo/.seams/pi-sessions/seam-plan-reviewer",
+    );
   });
 });
 

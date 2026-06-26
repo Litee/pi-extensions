@@ -106,6 +106,15 @@ describe("settings persistence", () => {
     expect(loadSettings(projectDir)).toEqual({});
   });
 
+  it("round-trips fleetView (true and false); keeps boolean, drops non-boolean", () => {
+    saveSettings({ fleetView: false }, projectDir);
+    expect(loadSettings(projectDir)).toEqual({ fleetView: false });
+    saveSettings({ fleetView: true }, projectDir);
+    expect(loadSettings(projectDir)).toEqual({ fleetView: true });
+    writeProject({ fleetView: "on" });
+    expect(loadSettings(projectDir)).toEqual({}); // non-boolean dropped
+  });
+
   it("sanitize drops non-boolean schedulingEnabled silently", () => {
     writeProject({ schedulingEnabled: "yes" });
     expect(loadSettings(projectDir)).toEqual({});
@@ -314,6 +323,7 @@ describe("settings persistence", () => {
         setScopeModels: vi.fn(),
         setDisableDefaultAgents: vi.fn(),
         setToolDescriptionMode: vi.fn(),
+        setFleetView: vi.fn(),
       };
     });
 
@@ -346,6 +356,7 @@ describe("settings persistence", () => {
           defaultJoinMode: "group",
           schedulingEnabled: false,
           scopeModels: true,
+          fleetView: false,
         },
         appliers,
       );
@@ -355,6 +366,14 @@ describe("settings persistence", () => {
       expect(appliers.setDefaultJoinMode).toHaveBeenCalledWith("group");
       expect(appliers.setSchedulingEnabled).toHaveBeenCalledWith(false);
       expect(appliers.setScopeModels).toHaveBeenCalledWith(true);
+      expect(appliers.setFleetView).toHaveBeenCalledWith(false);
+    });
+
+    it("applies fleetView (true and false); skips it when absent", () => {
+      applySettings({ fleetView: true }, appliers);
+      expect(appliers.setFleetView).toHaveBeenCalledWith(true);
+      applySettings({}, appliers);
+      expect(appliers.setFleetView).toHaveBeenCalledTimes(1); // absence is "use default"
     });
 
     it("applies scopeModels: false", () => {
@@ -418,6 +437,7 @@ describe("settings persistence", () => {
         setScopeModels: vi.fn(),
         setDisableDefaultAgents: vi.fn(),
         setToolDescriptionMode: vi.fn(),
+        setFleetView: vi.fn(),
       };
     });
 
