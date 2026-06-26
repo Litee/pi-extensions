@@ -29,7 +29,7 @@ import {
 	STATE_CUSTOM_TYPE,
 } from "./state.js";
 import { ToolSnapshot } from "./tool-snapshot.js";
-import { formatToolList } from "./utils.js";
+import { computePlanModeTools, formatToolList } from "./utils.js";
 
 // Tools
 const PLAN_MODE_TOOLS = ["read", "bash", "grep", "find", "ls", "ask_user_question"];
@@ -156,8 +156,9 @@ export default function planModeExtension(pi: ExtensionAPI): void {
 			modelSnapshot = ctx.model;
 			thinkingLevelSnapshot = pi.getThinkingLevel();
 
-			toolSnapshot.save(pi.getActiveTools());
-			pi.setActiveTools(PLAN_MODE_TOOLS);
+			const activeTools = pi.getActiveTools();
+			toolSnapshot.save(activeTools);
+			pi.setActiveTools(computePlanModeTools(activeTools, PLAN_MODE_TOOLS));
 			ctx.ui.notify(`Plan mode enabled. ${formatToolList(PLAN_MODE_TOOLS)}`);
 			updateStatus(ctx);
 
@@ -293,7 +294,8 @@ export default function planModeExtension(pi: ExtensionAPI): void {
 		}
 
 		if (planModeEnabled) {
-			pi.setActiveTools(PLAN_MODE_TOOLS);
+			const savedTools = toolSnapshot.getSaved();
+			pi.setActiveTools(computePlanModeTools(savedTools ?? NORMAL_MODE_TOOLS, PLAN_MODE_TOOLS));
 			await applyPlanModeConfig(ctx);
 		}
 		updateStatus(ctx);

@@ -94,6 +94,36 @@ const SAFE_PATTERNS = [
 	/^\s*eza\b/,
 ];
 
+/** Tools that are always disabled while plan mode is active. */
+export const PLAN_MODE_DISABLED_TOOLS: ReadonlySet<string> = new Set(["edit", "write"]);
+
+/**
+ * Compute the tool set to activate when entering plan mode.
+ *
+ * Removes `edit` and `write` from `activeTools` (so any third-party write
+ * tools the user had enabled also stay active), then ensures the plan-mode
+ * read-only basics are always present.
+ *
+ * Previously the extension unconditionally replaced the entire tool set with
+ * the fixed `PLAN_MODE_TOOLS` list, which silently dropped any extra tools
+ * the user had added (e.g. MCP servers). This function preserves them.
+ *
+ * @param activeTools    The tool set currently active before entering plan mode.
+ * @param planModeBasicTools  Minimum read-only tools that must be present in plan mode.
+ * @param disabledTools  Tools to remove (defaults to PLAN_MODE_DISABLED_TOOLS).
+ */
+export function computePlanModeTools(
+	activeTools: string[],
+	planModeBasicTools: string[],
+	disabledTools: ReadonlySet<string> = PLAN_MODE_DISABLED_TOOLS,
+): string[] {
+	const without = activeTools.filter((t) => !disabledTools.has(t));
+	// De-duplicate: add basics that aren't already present.
+	const withoutSet = new Set(without);
+	const extras = planModeBasicTools.filter((t) => !withoutSet.has(t));
+	return [...without, ...extras];
+}
+
 /**
  * Format a list of tool names for display in a notification message.
  *

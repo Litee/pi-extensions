@@ -100,8 +100,8 @@ export function buildPlanModeContextMessage(): PlanModeContextMessage {
 You are in plan mode - a read-only exploration mode for safe code analysis.
 
 Restrictions:
-- You can only use: read, bash, grep, find, ls, ask_user_question
-- You CANNOT use: edit, write (file modifications are disabled)
+- Built-in edit and write tools are disabled
+- Other currently active tools remain available
 - Bash is restricted to an allowlist of read-only commands
 
 Ask clarifying questions using the ask_user_question tool.
