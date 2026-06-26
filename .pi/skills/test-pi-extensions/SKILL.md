@@ -110,6 +110,11 @@ pi uninstall <pkg>
 - **`herdr pane split` returns JSON with the new pane id at `result.pane.pane_id`.** Parse it with the `python3` one-liner in step 2; don't guess the id.
 - **A freshly split pane is at a shell prompt, but pi may not be ready immediately after `herdr pane run "$TEST_PANE" "pi --no-session"`.** Use `herdr wait output` to block on the pi input prompt before sending prompts.
 - **`pi install -l` takes effect on the next `session_start`.** The already-running pi session in your own pane won't pick up the change; the fresh session in step 2 will.
+- **`pi install -l <path>` writes a *relative* entry to the cwd's git-tracked `.pi/settings.json`, and `pi uninstall <name>` won't match a path install** ("No matching package found"). Restore with `git checkout -- .pi/settings.json`. pi also hot-reloads that file mid-session, so editing it loads/unloads the extension in already-running sessions rooted there.
+- **`pi extensions list` renders the README table, not actually-loaded packages.** Don't use it to confirm an install — check `.pi/settings.json` or observe runtime behavior.
+- **To E2E a brand-new package not yet in any settings, use a throwaway temp project** (`/tmp/x/.pi/settings.json` with the package's absolute path) and run `pi --no-session` from there — isolates extension loading *and* any file edits (e.g. the agent editing `AGENTS.md`) from the real repo.
+- **`herdr wait output --match` can match your just-sent (echoed) prompt** and return before the agent responds. Match on distinctive expected output and/or verify via a side channel (e.g. a state file).
+- **`ps eww` on pi's renamed node child ("pi") shows no env vars** even when they took effect. Trust runtime behavior over `ps` for env inspection.
 - **`herdr pane read` shows recent scrollback, not necessarily the full pi transcript.** Use `--lines` large enough to capture the full exchange. `--source recent-unwrapped` joins soft-wrapped lines back together (matches what `wait output --source recent` matched against); `--source visible` is just the current viewport.
 
 ### Workspace and pane management
