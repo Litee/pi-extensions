@@ -230,7 +230,7 @@ export default function speakExtension(pi: ExtensionAPI): void {
 						const assetsDir = getAssetsDir();
 						if (!assetsReady(assetsDir)) {
 							cmdUi.ui.notify(
-								`speak: assets not found.\n\nDownload the Supertone models with:\n  huggingface-cli download Supertone/supertonic-3\n\nThen run /speak enable again.`,
+								`speak: assets not found.\n\nDownload the Supertone models with:\n  hf download Supertone/supertonic-3\n\nThen run /speak enable again.`,
 								"warning",
 							);
 							return Promise.resolve(false);

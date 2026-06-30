@@ -33,7 +33,7 @@ install it before continuing.
 **`/speak` slash command** toggles the `speak` tool on for the current
 session. Running `/speak` a second time disables it again. If model
 assets are missing when `/speak` is run, it prints the exact
-`huggingface-cli download` command to run manually — run that command,
+`hf download` command to run manually — run that command,
 then run `/speak` again to enable.
 
 State is **scoped to the current session only** and never carries over to
@@ -94,13 +94,13 @@ used. After download, the extension auto-discovers the model from the
 HuggingFace cache. If assets are missing, `/speak` prints the install command:
 
 ```bash
-huggingface-cli download Supertone/supertonic-3
+hf download Supertone/supertonic-3
 ```
 
-Requires `huggingface_hub`:
+Requires the `hf` CLI:
 
 ```bash
-pip install huggingface_hub
+pip install hf-transfer
 ```
 
 The path is auto-discovered from the HF cache (`~/.cache/huggingface/hub/`
@@ -125,7 +125,7 @@ auto-discovered HF cache path.
 | Error | Cause | What to do |
 |---|---|---|
 | `manage_tools` not found | `pi-tools-management-tool` not installed | Ask the user to install the extension, then restart pi |
-| "assets not downloaded" from `speak` tool | Assets not present at the configured path | Run the `huggingface-cli download` command shown by `/speak`, then re-enable |
+| "assets not downloaded" from `speak` tool | Assets not present at the configured path | Run the `hf download` command shown by `/speak`, then re-enable |
 | `/speak enable` prints download command instead of enabling | Assets missing | Run the printed command, then run `/speak enable` again |
 | `speak` tool not callable after `manage_tools` activate | `activate` call must be the last action in a turn | Send the `manage_tools` call alone; invoke `speak` on the next turn |
 | Playback silent or no audio | No compatible OS audio player found | Ensure `afplay` (macOS), `paplay`/`aplay`/`ffplay` (Linux), or PowerShell (Windows) is available |

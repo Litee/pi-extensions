@@ -32,12 +32,12 @@ Registers a `speak` tool that synthesises text via the [Supertone TTS](https://g
 Before using pi-speak for the first time, download the Supertone model assets (~500 MB) manually:
 
 ```bash
-huggingface-cli download Supertone/supertonic-3
+hf download Supertone/supertonic-3
 ```
 
-Requires `huggingface-cli`:
+Requires the `hf` CLI:
 ```bash
-pip install huggingface_hub
+pip install hf-transfer
 ```
 
 Once the download completes, the extension auto-discovers the model from the HuggingFace cache (`~/.cache/huggingface/hub/` by default, or `HF_HOME`/`HUGGINGFACE_HUB_CACHE` if set). Run `/speak enable` in pi to enable the tool. If assets are missing when you run `/speak enable`, pi-speak prints the exact command to run.
@@ -91,7 +91,7 @@ Model assets are downloaded from [Supertone/supertonic-3](https://huggingface.co
 - **Size:** ~500 MB
 - **Sentinel file:** `onnx/duration_predictor.onnx` (presence indicates download is complete)
 
-To re-download: delete the model snapshot directory and run `huggingface-cli download Supertone/supertonic-3` again.
+To re-download: delete the model snapshot directory and run `hf download Supertone/supertonic-3` again.
 
 ---
 
