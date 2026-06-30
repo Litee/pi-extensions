@@ -81,6 +81,7 @@ export function findHfCachedModel(): string | undefined {
 	if (entries.length === 0) return undefined;
 
 	const latest = entries
+		.filter(e => !e.startsWith('.'))
 		.map(e => ({ e, mtime: statSync(join(snapshotsDir, e)).mtimeMs }))
 		.sort((a, b) => b.mtime - a.mtime)[0];
 

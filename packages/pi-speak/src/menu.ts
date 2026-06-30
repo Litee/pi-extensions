@@ -125,6 +125,7 @@ function effectiveValue<T>(
 export function dirSize(dir: string): number {
 	let total = 0;
 	for (const entry of readdirSync(dir, { withFileTypes: true })) {
+		if (entry.name.startsWith('.')) continue;
 		const p = join(dir, entry.name);
 		if (entry.isDirectory()) total += dirSize(p);
 		else total += statSync(p).size;
