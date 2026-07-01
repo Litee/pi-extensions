@@ -524,14 +524,22 @@ describe("settings persistence", () => {
 describe("sanitizer — disableDefaultAgents and toolDescriptionMode", () => {
   let projectDir2: string;
   let projectFile2: () => string;
+  let globalDir2: string;
+  let originalAgentDirEnv2: string | undefined;
 
   beforeEach(() => {
     projectDir2 = mkdtempSync(join(tmpdir(), "pi-subagent-settings-extra-"));
+    globalDir2 = mkdtempSync(join(tmpdir(), "pi-settings-global-2-"));
     projectFile2 = () => join(projectDir2, ".pi", "subagents.json");
+    originalAgentDirEnv2 = process.env["PI_CODING_AGENT_DIR"];
+    process.env["PI_CODING_AGENT_DIR"] = globalDir2;
   });
 
   afterEach(() => {
+    if (originalAgentDirEnv2 == null) delete process.env["PI_CODING_AGENT_DIR"];
+    else process.env["PI_CODING_AGENT_DIR"] = originalAgentDirEnv2;
     rmSync(projectDir2, { recursive: true, force: true });
+    rmSync(globalDir2, { recursive: true, force: true });
   });
 
   function write2(obj: unknown): void {
