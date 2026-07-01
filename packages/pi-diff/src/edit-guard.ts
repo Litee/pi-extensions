@@ -10,7 +10,7 @@ import type {
 	ToolCallEventResult,
 } from "@earendil-works/pi-coding-agent";
 
-const guardEditToolCall: ExtensionHandler<EditToolCallEvent, ToolCallEventResult | undefined> = async (
+const guardEditToolCall: ExtensionHandler<EditToolCallEvent, ToolCallEventResult | undefined> = (
 	event,
 	_ctx,
 ) => {
