@@ -10,8 +10,9 @@ or staying in plan mode when it finishes.
 
 ## What it does
 
-- **Read-only tools.** Restricts available tools to `read`, `bash`, `grep`,
-  `find`, `ls`, `ask_user_question`.
+- **Built-in write tools disabled.** Disables `edit`, `write`, and `task` tools
+  while plan mode is active; read-only tools (`read`, `bash`, `grep`, `find`,
+  `ls`, `ask_user_question`) remain available.
 - **Bash allowlist.** Only read-only bash commands are allowed while plan
   mode is active (see `## Allowlists` below).
 - **Plan-mode context.** Injects a `[PLAN MODE ACTIVE]` preamble so the
@@ -19,9 +20,9 @@ or staying in plan mode when it finishes.
 - **Session persistence.** The on/off state is written to the session
   entry log via `pi.appendEntry` and restored on resume / reload / fork.
 - **Post-plan prompt.** When the agent finishes a turn in plan mode, it
-  asks whether to **Execute the plan** (drop back to the full tool set and
-  run it), **Stay in plan mode** (keep exploring), or **Refine the plan**
-  (iterate).
+  asks whether to **Execute plan (track progress)** (drop back to the full
+  tool set and run it), **Stay in plan mode** (keep exploring), or
+  **Refine the plan** (iterate).
 
 ## Commands and keybindings
 

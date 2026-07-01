@@ -235,23 +235,23 @@ export default function planModeExtension(pi: ExtensionAPI): void {
 		pi.events.emit("user_attention_requested", { source: "plan-mode", title: "Plan mode — what next?" });
 
 		const choice = await ctx.ui.select("Plan mode - what next?", [
-			"Execute the plan",
+			"Execute plan (track progress)",
 			"Stay in plan mode",
 			"Refine the plan",
 		]);
 
-		if (choice === "Execute the plan") {
+		if (choice === "Execute plan (track progress)") {
 			planModeEnabled = false;
 			await disablePlanMode(ctx);
 			persistState();
 			pi.sendMessage(
 				{ customType: "plan-mode-execute", content: "Execute the plan you just created.", display: true },
-				{ triggerTurn: true },
+				{ triggerTurn: true, deliverAs: "followUp" },
 			);
 		} else if (choice === "Refine the plan") {
 			const refinement = await ctx.ui.editor("Refine the plan:", "");
 			if (refinement?.trim()) {
-				pi.sendUserMessage(refinement.trim());
+				pi.sendUserMessage(refinement.trim(), { deliverAs: "followUp" });
 			}
 		}
 

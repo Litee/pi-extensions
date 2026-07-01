@@ -707,13 +707,13 @@ describe("agent_end — Execute and Refine choices", () => {
 		return { pi, ctx };
 	}
 
-	it("'Execute the plan' disables plan mode and sends execute message", async () => {
-		const select = vi.fn().mockResolvedValue("Execute the plan");
+	it("'Execute plan (track progress)' disables plan mode and sends execute message", async () => {
+		const select = vi.fn().mockResolvedValue("Execute plan (track progress)");
 		const { pi } = await setupAgentEndHandler(select);
 
 		expect(pi.sendMessage).toHaveBeenCalledWith(
 			expect.objectContaining({ customType: "plan-mode-execute" }),
-			expect.objectContaining({ triggerTurn: true }),
+			expect.objectContaining({ triggerTurn: true, deliverAs: "followUp" }),
 		);
 	});
 
@@ -722,7 +722,7 @@ describe("agent_end — Execute and Refine choices", () => {
 		const { pi } = await setupAgentEndHandler(select, "Please add error handling.");
 
 		expect((pi as unknown as { sendUserMessage: ReturnType<typeof vi.fn> }).sendUserMessage)
-			.toHaveBeenCalledWith("Please add error handling.");
+			.toHaveBeenCalledWith("Please add error handling.", { deliverAs: "followUp" });
 	});
 
 	it("'Refine the plan' with empty/null text does not send a user message", async () => {
