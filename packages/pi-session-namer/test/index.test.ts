@@ -491,7 +491,7 @@ describe("pi-herdr-integration — /name-session-and-space command", () => {
 		expect(pi.exec.mock.calls[1]?.[1]).toEqual(["workspace", "rename", WS_ID, "spaced"]);
 	});
 
-	it("empty arg is a usage no-op: does not set name or exec", async () => {
+	it("empty arg triggers auto-generate: fails gracefully without model", async () => {
 		const pi = makeFakePi();
 		const ctx = makeFakeCtx();
 		createExtensionInHerdr(pi);
@@ -502,12 +502,12 @@ describe("pi-herdr-integration — /name-session-and-space command", () => {
 		expect(pi.setSessionName).not.toHaveBeenCalled();
 		expect(pi.exec).not.toHaveBeenCalled();
 		expect(ctx.ui.notify).toHaveBeenCalledWith(
-			expect.stringContaining("usage"),
+			"Cannot generate name: no active model.",
 			"warning",
 		);
 	});
 
-	it("whitespace-only arg is a usage no-op: does not set name or exec", async () => {
+	it("whitespace-only arg triggers auto-generate: fails gracefully without model", async () => {
 		const pi = makeFakePi();
 		const ctx = makeFakeCtx();
 		createExtensionInHerdr(pi);
@@ -518,7 +518,7 @@ describe("pi-herdr-integration — /name-session-and-space command", () => {
 		expect(pi.setSessionName).not.toHaveBeenCalled();
 		expect(pi.exec).not.toHaveBeenCalled();
 		expect(ctx.ui.notify).toHaveBeenCalledWith(
-			expect.stringContaining("usage"),
+			"Cannot generate name: no active model.",
 			"warning",
 		);
 	});

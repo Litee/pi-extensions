@@ -1,4 +1,4 @@
-# pi-herdr-integration
+# pi-session-namer
 
 Pi extension that auto-syncs the active [herdr](https://herdr.dev) workspace label to the pi
 session display name. It is a no-op outside herdr (`HERDR_ENV !== "1"`).
@@ -33,7 +33,7 @@ rename is a no-op (guards inside `tryRenameWithName` short-circuit when `HERDR_E
 
 ## Session state
 
-Persisted under the custom type key **`pi-herdr-integration:state`** via `pi.appendEntry`. Shape:
+Persisted under the custom type key **`pi-session-namer:state`** via `pi.appendEntry`. Shape:
 
 ```ts
 {

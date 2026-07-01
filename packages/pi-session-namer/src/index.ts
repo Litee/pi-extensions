@@ -15,7 +15,9 @@
  *     updates.
  *   - `/name-session-and-space <label>` command: sets the pi session name AND
  *     immediately renames the herdr workspace in the same keystroke — no waiting
- *     for the next turn.
+ *     for the next turn. When called WITHOUT arguments, the extension uses the
+ *     active LLM to generate a short (≤ 5 lowercase words) session name from
+ *     the recent conversation transcript.
  *
  * Failure backoff: when a rename fails (workspace unresolvable or herdr CLI
  * error), the attempted name is recorded in `lastAttemptedName`. Subsequent
@@ -27,10 +29,12 @@
  * command, no event handlers — so it is completely invisible to pi.
  */
 
+import { completeSimple } from "@earendil-works/pi-ai";
 import type { ExtensionAPI, ExtensionCommandContext, ExtensionContext } from "@earendil-works/pi-coding-agent";
 
 import { isInsideHerdr, renameWorkspace, resolveWorkspaceId } from "./herdr.js";
 import type { ExecFn } from "./herdr.js";
+import { buildTranscript, generateSessionName } from "./name-generation.js";
 import { STATE_CUSTOM_TYPE } from "./state.js";
 
 /**
@@ -131,18 +135,82 @@ export default function createExtension(pi: ExtensionAPI): void {
 		await tryRenameWithName(name, ctx);
 	});
 
+	/**
+	 * Notify via ctx.ui, but swallow stale-context errors silently.
+	 * pi's assertActive throws synchronously — .catch() won't catch it,
+	 * so we guard the synchronous part in a try/catch.
+	 */
+	function tryNotify(
+		ctx: ExtensionContext,
+		message: string,
+		level: "info" | "warning" | "error",
+	): boolean {
+		try {
+			ctx.ui.notify(message, level);
+			return true;
+		} catch {
+			// ctx is stale — session was replaced/reloaded. Silent no-op.
+			return false;
+		}
+	}
+
 	// ---- /name-session-and-space command ------------------------------------
 
 	pi.registerCommand("name-session-and-space", {
-		description: "Set the pi session name and rename the herdr workspace to match.",
+		description: "Set the pi session name and rename the herdr workspace to match. Call without arguments to auto-generate a name from the conversation.",
 		handler: async (args: string, ctx: ExtensionCommandContext) => {
 			const name = args.trim();
-			if (!name) {
-				ctx.ui.notify("usage: /name-session-and-space <label>", "warning");
+			if (name) {
+				// Explicit name provided — apply it immediately.
+				pi.setSessionName(name);
+				await tryRenameWithName(name, ctx, { force: true });
 				return;
 			}
-			pi.setSessionName(name);
-			await tryRenameWithName(name, ctx, { force: true });
+
+			// No args — auto-generate a name from the conversation via LLM.
+			// Capture data upfront and fire the call in the background so the
+			// handler returns immediately (no blocking the turn).
+			if (!ctx.model) {
+				ctx.ui.notify("Cannot generate name: no active model.", "warning");
+				return;
+			}
+
+			const entries = ctx.sessionManager.getBranch();
+			if (!entries.length) {
+				ctx.ui.notify("Cannot generate name: no conversation yet.", "info");
+				return;
+			}
+
+			const transcript = buildTranscript(entries);
+			if (!transcript.trim()) {
+				ctx.ui.notify("Cannot generate name: no meaningful conversation to name.", "info");
+				return;
+			}
+
+			ctx.ui.notify("Generating session name in background…", "info");
+
+			// Fire-and-forget: capture needed data, then run asynchronously.
+			// Guard against stale ctx — pi throws synchronously from
+			// assertActive before the async body, so .catch() won't help.
+			void (async () => {
+				const controller = new AbortController();
+				try {
+					const generated = await generateSessionName(transcript, { completeSimple, ctx }, controller.signal);
+					if (!generated) {
+						if (tryNotify(ctx, "Name generation returned empty — the model may have declined.", "warning")) return;
+						return;
+					}
+
+					pi.setSessionName(generated);
+					await tryRenameWithName(generated, ctx, { force: true });
+					tryNotify(ctx, `Session name set to "${generated}"`, "info");
+				} catch (err) {
+					const message = err instanceof Error ? err.message : String(err);
+					tryNotify(ctx, `Name generation failed: ${message}`, "warning");
+				} finally {
+					controller.abort();
+				}
+			})();
 		},
 	});
 }
