@@ -1,0 +1,21 @@
+{
+  "name": "pi-diff",
+  "version": "0.6.6",
+  "private": true,
+  "description": "Shiki-powered terminal diff renderer for pi — syntax-highlighted, word-level diffs in split and unified views.",
+  "license": "MIT",
+  "author": "huynhgiabuu (upstream); ported by Andrey Lipatkin",
+  "type": "module",
+  "keywords": ["pi-package"],
+  "pi": {
+    "extensions": ["./src/index.ts"]
+  },
+  "dependencies": {
+    "@shikijs/cli": "^4.0.2",
+    "diff": "^7.0.0"
+  },
+  "peerDependencies": {
+    "@earendil-works/pi-coding-agent": "^0.79.1",
+    "@earendil-works/pi-tui": "^0.79.1"
+  }
+}
