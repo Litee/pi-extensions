@@ -27,7 +27,7 @@ describe("parseDiff", () => {
 
 	it("emits first-hunk sep with hunkMeta at position 0", () => {
 		const parsed = parseDiff("a\nb\nc\n", "a\nB\nc\n");
-		const first = parsed.lines[0];
+		const first = parsed.lines[0]!;
 		expect(first.type).toBe("sep");
 		expect(first.hunkMeta).toBeDefined();
 		expect(first.hunkMeta!.oldStart).toBe(1);
@@ -47,13 +47,13 @@ describe("parseDiff", () => {
 		for (const sep of seps) {
 			expect(sep.hunkMeta).toBeDefined();
 		}
-		expect(seps[0].hunkMeta!.oldStart).toBe(1);
-		expect(seps[1].hunkMeta!.oldStart).toBe(6);
+		expect(seps[0]!.hunkMeta!.oldStart).toBe(1);
+		expect(seps[1]!.hunkMeta!.oldStart).toBe(6);
 	});
 
 	it("does not set context on hunkMeta for programmatic diffs", () => {
 		const parsed = parseDiff("a\nb\nc\n", "a\nB\nc\n");
-		const first = parsed.lines[0];
+		const first = parsed.lines[0]!;
 		expect(first.hunkMeta?.context).toBeUndefined();
 	});
 });
@@ -76,10 +76,10 @@ describe("parsePatchFiles", () => {
 
 		const result = parsePatchFiles(patch);
 		expect(result).toHaveLength(1);
-		expect(result[0].added).toBe(2);
-		expect(result[0].removed).toBe(1);
+		expect(result[0]!.added).toBe(2);
+		expect(result[0]!.removed).toBe(1);
 
-		const types = result[0].lines.map((l) => l.type);
+		const types = result[0]!.lines.map((l) => l.type);
 		expect(types[0]).toBe("sep"); // first-hunk sep
 		expect(types).toContain("add");
 		expect(types).toContain("del");
@@ -113,7 +113,7 @@ describe("parsePatchFiles", () => {
 		].join("\n");
 
 		const result = parsePatchFiles(patch);
-		const firstSep = result[0].lines.find((l) => l.type === "sep");
+		const firstSep = result[0]!.lines.find((l) => l.type === "sep");
 		expect(firstSep?.hunkMeta?.context).toBe("function helloWorld() {");
 	});
 
@@ -135,10 +135,10 @@ describe("parsePatchFiles", () => {
 
 		const result = parsePatchFiles(patch);
 		expect(result).toHaveLength(2);
-		expect(result[0].removed).toBe(1);
-		expect(result[0].added).toBe(1);
-		expect(result[1].removed).toBe(0);
-		expect(result[1].added).toBe(1);
+		expect(result[0]!.removed).toBe(1);
+		expect(result[0]!.added).toBe(1);
+		expect(result[1]!.removed).toBe(0);
+		expect(result[1]!.added).toBe(1);
 	});
 
 	it("returns empty array for empty input", () => {
@@ -157,9 +157,9 @@ describe("parsePatchFiles", () => {
 
 		const result = parsePatchFiles(patch);
 		expect(result).toHaveLength(1);
-		expect(result[0].added).toBe(1);
+		expect(result[0]!.added).toBe(1);
 
-		const sep = result[0].lines.find((l) => l.type === "sep");
+		const sep = result[0]!.lines.find((l) => l.type === "sep");
 		expect(sep?.hunkMeta?.oldLines).toBe(1);
 		expect(sep?.hunkMeta?.newLines).toBe(2);
 	});
@@ -180,12 +180,12 @@ describe("parsePatchFiles", () => {
 		].join("\n");
 
 		const result = parsePatchFiles(patch);
-		const seps = result[0].lines.filter((l) => l.type === "sep");
+		const seps = result[0]!.lines.filter((l) => l.type === "sep");
 		expect(seps).toHaveLength(2);
-		expect(seps[0].hunkMeta?.oldStart).toBe(1);
-		expect(seps[0].hunkMeta?.oldLines).toBe(2);
-		expect(seps[1].hunkMeta?.oldStart).toBe(5);
-		expect(seps[1].hunkMeta?.oldLines).toBe(3);
+		expect(seps[0]!.hunkMeta?.oldStart).toBe(1);
+		expect(seps[0]!.hunkMeta?.oldLines).toBe(2);
+		expect(seps[1]!.hunkMeta?.oldStart).toBe(5);
+		expect(seps[1]!.hunkMeta?.oldLines).toBe(3);
 	});
 
 	it("ignores no-newline markers", () => {
@@ -201,7 +201,7 @@ describe("parsePatchFiles", () => {
 		].join("\n");
 
 		const result = parsePatchFiles(patch);
-		expect(result[0].lines.filter((l) => l.content === "")).toHaveLength(1); // only the sep
+		expect(result[0]!.lines.filter((l) => l.content === "")).toHaveLength(1); // only the sep
 	});
 });
 
@@ -210,7 +210,11 @@ describe("parsePatchFiles", () => {
 // ---------------------------------------------------------------------------
 
 describe("sepLabelUnified", () => {
-	const makeMeta = (ctx?: string): HunkMeta => ({ oldStart: 10, oldLines: 6, newStart: 10, newLines: 8, context: ctx });
+	const makeMeta = (ctx?: string): HunkMeta => {
+		const meta: HunkMeta = { oldStart: 10, oldLines: 6, newStart: 10, newLines: 8 };
+		if (ctx) meta.context = ctx;
+		return meta;
+	};
 
 	it("auto style shows context + gap when both available", () => {
 		expect(sepLabelUnified("auto", makeMeta("fn()"), 5)).toBe(" fn() — +5 lines ");
@@ -263,7 +267,11 @@ describe("sepLabelUnified", () => {
 });
 
 describe("sepLabelSplit", () => {
-	const makeMeta = (ctx?: string): HunkMeta => ({ oldStart: 10, oldLines: 6, newStart: 10, newLines: 8, context: ctx });
+	const makeMeta = (ctx?: string): HunkMeta => {
+		const meta: HunkMeta = { oldStart: 10, oldLines: 6, newStart: 10, newLines: 8 };
+		if (ctx) meta.context = ctx;
+		return meta;
+	};
 
 	it("auto style shows context + gap without decorative ellipses", () => {
 		expect(sepLabelSplit("auto", makeMeta("fn()"), 5)).toBe(" fn() — +5 lines ");
@@ -288,7 +296,7 @@ describe("sepLabelSplit", () => {
 
 describe("resolveSepStyle", () => {
 	beforeEach(() => {
-		delete process.env.PI_DIFF_SEP_STYLE;
+		delete process.env["PI_DIFF_SEP_STYLE"];
 		resolveSepStyle(); // reset to default
 	});
 
@@ -297,13 +305,13 @@ describe("resolveSepStyle", () => {
 	});
 
 	it("reads from env var", () => {
-		process.env.PI_DIFF_SEP_STYLE = "simple";
+		process.env["PI_DIFF_SEP_STYLE"] = "simple";
 		resolveSepStyle();
 		expect(getSepStyle()).toBe("simple");
 	});
 
 	it("ignores invalid env value", () => {
-		process.env.PI_DIFF_SEP_STYLE = "invalid";
+		process.env["PI_DIFF_SEP_STYLE"] = "invalid";
 		resolveSepStyle();
 		expect(getSepStyle()).toBe("auto");
 	});
@@ -333,16 +341,16 @@ describe("computeHunkBlocks", () => {
 		const diff = parseDiff("old\n", "new\n");
 		const blocks = computeHunkBlocks(diff);
 		expect(blocks.length).toBe(1);
-		expect(blocks[0].deletions[0].content).toBe("old");
-		expect(blocks[0].additions[0].content).toBe("new");
+		expect(blocks[0]!.deletions[0]!.content).toBe("old");
+		expect(blocks[0]!.additions[0]!.content).toBe("new");
 	});
 
 	it("handles unbalanced blocks (more adds than dels)", () => {
 		const diff = parseDiff("x\n", "x\ny\nz\n");
 		const blocks = computeHunkBlocks(diff);
 		expect(blocks.length).toBe(1);
-		expect(blocks[0].deletions).toHaveLength(0);
-		expect(blocks[0].additions.length).toBe(2);
+		expect(blocks[0]!.deletions).toHaveLength(0);
+		expect(blocks[0]!.additions.length).toBe(2);
 	});
 
 	it("skips sep and ctx lines", () => {

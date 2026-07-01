@@ -57,7 +57,8 @@ export function parseConflicts(content: string): ConflictParseResult {
 	let i = 0;
 
 	while (i < lines.length) {
-		const startMatch = lines[i].match(CONFLICT_START_RE);
+		const line = lines[i] ?? "";
+		const startMatch = line.match(CONFLICT_START_RE);
 		if (!startMatch) {
 			i++;
 			continue;
@@ -76,7 +77,7 @@ export function parseConflicts(content: string): ConflictParseResult {
 		i++; // advance past <<<<<<<
 
 		while (i < lines.length) {
-			const line = lines[i];
+			const line = lines[i] ?? "";
 
 			if (CONFLICT_BASE_RE.test(line)) {
 				state = "base";
@@ -91,7 +92,7 @@ export function parseConflicts(content: string): ConflictParseResult {
 				continue;
 			}
 
-			const endMatch = lines[i].match(CONFLICT_END_RE);
+			const endMatch = (lines[i] ?? "").match(CONFLICT_END_RE);
 			if (endMatch) {
 				endRef = (endMatch[1] ?? "").trim();
 				i++;
@@ -140,7 +141,7 @@ export function formatConflictSummary(region: ConflictRegion): string {
 	const currentLines = region.current.length;
 	const incomingLines = region.incoming.length;
 
-	if (region.hasBase) {
+	if (region!.hasBase) {
 		return `Conflict: ${currentLabel} (${currentLines} lines) vs ${incomingLabel} (${incomingLines} lines) [3-way]`;
 	}
 	return `Conflict: ${currentLabel} (${currentLines} lines) vs ${incomingLabel} (${incomingLines} lines)`;

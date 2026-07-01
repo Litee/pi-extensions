@@ -3,7 +3,7 @@ import { join } from "node:path";
 import { tmpdir } from "node:os";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 
-import { invalidatePiDiffConfig, loadPiDiffConfig, configSepStyle, configLineNumbers, configIndicatorStyle, configLongLines, configFileHeader, configColors } from "./config.js";
+import { invalidatePiDiffConfig, loadPiDiffConfig, configSepStyle,  configLongLines, configFileHeader, configColors } from "./config.js";
 
 describe("loadPiDiffConfig", () => {
 	let tmpDir: string;

@@ -57,16 +57,23 @@ function countOccurrences(content: string, substring: string): number {
 /** Levenshtein distance for block anchor similarity comparison. */
 function levenshtein(a: string, b: string): number {
 	if (a === "" || b === "") return Math.max(a.length, b.length);
-	const matrix = Array.from({ length: a.length + 1 }, (_, i) =>
-		Array.from({ length: b.length + 1 }, (_, j) => (i === 0 ? j : j === 0 ? i : 0)),
-	);
-	for (let i = 1; i <= a.length; i++) {
-		for (let j = 1; j <= b.length; j++) {
+	const rows = a.length + 1;
+	const cols = b.length + 1;
+	const matrix: number[] = new Array(rows * cols);
+	for (let j = 0; j < cols; j++) matrix[j] = j;
+	for (let i = 1; i < rows; i++) {
+		matrix[i * cols] = i;
+		for (let j = 1; j < cols; j++) {
 			const cost = a[i - 1] === b[j - 1] ? 0 : 1;
-			matrix[i][j] = Math.min(matrix[i - 1][j] + 1, matrix[i][j - 1] + 1, matrix[i - 1][j - 1] + cost);
+			const idx = i * cols + j;
+			matrix[idx] = Math.min(
+				matrix[(i - 1) * cols + j]! + 1,
+				matrix[i * cols + j - 1]! + 1,
+				matrix[(i - 1) * cols + j - 1]! + cost,
+			);
 		}
 	}
-	return matrix[a.length][b.length];
+	return matrix[(rows - 1) * cols + cols - 1]!;
 }
 
 // ---------------------------------------------------------------------------
@@ -155,7 +162,7 @@ const LineTrimmedReplacer: Replacer = function* (content, find) {
 	for (let i = 0; i <= contentLines.length - findLines.length; i++) {
 		let matches = true;
 		for (let j = 0; j < findLines.length; j++) {
-			if (contentLines[i + j].trim() !== findLines[j].trim()) {
+			if (contentLines[i + j]!.trim() !== findLines[j]!.trim()) {
 				matches = false;
 				break;
 			}
@@ -164,11 +171,11 @@ const LineTrimmedReplacer: Replacer = function* (content, find) {
 			// Compute the actual substring in the original content
 			let startPos = 0;
 			for (let k = 0; k < i; k++) {
-				startPos += contentLines[k].length + 1;
+				startPos += contentLines[k]!.length + 1;
 			}
 			let endPos = startPos;
 			for (let k = 0; k < findLines.length; k++) {
-				endPos += contentLines[i + k].length;
+				endPos += contentLines[i + k]!.length;
 				if (k < findLines.length - 1) endPos += 1;
 			}
 			yield content.slice(startPos, endPos);
@@ -195,8 +202,8 @@ const BlockAnchorReplacer: Replacer = function* (content, find) {
 	if (findLines[findLines.length - 1] === "") findLines.pop();
 	if (findLines.length < 3) return;
 
-	const firstAnchor = findLines[0].trim();
-	const lastAnchor = findLines[findLines.length - 1].trim();
+	const firstAnchor = findLines[0]!.trim();
+	const lastAnchor = findLines[findLines.length - 1]!.trim();
 	const searchBlockSize = findLines.length;
 	const SINGLE_CANDIDATE_THRESHOLD = 0.25;
 	const MULTIPLE_CANDIDATES_THRESHOLD = 0.4;
@@ -204,10 +211,10 @@ const BlockAnchorReplacer: Replacer = function* (content, find) {
 	// Collect candidate positions where both anchors match
 	const candidates: Array<{ startLine: number; endLine: number }> = [];
 	for (let i = 0; i < contentLines.length; i++) {
-		if (contentLines[i].trim() !== firstAnchor) continue;
+		if (contentLines[i]!.trim() !== firstAnchor) continue;
 		// Look for matching last line after this first line
 		for (let j = i + 2; j < contentLines.length; j++) {
-			if (contentLines[j].trim() === lastAnchor) {
+			if (contentLines[j]!.trim() === lastAnchor) {
 				candidates.push({ startLine: i, endLine: j });
 				break;
 			}
@@ -223,14 +230,14 @@ const BlockAnchorReplacer: Replacer = function* (content, find) {
 	const threshold = isSingleCandidate ? SINGLE_CANDIDATE_THRESHOLD : MULTIPLE_CANDIDATES_THRESHOLD;
 
 	if (isSingleCandidate) {
-		const { startLine, endLine } = candidates[0];
+		const { startLine, endLine } = candidates[0]!;
 		const actualBlockSize = endLine - startLine + 1;
 		const middleCount = Math.min(searchBlockSize - 2, actualBlockSize - 2);
 		let similarity = 0;
 		if (middleCount > 0) {
 			for (let j = 1; j <= middleCount; j++) {
-				const originalLine = contentLines[startLine + j].trim();
-				const searchLine = findLines[j].trim();
+				const originalLine = contentLines[startLine + j]!.trim();
+				const searchLine = findLines[j]!.trim();
 				const maxLen = Math.max(originalLine.length, searchLine.length);
 				if (maxLen === 0) continue;
 				const distance = levenshtein(originalLine, searchLine);
@@ -243,10 +250,10 @@ const BlockAnchorReplacer: Replacer = function* (content, find) {
 		}
 		if (similarity >= threshold) {
 			let startPos = 0;
-			for (let k = 0; k < startLine; k++) startPos += contentLines[k].length + 1;
+			for (let k = 0; k < startLine; k++) startPos += contentLines[k]!.length + 1;
 			let endPos = startPos;
 			for (let k = startLine; k <= endLine; k++) {
-				endPos += contentLines[k].length;
+				endPos += contentLines[k]!.length;
 				if (k < endLine) endPos += 1;
 			}
 			yield content.slice(startPos, endPos);
@@ -264,8 +271,8 @@ const BlockAnchorReplacer: Replacer = function* (content, find) {
 		let similarity = 0;
 		if (middleCount > 0) {
 			for (let j = 1; j <= middleCount; j++) {
-				const originalLine = contentLines[startLine + j].trim();
-				const searchLine = findLines[j].trim();
+				const originalLine = contentLines[startLine + j]!.trim();
+				const searchLine = findLines[j]!.trim();
 				const maxLen = Math.max(originalLine.length, searchLine.length);
 				if (maxLen === 0) continue;
 				const distance = levenshtein(originalLine, searchLine);
@@ -286,11 +293,11 @@ const BlockAnchorReplacer: Replacer = function* (content, find) {
 	const { startLine, endLine } = bestMatch;
 	let startPos = 0;
 	for (let k = 0; k < startLine; k++) {
-		startPos += contentLines[k].length + 1;
+		startPos += contentLines[k]!.length + 1;
 	}
 	let endPos = startPos;
 	for (let k = startLine; k <= endLine; k++) {
-		endPos += contentLines[k].length;
+		endPos += contentLines[k]!.length;
 		if (k < endLine) endPos += 1;
 	}
 	yield content.slice(startPos, endPos);
@@ -311,8 +318,8 @@ const WhitespaceNormalizedReplacer: Replacer = function* (content, find) {
 	// Single-line: find by normalized line content
 	if (findLines.length <= 1 || (findLines.length === 2 && findLines[1] === "")) {
 		for (let i = 0; i < contentLines.length; i++) {
-			if (normalize(contentLines[i]) === normalizedFind) {
-				yield contentLines[i];
+			if (normalize(contentLines[i]!) === normalizedFind) {
+				yield contentLines[i]!;
 			}
 		}
 		return;
@@ -330,38 +337,6 @@ const WhitespaceNormalizedReplacer: Replacer = function* (content, find) {
 
 /**
  * 6. Indentation-flexible match — strips common leading indentation
- * before comparing. Handles blocks that shifted indent level.
- * NOTE: Excluded from the REPLACERS cascade — LineTrimmedReplacer's
- * per-line trim() is a superset. Kept here as documentation artifact.
- */
-const IndentationFlexibleReplacer: Replacer = function* (content, find) {
-	const removeIndent = (text: string): string => {
-		const lines = text.split("\n");
-		const nonEmpty = lines.filter((l) => l.trim().length > 0);
-		if (nonEmpty.length === 0) return text;
-		const minIndent = Math.min(
-			...nonEmpty.map((l) => {
-				const m = l.match(/^(\s*)/);
-				return m ? m[1].length : 0;
-			}),
-		);
-		return lines.map((l) => (l.trim().length === 0 ? l : l.slice(minIndent))).join("\n");
-	};
-
-	const normalizedFind = removeIndent(find);
-	if (normalizedFind.length === 0) return;
-
-	const contentLines = content.split("\n");
-	const findLines = find.split("\n");
-	const effectiveFindLines = findLines[findLines.length - 1] === "" ? findLines.slice(0, -1) : findLines;
-
-	for (let i = 0; i <= contentLines.length - effectiveFindLines.length; i++) {
-		const block = contentLines.slice(i, i + effectiveFindLines.length).join("\n");
-		if (removeIndent(block) === normalizedFind) {
-			yield block;
-		}
-	}
-};
 
 /**
  * 7. Trimmed-boundary match — trims leading/trailing whitespace
@@ -388,37 +363,6 @@ const TrimmedBoundaryReplacer: Replacer = function* (content, find) {
 		}
 	}
 };
-
-/**
- * 8. Multi-occurrence replacer — yields ALL exact matches.
- * NOTE: Excluded from the REPLACERS cascade because replaceAll is
- * handled directly in the public `replace()` fast path for exact
- * matches. Fuzzy-strategy replaceAll would be unsafe (ambiguous).
- * Kept here as documentation artifact.
- */
-const MultiOccurrenceReplacer: Replacer = function* (content, find) {
-	if (find.length === 0) return;
-	let pos = 0;
-	while (true) {
-		const idx = content.indexOf(find, pos);
-		if (idx === -1) break;
-		yield find;
-		pos = idx + find.length;
-	}
-};
-
-/**
- * 9. Context-aware match — uses first and last lines as context
- * anchors, then checks trimmed-line similarity (50%) for middle
- * lines. Simpler than BlockAnchor (no Levenshtein).
- * NOTE: Excluded from the REPLACERS cascade — BlockAnchorReplacer's
- * Levenshtein-based scoring subsumes this. Kept as documentation.
- */
-const ContextAwareReplacer: Replacer = function* (_content, _find) {
-	// Reference implementation in OpenCode:
-	// https://github.com/anomalyco/opencode/blob/dev/packages/opencode/src/tool/edit.ts
-};
-
 // ---------------------------------------------------------------------------
 // All replacers in priority order (active members)
 // ---------------------------------------------------------------------------
@@ -528,9 +472,9 @@ export function replace(
 		// Single replacement: must have exactly one candidate
 		if (candidates.length === 1) {
 			const candidate = candidates[0];
-			const idx = content.indexOf(candidate);
+			const idx = content.indexOf(candidate!);
 			if (idx !== -1) {
-				const result = content.slice(0, idx) + newString + content.slice(idx + candidate.length);
+				const result = content.slice(0, idx) + newString + content.slice(idx + candidate!.length);
 				const strategyName = replacer.name
 					.replace("Replacer", "")
 					.replace(/([a-z])([A-Z])/g, "$1-$2")

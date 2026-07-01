@@ -57,7 +57,7 @@ export function parsePatchFiles(patch: string): ParsedDiff[] {
 
 	// Split by "+++ " or "diff --git " (start of a new file)
 	for (let i = 0; i < lines.length; i++) {
-		const l = lines[i];
+		const l = lines[i] ?? "";
 		if (l.startsWith("diff --git ") || (l.startsWith("--- ") && cur.length > 0 && cur[0]?.startsWith("+++"))) {
 			if (cur.length > 0) sections.push(cur);
 			cur = [];
@@ -82,7 +82,7 @@ function parseOneFile(lines: string[]): ParsedDiff | null {
 
 	let i = 0;
 	while (i < lines.length) {
-		const raw = lines[i];
+		const raw = lines[i] ?? "";
 		const hdr = parseHunkHeader(raw);
 		if (!hdr) {
 			i++;
@@ -106,9 +106,9 @@ function parseOneFile(lines: string[]): ParsedDiff | null {
 
 		// Process hunk content lines (until next hunk header or end)
 		while (i < lines.length) {
-			const line = lines[i];
-			if (line.startsWith("@@")) break; // next hunk header — outer loop handles it
-			if (line.startsWith("\\ ")) {
+			const line = lines[i] ?? "";
+			if (line!.startsWith("@@")) break; // next hunk header — outer loop handles it
+			if (line!.startsWith("\\ ")) {
 				i++;
 				continue; // "\\ No newline at end of file"
 			}
@@ -117,12 +117,12 @@ function parseOneFile(lines: string[]): ParsedDiff | null {
 				continue; // skip headers/metadata
 			}
 			if (line.length === 0 || line[0] === " ") {
-				all.push({ type: "ctx", oldNum: oL++, newNum: nL++, content: line.slice(1) });
+				all.push({ type: "ctx", oldNum: oL++, newNum: nL++, content: line!.slice(1) });
 			} else if (line[0] === "+") {
-				all.push({ type: "add", oldNum: null, newNum: nL++, content: line.slice(1) });
+				all.push({ type: "add", oldNum: null, newNum: nL++, content: line!.slice(1) });
 				added++;
 			} else if (line[0] === "-") {
-				all.push({ type: "del", oldNum: oL++, newNum: null, content: line.slice(1) });
+				all.push({ type: "del", oldNum: oL++, newNum: null, content: line!.slice(1) });
 				removed++;
 			}
 			i++;
@@ -145,14 +145,16 @@ function parseOneFile(lines: string[]): ParsedDiff | null {
  *   @@ -oldStart,oldCount +newStart,newCount @@ optional func context
  */
 function parseHunkHeader(line: string): HunkMeta | null {
-	const m = line.match(/^@@\s+-(\d+)(?:,(\d+))?\s+\+(\d+)(?:,(\d+))?\s+@@(?:\s+(.*))?$/);
+	const m = line!.match(/^@@\s+-(\d+)(?:,(\d+))?\s+\+(\d+)(?:,(\d+))?\s+@@(?:\s+(.*))?$/);
 	if (!m) return null;
 	const oldStart = Number(m[1]);
 	const oldLines = m[2] ? Number(m[2]) : 1;
 	const newStart = Number(m[3]);
 	const newLines = m[4] ? Number(m[4]) : 1;
 	const context = m[5]?.trim() || undefined;
-	return { oldStart, oldLines, newStart, newLines, context };
+	const meta: HunkMeta = { oldStart, oldLines, newStart, newLines };
+	if (context) meta.context = context;
+	return meta;
 }
 
 function emptyDiff(): ParsedDiff {
@@ -177,7 +179,7 @@ let _sepStyle: HunkSeparatorStyle = "auto";
  * Call once during extension init, or with force=true to re-read.
  */
 export function resolveSepStyle(): HunkSeparatorStyle {
-	const fromEnv = process.env.PI_DIFF_SEP_STYLE;
+	const fromEnv = process.env["PI_DIFF_SEP_STYLE"];
 	if (fromEnv && ["auto", "simple", "gap", "context", "metadata"].includes(fromEnv)) {
 		_sepStyle = fromEnv as HunkSeparatorStyle;
 	} else {
@@ -292,22 +294,22 @@ export function computeHunkBlocks(diff: ParsedDiff): HunkBlock[] {
 	const lines = diff.lines;
 
 	while (i < lines.length) {
-		if (lines[i].type === "sep" || lines[i].type === "ctx") {
+		if (lines[i]?.type === "sep" || lines[i]?.type === "ctx") {
 			i++;
 			continue;
 		}
 
 		// Collect consecutive deletions
 		const deletions: DiffLine[] = [];
-		while (i < lines.length && lines[i].type === "del") {
-			deletions.push(lines[i]);
+		while (i < lines.length && lines[i]!.type === "del") {
+			deletions.push(lines[i]!);
 			i++;
 		}
 
 		// Collect consecutive additions
 		const additions: DiffLine[] = [];
-		while (i < lines.length && lines[i].type === "add") {
-			additions.push(lines[i]);
+		while (i < lines.length && lines[i]!.type === "add") {
+			additions.push(lines[i]!);
 			i++;
 		}
 
@@ -327,25 +329,25 @@ export function parseDiff(oldContent: string, newContent: string, ctx = 3): Pars
 	for (let hi = 0; hi < patch.hunks.length; hi++) {
 		const h = patch.hunks[hi];
 		const meta: HunkMeta = {
-			oldStart: h.oldStart,
-			oldLines: h.oldLines,
-			newStart: h.newStart,
-			newLines: h.newLines,
+			oldStart: h!.oldStart,
+			oldLines: h!.oldLines,
+			newStart: h!.newStart,
+			newLines: h!.newLines,
 		};
 
 		// Emit hunk metadata as a synthetic sep (position 0 for first hunk,
 		// between-hunk sep for subsequent). This ensures every hunk has metadata.
 		if (hi > 0) {
 			const prev = patch.hunks[hi - 1];
-			const gap = h.oldStart - (prev.oldStart + prev.oldLines);
+			const gap = h!.oldStart - (prev!.oldStart + prev!.oldLines);
 			lines.push({ type: "sep", oldNum: null, newNum: gap > 0 ? gap : null, content: "", hunkMeta: meta });
 		} else {
 			lines.push({ type: "sep", oldNum: null, newNum: null, content: "", hunkMeta: meta });
 		}
 
-		let oL = h.oldStart;
-		let nL = h.newStart;
-		for (const raw of h.lines) {
+		let oL = h!.oldStart;
+		let nL = h!.newStart;
+		for (const raw of h!.lines) {
 			if (raw === "\\ No newline at end of file") continue;
 			const ch = raw[0];
 			const text = raw.slice(1);

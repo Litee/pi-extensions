@@ -24,7 +24,7 @@ describe("parseConflicts", () => {
 		expect(result.hasConflicts).toBe(true);
 		expect(result.regions).toHaveLength(1);
 
-		const region = result.regions[0];
+		const region = result.regions[0]!;
 		expect(region.currentRef).toBe("HEAD");
 		expect(region.current).toEqual(["current change"]);
 		expect(region.base).toEqual([]);
@@ -49,7 +49,7 @@ describe("parseConflicts", () => {
 		expect(result.hasConflicts).toBe(true);
 		expect(result.regions).toHaveLength(1);
 
-		const region = result.regions[0];
+		const region = result.regions[0]!;
 		expect(region.current).toEqual(["current"]);
 		expect(region.base).toEqual(["base version"]);
 		expect(region.incoming).toEqual(["incoming"]);
@@ -69,8 +69,8 @@ describe("parseConflicts", () => {
 
 		const result = parseConflicts(content);
 		expect(result.regions).toHaveLength(1);
-		expect(result.regions[0].current).toHaveLength(2);
-		expect(result.regions[0].incoming).toHaveLength(2);
+		expect(result.regions[0]!.current).toHaveLength(2);
+		expect(result.regions[0]!.incoming).toHaveLength(2);
 	});
 
 	it("parses multiple conflict regions", () => {
@@ -103,8 +103,8 @@ describe("parseConflicts", () => {
 
 		const result = parseConflicts(content);
 		expect(result.hasConflicts).toBe(true);
-		expect(result.regions[0].currentRef).toBe("");
-		expect(result.regions[0].incomingRef).toBe("");
+		expect(result.regions[0]!.currentRef).toBe("");
+		expect(result.regions[0]!.incomingRef).toBe("");
 	});
 
 	it("handles empty conflict sides", () => {
@@ -116,8 +116,8 @@ describe("parseConflicts", () => {
 		].join("\n");
 
 		const result = parseConflicts(content);
-		expect(result.regions[0].current).toEqual([]);
-		expect(result.regions[0].incoming).toEqual(["incoming"]);
+		expect(result.regions[0]!.current).toEqual([]);
+		expect(result.regions[0]!.incoming).toEqual(["incoming"]);
 	});
 });
 
