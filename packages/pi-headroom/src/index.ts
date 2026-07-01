@@ -178,8 +178,13 @@ async function handleContextCompression(
 
 function shouldSkipBeforePayload(runtime: HeadroomRuntime, ctx: ExtensionContext): boolean {
 	if (!runtime.state.enabled) return true;
-	const usage = (ctx as { getContextUsage?(): { tokens: number } | null | undefined }).getContextUsage?.();
-	return usage?.tokens !== null && usage?.tokens !== undefined && usage.tokens < runtime.config.minContextTokens;
+	try {
+		const usage = (ctx as { getContextUsage?(): { tokens: number } | null | undefined }).getContextUsage?.();
+		return usage?.tokens !== null && usage?.tokens !== undefined && usage.tokens < runtime.config.minContextTokens;
+	} catch {
+		// ctx is stale after session replacement — skip compression
+		return true;
+	}
 }
 
 function recordGuardSkip(stats: HeadroomStats, reason: string): void {
