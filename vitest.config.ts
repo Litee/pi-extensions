@@ -246,6 +246,12 @@ export default defineConfig({
 				// slash command handlers are tested in isolation (parseSubcommand,
 				// createRuntimeState) but footer rendering requires a live TUI.
 				"**/pi-headroom/**",
+				// pi-diff — entry point (index.ts) and review renderers (git.ts,
+				// hunk-preview.ts) require a live pi session / TUI to exercise.
+				// Core logic (config, conflicts, diff, replace) is fully unit-tested.
+				"**/pi-diff/src/index.ts",
+				"**/pi-diff/src/review/git.ts",
+				"**/pi-diff/src/review/hunk-preview.ts",
 
 			],
 			// `json-summary` makes the coverage output machine-readable so CI or
