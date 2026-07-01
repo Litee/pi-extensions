@@ -1,7 +1,7 @@
 import type { ContextEvent, ExtensionAPI, ExtensionContext, Theme } from "@earendil-works/pi-coding-agent";
 import { applyCompressionResult, buildCompressionPayload } from "./bridge.ts";
 import { HeadroomHttpClient } from "./client.ts";
-import { isRemoteBlocked, loadHeadroomConfig } from "./config.ts";
+import { isLocalHeadroomUrl, loadHeadroomConfig } from "./config.ts";
 import { createDefaultMenu } from "./menu.ts";
 import { createDefaultProxyManager } from "./proxy-manager.ts";
 import type {
@@ -34,7 +34,6 @@ export function createRuntime(
 		proxyOnline: null,
 		proxyStarting: false,
 		proxyStartAttempted: false,
-		remoteWarningShown: false,
 		offlineWarningShown: false,
 		stats: { attempts: 0, applied: 0, guardSkips: 0, tokensSaved: 0 },
 	};
@@ -59,7 +58,6 @@ export function createRuntime(
 }
 
 /** Wire up a headroom extension with default (real) dependencies. */
-/** Wire up a headroom extension with default (real) dependencies. */
 export default headroomExtension;
 export function headroomExtension(pi: ExtensionAPI): void {
 	const config = loadHeadroomConfig();
@@ -67,13 +65,11 @@ export function headroomExtension(pi: ExtensionAPI): void {
 	const runtime = createRuntime(config, client, createDefaultProxyManager());
 
 	pi.on("session_start", (_event, ctx) => {
-		if (isRemoteBlocked(runtime.config)) {
-			runtime.refreshStatus(ctx);
+		if (!isLocalHeadroomUrl(runtime.config.baseUrl)) {
 			ctx.ui.notify(
-				`Headroom remote URL is blocked by default: ${runtime.config.baseUrl}\nSet PI_HEADROOM_ALLOW_REMOTE=1 only if you trust that proxy with full context.`,
+				`Headroom proxy URL is remote: ${runtime.config.baseUrl}\nCompression will send context to this proxy.`,
 				"warning",
 			);
-			return;
 		}
 		void runtime.updateHealth(ctx);
 	});
@@ -98,7 +94,6 @@ export function headroomExtension(pi: ExtensionAPI): void {
 // ---------------------------------------------------------------------------
 
 async function updateHealthState(runtime: HeadroomRuntime, signal?: AbortSignal): Promise<boolean> {
-	if (isRemoteBlocked(runtime.config)) return false;
 	runtime.state.proxyOnline = await runtime.client.health(signal);
 	return runtime.state.proxyOnline;
 }
@@ -183,17 +178,6 @@ async function handleContextCompression(
 
 function shouldSkipBeforePayload(runtime: HeadroomRuntime, ctx: ExtensionContext): boolean {
 	if (!runtime.state.enabled) return true;
-	if (isRemoteBlocked(runtime.config)) {
-		if (!runtime.state.remoteWarningShown) {
-			runtime.state.remoteWarningShown = true;
-			ctx.ui.notify(
-				"Headroom compression skipped because remote proxy is blocked.",
-				"warning",
-			);
-		}
-		runtime.refreshStatus(ctx);
-		return true;
-	}
 	const usage = (ctx as { getContextUsage?(): { tokens: number } | null | undefined }).getContextUsage?.();
 	return usage?.tokens !== null && usage?.tokens !== undefined && usage.tokens < runtime.config.minContextTokens;
 }
@@ -283,9 +267,9 @@ async function handleCommand(
 	}
 }
 
-function refreshStatus(ctx: ExtensionContext, config: HeadroomConfig, state: HeadroomRuntimeState): void {
+function refreshStatus(ctx: ExtensionContext, _config: HeadroomConfig, state: HeadroomRuntimeState): void {
 	if (!(ctx as { hasUI?: boolean }).hasUI) return;
-	ctx.ui.setStatus(STATUS_KEY, renderFooterStatus(ctx, config, state));
+	ctx.ui.setStatus(STATUS_KEY, renderFooterStatus(ctx, state));
 }
 
 type HeadroomStatusColor = "dim" | "warning" | "success";
@@ -303,10 +287,9 @@ function createStatusPainter(theme: unknown): (color: HeadroomStatusColor, text:
 	return (_color, text) => text;
 }
 
-function renderFooterStatus(ctx: ExtensionContext, config: HeadroomConfig, state: HeadroomRuntimeState): string {
+function renderFooterStatus(ctx: ExtensionContext, state: HeadroomRuntimeState): string {
 	const paint = createStatusPainter(ctx.ui.theme);
 	if (!state.enabled) return paint("dim", "○ Headroom off");
-	if (isRemoteBlocked(config)) return paint("warning", "⚠") + paint("dim", " Headroom remote blocked");
 	if (state.proxyStarting) return paint("dim", "⏳ Headroom starting");
 	if (state.proxyOnline === false) return paint("dim", "○ Headroom not running");
 	if (state.proxyOnline === null && !state.stats.last) return paint("dim", "○ Headroom idle");
@@ -323,10 +306,6 @@ async function showProxyStats(
 	client: HeadroomClient,
 	config: HeadroomConfig,
 ): Promise<void> {
-	if (isRemoteBlocked(config)) {
-		ctx.ui.notify(renderRemoteBlocked(config), "warning");
-		return;
-	}
 	try {
 		const stats = await client.stats(ctx.signal);
 		ctx.ui.notify(
@@ -341,7 +320,6 @@ async function showProxyStats(
 
 
 function proxyStartHint(config: HeadroomConfig): string {
-	if (isRemoteBlocked(config)) return renderRemoteBlocked(config);
 	return [
 		`Headroom proxy is not running: ${config.baseUrl}`,
 		"Start it manually:",
@@ -358,14 +336,6 @@ function renderManualProxyCommand(config: HeadroomConfig): string {
 	} catch {
 		return `${config.command} proxy --mode token --no-cache`;
 	}
-}
-
-function renderRemoteBlocked(config: HeadroomConfig): string {
-	return [
-		`Headroom remote URL is blocked: ${config.baseUrl}`,
-		"Compression sends conversation context to the proxy.",
-		"Set PI_HEADROOM_ALLOW_REMOTE=1 only for a trusted proxy.",
-	].join("\n");
 }
 
 function parseSubcommand(args: string): Subcommand {

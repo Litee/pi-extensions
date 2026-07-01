@@ -15,7 +15,7 @@ export interface ImageContentPart {
 	image_url: { url: string; detail?: "auto" | "low" | "high" };
 }
 
-export type OpenAIContentPart = TextContentPart | ImageContentPart;
+type OpenAIContentPart = TextContentPart | ImageContentPart;
 
 export interface OpenAISystemMessage {
 	role: "system";
@@ -61,7 +61,6 @@ export interface CompressResult {
 export interface HeadroomConfig {
 	enabled: boolean;
 	baseUrl: string;
-	allowRemote: boolean;
 	command: string;
 	minContextTokens: number;
 	minMessageChars: number;
@@ -132,7 +131,6 @@ export interface HeadroomRuntimeState {
 	proxyOnline: boolean | null;
 	proxyStarting: boolean;
 	proxyStartAttempted: boolean;
-	remoteWarningShown: boolean;
 	offlineWarningShown: boolean;
 	stats: HeadroomStats;
 }

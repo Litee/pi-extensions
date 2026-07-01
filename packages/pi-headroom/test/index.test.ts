@@ -53,7 +53,6 @@ function getConfig(overrides: Partial<HeadroomConfig> = {}): HeadroomConfig {
 	return {
 		enabled: true,
 		baseUrl: "http://127.0.0.1:8788",
-		allowRemote: false,
 		command: "headroom",
 		minContextTokens: 20_000,
 		minMessageChars: 2_000,
@@ -80,7 +79,6 @@ describe("headroom runtime creation", () => {
 		expect(runtime.state.proxyOnline).toBeNull();
 		expect(runtime.state.proxyStarting).toBe(false);
 		expect(runtime.state.proxyStartAttempted).toBe(false);
-		expect(runtime.state.remoteWarningShown).toBe(false);
 		expect(runtime.state.offlineWarningShown).toBe(false);
 		expect(runtime.state.stats).toEqual({
 			attempts: 0,
@@ -162,17 +160,13 @@ describe("headroom compression guard", () => {
 	it("skips when compression is disabled", () => {
 		const runtime = createRuntime(getConfig({ enabled: false }), createMockClient(), createMockProxyManager());
 
-		// shouldSkipBeforePayload returns true when disabled
-		// We can't call it directly, but we can test through the runtime
 		expect(runtime.state.enabled).toBe(false);
 	});
 
-	it("skips when remote proxy is blocked", () => {
-		const runtime = createRuntime(getConfig({ baseUrl: "https://remote.example.com", allowRemote: false }), createMockClient(), createMockProxyManager());
+	it("skips when context is below minimum threshold", () => {
+		const runtime = createRuntime(getConfig(), createMockClient(), createMockProxyManager());
 
-		// The remoteWarningShown flag should be set when we try to use a blocked remote
-		// We can test this through the runtime state
-		expect(runtime.state.remoteWarningShown).toBe(false);
+		expect(runtime.state.enabled).toBe(true);
 	});
 });
 

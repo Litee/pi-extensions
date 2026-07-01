@@ -14,7 +14,6 @@ export interface HeadroomSettings {
 	enabled?: boolean | string;
 	baseUrl?: string;
 	url?: string;
-	allowRemote?: boolean | string;
 	command?: string;
 	minContextTokens?: number | string;
 	minMessageChars?: number | string;
@@ -54,7 +53,6 @@ export function loadHeadroomConfig(
 	return {
 		enabled: parseBoolean(settings.enabled, parseBoolean(env["PI_HEADROOM_ENABLED"], true)),
 		baseUrl,
-		allowRemote: parseBoolean(settings.allowRemote, parseBoolean(env["PI_HEADROOM_ALLOW_REMOTE"], false)),
 		command: parseString(settings.command, env["PI_HEADROOM_COMMAND"]?.trim() || "headroom"),
 		minContextTokens: parseInteger(
 			settings.minContextTokens,
@@ -77,10 +75,6 @@ export function isLocalHeadroomUrl(rawUrl: string): boolean {
 	} catch {
 		return false;
 	}
-}
-
-export function isRemoteBlocked(config: Pick<HeadroomConfig, "baseUrl" | "allowRemote">): boolean {
-	return !config.allowRemote && !isLocalHeadroomUrl(config.baseUrl);
 }
 
 function normalizeBaseUrl(raw: string): string {

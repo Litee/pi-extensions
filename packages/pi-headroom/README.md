@@ -39,7 +39,7 @@ The `/headroom` menu provides:
 - **Min context tokens** — compress only when context exceeds this threshold.
 - **Min message chars** — skip messages shorter than this.
 - **Proxy URL** — the base URL of the Headroom proxy.
-- **Allow remote** — permit non-localhost proxy URLs (off by default for privacy).
+
 - **Timeout (ms)** — HTTP request timeout.
 - **Reset to defaults** — delete `pi-headroom.json` and revert all settings.
 
@@ -47,7 +47,7 @@ The top of the menu shows a live snapshot of the current session: proxy status, 
 
 ## Privacy
 
-Compression sends conversation context to the proxy. Remote URLs are blocked by default — only `localhost`/`127.0.0.1`/`::1` are allowed unless you enable **Allow remote** in the menu or set `PI_HEADROOM_ALLOW_REMOTE=1` for a proxy you trust.
+Compression sends conversation context to the proxy. A warning is shown when the proxy URL points to a remote (non-localhost) host.
 
 ## Configuration
 
@@ -64,7 +64,6 @@ Settings persist to `~/.pi/agent/pi-headroom.json`. Values there override enviro
 | --- | --- | --- | --- |
 | `enabled` | `PI_HEADROOM_ENABLED` | `true` | Enable compression on start. |
 | `baseUrl` (`url` also accepted) | `PI_HEADROOM_URL` (`HEADROOM_URL` / `HEADROOM_BASE_URL` also accepted) | `http://127.0.0.1:8788` | Proxy base URL. |
-| `allowRemote` | `PI_HEADROOM_ALLOW_REMOTE` | `false` | Allow non-local proxy URLs. |
 | `minContextTokens` | `PI_HEADROOM_MIN_CONTEXT_TOKENS` | `20000` | Skip compression below this context token count. |
 | `minMessageChars` | `PI_HEADROOM_MIN_MESSAGE_CHARS` | `2000` | Only compress messages at or above this size. |
 | `timeoutMs` | `PI_HEADROOM_TIMEOUT_MS` | `30000` | HTTP timeout for proxy requests. |

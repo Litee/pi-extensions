@@ -2,7 +2,7 @@ import * as fs from "node:fs";
 import * as os from "node:os";
 import * as path from "node:path";
 import { describe, expect, it } from "vitest";
-import { isRemoteBlocked, loadHeadroomConfig, loadHeadroomSettings } from "../src/config.ts";
+import { isLocalHeadroomUrl, loadHeadroomConfig, loadHeadroomSettings } from "../src/config.ts";
 
 describe("headroom config", () => {
 	it("defaults to local compression-only proxy with conservative thresholds", () => {
@@ -10,23 +10,19 @@ describe("headroom config", () => {
 
 		expect(config.enabled).toBe(true);
 		expect(config.baseUrl).toBe("http://127.0.0.1:8788");
-		expect(config.allowRemote).toBe(false);
 		expect(config.command).toBe("headroom");
 		expect(config.minContextTokens).toBe(20_000);
 		expect(config.minMessageChars).toBe(2_000);
 		expect(config.timeoutMs).toBe(30_000);
 	});
 
-	it("blocks remote proxy URLs unless explicitly allowed", () => {
-		const blocked = loadHeadroomConfig({ PI_HEADROOM_URL: "https://headroom.example.com/" });
-		const allowed = loadHeadroomConfig({
-			PI_HEADROOM_URL: "https://headroom.example.com/",
-			PI_HEADROOM_ALLOW_REMOTE: "1",
-		});
-
-		expect(blocked.baseUrl).toBe("https://headroom.example.com");
-		expect(isRemoteBlocked(blocked)).toBe(true);
-		expect(isRemoteBlocked(allowed)).toBe(false);
+	it("recognises local vs remote proxy URLs", () => {
+		expect(isLocalHeadroomUrl("http://127.0.0.1:8788")).toBe(true);
+		expect(isLocalHeadroomUrl("http://localhost:8788")).toBe(true);
+		expect(isLocalHeadroomUrl("http://[::1]:8788")).toBe(true);
+		expect(isLocalHeadroomUrl("https://headroom.example.com/")).toBe(false);
+		expect(isLocalHeadroomUrl("https://headroom.internal.corp/edge")).toBe(false);
+		expect(isLocalHeadroomUrl("http://192.168.1.10:8788")).toBe(false);
 	});
 
 	it("parses boolean and integer env overrides", () => {
@@ -54,7 +50,6 @@ describe("headroom config", () => {
 				JSON.stringify({
 					enabled: false,
 					baseUrl: "http://localhost:9999/",
-					allowRemote: true,
 					command: "custom-headroom",
 					minContextTokens: 12345,
 					minMessageChars: 678,
@@ -67,7 +62,6 @@ describe("headroom config", () => {
 
 			expect(config.enabled).toBe(false);
 			expect(config.baseUrl).toBe("http://localhost:9999");
-			expect(config.allowRemote).toBe(true);
 			expect(config.command).toBe("custom-headroom");
 			expect(config.minContextTokens).toBe(12345);
 			expect(config.minMessageChars).toBe(678);
