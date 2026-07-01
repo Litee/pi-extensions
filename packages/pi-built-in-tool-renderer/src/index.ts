@@ -22,7 +22,6 @@ import {
 	createGrepTool,
 	createLsTool,
 	createReadTool,
-	createWriteTool,
 } from "@earendil-works/pi-coding-agent";
 import type { Component } from "@earendil-works/pi-tui";
 import { Text } from "@earendil-works/pi-tui";
@@ -37,7 +36,6 @@ import {
 	renderGrep,
 	renderLs,
 	renderRead,
-	renderWrite,
 	tickBashTimer,
 } from "./renderers.js";
 
@@ -105,24 +103,7 @@ export default function (pi: ExtensionAPI) {
 	});
 
 	// --- edit --- disabled — delegated to pi-diff
-	// --- write ---
-	const originalWrite = createWriteTool(cwd);
-	pi.registerTool({
-		name: "write",
-		label: "write",
-		description: originalWrite.description,
-		parameters: originalWrite.parameters,
-		async execute(toolCallId, params, signal, onUpdate) {
-			return originalWrite.execute(toolCallId, params, signal, onUpdate);
-		},
-		renderCall(writeArgs, theme, ctx) {
-			return new Text(renderWrite(writeArgs, undefined, theme, ctx).call, 0, 0);
-		},
-		renderResult(result, { expanded, isPartial }, theme, ctx) {
-			const view = renderWrite(args(ctx), result, theme, mergeOptions(ctx, expanded, isPartial));
-			return new Text(view.result, 0, 0);
-		},
-	});
+	// --- write --- disabled — delegated to pi-diff
 
 	// --- grep ---
 	const originalGrep = createGrepTool(cwd);

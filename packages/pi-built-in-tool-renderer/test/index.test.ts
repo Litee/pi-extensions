@@ -5,7 +5,7 @@ import createExtension from "../src/index.js";
 // ---------------------------------------------------------------------------
 // Smoke test for extension wiring. Renderer / helper behaviour is covered
 // directly by renderers.test.ts and helpers.test.ts; this file only asserts
-// that the default export registers the expected six built-in tools with
+// that the default export registers the expected five built-in tools with
 // the default boxed shell.
 // ---------------------------------------------------------------------------
 
@@ -23,10 +23,10 @@ function makeFakePi(): StubPi {
 }
 
 describe("default export", () => {
-	it("re-registers six built-in tools (read, bash, write, grep, ls, find — edit delegated to pi-diff)", () => {
+	it("re-registers five built-in tools (read, bash, grep, ls, find — edit & write delegated to pi-diff)", () => {
 		const pi = makeFakePi();
 		createExtension(pi as never);
-		expect([...pi.tools.keys()].sort()).toEqual(["bash", "find", "grep", "ls", "read", "write"]);
+		expect([...pi.tools.keys()].sort()).toEqual(["bash", "find", "grep", "ls", "read"]);
 	});
 
 	it("all tools use the default boxed shell (no renderShell override)", () => {
