@@ -1405,10 +1405,6 @@ export default async function diffRendererExtension(pi: ExtensionAPI): Promise<v
     createEditTool = sdk.createEditTool;
     TextComponent = tui.Text;
   } catch (error) {
-    console.error(
-      // eslint-disable-next-line @typescript-eslint/no-base-to-string
-      `[pi-diff] failed to load Pi SDK dependencies: ${error instanceof Error ? error.message : String(error)}`,
-    );
     return;
   }
   if (!createWriteTool || !createEditTool || !TextComponent) return;
@@ -1875,10 +1871,6 @@ export default async function diffRendererExtension(pi: ExtensionAPI): Promise<v
           }
         } catch (replaceError) {
           // replace() failed; fall through to SDK edit tool
-          console.warn(
-            // eslint-disable-next-line @typescript-eslint/no-base-to-string
-            `[pi-diff] replace() failed, falling back to SDK: ${replaceError instanceof Error ? replaceError.message : String(replaceError)}`,
-          );
         }
       }
 
