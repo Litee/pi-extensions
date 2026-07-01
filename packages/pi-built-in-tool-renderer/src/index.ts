@@ -18,7 +18,6 @@
 import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
 import {
 	createBashTool,
-	createEditTool,
 	createFindTool,
 	createGrepTool,
 	createLsTool,
@@ -34,7 +33,6 @@ import {
 	type ThemeLike,
 	renderBash,
 	renderBashCallLines,
-	renderEdit,
 	renderFind,
 	renderGrep,
 	renderLs,
@@ -106,25 +104,7 @@ export default function (pi: ExtensionAPI) {
 		},
 	});
 
-	// --- edit ---
-	const originalEdit = createEditTool(cwd);
-	pi.registerTool({
-		name: "edit",
-		label: "edit",
-		description: originalEdit.description,
-		parameters: originalEdit.parameters,
-		async execute(toolCallId, params, signal, onUpdate) {
-			return originalEdit.execute(toolCallId, params, signal, onUpdate);
-		},
-		renderCall(editArgs, theme, ctx) {
-			return new Text(renderEdit(editArgs, undefined, theme, ctx).call, 0, 0);
-		},
-		renderResult(result, { expanded, isPartial }, theme, ctx) {
-			const view = renderEdit(args(ctx), result, theme, mergeOptions(ctx, expanded, isPartial));
-			return new Text(view.result, 0, 0);
-		},
-	});
-
+	// --- edit --- disabled — delegated to pi-diff
 	// --- write ---
 	const originalWrite = createWriteTool(cwd);
 	pi.registerTool({
