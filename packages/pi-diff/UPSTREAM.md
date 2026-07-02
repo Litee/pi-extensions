@@ -8,7 +8,7 @@ Upstream
 
 **Initially ported:** `0c4768c` (local commit `7443d13`)
 
-**Last synced:** `0c4768c` (`fix: include dist/edit-guard.* in published package`, 2026-06-28)
+**Last synced:** `e7ff2a426a82e020b85d7fd16ef7841378c01e41` (`release: v0.6.10 default expand write/edit tool output`, 2026-07-02)
 
 **Differences from upstream**
 
@@ -17,5 +17,5 @@ None so far — this is a direct copy.
 ```bash
 UP=$(mktemp -d)/pi-diff
 git clone --quiet https://github.com/buddingnewinsights/pi-diff.git "$UP"
-git -C "$UP" log --oneline 0c4768c..origin/HEAD
+git -C "$UP" log --oneline e7ff2a426a82e020b85d7fd16ef7841378c01e41..origin/HEAD
 ```

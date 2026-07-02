@@ -1390,6 +1390,11 @@ export const __testing = {
 };
 
 export default async function diffRendererExtension(pi: ExtensionAPI): Promise<void> {
+  // pi-pretty sets toolOutputExpanded:false on session_start; write/edit default expanded.
+  pi.on("session_start", (_event, ctx) => {
+    ctx.ui.setToolsExpanded(true);
+  });
+
   // Apply diff theme palette from settings/presets before rendering
   applySharedDiffPalette();
   // Resolve hunk separator style from env var
@@ -1412,10 +1417,11 @@ export default async function diffRendererExtension(pi: ExtensionAPI): Promise<v
   const cwd = process.cwd();
   const home = process.env["HOME"] ?? "";
   const sp = (p: string) => shortPath(cwd, home, p);
-  const TOOL_HEADER_LEFT_PAD = 2;
+  const TOOL_RESULT_INDENT = " ";
+  const TOOL_HEADER_LEFT_PAD = 1;
   const TOOL_HEADER_TOP_PAD = 1;
   const TOOL_PREVIEW_BOTTOM_PAD = 1;
-  const DIFF_BODY_LEFT_PAD = 1;
+  const DIFF_BODY_LEFT_PAD = 0;
 
   function resolvePreviewDiffColors(theme: any): DiffColors {
     resolveDiffColors(theme);
@@ -1623,7 +1629,7 @@ export default async function diffRendererExtension(pi: ExtensionAPI): Promise<v
       // Streaming
       if (args?.content && !ctx.argsComplete) {
         const n = String(args.content).split("\n").length;
-        text.setText(`${hdr}  ${theme.fg("muted", `(${n} lines…)`)}`);
+        text.setText(`${hdr} ${TOOL_RESULT_INDENT}${theme.fg("muted", `(${n} lines…)`)}`);
         return text;
       }
 
@@ -1670,44 +1676,48 @@ export default async function diffRendererExtension(pi: ExtensionAPI): Promise<v
       }
       const d = (result as Record<string, unknown>)["details"] as Record<string, unknown> | undefined;
       if (d?.["_type"] === "diff") {
-        setDiffPreviewTask(text, "wd", d?.["summary"] as string ?? "", d?.["diff"] as ParsedDiff ?? null, (d?.["language"] as BundledLanguage) ?? undefined, MAX_RENDER_LINES, theme, ctx);
+        setDiffPreviewTask(text, "wd", "", d?.["diff"] as ParsedDiff ?? null, (d?.["language"] as BundledLanguage) ?? undefined, MAX_RENDER_LINES, theme, ctx);
         return text;
       }
       if (d?.["_type"] === "noChange") {
         delete text.__piDiffTask;
-        text.setText(`  ${theme.fg("muted", "✓ no changes")}`);
+        text.setText(`${TOOL_RESULT_INDENT}${theme.fg("muted", "✓ no changes")}`);
         return text;
       }
       if (d?.["_type"] === "new") {
         const dNew = d as Record<string, any> | undefined;
         const { lines: lineCount, content: rawContent, filePath: fp } = dNew!;
+        const w = termW();
+        const newHdr = bgLine(
+          `${theme.fg("success", `✓ new file (${lineCount} lines)`)}`,
+          w,
+        );
         const pk = `nf:${sharedThemeCacheKey(theme)}:${fp}:${lineCount}`;
         if (ctx.state._nfk !== pk) {
           ctx.state._nfk = pk;
-          ctx.state._nft = `  ${theme.fg("success", `✓ new file (${lineCount} lines)`)}`;
+          ctx.state._nft = newHdr;
           const lg = detectDiffLanguage(fp);
           if (rawContent) {
             hlBlock(rawContent, lg)
               .then((hlLines: string[]) => {
                 if (ctx.state._nfk !== pk) return;
-                const maxShow = ctx.expanded ? hlLines.length : 12;
+                const maxShow = hlLines.length;
                 const preview = hlLines.slice(0, maxShow).join("\n");
                 const rem = hlLines.length - maxShow;
-                let out = `  ${theme.fg("success", `✓ new file (${lineCount} lines)`)}\n${preview}`;
-                if (rem > 0) out += `\n${theme.fg("muted", `  … ${rem} more lines`)}`;
+                let out = `${newHdr}\n${padDiffBody(preview)}`;
+                if (rem > 0)
+                  out += `\n${bgLine(`${TOOL_RESULT_INDENT}${theme.fg("muted", `… ${rem} more lines`)}`, w)}`;
                 ctx.state._nft = out;
                 ctx.invalidate();
               })
               .catch(() => {});
           }
         }
-        text.setText(
-          ctx.state._nft ?? `  ${theme.fg("success", `✓ new file (${lineCount} lines)`)}`,
-        );
+        text.setText(ctx.state._nft ?? newHdr);
         return text;
       }
       text.setText(
-        `  ${theme.fg("dim", String(result?.content?.[0]?.text ?? "written").slice(0, 120))}`,
+        `${TOOL_RESULT_INDENT}${theme.fg("dim", String(result?.content?.[0]?.text ?? "written").slice(0, 120))}`,
       );
       return text;
     },
@@ -1979,7 +1989,7 @@ export default async function diffRendererExtension(pi: ExtensionAPI): Promise<v
             fp,
             theme,
             termW(),
-            `  ${theme.fg("muted", summarize(totalAdded, totalRemoved))}${loc}`,
+            `${TOOL_RESULT_INDENT}${theme.fg("muted", summarize(totalAdded, totalRemoved))}${loc}`,
           ),
         );
       } else {
@@ -2031,11 +2041,10 @@ export default async function diffRendererExtension(pi: ExtensionAPI): Promise<v
           }
       delete text.__piDiffTask;
       text.setText(
-        `  ${theme.fg("dim", String(result?.content?.[0]?.text ?? "edited").slice(0, 120))}`,
+        `${TOOL_RESULT_INDENT}${theme.fg("dim", String(result?.content?.[0]?.text ?? "edited").slice(0, 120))}`,
       );
       return text;
     },
   });
-
   registerEditGuard(pi);
 }
