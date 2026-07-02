@@ -7,4 +7,4 @@ if [ "$(git config user.name)" != "Andrey Lipatkin" ] || \
   exit 1
 fi
 
-npm run lint && npm test
+npm run check
