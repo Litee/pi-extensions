@@ -140,7 +140,7 @@ let BG_DEL_W = envBg("DIFF_BG_DEL_HL", "\x1b[48;2;100;45;45m");
 let BG_GUTTER_ADD = envBg("DIFF_BG_GUTTER_ADD", "\x1b[48;2;24;42;32m");
 let BG_GUTTER_DEL = envBg("DIFF_BG_GUTTER_DEL", "\x1b[48;2;48;28;28m");
 // @ts-expect-error upstream code uses any/index signatures
-let BG_EMPTY = "\x1b[48;2;18;18;18m";
+let _BG_EMPTY = "\x1b[48;2;18;18;18m";
 let FG_ADD = envFg("DIFF_FG_ADD", "\x1b[38;2;100;180;120m");
 let FG_DEL = envFg("DIFF_FG_DEL", "\x1b[38;2;200;100;100m");
 let FG_DIM = "\x1b[38;2;80;80;80m";
@@ -148,13 +148,13 @@ let FG_LNUM = "\x1b[38;2;100;100;100m";
 let FG_RULE = "\x1b[38;2;50;50;50m";
 let FG_SAFE_MUTED = "\x1b[38;2;139;148;158m";
 // @ts-expect-error upstream code uses any/index signatures
-let FG_STRIPE = "\x1b[38;2;40;40;40m";
+let _FG_STRIPE = "\x1b[38;2;40;40;40m";
 function getBorderBar(): string {
 	const style = configIndicatorStyle();
 	return style === "none" ? " " : "▌";
 }
 // @ts-expect-error upstream code uses any/index signatures
-let DIVIDER = `${FG_RULE}${RST}`;
+let _DIVIDER = `${FG_RULE}${RST}`;
 const ESC_RE = "\u001b";
 const ANSI_RE = new RegExp(`${ESC_RE}\\[[0-9;]*m`, "g");
 const ANSI_CAPTURE_RE = new RegExp(`${ESC_RE}\\[([^m]*)m`, "g");
@@ -337,9 +337,9 @@ function autoDeriveBgFromTheme(theme: any): void {
 		BG_DEL_W = mixBg(delBase, delRgb, 0.35);
 		BG_GUTTER_ADD = mixBg(addBase, addRgb, 0.1);
 		BG_GUTTER_DEL = mixBg(delBase, delRgb, 0.12);
-		BG_EMPTY = BG_BASE;
+		_BG_EMPTY = BG_BASE;
 		RST = `\x1b[0m${BG_BASE}`;
-		DIVIDER = `${FG_RULE}${RST}`;
+		_DIVIDER = `${FG_RULE}${RST}`;
 	} catch {}
 }
 
@@ -412,7 +412,7 @@ export function applyDiffPalette(): void {
 		BG_GUTTER_DEL = value;
 	});
 	applyBg(null, "bgEmpty", preset?.bgEmpty, (value) => {
-		BG_EMPTY = value;
+		_BG_EMPTY = value;
 	});
 	applyFg("DIFF_FG_ADD", "fgAdd", preset?.fgAdd, (value) => {
 		FG_ADD = value;
@@ -430,7 +430,7 @@ export function applyDiffPalette(): void {
 		FG_RULE = value;
 	});
 	applyFg(null, "fgStripe", preset?.fgStripe, (value) => {
-		FG_STRIPE = value;
+		_FG_STRIPE = value;
 	});
 	applyFg(null, "fgSafeMuted", preset?.fgSafeMuted, (value) => {
 		FG_SAFE_MUTED = value;
@@ -438,7 +438,7 @@ export function applyDiffPalette(): void {
 // @ts-expect-error upstream code uses any/index signatures
 	const shikiTheme = overrides.shikiTheme ?? preset?.shikiTheme;
 	if (shikiTheme) THEME = shikiTheme as BundledTheme;
-	DIVIDER = `${FG_RULE}${RST}`;
+	_DIVIDER = `${FG_RULE}${RST}`;
 	DEFAULT_DIFF_COLORS = { fgAdd: FG_ADD, fgDel: FG_DEL, fgCtx: FG_DIM };
 	_autoDerivePending = !_hasExplicitBgConfig;
 }
@@ -652,7 +652,7 @@ function lnum(value: number | null, width: number, fg = FG_LNUM): string {
 }
 
 // @ts-expect-error upstream code uses any/index signatures
-function rule(width: number): string {
+function _rule(width: number): string {
 	return `${BG_BASE}${FG_RULE}${"─".repeat(width)}${RST}`;
 }
 

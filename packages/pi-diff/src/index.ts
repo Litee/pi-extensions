@@ -197,7 +197,7 @@ function hexToFgAnsi(hex: string): string {
 /** Derive a muted background ANSI code from a foreground ANSI code.
  *  Scales the fg RGB by `intensity` (0.0–1.0) to produce a subtle tint. */
 // @ts-expect-error documentation artifact
-function deriveBgFromFg(_fgAnsi: string, _intensity: number): string {
+function _deriveBgFromFg(_fgAnsi: string, _intensity: number): string {
   const rgb = parseAnsiRgb(_fgAnsi);
   if (!rgb) return "";
   const r = Math.round(rgb.r * _intensity);
@@ -275,14 +275,14 @@ function autoDeriveBgFromTheme(theme: PiTheme): void {
     BG_GUTTER_DEL = mixBg(delBase, delRgb, 0.12);
 
     // Empty filler and context — match the success/context base
-    BG_EMPTY = BG_BASE;
+    _BG_EMPTY = BG_BASE;
 
     // Update RST to re-apply base bg after every reset — prevents black
     // flashes between styled segments when toolSuccessBg is non-black
     RST = `\x1b[0m${BG_BASE}`;
 
         // Rebuild derived constants
-        DIVIDER = `${FG_RULE}${RST}`;
+        _DIVIDER = `${FG_RULE}${RST}`;
   } catch {
     // Fall back to defaults silently
   }
@@ -312,7 +312,7 @@ function loadDiffConfig(): DiffUserConfig {
 /** Apply diff palette from settings → preset → (auto-derive deferred) → defaults.
  *  Called once during extension initialization. */
 // @ts-expect-error documentation artifact
-function applyDiffPalette(): void {
+function _applyDiffPalette(): void {
   const config = loadDiffConfig();
 
   // Load preset if specified
@@ -372,7 +372,7 @@ function applyDiffPalette(): void {
     BG_GUTTER_DEL = v;
   });
   applyBg(null, "bgEmpty", preset?.bgEmpty, (v) => {
-    BG_EMPTY = v;
+    _BG_EMPTY = v;
   });
 
   // --- Apply foregrounds ---
@@ -403,7 +403,7 @@ function applyDiffPalette(): void {
   if (shiki) THEME = shiki as BundledTheme;
 
   // --- Rebuild derived constants ---
-  DIVIDER = `${FG_RULE}${RST}`;
+  _DIVIDER = `${FG_RULE}${RST}`;
   DEFAULT_DIFF_COLORS = { fgAdd: FG_ADD, fgDel: FG_DEL, fgCtx: FG_DIM };
 
   // If no explicit bg config, auto-derive will run on first render
@@ -484,7 +484,7 @@ let BG_GUTTER_ADD = envBg("DIFF_BG_GUTTER_ADD", "\x1b[48;2;24;42;32m");
 let BG_GUTTER_DEL = envBg("DIFF_BG_GUTTER_DEL", "\x1b[48;2;48;28;28m");
 // use terminal default bg for context gutters
 // @ts-expect-error documentation artifact
-let BG_EMPTY = "\x1b[48;2;18;18;18m"; // filler rows when one side is shorter
+let _BG_EMPTY = "\x1b[48;2;18;18;18m"; // filler rows when one side is shorter
 
 // Diff foregrounds — override via env: DIFF_FG_ADD="#50d264" etc.
 let FG_ADD = envFg("DIFF_FG_ADD", "\x1b[38;2;100;180;120m"); // desaturated green
@@ -504,12 +504,12 @@ function getBorderBar(): string {
 /** Generate a dense diagonal stripe fill for empty filler cells.
  *  Solid ╱ characters — uniform direction like CSS diagonal hatching. */
 // @ts-expect-error documentation artifact
-function stripes(w: number, _rowOffset: number): string {
+function _stripes(w: number, _rowOffset: number): string {
   return BG_BASE + FG_STRIPE + "╱".repeat(w) + RST;
 }
 
 // @ts-expect-error documentation artifact
-let DIVIDER = `${FG_RULE}${RST}`;
+let _DIVIDER = `${FG_RULE}${RST}`;
 const ESC_RE = "\u001b";
 const ANSI_RE = new RegExp(`${ESC_RE}\\[[0-9;]*m`, "g");
 const ANSI_CAPTURE_RE = new RegExp(`${ESC_RE}\\[([^m]*)m`, "g");
@@ -797,7 +797,7 @@ function summarize(a: number, d: number): string {
 }
 
 // @ts-expect-error documentation artifact
-function rule(w: number): string {
+function _rule(w: number): string {
   return `${BG_BASE}${FG_RULE}${"─".repeat(w)}${RST}`;
 }
 
@@ -889,7 +889,7 @@ const EXT_LANG: Record<string, BundledLanguage> = {
 };
 
 // @ts-expect-error documentation artifact
-function lang(fp: string): BundledLanguage | undefined {
+function _lang(fp: string): BundledLanguage | undefined {
   return EXT_LANG[extname(fp).slice(1).toLowerCase()];
 }
 
@@ -1262,7 +1262,7 @@ async function renderSplit(
 
   let lI = 0,
     rI = 0;
-  let stripeRow = 0; // tracks row index for diagonal stripe offset
+  let _stripeRow = 0; // tracks row index for diagonal stripe offset
 
   // Returns { gutter, contGutter, body } for wrapping composition
   type HalfResult = { gutter: string; contGutter: string; bodyRows: string[] };
@@ -1364,7 +1364,7 @@ async function renderSplit(
       const rb = rResult.bodyRows[row] ?? "";
       if (!lg && !rg && !lb && !rb) continue;
       out.push(`${lg}${lb.trimEnd()}${rg}${rb.trimEnd()}`);
-      stripeRow++;
+      _stripeRow++;
     }
   }
 
@@ -1404,7 +1404,7 @@ export default async function diffRendererExtension(pi: ExtensionAPI): Promise<v
     createWriteTool = sdk.createWriteTool;
     createEditTool = sdk.createEditTool;
     TextComponent = tui.Text;
-  } catch (error) {
+  } catch (_error) {
     return;
   }
   if (!createWriteTool || !createEditTool || !TextComponent) return;
@@ -1869,7 +1869,7 @@ export default async function diffRendererExtension(pi: ExtensionAPI): Promise<v
               },
             };
           }
-        } catch (replaceError) {
+        } catch (_replaceError) {
           // replace() failed; fall through to SDK edit tool
         }
       }
