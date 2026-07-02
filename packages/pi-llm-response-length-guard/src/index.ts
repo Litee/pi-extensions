@@ -32,7 +32,7 @@ const defaultConfig: LengthGuardConfig = {
 	thinkingLimit: DEFAULT_THINKING_LIMIT,
 	responseLimit: DEFAULT_RESPONSE_LIMIT,
 	correctiveMessage:
-		"Your response was cut because it exceeded the allowed length. Please keep your next response shorter — aim for significantly fewer characters in both your thinking and your final response.",
+		"Your response was cut because it exceeded the allowed length. Please keep your next response shorter — aim for significantly fewer characters in both your thinking and your final response. If the task is complex, break it into smaller pieces.",
 };
 
 /**
