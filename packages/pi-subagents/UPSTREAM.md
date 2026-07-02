@@ -12,7 +12,7 @@ below to diff against upstream and pick up future changes.
 ## Copied versions
 
 - **Initially ported:** `41308f0` (`feat(scopedModels): Add new feature to force following the defined scoped models by user (rebased #45) (#83)`, 2026-05-26)
-- **Last synced:** `cfabeb8a` (`v0.12.0`, 2026-06-24)
+- **Last synced:** `c32beeb` (`feat(ui): inline steer composer in the conversation viewer (#121)`, 2026-06-30)
 
 For intentional local divergences see **Differences from upstream** in [`README.md`](./README.md).
 
@@ -21,5 +21,5 @@ For intentional local divergences see **Differences from upstream** in [`README.
 ```bash
 UP=$(mktemp -d)/tintinweb-pi-subagents
 git clone --quiet https://github.com/tintinweb/pi-subagents.git "$UP"
-git -C "$UP" log --follow cfabeb8a4f654ed0b80c46a0780cacaf966573fc..origin/HEAD -- src/
+git -C "$UP" log --follow c32beeb3abc4141c9eefc7b830fb627e12c95f97..origin/HEAD -- src/
 ```

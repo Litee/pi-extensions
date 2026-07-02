@@ -29,7 +29,7 @@ import { SubagentScheduler } from "./schedule.js";
 import { resolveStorePath, ScheduleStore } from "./schedule-store.js";
 import { applyAndEmitLoaded, type SubagentsSettings, saveAndEmitChanged, type ToolDescriptionMode } from "./settings.js";
 import { getStatusNote } from "./status-note.js";
-import { type AgentConfig, type AgentInvocation, type AgentRecord, type JoinMode, type NotificationDetails } from "./types.js";
+import { type AgentConfig, type AgentInvocation, type AgentRecord, type JoinMode, type NotificationDetails, type WidgetMode } from "./types.js";
 import {
   type AgentActivity,
   type AgentDetails,
@@ -43,6 +43,7 @@ import {
   getDisplayName,
   getPromptModeLabel,
   SPINNER,
+  type Theme,
 } from "./ui/agent-widget.js";
 import { FleetList, type FleetUICtx } from "./ui/fleet-list.js";
 import { showSchedulesMenu } from "./ui/schedule-menu.js";
@@ -53,6 +54,18 @@ import { addUsage, getLifetimeTotal, getSessionContextPercent, type LifetimeUsag
 /** Tool execute return value for a text response. */
 function textResult(msg: string, details?: AgentDetails) {
   return { content: [{ type: "text" as const, text: msg }], details: details as unknown as Record<string, unknown> };
+}
+
+export function renderRunningAgentStatus(
+  frame: string,
+  statsText: string,
+  activity: string,
+  theme: Pick<Theme, "fg">,
+): Container {
+  const container = new Container();
+  container.addChild(new Text(theme.fg("accent", frame) + (statsText ? " " + statsText : ""), 0, 0));
+  container.addChild(new Text(theme.fg("dim", ` ⎿ ${activity}`), 0, 0));
+  return container;
 }
 
 /** Format an agent's lifetime token total, or "" when zero. */
@@ -497,13 +510,22 @@ export default function (pi: ExtensionAPI) {
   });
 
   // Live widget: show running agents above editor
-  const widget = new AgentWidget(manager, agentActivity);
+  const agentWidgetRef = { current: null as AgentWidget | null };
+  const widget = new AgentWidget(manager, agentActivity, () => getWidgetMode());
+  agentWidgetRef.current = widget;
 
   // Claude Code-style FleetView: navigable list of main + subagents below the editor.
   const fleet = new FleetList(manager, agentActivity);
   let fleetViewEnabled = true;
   function isFleetViewEnabled(): boolean { return fleetViewEnabled; }
   function setFleetViewEnabled(b: boolean): void { fleetViewEnabled = b; fleet.setEnabled(b); }
+
+  let widgetMode: WidgetMode = "background";
+  function getWidgetMode(): WidgetMode { return widgetMode; }
+  function setWidgetMode(mode: WidgetMode): void {
+    widgetMode = mode;
+    if (agentWidgetRef.current) agentWidgetRef.current.update();
+  }
 
   // ---- Join mode configuration ----
   let defaultJoinMode: JoinMode = 'smart';
@@ -636,13 +658,7 @@ export default function (pi: ExtensionAPI) {
       return `- ${name}: ${firstSentence(cfg?.description ?? name)} (Tools: ${formatToolsSuffix(cfg)})`;
     }).join("\n");
 
-  /** Derive a short model label from a model string. */
-  function getModelLabelFromConfig(model: string): string {
-    // Strip provider prefix (e.g. "anthropic/claude-sonnet-4-6" → "claude-sonnet-4-6")
-    const name = model.includes("/") ? model.split("/").pop()! : model;
-    // Strip trailing date suffix (e.g. "claude-haiku-4-5-20251001" → "claude-haiku-4-5")
-    return name.replace(/-\d{8}$/, "");
-  }
+
 
   // Apply persisted settings on startup and emit `subagents:settings_loaded`.
   // Global + project merged; missing → defaults; corrupt file emits a warning
@@ -658,6 +674,7 @@ export default function (pi: ExtensionAPI) {
       setDisableDefaultAgents: setDisableDefaultAgents,
       setToolDescriptionMode: setToolDescriptionMode,
       setFleetView: setFleetViewEnabled,
+      setWidgetMode: setWidgetMode,
     },
     (event, payload) => pi.events.emit(event, payload),
   );
@@ -893,9 +910,7 @@ Terse command-style prompts produce shallow, generic work.
       if (isPartial || details.status === "running") {
         const frame = SPINNER[details.spinnerFrame ?? 0]!;
         const s = stats(details);
-        let line = theme.fg("accent", frame) + (s ? " " + s : "");
-        line += "\n" + theme.fg("dim", `  ⎿  ${details.activity ?? "thinking…"}`);
-        return new Text(line, 0, 0);
+        return renderRunningAgentStatus(frame, s, details.activity ?? "thinking…", theme);
       }
 
       // ---- Background agent launched ----
@@ -1499,15 +1514,25 @@ Terse command-style prompts produce shallow, generic work.
     return undefined;
   }
 
+  /** Derive a short model label from a model string. */
+  function getModelLabelFromConfig(model: string): string {
+    // Strip provider prefix (e.g. "anthropic/claude-sonnet-4-6" → "claude-sonnet-4-6")
+    const name = model.includes("/") ? model.split("/").pop()! : model;
+    // Strip trailing date suffix (e.g. "claude-haiku-4-5-20251001" → "claude-haiku-4-5")
+    return name.replace(/-\d{8}$/, "");
+  }
+
   function getModelLabel(type: string, registry?: ModelRegistry): string {
     const cfg = getAgentConfig(type);
-    if (!cfg?.model) return "inherit";
-    // If registry provided, check if the model actually resolves
-    if (registry) {
-      const resolved = resolveModel(cfg.model, registry);
-      if (typeof resolved === "string") return "inherit"; // model not available
-    }
-    return getModelLabelFromConfig(cfg.model);
+    if (!cfg?.model) return "inherit"; // no model configured → really inherits parent
+    const label = getModelLabelFromConfig(cfg.model);
+    if (!registry) return label;
+    const resolved = resolveModel(cfg.model, registry);
+    // Configured but unresolvable: runtime silently falls back parent
+    // model, so flag it (and fallback) rather hiding config.
+    if (typeof resolved === "string") return `${label} (unavailable, fallback: inherit)`;
+    // Surface what actually resolved in column; model on right.
+    return label;
   }
 
   async function showAgentsMenu(ctx: ExtensionCommandContext) {
@@ -1587,35 +1612,51 @@ Terse command-style prompts produce shallow, generic work.
       return "   ";
     };
 
-    const entries = allNames.map(name => {
+    const items: SettingItem[] = allNames.map(name => {
       const cfg = getAgentConfig(name);
       const disabled = cfg?.enabled === false;
       const model = getModelLabel(name, ctx.modelRegistry);
-      const indicator = sourceIndicator(cfg);
-      const prefix = `${indicator}${name} · ${model}`;
-      const desc = disabled ? "(disabled)" : (cfg?.description ?? name);
-      return { name, prefix, desc };
+      return {
+        id: name,
+        label: `${sourceIndicator(cfg)}${name}`,
+        currentValue: model,
+        description: disabled ? "(disabled)" : (cfg?.description ?? name),
+        // Single-value list so Enter "activates" row (fires onChange with
+        // agent's id) without offering anything actually to cycle.
+        values: [model],
+      };
     });
-    const maxPrefix = Math.max(...entries.map(e => e.prefix.length));
 
-    const hasCustom = allNames.some(n => { const c = getAgentConfig(n); return c && !c.isDefault && c.enabled !== false; });
-    const hasDisabled = allNames.some(n => getAgentConfig(n)?.enabled === false);
-    const legendParts: string[] = [];
-    if (hasCustom) legendParts.push("• = project  ◦ = global");
-    if (hasDisabled) legendParts.push("✕ = disabled");
-    const legend = legendParts.length ? "\n" + legendParts.join("  ") : "";
+    let selected: string | undefined = undefined;
+    await ctx.ui.custom<string | undefined>((_tui, _theme, _kb, done) => {
+      const list = new SettingsList(
+        items,
+        Math.min(items.length, 12),
+        getSettingsListTheme(),
+        (id) => { selected = id; },
+        () => done(undefined),
+      );
 
-    const options = entries.map(({ prefix, desc }) =>
-      `${prefix.padEnd(maxPrefix)} — ${desc}`,
-    );
-    if (legend) options.push(legend);
+      const container = new Container();
+      container.addChild(new Text("⚙  Agent Types", 0, 0));
+      container.addChild(new Spacer(1));
+      container.addChild(list);
 
-    const choice = await ctx.ui.select("Agent types", options);
-    if (!choice) return;
+      return {
+        render: (w: number) => container.render(w),
+        invalidate: () => container.invalidate(),
+        handleInput: (data: string) => {
+          if (matchesKey(data, Key.enter)) {
+            done(selected);
+            return;
+          }
+          list.handleInput?.(data);
+        },
+      };
+    });
 
-    const agentName = (choice.split(" · ")[0] ?? "").replace(/^[•◦✕\s]+/, "").trim();
-    if (getAgentConfig(agentName)) {
-      await showAgentDetail(ctx, agentName);
+    if (selected && getAgentConfig(selected)) {
+      await showAgentDetail(ctx, selected);
       await showAllAgentsList(ctx);
     }
   }
@@ -1662,7 +1703,7 @@ Terse command-style prompts produce shallow, generic work.
           if (manager.abort(record.id)) {
             ctx.ui.notify(`Stopped "${record.description}".`, "info");
           }
-        }, _keybindings);
+        }, _keybindings, (message: string) => manager.steer(record.id, message));
       },
       {
         overlay: true,
@@ -1886,7 +1927,7 @@ The file format is a markdown file with YAML frontmatter and a system prompt bod
 ---
 description: <one-line description shown in UI>
 tools: <comma-separated built-in tools: read, bash, edit, write, grep, find, ls. Use "none" for no tools. Omit for all tools>
-model: <optional model as "provider/modelId", e.g. "anthropic/claude-haiku-4-5-20251001". Omit to inherit parent model>
+model: <optional model as "provider/modelId", e.g. "anthropic/claude-haiku-4-5". Omit to inherit parent model>
 thinking: <optional thinking level: off, minimal, low, medium, high, xhigh. Omit to inherit>
 max_turns: <optional max agentic turns. 0 or omit for unlimited (default)>
 prompt_mode: <"replace" (body IS the full system prompt) or "append" (body is appended to default prompt). Default: replace>
@@ -1970,7 +2011,7 @@ Write the file using the write tool. Only write the file, nothing else.`;
     if (!modelChoice) return;
 
     let modelLine = "";
-    if (modelChoice === "haiku") modelLine = "\nmodel: anthropic/claude-haiku-4-5-20251001";
+    if (modelChoice === "haiku") modelLine = "\nmodel: anthropic/claude-haiku-4-5";
     else if (modelChoice === "sonnet") modelLine = "\nmodel: anthropic/claude-sonnet-4-6";
     else if (modelChoice === "opus") modelLine = "\nmodel: anthropic/claude-opus-4-6";
     else if (modelChoice === "custom...") {
@@ -2141,6 +2182,10 @@ ${systemPrompt}
         const enabled = value === "on";
         setFleetViewEnabled(enabled);
         notifyApplied(ctx, `Fleet view ${enabled ? "enabled" : "disabled"}`);
+      }
+      if (id === "widgetMode") {
+        setWidgetMode(value as WidgetMode);
+        notifyApplied(ctx, `Widget set to ${value}`);
       }
     }
 

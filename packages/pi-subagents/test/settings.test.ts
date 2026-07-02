@@ -324,6 +324,7 @@ describe("settings persistence", () => {
         setDisableDefaultAgents: vi.fn(),
         setToolDescriptionMode: vi.fn(),
         setFleetView: vi.fn(),
+        setWidgetMode: vi.fn(),
       };
     });
 
@@ -438,6 +439,7 @@ describe("settings persistence", () => {
         setDisableDefaultAgents: vi.fn(),
         setToolDescriptionMode: vi.fn(),
         setFleetView: vi.fn(),
+        setWidgetMode: vi.fn(),
       };
     });
 
