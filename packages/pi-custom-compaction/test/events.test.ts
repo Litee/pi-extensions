@@ -20,6 +20,8 @@ function createEvent(): SessionBeforeCompactEvent {
 	const signal = new AbortController().signal;
 	return {
 		type: "session_before_compact",
+		reason: "threshold",
+		willRetry: false,
 		signal,
 		customInstructions: "",
 		branchEntries: [
