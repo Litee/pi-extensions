@@ -192,7 +192,7 @@ describe("pi-llm-response-length-guard", () => {
 		const ctx = makeMockContext();
 
 		// Simulate a long thinking block (exceeds 8192 chars)
-		const longThinking = "x".repeat(8200);
+		const longThinking = "x".repeat(16400);
 		await handler?.(
 			makeMessageUpdateEvent(makeAssistantEvent("thinking_start")),
 			ctx,
@@ -265,7 +265,7 @@ describe("pi-llm-response-length-guard", () => {
 		const ctx = makeMockContext();
 
 		// First chunk exceeds limit — triggers interrupt
-		const chunk1 = "z".repeat(8200);
+		const chunk1 = "z".repeat(16400);
 		await handler?.(
 			makeMessageUpdateEvent(makeAssistantEvent("thinking_start")),
 			ctx,
@@ -278,7 +278,7 @@ describe("pi-llm-response-length-guard", () => {
 		const firstAbortCount = ctx._getCallHistory().filter((c) => c === "abort").length;
 
 		// More chunks arrive — should NOT interrupt again
-		const chunk2 = "z".repeat(8200);
+		const chunk2 = "z".repeat(16400);
 		await handler?.(
 			makeMessageUpdateEvent(makeAssistantEvent("thinking_delta", chunk2)),
 			ctx,
@@ -296,7 +296,7 @@ describe("pi-llm-response-length-guard", () => {
 		const ctx = makeMockContext();
 
 		// Simulate thinking that exceeds the limit
-		const longThinking = "x".repeat(8200);
+		const longThinking = "x".repeat(16400);
 		await messageUpdateHandler?.(
 			makeMessageUpdateEvent(makeAssistantEvent("thinking_start")),
 			ctx,
@@ -312,7 +312,7 @@ describe("pi-llm-response-length-guard", () => {
 		await turnEndHandler?.(undefined, undefined);
 
 		// New thinking block should be able to interrupt again
-		const chunk = "a".repeat(8200);
+		const chunk = "a".repeat(16400);
 		await messageUpdateHandler?.(
 			makeMessageUpdateEvent(makeAssistantEvent("thinking_start")),
 			ctx,
@@ -356,7 +356,7 @@ describe("pi-llm-response-length-guard", () => {
 		const ctx = makeMockContext();
 
 		// First interruption
-		const chunk1 = "x".repeat(8200);
+		const chunk1 = "x".repeat(16400);
 		await handler?.(
 			makeMessageUpdateEvent(makeAssistantEvent("thinking_start")),
 			ctx,
@@ -373,7 +373,7 @@ describe("pi-llm-response-length-guard", () => {
 
 		// Second interruption
 		const ctx2 = makeMockContext();
-		const chunk2 = "x".repeat(8200);
+		const chunk2 = "x".repeat(16400);
 		await handler?.(
 			makeMessageUpdateEvent(makeAssistantEvent("thinking_start")),
 			ctx2,
