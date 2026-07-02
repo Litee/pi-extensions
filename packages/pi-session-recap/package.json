@@ -6,12 +6,16 @@
   "license": "MIT",
   "author": "Thomas Mustier (upstream); ported by Andrey Lipatkin",
   "type": "module",
-  "keywords": ["pi-package"],
+  "keywords": [
+    "pi-package"
+  ],
   "pi": {
-    "extensions": ["./src/index.ts"]
+    "extensions": [
+      "./src/index.ts"
+    ]
   },
   "peerDependencies": {
-    "@earendil-works/pi-ai": "*",
-    "@earendil-works/pi-coding-agent": "*"
+    "@earendil-works/pi-ai": "^0.79.10",
+    "@earendil-works/pi-coding-agent": "^0.79.10"
   }
 }
