@@ -11,7 +11,7 @@ import { nanoid } from "nanoid";
 import { CronScheduler } from "./scheduler.js";
 import type { JobScope } from "./settings.js";
 import type { CronStorage } from "./storage.js";
-import type { CronJob, CronJobType, CronToolDetails, } from "./types.js";
+import type { CronJob, CronJobType, CronToolDetails } from "./types.js";
 import { CronToolParams } from "./types.js";
 
 /**
@@ -40,7 +40,7 @@ export function shouldCollapsePrompt(prompt: string): boolean {
  */
 export function buildJobSummaryLines(
   verb: "Created" | "Updated",
-  job: Pick<CronJob, "name" | "id" | "type" | "schedule" | "prompt" | "model" | "notify">,
+  job: Pick<CronJob, "name" | "id" | "type" | "schedule" | "prompt" | "model" | "notify" | "extensions" | "skills">,
   opts: { collapse: boolean },
 ): string[] {
   const lines: string[] = [
@@ -49,8 +49,10 @@ export function buildJobSummaryLines(
     `Schedule: ${job.schedule}`,
   ];
   if (job.model) {
+    const extStr = job.extensions && Array.isArray(job.extensions) ? `, extensions: ${job.extensions.join(",")}` : job.extensions ? ", extensions" : "";
+    const skillStr = job.skills && Array.isArray(job.skills) ? `, skills: ${job.skills.join(",")}` : job.skills ? ", skills" : "";
     lines.push(
-      `Model: ${job.model} (runs in subagent${job.notify ? ", notifies parent" : ""})`,
+      `Model: ${job.model} (runs in subagent${job.notify ? ", notifies parent" : ""}${extStr}${skillStr})`,
     );
   }
   if (opts.collapse) {
@@ -154,6 +156,8 @@ export function createCronTool(
               ...(params.description !== undefined ? { description: params.description } : {}),
               ...(params.model !== undefined ? { model: params.model } : {}),
               ...(params.notify !== undefined ? { notify: params.notify } : {}),
+              ...(params.extensions !== undefined ? { extensions: params.extensions } : {}),
+              ...(params.skills !== undefined ? { skills: params.skills } : {}),
               ...(session !== undefined ? { session } : {}),
             };
 
@@ -298,6 +302,8 @@ export function createCronTool(
             if (params.description !== undefined) updates.description = params.description;
             if (params.model !== undefined) updates.model = params.model;
             if (params.notify !== undefined) updates.notify = params.notify;
+            if (params.extensions !== undefined) updates.extensions = params.extensions;
+            if (params.skills !== undefined) updates.skills = params.skills;
 
             if (params.schedule) {
               // Same resolution rules as `add`: relative time (`+5m`) → ISO,
@@ -468,7 +474,9 @@ export function createCronTool(
           );
           if (job.model) {
             const subagentTag = job.notify ? "(subagent, notifies parent)" : "(subagent)";
-            lines.push(`  ${theme.fg("dim", "Model:")} ${job.model} ${theme.fg("dim", subagentTag)}`);
+            const extStr = job.extensions && Array.isArray(job.extensions) ? `, extensions: ${job.extensions.join(",")}` : job.extensions ? ", extensions" : "";
+            const skillStr = job.skills && Array.isArray(job.skills) ? `, skills: ${job.skills.join(",")}` : job.skills ? ", skills" : "";
+            lines.push(`  ${theme.fg("dim", "Model:")} ${job.model} ${theme.fg("dim", subagentTag)}${extStr}${skillStr}`);
           }
           lines.push(`  ${theme.fg("dim", "Prompt:")} ${job.prompt}`);
           if (job.lastRun) {

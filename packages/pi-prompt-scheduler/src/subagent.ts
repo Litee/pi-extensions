@@ -23,6 +23,9 @@ import {
   getAgentDir,
   SessionManager,
   SettingsManager,
+  type LoadExtensionsResult,
+  type ResourceDiagnostic,
+  type Skill,
 } from "@earendil-works/pi-coding-agent";
 
 const DEFAULT_TOOL_NAMES = ["bash", "read", "edit", "write", "grep", "find", "ls"];
@@ -30,6 +33,13 @@ const DEFAULT_TOOL_NAMES = ["bash", "read", "edit", "write", "grep", "find", "ls
 export type SubagentResult =
   | { ok: true; text: string }
   | { ok: false; error: string };
+
+export interface RunSubagentOptions {
+  /** If true, load all extensions. If an array, only named. Default undefined (none). */
+  extensions?: boolean | string[] | undefined;
+  /** If true, load all skills. If an array, only named. Default undefined (none). */
+  skills?: boolean | string[] | undefined;
+}
 
 export function resolveModel(
   registry: ExtensionContext["modelRegistry"],
@@ -88,6 +98,7 @@ export async function runSubagentOnce(
   prompt: string,
   modelStr: string,
   signal?: AbortSignal,
+  options: RunSubagentOptions = {},
 ): Promise<SubagentResult> {
   try {
     const model = resolveModel(ctx.modelRegistry, modelStr);
@@ -99,6 +110,17 @@ export async function runSubagentOnce(
     }
 
     const agentDir = getAgentDir();
+
+    // Helper: convert extensions/skills option boolean or optionally filter.
+    // An empty array means "none" same as unset.
+    const isEnabled = (v: boolean | string[] | undefined): boolean =>
+      v === true || (Array.isArray(v) && v.length > 0);
+    const getNameList = (v: boolean | string[] | undefined): string[] | undefined =>
+      Array.isArray(v) && v.length > 0 ? v : undefined;
+
+    const extList = getNameList(options.extensions);
+    const skillList = getNameList(options.skills);
+
     const loader = new DefaultResourceLoader({
       cwd: ctx.cwd,
       agentDir,
@@ -106,23 +128,46 @@ export async function runSubagentOnce(
       // recursively into the subagent and starting another scheduler.
       // Context files (AGENTS.md / CLAUDE.md) are loaded by the loader's defaults
       // so the subagent picks up project conventions.
-      noExtensions: true,
-      noSkills: true,
+      noExtensions: !extList && !options.extensions,
+      noSkills: !skillList && !options.skills,
       noPromptTemplates: true,
       noThemes: true,
+      ...(extList && {
+        extensionsOverride: (base: LoadExtensionsResult) => ({
+          ...base,
+          extensions: base.extensions.filter((ext) =>
+            extList.some((name) => ext.path.toLowerCase().includes(name.toLowerCase())),
+          ),
+        }),
+      }),
+      ...(skillList && {
+        skillsOverride: (base: { skills: Skill[]; diagnostics: ResourceDiagnostic[] }) => ({
+          ...base,
+          skills: base.skills.filter((skill) =>
+            skillList.includes(skill.name || ''),
+          ),
+        }),
+      }),
     });
     await loader.reload();
 
-    const { session } = await createAgentSession({
+    const sessionConfig: Parameters<typeof createAgentSession>[0] = {
       cwd: ctx.cwd,
       agentDir,
       sessionManager: SessionManager.inMemory(ctx.cwd),
       settingsManager: SettingsManager.create(ctx.cwd, agentDir),
       modelRegistry: ctx.modelRegistry,
       model,
-      tools: DEFAULT_TOOL_NAMES,
       resourceLoader: loader,
-    });
+    };
+    if (!isEnabled(options.extensions)) {
+      sessionConfig.tools = DEFAULT_TOOL_NAMES;
+    }
+    const { session } = await createAgentSession(sessionConfig);
+
+    if (isEnabled(options.extensions)) {
+      await session.bindExtensions({});
+    }
 
     let onAbort: (() => void) | undefined;
     if (signal) {

@@ -12,7 +12,7 @@ below to diff against upstream and pick up future changes.
 ## Copied versions
 
 - **Initially ported:** `a51cf5a` (v0.3.0 release)
-- **Last synced:** `5ef1bd1` (`fix ci`, 2026-05-31)
+- **Last synced:** `5556775` (`v0.4.1`, 2026-06-23)
 
 For intentional local divergences see **Differences from upstream** in [`README.md`](./README.md).
 
@@ -21,5 +21,5 @@ For intentional local divergences see **Differences from upstream** in [`README.
 ```bash
 UP=$(mktemp -d)/tintinweb-pi-schedule-prompt
 git clone --quiet https://github.com/tintinweb/pi-schedule-prompt.git "$UP"
-git -C "$UP" log --follow 5ef1bd1..origin/HEAD
+git -C "$UP" log --follow 5556775..origin/HEAD
 ```
