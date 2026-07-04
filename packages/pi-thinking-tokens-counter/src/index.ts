@@ -3,12 +3,16 @@ import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
 // Rough heuristic: ~4 chars per token for English text
 const CHARS_PER_TOKEN = 4;
 
+// Throttle status updates to once per second
+const THROTTLE_MS = 1000;
+
 export default function (pi: ExtensionAPI): void {
   let currentMessageId: number | null = null;
   let thinkingCharCount = 0;
   let startTime = 0;
   let displayedTokens = 0;
   let displayedRate = 0;
+  let lastUpdate = 0;
 
   // Reset when a new assistant message starts
   pi.on("message_start", (event) => {
@@ -18,14 +22,13 @@ export default function (pi: ExtensionAPI): void {
       startTime = Date.now();
       displayedTokens = 0;
       displayedRate = 0;
+      lastUpdate = 0;
     }
   });
 
   // Listen to message_update events during streaming
   pi.on("message_update", (event, ctx) => {
     if (event.message.role !== "assistant") return;
-
-    // Skip if this is not the current streaming message
     if (event.message.timestamp !== currentMessageId) return;
 
     // Sum up all thinking content in the current message
@@ -43,6 +46,11 @@ export default function (pi: ExtensionAPI): void {
       const elapsed = (Date.now() - startTime) / 1000;
       const rate = elapsed > 0 ? estimatedTokens / elapsed : 0;
 
+      // Throttle: only update if at least THROTTLE_MS ms since last update
+      const now = Date.now();
+      if (now - lastUpdate < THROTTLE_MS) return;
+      lastUpdate = now;
+
       // Update display only if values changed (reduces flicker)
       if (estimatedTokens !== displayedTokens || displayedRate !== rate) {
         displayedTokens = estimatedTokens;
@@ -50,8 +58,7 @@ export default function (pi: ExtensionAPI): void {
         const formattedTokens = estimatedTokens < 1000
           ? String(estimatedTokens)
           : `${(estimatedTokens / 1000).toFixed(1)}k`;
-        const statusText = `Thinking: ${formattedTokens} tokens ${rate.toFixed(1)}/s`;
-        ctx.ui.setStatus("thinking-tokens", statusText);
+        ctx.ui.setStatus("thinking-tokens", `thinking: ${formattedTokens} t, ${rate.toFixed(1)}/s`);
       }
     }
   });
