@@ -1,6 +1,6 @@
-import { describe, expect, it } from "vitest";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 
-import { buildTranscript, parseName, type Entry } from "../src/name-generation.js";
+import { buildTranscript, generateSessionName, parseName, type Entry } from "../src/name-generation.js";
 
 // ---------------------------------------------------------------------------
 // buildTranscript
@@ -167,5 +167,184 @@ describe("parseName", () => {
 
 	it("handles empty first line", () => {
 		expect(parseName("\nfix auth bug")).toBe("");
+	});
+});
+
+// ---------------------------------------------------------------------------
+// generateSessionName
+// ---------------------------------------------------------------------------
+
+describe("generateSessionName", () => {
+	const mockCompleteSimple = vi.fn();
+	const mockGetApiKeyAndHeaders = vi.fn();
+	const stableModel = { name: "test-model", reasoning: false };
+	const reasoningModel = { name: "test-model", reasoning: true };
+
+	function makeDeps(overrides?: {
+		model?: unknown;
+		modelRegistry?: { getApiKeyAndHeaders: typeof mockGetApiKeyAndHeaders };
+		completeSimple?: typeof mockCompleteSimple;
+	}) {
+		return {
+			completeSimple: overrides?.completeSimple ?? mockCompleteSimple,
+			ctx: {
+				model: overrides?.model,
+				modelRegistry: overrides?.modelRegistry ?? { getApiKeyAndHeaders: mockGetApiKeyAndHeaders },
+			},
+		};
+	}
+
+	beforeEach(() => {
+		vi.clearAllMocks();
+		mockCompleteSimple.mockRejectedValue(new Error("not implemented"));
+		mockGetApiKeyAndHeaders.mockResolvedValue({ ok: true, apiKey: "sk-test" });
+	});
+
+	it("returns undefined when model is absent", async () => {
+		const deps = makeDeps({ model: undefined });
+		const result = await generateSessionName("some transcript", deps, new AbortController().signal);
+		expect(result).toBeUndefined();
+		expect(mockGetApiKeyAndHeaders).not.toHaveBeenCalled();
+		expect(mockCompleteSimple).not.toHaveBeenCalled();
+	});
+
+	it("returns undefined when getApiKeyAndHeaders fails (ok: false)", async () => {
+		mockGetApiKeyAndHeaders.mockResolvedValue({ ok: false });
+		const deps = makeDeps({ model: stableModel });
+		const result = await generateSessionName("transcript", deps, new AbortController().signal);
+		expect(result).toBeUndefined();
+		expect(mockCompleteSimple).not.toHaveBeenCalled();
+	});
+
+	it("returns undefined when getApiKeyAndHeaders returns no apiKey", async () => {
+		mockGetApiKeyAndHeaders.mockResolvedValue({ ok: true, apiKey: undefined });
+		const deps = makeDeps({ model: stableModel });
+		const result = await generateSessionName("transcript", deps, new AbortController().signal);
+		expect(result).toBeUndefined();
+		expect(mockCompleteSimple).not.toHaveBeenCalled();
+	});
+
+	it("throws when getApiKeyAndHeaders throws (no try/catch in generateSessionName)", async () => {
+		mockGetApiKeyAndHeaders.mockRejectedValue(new Error("registry unavailable"));
+		const deps = makeDeps({ model: stableModel });
+		await expect(
+			generateSessionName("transcript", deps, new AbortController().signal),
+		).rejects.toThrow("registry unavailable");
+		expect(mockCompleteSimple).not.toHaveBeenCalled();
+	});
+
+	it("calls completeSimple with the model and a user message containing the transcript", async () => {
+		mockCompleteSimple.mockResolvedValue({ content: [{ type: "text", text: "fix auth bug" }] });
+		const deps = makeDeps({ model: stableModel });
+		await generateSessionName("user: hello", deps, new AbortController().signal);
+
+		expect(mockCompleteSimple).toHaveBeenCalledTimes(1);
+		const [model, messages, options] = mockCompleteSimple.mock.calls[0] as [
+			string,
+			{ messages: { role: string; content: { type: string; text: string }[] }[] },
+			{ apiKey: string },
+		];
+		expect(model).toBe(stableModel);
+		expect(messages.messages).toHaveLength(1);
+		expect(messages.messages[0].role).toBe("user");
+		expect(messages.messages[0].content[0].type).toBe("text");
+		expect(messages.messages[0].content[0].text).toContain("user: hello");
+		expect(options.apiKey).toBe("sk-test");
+	});
+
+	it("passes headers when modelRegistry provides them", async () => {
+		mockGetApiKeyAndHeaders.mockResolvedValue({
+			ok: true,
+			apiKey: "sk-test",
+			headers: { "X-Custom": "header" },
+		});
+		mockCompleteSimple.mockResolvedValue({ content: [{ type: "text", text: "fix auth bug" }] });
+		const deps = makeDeps({ model: stableModel });
+		await generateSessionName("transcript", deps, new AbortController().signal);
+
+		// eslint-disable-next-line @typescript-eslint/no-unsafe-member-access
+		expect(mockCompleteSimple.mock.calls[0][2].headers).toEqual({ "X-Custom": "header" });
+	});
+
+	it("passes reasoning: 'minimal' when model has reasoning flag", async () => {
+		mockCompleteSimple.mockResolvedValue({ content: [{ type: "text", text: "fix auth bug" }] });
+		const deps = makeDeps({ model: reasoningModel });
+		await generateSessionName("transcript", deps, new AbortController().signal);
+
+		// eslint-disable-next-line @typescript-eslint/no-unsafe-member-access
+		expect(mockCompleteSimple.mock.calls[0][2].reasoning).toBe("minimal");
+	});
+
+	it("does not pass reasoning when model has no reasoning flag", async () => {
+		mockCompleteSimple.mockResolvedValue({ content: [{ type: "text", text: "fix auth bug" }] });
+		const deps = makeDeps({ model: stableModel });
+		await generateSessionName("transcript", deps, new AbortController().signal);
+
+		// eslint-disable-next-line @typescript-eslint/no-unsafe-member-access
+		expect(mockCompleteSimple.mock.calls[0][2].reasoning).toBeUndefined();
+	});
+
+	it("passes the abort signal to completeSimple", async () => {
+		const controller = new AbortController();
+		mockCompleteSimple.mockResolvedValue({ content: [{ type: "text", text: "fix auth bug" }] });
+		const deps = makeDeps({ model: stableModel });
+		await generateSessionName("transcript", deps, controller.signal);
+
+		// eslint-disable-next-line @typescript-eslint/no-unsafe-member-access
+		expect(mockCompleteSimple.mock.calls[0][2].signal).toBe(controller.signal);
+	});
+
+	it("parses and returns the generated name from text content", async () => {
+		mockCompleteSimple.mockResolvedValue({ content: [{ type: "text", text: "fix auth bug" }] });
+		const deps = makeDeps({ model: stableModel });
+		const result = await generateSessionName("transcript", deps, new AbortController().signal);
+		expect(result).toBe("fix auth bug");
+	});
+
+	it("handles response with multiple text content blocks (joins with newline)", async () => {
+		mockCompleteSimple.mockResolvedValue({
+			content: [{ type: "text", text: "fix auth" }, { type: "text", text: "bug" }],
+		});
+		const deps = makeDeps({ model: stableModel });
+		const result = await generateSessionName("transcript", deps, new AbortController().signal);
+		// join("\n") → "fix auth\nbug" → parseName takes first line → "fix auth"
+		expect(result).toBe("fix auth");
+	});
+
+	it("returns empty string when response has no text content blocks", async () => {
+		mockCompleteSimple.mockResolvedValue({ content: [{ type: "image", url: "http://example.com/img.png" }] });
+		const deps = makeDeps({ model: stableModel });
+		const result = await generateSessionName("transcript", deps, new AbortController().signal);
+		expect(result).toBe("");
+	});
+
+	it("throws when completeSimple throws (no try/catch in generateSessionName)", async () => {
+		mockCompleteSimple.mockRejectedValue(new Error("network error"));
+		const deps = makeDeps({ model: stableModel });
+		await expect(
+			generateSessionName("transcript", deps, new AbortController().signal),
+		).rejects.toThrow("network error");
+	});
+
+	it("throws when completeSimple rejects with a non-Error value", async () => {
+		mockCompleteSimple.mockRejectedValue("string error");
+		const deps = makeDeps({ model: stableModel });
+		await expect(
+			generateSessionName("transcript", deps, new AbortController().signal),
+		).rejects.toBe("string error");
+	});
+
+	it("truncates transcript to TRANSCRIPT_MAX_CHARS (12000)", async () => {
+		mockCompleteSimple.mockResolvedValue({ content: [{ type: "text", text: "name" }] });
+		const longTranscript = "x".repeat(15000);
+		const deps = makeDeps({ model: stableModel });
+		await generateSessionName(longTranscript, deps, new AbortController().signal);
+
+		const callArgs = mockCompleteSimple.mock.calls[0];
+		// eslint-disable-next-line @typescript-eslint/no-unsafe-member-access, @typescript-eslint/no-unsafe-assignment
+		const promptText = callArgs[1].messages[0].content[0].text;
+		// buildNamePrompt adds ~40 chars wrapper, transcript is sliced to 12000
+		// eslint-disable-next-line @typescript-eslint/no-unsafe-member-access
+		expect(promptText.length).toBeLessThanOrEqual(12100);
 	});
 });

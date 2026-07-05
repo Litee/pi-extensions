@@ -1,7 +1,14 @@
-import { describe, expect, it, vi } from "vitest";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import createExtension from "../src/index.js";
 import { STATE_CUSTOM_TYPE } from "../src/state.js";
+
+vi.mock("@earendil-works/pi-ai", () => ({
+	completeSimple: vi.fn(),
+}));
+
+// Re-import the mocked completeSimple after the mock is registered
+import { completeSimple } from "@earendil-works/pi-ai";
 
 // ---------------------------------------------------------------------------
 // Fixtures
@@ -74,10 +81,20 @@ function makeFakePi(overrides?: {
 	};
 }
 
-function makeFakeCtx() {
+function makeFakeCtx(overrides?: {
+	model?: unknown;
+	getBranch?: () => unknown[];
+}) {
 	return {
 		ui: { notify: vi.fn() },
-		sessionManager: { getEntries: vi.fn().mockReturnValue([]) },
+		sessionManager: {
+			getEntries: vi.fn().mockReturnValue([]),
+			getBranch: overrides?.getBranch ?? vi.fn().mockReturnValue([]),
+		},
+		model: overrides?.model,
+		modelRegistry: {
+			getApiKeyAndHeaders: vi.fn().mockResolvedValue({ ok: true, apiKey: "sk-test" }),
+		},
 	};
 }
 
@@ -626,6 +643,355 @@ describe("pi-herdr-integration — subagent names", () => {
 		await fireSessionStart(pi, ctx, { HERDR_ENV: "1", HERDR_PANE_ID: "p_6" });
 
 		expect(pi.exec).toHaveBeenCalledTimes(2);
+	});
+});
+
+// ---------------------------------------------------------------------------
+// /name-session-and-space — auto-generate path
+// ---------------------------------------------------------------------------
+
+describe("pi-herdr-integration — /name-session-and-space auto-generate", () => {
+	beforeEach(() => {
+		vi.clearAllMocks();
+	});
+
+	function resolveTranscriptEntries(): unknown[] {
+		return [
+			{ type: "message", message: { role: "user", content: "hello, help me fix a bug" } },
+			{ type: "message", message: { role: "assistant", content: [{ type: "text", text: "Sure, what's the bug?" }] } },
+			{ type: "message", message: { role: "user", content: "the auth endpoint returns 500" } },
+		];
+	}
+
+	/**
+	 * The auto-generate path uses fire-and-forget (`void (async () => {...})()`),
+	 * so the handler returns before the IIFE completes. We need to flush the
+	 * microtask queue before asserting on async results.
+	 */
+	async function flushAsyncIIFE(): Promise<void> {
+		await new Promise((r) => setTimeout(r, 0));
+	}
+
+	it("auto-generates name when called without args (model present, entries present)", async () => {
+		const pi = makeFakePi();
+		const ctx = makeFakeCtx({
+			model: { name: "test-model" },
+			getBranch: resolveTranscriptEntries,
+		});
+		createExtensionInHerdr(pi);
+
+		vi.mocked(completeSimple).mockResolvedValueOnce({
+			content: [{ type: "text", text: "fix auth bug" }],
+		});
+
+		const handler = pi.commands.get("name-session-and-space")!;
+		await withEnv({ HERDR_ENV: "1", HERDR_PANE_ID: "p_6" }, async () => {
+			await handler("", ctx);
+		});
+		await flushAsyncIIFE();
+
+		// Should have called completeSimple for generation
+		expect(vi.mocked(completeSimple)).toHaveBeenCalledTimes(1);
+		// setSessionName should be called with generated name
+		expect(pi.setSessionName).toHaveBeenCalledWith("fix auth bug");
+		// Rename should follow
+		const renameCalls = pi.exec.mock.calls.filter(
+			(c: unknown[]) => Array.isArray(c[1]) && (c[1] as string[])[1] === "rename",
+		);
+		expect(renameCalls).toHaveLength(1);
+		expect(renameCalls[0][1]).toEqual(["workspace", "rename", WS_ID, "fix auth bug"]);
+	});
+
+	it("auto-generates with model that has reasoning flag", async () => {
+		const pi = makeFakePi();
+		const ctx = makeFakeCtx({
+			model: { name: "test-model", reasoning: true },
+			getBranch: resolveTranscriptEntries,
+		});
+		createExtensionInHerdr(pi);
+
+		vi.mocked(completeSimple).mockResolvedValueOnce({
+			content: [{ type: "text", text: "fix auth bug" }],
+		});
+
+		const handler = pi.commands.get("name-session-and-space")!;
+		await withEnv({ HERDR_ENV: "1", HERDR_PANE_ID: "p_6" }, async () => {
+			await handler("", ctx);
+		});
+		await flushAsyncIIFE();
+
+		const options = vi.mocked(completeSimple).mock.calls[0][2];
+		expect(options.reasoning).toBe("minimal");
+	});
+
+	it("sends transcript to completeSimple with system prompt", async () => {
+		const pi = makeFakePi();
+		const ctx = makeFakeCtx({
+			model: { name: "test-model" },
+			getBranch: resolveTranscriptEntries,
+		});
+		createExtensionInHerdr(pi);
+
+		vi.mocked(completeSimple).mockResolvedValueOnce({
+			content: [{ type: "text", text: "fix auth bug" }],
+		});
+
+		const handler = pi.commands.get("name-session-and-space")!;
+		await withEnv({ HERDR_ENV: "1", HERDR_PANE_ID: "p_6" }, async () => {
+			await handler("", ctx);
+		});
+		await flushAsyncIIFE();
+
+		const messages = vi.mocked(completeSimple).mock.calls[0][1].messages;
+		expect(messages).toHaveLength(1);
+		expect(messages[0].role).toBe("user");
+		expect(messages[0].content[0].type).toBe("text");
+		expect(messages[0].content[0].text).toContain("Generate a short session name");
+		// Transcript text should be in the prompt
+		expect(messages[0].content[0].text).toContain("help me fix a bug");
+	});
+
+	it("auto-generate: notifies 'no active model' when model is absent", async () => {
+		const pi = makeFakePi();
+		const ctx = makeFakeCtx({ model: undefined });
+		createExtensionInHerdr(pi);
+
+		const handler = pi.commands.get("name-session-and-space")!;
+		await handler("", ctx);
+
+		expect(vi.mocked(completeSimple)).not.toHaveBeenCalled();
+		expect(ctx.ui.notify).toHaveBeenCalledWith(
+			"Cannot generate name: no active model.",
+			"warning",
+		);
+	});
+
+	it("auto-generate: notifies 'no conversation yet' when branch is empty", async () => {
+		const pi = makeFakePi();
+		const ctx = makeFakeCtx({
+			model: { name: "test-model" },
+			getBranch: () => [],
+		});
+		createExtensionInHerdr(pi);
+
+		const handler = pi.commands.get("name-session-and-space")!;
+		await handler("", ctx);
+
+		expect(vi.mocked(completeSimple)).not.toHaveBeenCalled();
+		expect(ctx.ui.notify).toHaveBeenCalledWith(
+			"Cannot generate name: no conversation yet.",
+			"info",
+		);
+	});
+
+	it("auto-generate: notifies 'no meaningful conversation' when transcript is empty", async () => {
+		const pi = makeFakePi();
+		// Entries with truly no extractable text — no text blocks, no tool calls
+		const emptyEntries: unknown[] = [
+			{ type: "message", message: { role: "assistant", content: null } },
+			{ type: "message", message: { role: "user", content: "" } },
+		];
+		const ctx = makeFakeCtx({
+			model: { name: "test-model" },
+			getBranch: () => emptyEntries,
+		});
+		createExtensionInHerdr(pi);
+
+		const handler = pi.commands.get("name-session-and-space")!;
+		await handler("", ctx);
+
+		expect(vi.mocked(completeSimple)).not.toHaveBeenCalled();
+		expect(ctx.ui.notify).toHaveBeenCalledWith(
+			"Cannot generate name: no meaningful conversation to name.",
+			"info",
+		);
+	});
+
+	it("auto-generate: on successful generation, sets session name and renames herdr", async () => {
+		const pi = makeFakePi();
+		const ctx = makeFakeCtx({
+			model: { name: "test-model" },
+			getBranch: resolveTranscriptEntries,
+		});
+		createExtensionInHerdr(pi);
+
+		vi.mocked(completeSimple).mockResolvedValueOnce({
+			content: [{ type: "text", text: "debug herdr pane" }],
+		});
+
+		const handler = pi.commands.get("name-session-and-space")!;
+		await withEnv({ HERDR_ENV: "1", HERDR_PANE_ID: "p_6" }, async () => {
+			await handler("", ctx);
+		});
+		await flushAsyncIIFE();
+
+		expect(pi.setSessionName).toHaveBeenCalledWith("debug herdr pane");
+		expect(pi.appendEntry).toHaveBeenCalledWith(STATE_CUSTOM_TYPE, expect.objectContaining({
+			lastAppliedName: "debug herdr pane",
+		}));
+	});
+
+	it("auto-generate: on empty generated name, warns and does not rename", async () => {
+		const pi = makeFakePi();
+		const ctx = makeFakeCtx({
+			model: { name: "test-model" },
+			getBranch: resolveTranscriptEntries,
+		});
+		createExtensionInHerdr(pi);
+
+		vi.mocked(completeSimple).mockResolvedValueOnce({
+			content: [{ type: "text", text: "" }],
+		});
+
+		const handler = pi.commands.get("name-session-and-space")!;
+		await withEnv({ HERDR_ENV: "1", HERDR_PANE_ID: "p_6" }, async () => {
+			await handler("", ctx);
+		});
+		await flushAsyncIIFE();
+
+		// Should not call setSessionName or rename
+		expect(pi.setSessionName).not.toHaveBeenCalled();
+		expect(pi.exec).not.toHaveBeenCalled();
+		// Should warn about empty generation
+		expect(ctx.ui.notify).toHaveBeenCalledWith(
+			"Name generation returned empty — the model may have declined.",
+			"warning",
+		);
+	});
+
+	it("auto-generate: on generation error, warns with error message", async () => {
+		const pi = makeFakePi();
+		const ctx = makeFakeCtx({
+			model: { name: "test-model" },
+			getBranch: resolveTranscriptEntries,
+		});
+		createExtensionInHerdr(pi);
+
+		vi.mocked(completeSimple).mockRejectedValueOnce(new Error("rate limited"));
+
+		const handler = pi.commands.get("name-session-and-space")!;
+		await withEnv({ HERDR_ENV: "1", HERDR_PANE_ID: "p_6" }, async () => {
+			await handler("", ctx);
+		});
+		await flushAsyncIIFE();
+
+		// No rename or setSessionName on error
+		expect(pi.setSessionName).not.toHaveBeenCalled();
+		expect(pi.exec).not.toHaveBeenCalled();
+		expect(ctx.ui.notify).toHaveBeenCalledWith(
+			"Name generation failed: rate limited",
+			"warning",
+		);
+	});
+
+	it("auto-generate: on non-Error rejection, warns with stringified error", async () => {
+		const pi = makeFakePi();
+		const ctx = makeFakeCtx({
+			model: { name: "test-model" },
+			getBranch: resolveTranscriptEntries,
+		});
+		createExtensionInHerdr(pi);
+
+		vi.mocked(completeSimple).mockRejectedValueOnce("string rejection");
+
+		const handler = pi.commands.get("name-session-and-space")!;
+		await withEnv({ HERDR_ENV: "1", HERDR_PANE_ID: "p_6" }, async () => {
+			await handler("", ctx);
+		});
+		await flushAsyncIIFE();
+
+		expect(ctx.ui.notify).toHaveBeenCalledWith(
+			"Name generation failed: string rejection",
+			"warning",
+		);
+	});
+
+	it("auto-generate: aborts controller in finally block on success", async () => {
+		const pi = makeFakePi();
+		const ctx = makeFakeCtx({
+			model: { name: "test-model" },
+			getBranch: resolveTranscriptEntries,
+		});
+		createExtensionInHerdr(pi);
+
+		vi.mocked(completeSimple).mockResolvedValueOnce({
+			content: [{ type: "text", text: "fix bug" }],
+		});
+
+		const handler = pi.commands.get("name-session-and-space")!;
+		await withEnv({ HERDR_ENV: "1", HERDR_PANE_ID: "p_6" }, async () => {
+			await handler("", ctx);
+		});
+		await flushAsyncIIFE();
+
+		// The controller should have been aborted
+		expect(vi.mocked(completeSimple).mock.calls[0][2].signal.aborted).toBe(true);
+	});
+
+	it("auto-generate: aborts controller in finally block on error", async () => {
+		const pi = makeFakePi();
+		const ctx = makeFakeCtx({
+			model: { name: "test-model" },
+			getBranch: resolveTranscriptEntries,
+		});
+		createExtensionInHerdr(pi);
+
+		vi.mocked(completeSimple).mockRejectedValueOnce(new Error("boom"));
+
+		const handler = pi.commands.get("name-session-and-space")!;
+		await withEnv({ HERDR_ENV: "1", HERDR_PANE_ID: "p_6" }, async () => {
+			await handler("", ctx);
+		});
+		await flushAsyncIIFE();
+
+		expect(vi.mocked(completeSimple).mock.calls[0][2].signal.aborted).toBe(true);
+	});
+
+	it("auto-generate: uses cacheRetention: 'none' in the API call", async () => {
+		const pi = makeFakePi();
+		const ctx = makeFakeCtx({
+			model: { name: "test-model" },
+			getBranch: resolveTranscriptEntries,
+		});
+		createExtensionInHerdr(pi);
+
+		vi.mocked(completeSimple).mockResolvedValueOnce({
+			content: [{ type: "text", text: "fix bug" }],
+		});
+
+		const handler = pi.commands.get("name-session-and-space")!;
+		await withEnv({ HERDR_ENV: "1", HERDR_PANE_ID: "p_6" }, async () => {
+			await handler("", ctx);
+		});
+		await flushAsyncIIFE();
+
+		expect(vi.mocked(completeSimple).mock.calls[0][2].cacheRetention).toBe("none");
+	});
+
+	it("auto-generate: uses response content filter to extract text blocks only", async () => {
+		const pi = makeFakePi();
+		const ctx = makeFakeCtx({
+			model: { name: "test-model" },
+			getBranch: resolveTranscriptEntries,
+		});
+		createExtensionInHerdr(pi);
+
+		// Response with mixed content types — only text blocks should be used
+		vi.mocked(completeSimple).mockResolvedValueOnce({
+			content: [
+				{ type: "image", url: "http://example.com/img.png" },
+				{ type: "text", text: "fix auth bug" },
+				{ type: "image", url: "http://example.com/img2.png" },
+			],
+		});
+
+		const handler = pi.commands.get("name-session-and-space")!;
+		await withEnv({ HERDR_ENV: "1", HERDR_PANE_ID: "p_6" }, async () => {
+			await handler("", ctx);
+		});
+		await flushAsyncIIFE();
+
+		expect(pi.setSessionName).toHaveBeenCalledWith("fix auth bug");
 	});
 });
 
