@@ -1616,7 +1616,7 @@ export default async function diffRendererExtension(pi: ExtensionAPI): Promise<v
       } else if (old === content) {
         (result as Record<string, unknown>)["details"] = { _type: "noChange" };
       }
-      return result;
+      return result as Record<string, unknown>;
     },
 
     renderCall(args: any, theme: any, ctx: any) {
@@ -1630,7 +1630,7 @@ export default async function diffRendererExtension(pi: ExtensionAPI): Promise<v
       if (args?.content && !ctx.argsComplete) {
         const n = String(args.content).split("\n").length;
         text.setText(`${hdr} ${TOOL_RESULT_INDENT}${theme.fg("muted", `(${n} lines…)`)}`);
-        return text;
+        return text as unknown;
       }
 
       // New file preview with Shiki
@@ -1655,11 +1655,11 @@ export default async function diffRendererExtension(pi: ExtensionAPI): Promise<v
             .catch(() => {});
         }
         text.setText(ctx.state._previewText ?? hdr);
-        return text;
+        return text as unknown;
       }
 
       text.setText(hdr);
-      return text;
+      return text as unknown;
     },
 
     renderResult(result: any, _opt: any, theme: any, ctx: any) {
@@ -1749,7 +1749,7 @@ export default async function diffRendererExtension(pi: ExtensionAPI): Promise<v
         .filter(
           (edit: { oldText: string; newText: string }) =>
             edit.oldText && edit.oldText !== edit.newText,
-        );
+        ) as Array<{ oldText: string; newText: string }>;
     }
 
     const oldText =
@@ -1886,7 +1886,7 @@ export default async function diffRendererExtension(pi: ExtensionAPI): Promise<v
 
       const result = await origEdit.execute(tid, params, sig, upd, ctx);
 
-      if (operations.length === 0) return result;
+      if (operations.length === 0) return result as Record<string, unknown>;
 
       const { diffs, summary } = summarizeEditOperations(operations);
       const lg = detectDiffLanguage(fp);
@@ -1915,7 +1915,7 @@ export default async function diffRendererExtension(pi: ExtensionAPI): Promise<v
           oldContent: operations[0]!.oldText,
           newContent: operations[0]!.newText,
         };
-        return result;
+        return result as Record<string, unknown>;
       }
 
       // Merge all diffs into one combined view for rendering
@@ -1957,7 +1957,7 @@ export default async function diffRendererExtension(pi: ExtensionAPI): Promise<v
         diff: merged,
         language: lg,
       };
-      return result;
+      return result as Record<string, unknown>;
     },
 
     renderCall(args: any, theme: any, ctx: any) {
@@ -1995,7 +1995,7 @@ export default async function diffRendererExtension(pi: ExtensionAPI): Promise<v
       } else {
         text.setText(formatToolTitle("edit", fp, theme, termW()));
       }
-      return text;
+      return text as unknown;
     },
 
     renderResult(result: any, _opt: any, theme: any, ctx: any) {
