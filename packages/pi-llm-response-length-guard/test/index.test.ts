@@ -449,4 +449,309 @@ describe("pi-llm-response-length-guard", () => {
 		expect(notified).toContain("Thresholds:");
 		expect(notified).toContain("Corrective message:");
 	});
+
+	it("slash command handler shows last interruption details when present", async () => {
+		// Use a shared API so the command handler and message handler
+		// share the same closure-scoped `stats` object.
+		const { pi, handlers, commands } = createMockAPI();
+		lengthGuardExtension(pi);
+
+		const messageHandler = handlers["message_update"]?.[0];
+		const ctx = makeMockContext();
+
+		// Trigger an interruption so stats.lastInterruption is set
+		const longThinking = "x".repeat(16400);
+		await messageHandler?.(
+			makeMessageUpdateEvent(makeAssistantEvent("thinking_start")),
+			ctx,
+		);
+		await messageHandler?.(
+			makeMessageUpdateEvent(makeAssistantEvent("thinking_delta", longThinking)),
+			ctx,
+		);
+
+		expect(ctx._getCallHistory()).toContain("abort");
+
+		// Now call the slash command — it should show last interruption details
+		const notifyMock = vi.fn();
+		const cmdCtx = {
+			ui: { notify: notifyMock },
+		} as unknown as import("@earendil-works/pi-coding-agent").ExtensionCommandContext;
+		await commands["llm-response-length-guard"]!.handler({}, cmdCtx);
+
+		expect(notifyMock).toHaveBeenCalled();
+		const notified = (notifyMock as ReturnType<typeof vi.fn>).mock.calls[0]![0] as string;
+		expect(notified).toContain("**Last interruption:**");
+		expect(notified).toContain("thinking");
+	});
+
+	it("slash command shows 'none this session' when no interruption occurred", async () => {
+		const { commands } = createMockAPI();
+		lengthGuardExtension({
+			registerCommand: vi.fn((name: string, spec: { description: string; handler: (...args: unknown[]) => unknown }) => {
+				commands[name] = spec;
+			}),
+			on: vi.fn(),
+		} as unknown as import("@earendil-works/pi-coding-agent").ExtensionAPI);
+
+		const notifyMock = vi.fn();
+		const ctx = {
+			ui: { notify: notifyMock },
+		} as unknown as import("@earendil-works/pi-coding-agent").ExtensionCommandContext;
+
+		await commands["llm-response-length-guard"]!.handler({}, ctx);
+
+		const notified = (notifyMock as ReturnType<typeof vi.fn>).mock.calls[0]![0] as string;
+		expect(notified).toContain("none this session");
+	});
+
+	it("cumulative chunks across multiple deltas exceed the limit", async () => {
+		const { pi, handlers } = createMockAPI();
+		lengthGuardExtension(pi);
+
+		const handler = handlers["message_update"]?.[0];
+		const ctx = makeMockContext();
+
+		// Use chunks that individually stay below the thinking limit (8192)
+		// but cumulatively exceed it. 2000 * 5 = 10000 > 8192
+		const chunkSize = 2000;
+		const numChunks = 5;
+
+		await handler?.(
+			makeMessageUpdateEvent(makeAssistantEvent("thinking_start")),
+			ctx,
+		);
+
+		for (let i = 0; i < numChunks; i++) {
+			await handler?.(
+				makeMessageUpdateEvent(makeAssistantEvent("thinking_delta", "a".repeat(chunkSize))),
+				ctx,
+			);
+		}
+
+		expect(ctx._getCallHistory()).toContain("abort");
+	});
+
+	it("empty delta string is ignored (does not accumulate)", async () => {
+		const { pi, handlers } = createMockAPI();
+		lengthGuardExtension(pi);
+
+		const handler = handlers["message_update"]?.[0];
+		const ctx = makeMockContext();
+
+		await handler?.(
+			makeMessageUpdateEvent(makeAssistantEvent("thinking_start")),
+			ctx,
+		);
+
+		// Empty delta — should be skipped entirely
+		await handler?.(
+			makeMessageUpdateEvent(makeAssistantEvent("thinking_delta", "")),
+			ctx,
+		);
+
+		expect(ctx._getCallHistory()).not.toContain("abort");
+	});
+
+	it("non-string delta is ignored (does not accumulate)", async () => {
+		const { pi, handlers } = createMockAPI();
+		lengthGuardExtension(pi);
+
+		const handler = handlers["message_update"]?.[0];
+		const ctx = makeMockContext();
+
+		await handler?.(
+			makeMessageUpdateEvent(makeAssistantEvent("thinking_start")),
+			ctx,
+		);
+
+		// Delta that is not a string — should be skipped by typeof check
+		// eslint-disable-next-line @typescript-eslint/no-explicit-any
+		const nonStringEvent: Record<string, any> = makeMessageUpdateEvent({
+			type: "thinking_delta",
+			contentIndex: 0,
+			delta: 42,
+		});
+		await handler?.(nonStringEvent, ctx);
+
+		expect(ctx._getCallHistory()).not.toContain("abort");
+	});
+
+	it("event with undefined assistantMessageEvent is ignored", async () => {
+		const { pi, handlers } = createMockAPI();
+		lengthGuardExtension(pi);
+
+		const handler = handlers["message_update"]?.[0];
+		const ctx = makeMockContext();
+
+		await handler?.(
+			{ role: "user" },
+			ctx,
+		);
+
+		expect(ctx._getCallHistory()).not.toContain("abort");
+	});
+
+	it("event with null assistantMessageEvent is ignored", async () => {
+		const { pi, handlers } = createMockAPI();
+		lengthGuardExtension(pi);
+
+		const handler = handlers["message_update"]?.[0];
+		const ctx = makeMockContext();
+
+		await handler?.(
+			{ assistantMessageEvent: null },
+			ctx,
+		);
+
+		expect(ctx._getCallHistory()).not.toContain("abort");
+	});
+
+	it("turn_end resets hasInterruptedThisTurn allowing new interruption", async () => {
+		const { pi, handlers } = createMockAPI();
+		lengthGuardExtension(pi);
+
+		const messageHandler = handlers["message_update"]?.[0];
+		const turnEndHandler = handlers["turn_end"]?.[0];
+		const ctx = makeMockContext();
+
+		// First turn: trigger interruption
+		const longThinking = "x".repeat(16400);
+		await messageHandler?.(
+			makeMessageUpdateEvent(makeAssistantEvent("thinking_start")),
+			ctx,
+		);
+		await messageHandler?.(
+			makeMessageUpdateEvent(makeAssistantEvent("thinking_delta", longThinking)),
+			ctx,
+		);
+
+		expect(ctx._getCallHistory().filter((c) => c === "abort").length).toBe(1);
+
+		// End turn — hasInterruptedThisTurn resets
+		await turnEndHandler?.(undefined, undefined);
+
+		// New turn: should be able to interrupt again
+		const ctx2 = makeMockContext();
+		await messageHandler?.(
+			makeMessageUpdateEvent(makeAssistantEvent("thinking_start")),
+			ctx2,
+		);
+		await messageHandler?.(
+			makeMessageUpdateEvent(makeAssistantEvent("thinking_delta", longThinking)),
+			ctx2,
+		);
+
+		// Should have a second abort in the new context
+		expect(ctx2._getCallHistory()).toContain("abort");
+	});
+
+	it("corrective message includes the limitType in the cut-off notice", async () => {
+		const { pi, handlers } = createMockAPI();
+		lengthGuardExtension(pi);
+
+		const handler = handlers["message_update"]?.[0];
+		const ctx = makeMockContext();
+
+		// Trigger a thinking limit exceed
+		await handler?.(
+			makeMessageUpdateEvent(makeAssistantEvent("thinking_start")),
+			ctx,
+		);
+		await handler?.(
+			makeMessageUpdateEvent(makeAssistantEvent("thinking_delta", "x".repeat(16400))),
+			ctx,
+		);
+
+		const sentCalls = (pi.sendMessage as ReturnType<typeof vi.fn>).mock.calls;
+		expect(sentCalls.length).toBe(1);
+		// eslint-disable-next-line @typescript-eslint/no-unsafe-assignment
+		const sentMsg = sentCalls[0]![0];
+		const contentArr = (sentMsg as { content: Array<{ text: string }> }).content;
+		const fullText = contentArr[0]!.text;
+		expect(fullText).toContain("thinking exceeded its length limit");
+	});
+
+	it("response limit interruption includes 'response' in the cut-off notice", async () => {
+		const { pi, handlers } = createMockAPI();
+		lengthGuardExtension(pi);
+
+		const handler = handlers["message_update"]?.[0];
+		const ctx = makeMockContext();
+
+		await handler?.(
+			makeMessageUpdateEvent(makeAssistantEvent("thinking_start")),
+			ctx,
+		);
+		await handler?.(
+			makeMessageUpdateEvent(makeAssistantEvent("text_start")),
+			ctx,
+		);
+		await handler?.(
+			makeMessageUpdateEvent(makeAssistantEvent("text_delta", "y".repeat(32800))),
+			ctx,
+		);
+
+		const sentCalls = (pi.sendMessage as ReturnType<typeof vi.fn>).mock.calls;
+		expect(sentCalls.length).toBe(1);
+		// eslint-disable-next-line @typescript-eslint/no-unsafe-assignment
+		const sentMsg = sentCalls[0]![0];
+		const contentArr = (sentMsg as { content: Array<{ text: string }> }).content;
+		const fullText = contentArr[0]!.text;
+		expect(fullText).toContain("response exceeded its length limit");
+	});
+
+	it("turn_end handler receives no arguments", () => {
+		const { handlers } = createMockAPI();
+		lengthGuardExtension({
+			on: (event: string, handler: (...args: unknown[]) => unknown) => {
+				if (!handlers[event]) handlers[event] = [];
+				handlers[event].push(handler);
+			},
+			registerCommand: vi.fn(),
+		} as unknown as import("@earendil-works/pi-coding-agent").ExtensionAPI);
+
+		const turnEndHandler = handlers["turn_end"]?.[0];
+
+		// Should not throw when called with undefined args
+		expect(() => turnEndHandler?.(undefined, undefined)).not.toThrow();
+	});
+
+	it("slash command handler includes char counts in notification", async () => {
+		const { pi, handlers, commands } = createMockAPI();
+		lengthGuardExtension(pi);
+
+		const messageHandler = handlers["message_update"]?.[0];
+		const ctx = makeMockContext();
+
+		// Accumulate some chars
+		await messageHandler?.(
+			makeMessageUpdateEvent(makeAssistantEvent("thinking_start")),
+			ctx,
+		);
+		await messageHandler?.(
+			makeMessageUpdateEvent(makeAssistantEvent("thinking_delta", "a".repeat(100))),
+			ctx,
+		);
+		await messageHandler?.(
+			makeMessageUpdateEvent(makeAssistantEvent("text_start")),
+			ctx,
+		);
+		await messageHandler?.(
+			makeMessageUpdateEvent(makeAssistantEvent("text_delta", "b".repeat(200))),
+			ctx,
+		);
+
+		// Call the command handler
+		const notifyMock = vi.fn();
+		const cmdCtx = {
+			ui: { notify: notifyMock },
+		} as unknown as import("@earendil-works/pi-coding-agent").ExtensionCommandContext;
+		await commands["llm-response-length-guard"]!.handler({}, cmdCtx);
+
+		const notified = (notifyMock as ReturnType<typeof vi.fn>).mock.calls[0]![0] as string;
+		expect(notified).toContain("Total chars monitored:");
+		expect(notified).toContain("thinking:");
+		expect(notified).toContain("response:");
+	});
 });
