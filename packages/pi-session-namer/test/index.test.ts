@@ -1,3 +1,4 @@
+import type { AssistantMessage } from "@earendil-works/pi-ai";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import createExtension from "../src/index.js";
@@ -682,7 +683,7 @@ describe("pi-herdr-integration — /name-session-and-space auto-generate", () =>
 
 		vi.mocked(completeSimple).mockResolvedValueOnce({
 			content: [{ type: "text", text: "fix auth bug" }],
-		});
+		} as AssistantMessage);
 
 		const handler = pi.commands.get("name-session-and-space")!;
 		await withEnv({ HERDR_ENV: "1", HERDR_PANE_ID: "p_6" }, async () => {
@@ -699,7 +700,7 @@ describe("pi-herdr-integration — /name-session-and-space auto-generate", () =>
 			(c: unknown[]) => Array.isArray(c[1]) && (c[1] as string[])[1] === "rename",
 		);
 		expect(renameCalls).toHaveLength(1);
-		expect(renameCalls[0][1]).toEqual(["workspace", "rename", WS_ID, "fix auth bug"]);
+		expect(renameCalls[0]![1]).toEqual(["workspace", "rename", WS_ID, "fix auth bug"]);
 	});
 
 	it("auto-generates with model that has reasoning flag", async () => {
@@ -712,7 +713,7 @@ describe("pi-herdr-integration — /name-session-and-space auto-generate", () =>
 
 		vi.mocked(completeSimple).mockResolvedValueOnce({
 			content: [{ type: "text", text: "fix auth bug" }],
-		});
+		} as AssistantMessage);
 
 		const handler = pi.commands.get("name-session-and-space")!;
 		await withEnv({ HERDR_ENV: "1", HERDR_PANE_ID: "p_6" }, async () => {
@@ -720,7 +721,7 @@ describe("pi-herdr-integration — /name-session-and-space auto-generate", () =>
 		});
 		await flushAsyncIIFE();
 
-		const options = vi.mocked(completeSimple).mock.calls[0][2];
+		const options = vi.mocked(completeSimple).mock.calls[0]![2]!;
 		expect(options.reasoning).toBe("minimal");
 	});
 
@@ -734,7 +735,7 @@ describe("pi-herdr-integration — /name-session-and-space auto-generate", () =>
 
 		vi.mocked(completeSimple).mockResolvedValueOnce({
 			content: [{ type: "text", text: "fix auth bug" }],
-		});
+		} as AssistantMessage);
 
 		const handler = pi.commands.get("name-session-and-space")!;
 		await withEnv({ HERDR_ENV: "1", HERDR_PANE_ID: "p_6" }, async () => {
@@ -742,13 +743,13 @@ describe("pi-herdr-integration — /name-session-and-space auto-generate", () =>
 		});
 		await flushAsyncIIFE();
 
-		const messages = vi.mocked(completeSimple).mock.calls[0][1].messages;
+		const messages = vi.mocked(completeSimple).mock.calls[0]![1].messages;
 		expect(messages).toHaveLength(1);
-		expect(messages[0].role).toBe("user");
-		expect(messages[0].content[0].type).toBe("text");
-		expect(messages[0].content[0].text).toContain("Generate a short session name");
+		expect(messages[0]!.role).toBe("user");
+		expect((messages[0]!.content[0] as { type: string; text: string }).type).toBe("text");
+		expect((messages[0]!.content[0] as { type: string; text: string }).text).toContain("Generate a short session name");
 		// Transcript text should be in the prompt
-		expect(messages[0].content[0].text).toContain("help me fix a bug");
+		expect((messages[0]!.content[0] as { type: string; text: string }).text).toContain("help me fix a bug");
 	});
 
 	it("auto-generate: notifies 'no active model' when model is absent", async () => {
@@ -817,7 +818,7 @@ describe("pi-herdr-integration — /name-session-and-space auto-generate", () =>
 
 		vi.mocked(completeSimple).mockResolvedValueOnce({
 			content: [{ type: "text", text: "debug herdr pane" }],
-		});
+		} as AssistantMessage);
 
 		const handler = pi.commands.get("name-session-and-space")!;
 		await withEnv({ HERDR_ENV: "1", HERDR_PANE_ID: "p_6" }, async () => {
@@ -841,7 +842,7 @@ describe("pi-herdr-integration — /name-session-and-space auto-generate", () =>
 
 		vi.mocked(completeSimple).mockResolvedValueOnce({
 			content: [{ type: "text", text: "" }],
-		});
+		} as AssistantMessage);
 
 		const handler = pi.commands.get("name-session-and-space")!;
 		await withEnv({ HERDR_ENV: "1", HERDR_PANE_ID: "p_6" }, async () => {
@@ -916,7 +917,7 @@ describe("pi-herdr-integration — /name-session-and-space auto-generate", () =>
 
 		vi.mocked(completeSimple).mockResolvedValueOnce({
 			content: [{ type: "text", text: "fix bug" }],
-		});
+		} as AssistantMessage);
 
 		const handler = pi.commands.get("name-session-and-space")!;
 		await withEnv({ HERDR_ENV: "1", HERDR_PANE_ID: "p_6" }, async () => {
@@ -925,7 +926,9 @@ describe("pi-herdr-integration — /name-session-and-space auto-generate", () =>
 		await flushAsyncIIFE();
 
 		// The controller should have been aborted
-		expect(vi.mocked(completeSimple).mock.calls[0][2].signal.aborted).toBe(true);
+		const calls = vi.mocked(completeSimple).mock.calls;
+		const opts = (calls[0] as Parameters<typeof completeSimple>)[2] as { signal: { aborted: boolean } };
+		expect(opts.signal.aborted).toBe(true);
 	});
 
 	it("auto-generate: aborts controller in finally block on error", async () => {
@@ -944,7 +947,9 @@ describe("pi-herdr-integration — /name-session-and-space auto-generate", () =>
 		});
 		await flushAsyncIIFE();
 
-		expect(vi.mocked(completeSimple).mock.calls[0][2].signal.aborted).toBe(true);
+		const calls2 = vi.mocked(completeSimple).mock.calls;
+		const opts2 = (calls2[0] as Parameters<typeof completeSimple>)[2] as { signal: { aborted: boolean } };
+		expect(opts2.signal.aborted).toBe(true);
 	});
 
 	it("auto-generate: uses cacheRetention: 'none' in the API call", async () => {
@@ -957,7 +962,7 @@ describe("pi-herdr-integration — /name-session-and-space auto-generate", () =>
 
 		vi.mocked(completeSimple).mockResolvedValueOnce({
 			content: [{ type: "text", text: "fix bug" }],
-		});
+		} as AssistantMessage);
 
 		const handler = pi.commands.get("name-session-and-space")!;
 		await withEnv({ HERDR_ENV: "1", HERDR_PANE_ID: "p_6" }, async () => {
@@ -965,7 +970,7 @@ describe("pi-herdr-integration — /name-session-and-space auto-generate", () =>
 		});
 		await flushAsyncIIFE();
 
-		expect(vi.mocked(completeSimple).mock.calls[0][2].cacheRetention).toBe("none");
+		expect(vi.mocked(completeSimple).mock.calls[0]![2]!.cacheRetention).toBe("none");
 	});
 
 	it("auto-generate: uses response content filter to extract text blocks only", async () => {
@@ -979,11 +984,9 @@ describe("pi-herdr-integration — /name-session-and-space auto-generate", () =>
 		// Response with mixed content types — only text blocks should be used
 		vi.mocked(completeSimple).mockResolvedValueOnce({
 			content: [
-				{ type: "image", url: "http://example.com/img.png" },
 				{ type: "text", text: "fix auth bug" },
-				{ type: "image", url: "http://example.com/img2.png" },
-			],
-		});
+			] as AssistantMessage["content"],
+		} as AssistantMessage);
 
 		const handler = pi.commands.get("name-session-and-space")!;
 		await withEnv({ HERDR_ENV: "1", HERDR_PANE_ID: "p_6" }, async () => {

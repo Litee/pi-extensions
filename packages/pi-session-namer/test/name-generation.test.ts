@@ -1,3 +1,4 @@
+import type { ExtensionContext } from "@earendil-works/pi-coding-agent";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import { buildTranscript, generateSessionName, parseName, type Entry } from "../src/name-generation.js";
@@ -190,7 +191,7 @@ describe("generateSessionName", () => {
 			ctx: {
 				model: overrides?.model,
 				modelRegistry: overrides?.modelRegistry ?? { getApiKeyAndHeaders: mockGetApiKeyAndHeaders },
-			},
+			} as unknown as ExtensionContext,
 		};
 	}
 
@@ -246,9 +247,9 @@ describe("generateSessionName", () => {
 		];
 		expect(model).toBe(stableModel);
 		expect(messages.messages).toHaveLength(1);
-		expect(messages.messages[0].role).toBe("user");
-		expect(messages.messages[0].content[0].type).toBe("text");
-		expect(messages.messages[0].content[0].text).toContain("user: hello");
+		expect(messages.messages[0]!.role).toBe("user");
+		expect(messages.messages[0]!.content[0]!.type).toBe("text");
+		expect(messages.messages[0]!.content[0]!.text).toContain("user: hello");
 		expect(options.apiKey).toBe("sk-test");
 	});
 
@@ -263,7 +264,7 @@ describe("generateSessionName", () => {
 		await generateSessionName("transcript", deps, new AbortController().signal);
 
 		// eslint-disable-next-line @typescript-eslint/no-unsafe-member-access
-		expect(mockCompleteSimple.mock.calls[0][2].headers).toEqual({ "X-Custom": "header" });
+		expect(mockCompleteSimple.mock.calls[0]![2].headers).toEqual({ "X-Custom": "header" });
 	});
 
 	it("passes reasoning: 'minimal' when model has reasoning flag", async () => {
@@ -272,7 +273,7 @@ describe("generateSessionName", () => {
 		await generateSessionName("transcript", deps, new AbortController().signal);
 
 		// eslint-disable-next-line @typescript-eslint/no-unsafe-member-access
-		expect(mockCompleteSimple.mock.calls[0][2].reasoning).toBe("minimal");
+		expect(mockCompleteSimple.mock.calls[0]![2].reasoning).toBe("minimal");
 	});
 
 	it("does not pass reasoning when model has no reasoning flag", async () => {
@@ -281,7 +282,7 @@ describe("generateSessionName", () => {
 		await generateSessionName("transcript", deps, new AbortController().signal);
 
 		// eslint-disable-next-line @typescript-eslint/no-unsafe-member-access
-		expect(mockCompleteSimple.mock.calls[0][2].reasoning).toBeUndefined();
+		expect(mockCompleteSimple.mock.calls[0]![2].reasoning).toBeUndefined();
 	});
 
 	it("passes the abort signal to completeSimple", async () => {
@@ -291,7 +292,7 @@ describe("generateSessionName", () => {
 		await generateSessionName("transcript", deps, controller.signal);
 
 		// eslint-disable-next-line @typescript-eslint/no-unsafe-member-access
-		expect(mockCompleteSimple.mock.calls[0][2].signal).toBe(controller.signal);
+		expect(mockCompleteSimple.mock.calls[0]![2].signal).toBe(controller.signal);
 	});
 
 	it("parses and returns the generated name from text content", async () => {
@@ -340,9 +341,9 @@ describe("generateSessionName", () => {
 		const deps = makeDeps({ model: stableModel });
 		await generateSessionName(longTranscript, deps, new AbortController().signal);
 
-		const callArgs = mockCompleteSimple.mock.calls[0];
+		const callArgs = mockCompleteSimple.mock.calls[0]!;
 		// eslint-disable-next-line @typescript-eslint/no-unsafe-member-access, @typescript-eslint/no-unsafe-assignment
-		const promptText = callArgs[1].messages[0].content[0].text;
+		const promptText = callArgs[1]!.messages[0]!.content[0]!.text;
 		// buildNamePrompt adds ~40 chars wrapper, transcript is sliced to 12000
 		// eslint-disable-next-line @typescript-eslint/no-unsafe-member-access
 		expect(promptText.length).toBeLessThanOrEqual(12100);
