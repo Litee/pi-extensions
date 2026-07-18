@@ -433,6 +433,36 @@ describe("JobsView — selected footer with next run available (line 214 true br
 	});
 });
 
+// ---------------------------------------------------------------------------
+// Additional branch coverage: selectedJob returns undefined (lines 118, 209)
+// ---------------------------------------------------------------------------
+
+describe("JobsView — selectedJob undefined (lines 118, 209)", () => {
+	it("handleInput ignores unknown keys when no job is selected (line 118 !sel return)", () => {
+		const view = makeView();
+		// No jobs added → selectedJob() returns undefined
+		// Pressing 't' should be a no-op because !sel returns early
+		view.handleInput("t");
+		expect(scheduler.updateJob).not.toHaveBeenCalled();
+		// storage.updateJob is not a mock — it's the real MemCronStorage method.
+		// Just verify no scheduler side-effects happened.
+	});
+
+	it("render skips the selected-row footer when no job is selected (line 209 !sel return)", () => {
+		const view = makeView();
+		// No jobs → selectedJob() returns undefined
+		const lines = renderLines(view);
+		const joined = lines.join("\n");
+		// Should NOT have the "Selected:" footer
+		expect(joined).not.toContain("Selected:");
+		// Should have the empty-state message instead
+		expect(joined).toContain("No scheduled prompts");
+	});
+});
+
+// ---------------------------------------------------------------------------
+// Additional branch coverage: scope (s) with undefined mySessionId (lines 143-144)
+
 describe("JobsView — foreign job icon variants (line 246 branches)", () => {
 	it("shows '✗' for a disabled foreign job", () => {
 		storage.addJob(mkJob({ id: "a", name: "mine", session: "sess-A" }));

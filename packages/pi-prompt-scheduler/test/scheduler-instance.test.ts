@@ -643,6 +643,87 @@ describe("CronScheduler.removeJob — interval job", () => {
 });
 
 // ---------------------------------------------------------------------------
+// Additional branch coverage: interval with falsy intervalMs (line 142 && short-circuit)
+// ---------------------------------------------------------------------------
+
+describe("CronScheduler.addJob — interval with falsy intervalMs", () => {
+	it("falls through to cron path when type=interval but intervalMs is 0", () => {
+		const { scheduler, emit, pi } = makeScheduler();
+		// intervalMs: 0 makes the && short-circuit, so it falls through to the cron path
+		scheduler.addJob(mkJob({ id: "iv-no-ms", type: "interval", intervalMs: 0 }));
+		// Should emit 'add' (addJob always does) and NOT 'error' (Cron constructor succeeds)
+		expect(emit).toHaveBeenCalledWith("cron:change", expect.objectContaining({ type: "add" }));
+		const errorCalls = emit.mock.calls
+			.filter(([evt]) => evt === "cron:change")
+			.map(([, p]) => p as CronChangeEvent)
+			.filter((p): p is CronChangeEvent => p.type === "error");
+		expect(errorCalls).toHaveLength(0);
+		// No schedule-error appendEntry means Cron constructor succeeded (cron path taken)
+		const scheduleErrors = pi.appendEntry.mock.calls.filter(([t]) => t === "schedule-prompt:schedule-error");
+		expect(scheduleErrors).toHaveLength(0);
+	});
+
+	it("falls through to cron path when type=interval but intervalMs is undefined", () => {
+		const { scheduler, emit, pi } = makeScheduler();
+		const job = mkJob({ id: "iv-no-ms2", type: "interval" });
+		delete (job as Partial<CronJob>).intervalMs;
+		scheduler.addJob(job);
+		// Same checks — no error event, no schedule-error appendEntry
+		expect(emit).toHaveBeenCalledWith("cron:change", expect.objectContaining({ type: "add" }));
+		const errorCalls = emit.mock.calls
+			.filter(([evt]) => evt === "cron:change")
+			.map(([, p]) => p as CronChangeEvent)
+			.filter((p): p is CronChangeEvent => p.type === "error");
+		expect(errorCalls).toHaveLength(0);
+		const scheduleErrors = pi.appendEntry.mock.calls.filter(([t]) => t === "schedule-prompt:schedule-error");
+		expect(scheduleErrors).toHaveLength(0);
+	});
+});
+
+// ---------------------------------------------------------------------------
+// Additional branch coverage: outer catch in executeJobInSubagent (line 410)
+// ---------------------------------------------------------------------------
+
+describe("CronScheduler.executeJobInSubagent — outer handler-error catch (line 410)", () => {
+	beforeEach(() => {
+		runSubagentMock.mockClear();
+	});
+
+	async function flushMicrotasks(): Promise<void> {
+		for (let i = 0; i < 5; i++) await Promise.resolve();
+	}
+
+	it("records handler-error when an unexpected error escapes the IIFE", async () => {
+		runSubagentMock.mockResolvedValueOnce({ ok: true as const, text: "ok" });
+		const job = mkJob({ id: "outer-err", model: "anthropic/claude-haiku-4-5" });
+		storage.addJob(job);
+
+		const { pi } = makeFakePi();
+		// Make getNextRun throw — this happens inside the IIFE after subagent completes
+		// and will escape the inner try/catch blocks into the outer catch (line 407→410)
+		const scheduler = new CronScheduler(
+			storage,
+			pi as unknown as ExtensionAPI,
+			makeFakeCtx("sess-A") as unknown as ExtensionContext,
+		);
+		schedulers.push(scheduler);
+
+		// Override getNextRun to throw — this happens after the subagent completes
+		// inside the IIFE, past the inner try/catch, so it hits the outer catch
+		vi.spyOn(scheduler as unknown as Record<string, unknown>, "getNextRun" as any)
+			.mockImplementation(() => { throw new Error("boom"); });
+
+		(scheduler as unknown as SchedulerPrivate).executeJobInSubagent(job);
+		await flushMicrotasks();
+
+		expect(pi.appendEntry).toHaveBeenCalledWith(
+			"schedule-prompt:handler-error",
+			expect.objectContaining({ jobId: job.id }),
+		);
+	});
+});
+
+// ---------------------------------------------------------------------------
 // once job scheduled for the FUTURE (lines 155-162 in scheduler.ts)
 // ---------------------------------------------------------------------------
 
