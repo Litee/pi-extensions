@@ -12,7 +12,7 @@ vi.mock("node:os", () => ({
 
 import { execFile } from "node:child_process";
 import { platform } from "node:os";
-import { detectPlatform, playAudioFile } from "../src/audio.js";
+import { detectPlatform, playAudioFile, isInPath } from "../src/audio.js";
 
 const mockExecFile = vi.mocked(execFile);
 const mockPlatform = vi.mocked(platform);
@@ -176,5 +176,40 @@ describe("playAudioFile — with AbortSignal (opts branch)", () => {
 
 		// The signal must have been forwarded inside opts
 		expect(capturedOpts).toMatchObject({ signal: ac.signal });
+	});
+});
+
+// ---------------------------------------------------------------------------
+// isInPath — platform-specific command branch (L67: platform() === 'win32')
+// ---------------------------------------------------------------------------
+
+describe("isInPath", () => {
+	beforeEach(() => {
+		vi.resetAllMocks();
+	});
+
+	it("uses 'which' on non-win32 platforms", async () => {
+		mockPlatform.mockReturnValue("darwin");
+		mockExecSuccess();
+		const result = await isInPath("node");
+		expect(result).toBe(true);
+		const whichCalls = mockExecFile.mock.calls.filter((c) => c[0] === "which");
+		expect(whichCalls.length).toBeGreaterThan(0);
+	});
+
+	it("uses 'where' on win32 platforms", async () => {
+		mockPlatform.mockReturnValue("win32");
+		mockExecSuccess();
+		const result = await isInPath("node");
+		expect(result).toBe(true);
+		const whereCalls = mockExecFile.mock.calls.filter((c) => c[0] === "where");
+		expect(whereCalls.length).toBeGreaterThan(0);
+	});
+
+	it("returns false when the binary is not in PATH", async () => {
+		mockPlatform.mockReturnValue("darwin");
+		mockExecFail("not found");
+		const result = await isInPath("nonexistent-binary");
+		expect(result).toBe(false);
 	});
 });

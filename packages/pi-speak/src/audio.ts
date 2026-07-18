@@ -62,7 +62,7 @@ export async function playAudioFile(filePath: string, signal?: AbortSignal): Pro
 }
 
 /** Return true if `bin` resolves in the system PATH without throwing. */
-async function isInPath(bin: string): Promise<boolean> {
+export async function isInPath(bin: string): Promise<boolean> {
   try {
     const checkCmd = platform() === 'win32' ? 'where' : 'which';
     await execFileAsync(checkCmd, [bin]);

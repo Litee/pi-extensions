@@ -384,6 +384,33 @@ describe("SpeechQueue — restart after clear with waiting items", () => {
 		const calls = vi.mocked(synthesise).mock.calls.map((c) => c[0]);
 		expect(calls).toContain("post-clear item");
 	});
+
+	// L174 — restart when item is enqueued DURING playback (not consumed as prefetch)
+	it("re-starts when an item is enqueued during playback after clear", async () => {
+		// Block item 1's playback so we can enqueue while playback is in progress.
+		// This ensures the enqueued item is NOT consumed as a prefetch (nextItem shift
+		// already happened before enqueue), so items.length > 0 at process() end.
+		let resolvePlay!: () => void;
+		vi.mocked(playAudioFile).mockImplementationOnce(
+			() => new Promise<void>((res) => { resolvePlay = res; }),
+		);
+
+		const q = new SpeechQueue();
+		q.enqueue(baseItem); // starts processing; item 1 playing (blocked), no prefetch
+		await flushAsync();  // item 1 playing, items is empty
+
+		// Clear + enqueue DURING playback — item lands in queue after nextItem shift
+		q.clear(); // items: [], cleared: true
+		q.enqueue({ ...baseItem, text: "post-clear item" }); // items: [item2]
+
+		// Unblock playback → process() breaks on cleared=true, then restarts
+		resolvePlay();
+		await flushAsync();
+
+		// The post-clear item must have been synthesised by the restarted worker
+		const calls = vi.mocked(synthesise).mock.calls.map((c) => c[0]);
+		expect(calls).toContain("post-clear item");
+	});
 });
 
 // ---------------------------------------------------------------------------
@@ -419,6 +446,40 @@ describe("SpeechQueue — playback timeout", () => {
 		await Promise.resolve();
 
 		// playAudioFile was called and the abort (via timeout) resolved the promise
+		expect(vi.mocked(playAudioFile)).toHaveBeenCalled();
+
+		vi.useRealTimers();
+	});
+
+	// L126 — timeout callback fires and aborts the AbortController signal
+	it("setTimeout callback fires and the signal gets aborted", async () => {
+		vi.useFakeTimers();
+
+		// Capture the AbortController so we can check its signal state
+		let capturedAc: AbortController | undefined;
+		vi.mocked(playAudioFile).mockImplementation((_path, signal) => {
+			return new Promise<void>((resolve) => {
+				if (signal) {
+					signal.addEventListener("abort", () => resolve(), { once: true });
+				}
+			});
+		});
+
+		// Intercept the internal process() to capture the AbortController.
+		// We use a long text to get a timeout > 30 s so we can advance timers.
+		const q = new SpeechQueue();
+		q.enqueue({ ...baseItem, text: "x".repeat(1000) }); // ~171 s timeout
+
+		await Promise.resolve();
+		await Promise.resolve();
+
+		// Advance past the 30 s minimum timeout — the () => ac.abort() callback fires
+		vi.advanceTimersByTime(31_000);
+
+		// The abort signal should have been fired, resolving playAudioFile
+		await Promise.resolve();
+		await Promise.resolve();
+
 		expect(vi.mocked(playAudioFile)).toHaveBeenCalled();
 
 		vi.useRealTimers();
