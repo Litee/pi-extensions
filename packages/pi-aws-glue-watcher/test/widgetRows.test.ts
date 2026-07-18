@@ -827,3 +827,71 @@ describe("buildWidgetEntries — sort comparator: both entries lack startedOn", 
 		expect(entries).toHaveLength(2);
 	});
 });
+
+// ---------------------------------------------------------------------------
+// Branch coverage: pollIntervalSpread truthy branch (line 101)
+// ---------------------------------------------------------------------------
+
+describe("buildWidgetEntries — pollIntervalSpread truthy branch", () => {
+	it("propagates pollIntervalMs from watch when defined", () => {
+		// Exercises the truthy branch of `w.pollIntervalMs !== undefined ? { pollIntervalMs: w.pollIntervalMs } : {}`
+		// (widgetRows.ts line 101).
+		const entries = buildWidgetEntries({
+			a: job({
+				watchId: "a",
+				name: "j",
+				pollIntervalMs: 45_000,
+				baseline: { state: "RUNNING", errorMessage: "" },
+			}),
+		});
+		expect(entries).toHaveLength(1);
+		expect(entries[0]?.pollIntervalMs).toBe(45_000);
+	});
+});
+
+// ---------------------------------------------------------------------------
+// Branch coverage: job branch — b?.state ?? "" falsy branches (lines 104, 107)
+// ---------------------------------------------------------------------------
+
+describe("buildWidgetEntries — job branch b?.state ?? '' falsy branches", () => {
+	it("produces entry with empty state when job baseline is undefined", () => {
+		// Exercises the falsy branches of `b?.state ?? ""` on lines 104 and 107
+		// when watch.baseline is undefined for a job watch.
+		const entries = buildWidgetEntries({
+			a: job({ watchId: "a", name: "no-baseline-job", baseline: undefined }),
+		});
+		expect(entries).toHaveLength(1);
+		expect(entries[0]?.state).toBe("");
+		expect(entries[0]?.isTerminal).toBe(false);
+	});
+});
+
+// ---------------------------------------------------------------------------
+// Branch coverage: workflow node displayName — watch.runId falsy branch (line 132)
+// ---------------------------------------------------------------------------
+
+describe("buildWidgetEntries — workflow node displayName with empty runId", () => {
+	it("uses bare watch.name when runId is empty string for workflow nodes", () => {
+		// Exercises the falsy branch of `watch.runId ? ... : watch.name/` on line 132
+		// in the workflow node displayName construction.
+		const entries = buildWidgetEntries({
+			w: workflow({
+				watchId: "w",
+				name: "bare-wf",
+				runId: "",
+				baseline: {
+					state: "RUNNING",
+					totalActions: 1,
+					succeededActions: 0,
+					failedActions: 0,
+					runningActions: 1,
+					reportedFailedNodes: [],
+					nodes: [{ name: "step-1", state: "RUNNING" }],
+				},
+			}),
+		});
+		expect(entries).toHaveLength(1);
+		// displayName should be "bare-wf/step-1" (no runId suffix)
+		expect(entries[0]?.displayName).toBe("bare-wf/step-1");
+	});
+});

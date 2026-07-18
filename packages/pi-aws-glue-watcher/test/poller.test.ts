@@ -735,3 +735,143 @@ describe("detectWorkflowChanges — undefined Run.Status ?? '' fallback (line 21
 		expect(wfBase.state).toBe("");
 	});
 });
+
+// ---------------------------------------------------------------------------
+// Branch coverage: snapshotJobRun — all optional fields truthy branches (lines 154-157)
+// ---------------------------------------------------------------------------
+
+describe("snapshotJobRun — all optional fields truthy branches", () => {
+	it("includes StartedOn, NumberOfWorkers, WorkerType, and CompletedOn when all present", async () => {
+		// Exercises the truthy branches of all optional spreads in detectJobChanges
+		// (poller.ts lines 154, 155, 156, 157).
+		const client: GlueClient = {
+			getJobRun: vi.fn().mockResolvedValue({
+				JobRun: {
+					JobRunState: "RUNNING",
+					ErrorMessage: "",
+					StartedOn: "2024-01-01T00:00:00Z",
+					CompletedOn: "2024-01-01T01:00:00Z",
+					NumberOfWorkers: 8,
+					WorkerType: "G.2X",
+				},
+			} satisfies JobRunResponse),
+			getWorkflowRun: vi.fn(),
+			getLatestJobRunId: vi.fn(),
+			getLatestWorkflowRunId: vi.fn(),
+			stopJobRun: vi.fn(),
+			stopWorkflowRun: vi.fn(),
+		};
+		const watch = makeJobWatch({ state: "STARTING", errorMessage: "" });
+		const { newBaseline } = await detectJobChanges(client, watch);
+		const b = newBaseline as JobBaseline;
+		expect(b.startedOn).toBe("2024-01-01T00:00:00Z");
+		expect(b.completedOn).toBe("2024-01-01T01:00:00Z");
+		expect(b.numberOfWorkers).toBe(8);
+		expect(b.workerType).toBe("G.2X");
+	});
+});
+
+// ---------------------------------------------------------------------------
+// Branch coverage: snapshotWorkflowRun — undefined Statistics and Graph (lines 112-113)
+// ---------------------------------------------------------------------------
+
+describe("snapshotWorkflowRun — undefined Statistics and Graph (lines 112-113)", () => {
+	it("defaults Statistics to {} and Graph to [] when both are absent", async () => {
+		// Exercises `resp.Run.Statistics ?? {}` (line 112) and
+		// `resp.Run.Graph?.Nodes ?? []` (line 113) in snapshotWorkflowRun.
+		const client: GlueClient = {
+			getJobRun: vi.fn(),
+			getWorkflowRun: vi.fn().mockResolvedValue({
+				Run: {
+					Status: "RUNNING",
+					// Statistics and Graph intentionally absent
+					Statistics: undefined as unknown as WorkflowRunResponse["Run"]["Statistics"],
+					Graph: undefined as unknown as WorkflowRunResponse["Run"]["Graph"],
+				},
+			} satisfies WorkflowRunResponse),
+			getLatestJobRunId: vi.fn(),
+			getLatestWorkflowRunId: vi.fn(),
+			stopJobRun: vi.fn(),
+			stopWorkflowRun: vi.fn(),
+		};
+		const baseline = await snapshotWorkflowRun(client, makeWorkflowWatch());
+		expect(baseline.totalActions).toBe(0);
+		expect(baseline.succeededActions).toBe(0);
+		expect(baseline.failedActions).toBe(0);
+		expect(baseline.runningActions).toBe(0);
+		expect(baseline.reportedFailedNodes).toEqual([]);
+		expect(baseline.nodes).toEqual([]);
+	});
+});
+
+// ---------------------------------------------------------------------------
+// Branch coverage: snapshotWorkflowRun — node optional fields (lines 125-126)
+// ---------------------------------------------------------------------------
+
+describe("snapshotWorkflowRun — node optional fields (lines 125-126)", () => {
+	it("includes JobRunState and StartedOn in node info when JobDetails.JobRuns[0] has them", async () => {
+		// Exercises `run?.JobRunState ?? ""` (line 125) and
+		// `run?.StartedOn !== undefined ? { startedOn: ... } : {}` (line 126)
+		// in snapshotWorkflowRun.
+		const nodes: WorkflowRunNode[] = [
+			{
+				Name: "step-1",
+				Type: "JOB",
+				JobDetails: {
+					JobRuns: [{
+						JobRunState: "RUNNING",
+						StartedOn: "2024-06-01T12:00:00Z",
+					}],
+				},
+			},
+		];
+		const client = makeWorkflowClient("RUNNING", { TotalActions: 1 }, nodes);
+		const baseline = await snapshotWorkflowRun(client, makeWorkflowWatch());
+		const node = baseline.nodes?.[0];
+		expect(node?.state).toBe("RUNNING");
+		expect(node?.startedOn).toBe("2024-06-01T12:00:00Z");
+	});
+
+	it("returns empty string for JobRunState when JobDetails.JobRuns[0] is absent", async () => {
+		// Exercises `run?.JobRunState ?? ""` (line 125) when run is undefined.
+		const nodes: WorkflowRunNode[] = [
+			{ Name: "no-run", Type: "JOB", JobDetails: undefined },
+		];
+		const client = makeWorkflowClient("RUNNING", {}, nodes);
+		const baseline = await snapshotWorkflowRun(client, makeWorkflowWatch());
+		expect(baseline.nodes?.[0]?.state).toBe("");
+	});
+});
+
+// ---------------------------------------------------------------------------
+// Branch coverage: snapshotJobRun — optional spread truthy branches (lines 154-157)
+// ---------------------------------------------------------------------------
+
+describe("snapshotJobRun — optional spread truthy branches (lines 154-157)", () => {
+	it("includes StartedOn, CompletedOn, NumberOfWorkers, WorkerType when all present", async () => {
+		// Exercises the truthy branches of all optional spreads in snapshotJobRun
+		// (poller.ts lines 154-157).
+		const client: GlueClient = {
+			getJobRun: vi.fn().mockResolvedValue({
+				JobRun: {
+					JobRunState: "RUNNING",
+					ErrorMessage: "",
+					StartedOn: "2024-01-01T00:00:00Z",
+					CompletedOn: "2024-01-01T01:00:00Z",
+					NumberOfWorkers: 8,
+					WorkerType: "G.2X",
+				},
+			} satisfies JobRunResponse),
+			getWorkflowRun: vi.fn(),
+			getLatestJobRunId: vi.fn(),
+			getLatestWorkflowRunId: vi.fn(),
+			stopJobRun: vi.fn(),
+			stopWorkflowRun: vi.fn(),
+		};
+		const baseline = await snapshotJobRun(client, makeJobWatch());
+		expect(baseline.startedOn).toBe("2024-01-01T00:00:00Z");
+		expect(baseline.completedOn).toBe("2024-01-01T01:00:00Z");
+		expect(baseline.numberOfWorkers).toBe(8);
+		expect(baseline.workerType).toBe("G.2X");
+	});
+});

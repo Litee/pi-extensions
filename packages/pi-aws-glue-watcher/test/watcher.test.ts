@@ -1845,3 +1845,254 @@ describe('GlueWatcher.normaliseBaseline — non-string elements in reportedFaile
     expect(wf.reportedFailedNodes).toEqual(['job-a', 'job-b'])
   })
 })
+
+// ---------------------------------------------------------------------------
+// Branch coverage: renderItemRowText — workflow type (WORKFLOW_TERMINAL_STATES)
+// ---------------------------------------------------------------------------
+
+describe('renderItemRowText — workflow type branch', () => {
+  let watcher: GlueWatcher
+
+  beforeEach(() => {
+    ;({ watcher } = makeWatcher())
+  })
+
+  function makeWorkflowWatch(overrides: Partial<GlueWatch> = {}): GlueWatch {
+    return {
+      watchId: 'w2',
+      type: 'workflow',
+      name: 'my-workflow',
+      runId: 'wr_abcd5678',
+      profile: 'dev',
+      region: undefined,
+      addedAt: 0,
+      lastPolledAt: undefined,
+      baseline: undefined,
+      terminal: false,
+      consecutiveErrors: 0,
+      ...overrides,
+    }
+  }
+
+  it('uses WORKFLOW_TERMINAL_STATES for workflow type in renderItemRowText', () => {
+    // Exercises the falsy branch of `w.type === 'job' ? JOB_TERMINAL_STATES : WORKFLOW_TERMINAL_STATES`
+    // in renderItemRowText (watcher.ts ~line 206).
+    const w = makeWorkflowWatch({ terminal: false, baseline: { state: 'COMPLETED', totalActions: 2, succeededActions: 2, failedActions: 0, runningActions: 0, reportedFailedNodes: [] } })
+    const text = watcher.view.renderItemRowText(w)
+    // COMPLETED is a workflow terminal state → should show bell-off
+    expect(text).toContain('🔕')
+    expect(text).toContain('COMPLETED')
+  })
+})
+
+// ---------------------------------------------------------------------------
+// Branch coverage: _minIntervalMs — no finite intervals (POLL_INTERVAL_MS fallback)
+// ---------------------------------------------------------------------------
+
+describe('GlueWatcher._minIntervalMs — POLL_INTERVAL_MS fallback', () => {
+  it('returns POLL_INTERVAL_MS when no schedulers are registered', () => {
+    // Exercises the falsy branch of `Number.isFinite(min) ? min : POLL_INTERVAL_MS`
+    // in _minIntervalMs (watcher.ts ~line 258) when the schedulers map is empty.
+    vi.useFakeTimers()
+    const { watcher } = makeWatcher()
+    // Access _minIntervalMs via the widget callback with no schedulers
+    const getMs = (watcher as unknown as { widget: { getPollIntervalMs: () => number } }).widget.getPollIntervalMs
+    expect(getMs()).toBe(120_000) // POLL_INTERVAL_MS
+    watcher.stopPolling()
+    vi.useRealTimers()
+  })
+})
+
+// ---------------------------------------------------------------------------
+// Branch coverage: normaliseBaseline — falsy branches for optional fields
+// ---------------------------------------------------------------------------
+
+describe('GlueWatcher.normaliseBaseline — falsy branches for optional fields', () => {
+  let watcher: GlueWatcher
+
+  beforeEach(() => {
+    ;({ watcher } = makeWatcher())
+  })
+
+  it('uses default empty string for errorMessage when not a string', () => {
+    // Exercises the falsy branch of `typeof r['errorMessage'] === 'string' ? r['errorMessage'] : ''`
+    // (watcher.ts ~line 321).
+    const result = watcher.normaliseBaseline({
+      state: 'RUNNING',
+      errorMessage: 42 as unknown as string,
+    })
+    expect(result).not.toBeNull()
+    const b = result as import('../src/types.js').JobBaseline
+    expect(b.errorMessage).toBe('')
+  })
+
+  it('uses default 0 for totalActions when not a number', () => {
+    // Exercises the falsy branch of `typeof r['totalActions'] === 'number' ? r['totalActions'] : 0`
+    // (watcher.ts ~line 329).
+    const result = watcher.normaliseBaseline({
+      state: 'RUNNING',
+      totalActions: 'two' as unknown as number,
+      succeededActions: 0,
+      failedActions: 0,
+      runningActions: 2,
+      reportedFailedNodes: [],
+    })
+    expect(result).not.toBeNull()
+    const b = result as import('../src/types.js').WorkflowBaseline
+    expect(b.totalActions).toBe(0)
+  })
+
+  it('uses default 0 for succeededActions when not a number', () => {
+    const result = watcher.normaliseBaseline({
+      state: 'RUNNING',
+      totalActions: 2,
+      succeededActions: null as unknown as number,
+      failedActions: 0,
+      runningActions: 2,
+      reportedFailedNodes: [],
+    })
+    expect(result).not.toBeNull()
+    const b = result as import('../src/types.js').WorkflowBaseline
+    expect(b.succeededActions).toBe(0)
+  })
+
+  it('uses default 0 for failedActions when not a number', () => {
+    const result = watcher.normaliseBaseline({
+      state: 'RUNNING',
+      totalActions: 2,
+      succeededActions: 0,
+      failedActions: null as unknown as number,
+      runningActions: 2,
+      reportedFailedNodes: [],
+    })
+    expect(result).not.toBeNull()
+    const b = result as import('../src/types.js').WorkflowBaseline
+    expect(b.failedActions).toBe(0)
+  })
+
+  it('uses default 0 for runningActions when not a number', () => {
+    const result = watcher.normaliseBaseline({
+      state: 'RUNNING',
+      totalActions: 2,
+      succeededActions: 0,
+      failedActions: 0,
+      runningActions: null as unknown as number,
+      reportedFailedNodes: [],
+    })
+    expect(result).not.toBeNull()
+    const b = result as import('../src/types.js').WorkflowBaseline
+    expect(b.runningActions).toBe(0)
+  })
+
+  it('uses default [] for reportedFailedNodes when not an array', () => {
+    // Exercises the falsy branch of `Array.isArray(r['reportedFailedNodes']) ? ... : []`
+    // (watcher.ts ~line 337).
+    const result = watcher.normaliseBaseline({
+      state: 'RUNNING',
+      totalActions: 2,
+      succeededActions: 0,
+      failedActions: 0,
+      runningActions: 2,
+      reportedFailedNodes: 'not-an-array' as unknown as string[],
+    })
+    expect(result).not.toBeNull()
+    const b = result as import('../src/types.js').WorkflowBaseline
+    expect(b.reportedFailedNodes).toEqual([])
+  })
+
+  it('uses default [] for nodes when nodes field is absent', () => {
+    // Exercises the falsy branch of `r['nodes'] as WorkflowBaseline['nodes'] ?? []`
+    // (watcher.ts ~line 339).
+    const result = watcher.normaliseBaseline({
+      state: 'RUNNING',
+      totalActions: 2,
+      succeededActions: 0,
+      failedActions: 0,
+      runningActions: 2,
+      reportedFailedNodes: [],
+      // nodes intentionally absent
+    })
+    expect(result).not.toBeNull()
+    const b = result as import('../src/types.js').WorkflowBaseline
+    expect(b.nodes).toBeUndefined()
+  })
+})
+
+// ---------------------------------------------------------------------------
+// Branch coverage: parseAddParams — missing type/name (?? '' fallbacks)
+// ---------------------------------------------------------------------------
+
+describe('GlueWatcher.parseAddParams — missing type/name fallbacks', () => {
+  it('uses empty string fallback for missing type in error message', async () => {
+    // Exercises the falsy branch of `params['type'] ?? ''` (watcher.ts ~line 361).
+    vi.useFakeTimers()
+    const { watcher } = makeWatcher()
+    const result = await watcher.executeTool({ action: 'add', name: 'j', profile: 'p' })
+    expect(result.details['ok']).toBe(false)
+    const text = (result.content[0] as { text: string }).text
+    expect(text).toContain('""')
+    vi.useRealTimers()
+  })
+
+  it('uses empty string fallback for missing name in trim()', async () => {
+    // Exercises the falsy branch of `params['name'] ?? ''` (watcher.ts ~line 365).
+    vi.useFakeTimers()
+    const { watcher } = makeWatcher()
+    const result = await watcher.executeTool({ action: 'add', type: 'job', profile: 'p' })
+    expect(result.details['ok']).toBe(false)
+    const text = (result.content[0] as { text: string }).text
+    expect(text).toContain('non-empty name')
+    vi.useRealTimers()
+  })
+})
+
+// ---------------------------------------------------------------------------
+// Branch coverage: describeAddedWatch — empty stateLabel and seedError
+// ---------------------------------------------------------------------------
+
+describe('GlueWatcher.describeAddedWatch — empty stateLabel and seedError', () => {
+  it('uses "?" when baseline.state is empty string', () => {
+    // Exercises the falsy branch of `baseline.state || '?'` (watcher.ts ~line 407).
+    vi.useFakeTimers()
+    const { watcher } = makeWatcher()
+    const watch: GlueWatch = {
+      watchId: 'w1', type: 'job', name: 'j', runId: 'jr_1', profile: 'p',
+      region: undefined, addedAt: 0, lastPolledAt: undefined, baseline: undefined,
+      terminal: false, consecutiveErrors: 0,
+    }
+    const msg = watcher.describeAddedWatch({}, watch, { state: '', totalActions: 0, succeededActions: 0, failedActions: 0, runningActions: 0, reportedFailedNodes: [] } as never, undefined)
+    expect(msg).toContain('state=?')
+    vi.useRealTimers()
+  })
+
+  it('uses "unknown" when seedError is undefined', () => {
+    // Exercises the falsy branch of `seedError ?? 'unknown'` (watcher.ts ~line 410).
+    vi.useFakeTimers()
+    const { watcher } = makeWatcher()
+    const watch: GlueWatch = {
+      watchId: 'w1', type: 'job', name: 'j', runId: 'jr_1', profile: 'p',
+      region: undefined, addedAt: 0, lastPolledAt: undefined, baseline: undefined,
+      terminal: false, consecutiveErrors: 0,
+    }
+    const msg = watcher.describeAddedWatch({}, watch, undefined, undefined)
+    expect(msg).toContain('unknown')
+    vi.useRealTimers()
+  })
+})
+
+// ---------------------------------------------------------------------------
+// Branch coverage: executeTool — missing action defaults to 'add'
+// ---------------------------------------------------------------------------
+
+describe('GlueWatcher.executeTool — missing action defaults to add', () => {
+  it('defaults to add action when params has no action field', async () => {
+    // Exercises the falsy branch of `typeof params['action'] === 'string' ? params['action'] : 'add'`
+    // (watcher.ts ~line 417).
+    const { watcher } = makeWatcher()
+    const result = await watcher.executeTool({ profile: 'p' })
+    // No action → defaults to 'add' → returns error about missing type
+    expect(result.details['ok']).toBe(false)
+    const text = (result.content[0] as { text: string }).text
+    expect(text).toContain('type')
+  })
+})
