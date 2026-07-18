@@ -710,7 +710,8 @@ describe("CronScheduler.executeJobInSubagent — outer handler-error catch (line
 
 		// Override getNextRun to throw — this happens after the subagent completes
 		// inside the IIFE, past the inner try/catch, so it hits the outer catch
-		vi.spyOn(scheduler as unknown as Record<string, unknown>, "getNextRun" as any)
+		// eslint-disable-next-line @typescript-eslint/no-explicit-any
+		vi.spyOn(scheduler as any, "getNextRun")
 			.mockImplementation(() => { throw new Error("boom"); });
 
 		(scheduler as unknown as SchedulerPrivate).executeJobInSubagent(job);

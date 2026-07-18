@@ -1246,14 +1246,14 @@ describe("agent-runner — getAgentConversation all branches", () => {
 
 describe("agent-runner — resumeAgent with no callbacks (else branch)", () => {
   it("works when called with empty options — the : () => {} branch fires", async () => {
-    const { session, listeners } = createSession("MIN-RESUME");
+    const { session } = createSession("MIN-RESUME");
     // No callbacks at all — the subscribe returns () => {}
     const result = await resumeAgent(session as unknown as AgentSession, "go", {});
     expect(result).toBe("MIN-RESUME");
   });
 
   it("works with only signal callback (no onToolActivity/onAssistantUsage/onCompaction)", async () => {
-    const { session, listeners } = createSession("SIGNAL-ONLY");
+    const { session } = createSession("SIGNAL-ONLY");
     const controller = new AbortController();
     session.prompt = vi.fn(() => {
       session.messages.push({ role: "assistant", content: [{ type: "text", text: "SIGNAL-ONLY" }] });

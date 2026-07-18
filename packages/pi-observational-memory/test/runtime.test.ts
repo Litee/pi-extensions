@@ -130,7 +130,7 @@ describe("Runtime V3 behavior", () => {
 	it("returns failure when no model is available and no config exists", async () => {
 		const runtime = new Runtime();
 		// Reset config to defaults (no model configured)
-		runtime.config = { ...runtime.config, model: undefined };
+		runtime.config = { ...runtime.config, model: undefined as never };
 
 		const result = await runtime.resolveModel({ model: undefined, modelRegistry: modelRegistry(), hasUI: false });
 
@@ -142,7 +142,7 @@ describe("Runtime V3 behavior", () => {
 
 	it("returns failure when API key auth fails", async () => {
 		const runtime = new Runtime();
-		runtime.config = { ...runtime.config, model: undefined };
+		runtime.config = { ...runtime.config, model: undefined as never };
 		const registry = modelRegistry({
 			found: { provider: "anthropic" },
 			auth: { ok: false, error: "no key" },
@@ -159,7 +159,7 @@ describe("Runtime V3 behavior", () => {
 
 	it("returns failure when apiKey is missing from auth response", async () => {
 		const runtime = new Runtime();
-		runtime.config = { ...runtime.config, model: undefined };
+		runtime.config = { ...runtime.config, model: undefined as never };
 		const registry = modelRegistry({
 			found: { provider: "anthropic" },
 			auth: { ok: true, apiKey: undefined, headers: {} },
@@ -176,7 +176,7 @@ describe("Runtime V3 behavior", () => {
 
 	it("includes headers when auth provides them", async () => {
 		const runtime = new Runtime();
-		runtime.config = { ...runtime.config, model: undefined };
+		runtime.config = { ...runtime.config, model: undefined as never };
 		const registry = modelRegistry({
 			found: { provider: "anthropic" },
 			auth: { ok: true, apiKey: "key", headers: { Authorization: "Bearer x" } },
@@ -200,9 +200,9 @@ describe("Runtime V3 behavior", () => {
 		const runtime = new Runtime();
 		const notify = vi.fn();
 
-		const promise = runtime.launchConsolidationTask({ hasUI: true, ui: { notify } }, async () => {
+		const promise = runtime.launchConsolidationTask({ hasUI: true, ui: { notify } }, () => {
 			runtime.consolidationPhase = "observer";
-			throw new Error("work failed");
+			return Promise.reject(new Error("work failed"));
 		});
 
 		await expect(promise).resolves.toBeUndefined();
@@ -215,9 +215,9 @@ describe("Runtime V3 behavior", () => {
 	it("handles errors thrown inside launchTrackedTask without UI", async () => {
 		const runtime = new Runtime();
 
-		const promise = runtime.launchConsolidationTask({ hasUI: false }, async () => {
+		const promise = runtime.launchConsolidationTask({ hasUI: false }, () => {
 			runtime.consolidationPhase = "observer";
-			throw new Error("silent work failed");
+			return Promise.reject(new Error("silent work failed"));
 		});
 
 		await expect(promise).resolves.toBeUndefined();

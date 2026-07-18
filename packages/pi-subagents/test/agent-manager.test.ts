@@ -1,4 +1,7 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
+import { mkdtempSync, writeFileSync, rmSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import { AgentManager } from "../src/agent-manager.js";
 import type { RunOptions } from "../src/agent-runner.js";
 import type { ExtensionAPI, ExtensionContext } from "@earendil-works/pi-coding-agent";
@@ -1074,10 +1077,9 @@ describe("AgentManager — assertValidSpawnCwd curated errors", () => {
 
   it("throws when cwd is a non-string (number)", () => {
     manager = new AgentManager();
-    // @ts-expect-error — testing runtime validation
     expect(() => manager.spawn(mockPi, mockCtx, "X", "p", {
       description: "x",
-      cwd: 123,
+      cwd: 123 as unknown as string,
     })).toThrow(/absolute path/);
   });
 
@@ -1093,9 +1095,6 @@ describe("AgentManager — assertValidSpawnCwd curated errors", () => {
   });
 
   it("throws when cwd is a file path (not a directory)", () => {
-    const { mkdtempSync, writeFileSync, rmSync } = require("node:fs");
-    const { tmpdir } = require("node:os");
-		const { join } = require("node:path");
     const dir = mkdtempSync(join(tmpdir(), "pi-wt-test-"));
     try {
       writeFileSync(join(dir, "a-file.txt"), "content");
@@ -1124,10 +1123,7 @@ describe("AgentManager — worktree customCwd in result message", () => {
 
   it("appends repoNote and customCwd instruction when worktree has changes AND customCwd was set", async () => {
     const { createWorktree, cleanupWorktree } = await import("../src/worktree.js");
-    const { mkdtempSync, rmSync: rmSync2 } = require("node:fs");
-    const { tmpdir: tmpdir2 } = require("node:os");
-    const { join: join2 } = require("node:path");
-    const customCwd = mkdtempSync(join2(tmpdir2(), "pi-custom-cwd-"));
+    const customCwd = mkdtempSync(join(tmpdir(), "pi-custom-cwd-"));
     vi.mocked(createWorktree).mockReturnValueOnce({ path: "/tmp/wt", branch: "subagent/abc", baseSha: "abc123", workPath: "/tmp/wt/sub" });
     vi.mocked(cleanupWorktree).mockReturnValueOnce({ hasChanges: true, branch: "subagent/abc" });
     const sess = mockSession();
@@ -1144,7 +1140,7 @@ describe("AgentManager — worktree customCwd in result message", () => {
     // With customCwd set, the message should include the repoNote and customCwd instruction
     expect(record.result).toContain(`in \`${customCwd}\``);
     expect(record.result).toContain(`run in \`${customCwd}\``);
-    rmSync2(customCwd, { recursive: true, force: true });
+    rmSync(customCwd, { recursive: true, force: true });
   });
 
   it("does NOT append customCwd instruction when customCwd was NOT set", async () => {
@@ -1174,7 +1170,7 @@ describe("AgentManager — catch handler with worktree cleanup on error", () => 
   it("cleans up worktree on runAgent error and sets error status", async () => {
     const { createWorktree, cleanupWorktree } = await import("../src/worktree.js");
     vi.mocked(createWorktree).mockReturnValueOnce({ path: "/tmp/wt", branch: "subagent/err", baseSha: "abc123", workPath: "/tmp/wt" });
-    vi.mocked(cleanupWorktree).mockReturnValueOnce({ hasChanges: false, branch: undefined });
+    vi.mocked(cleanupWorktree).mockReturnValueOnce({ hasChanges: false });
     vi.mocked(runAgent).mockRejectedValue(new Error("run failed"));
 
     manager = new AgentManager();

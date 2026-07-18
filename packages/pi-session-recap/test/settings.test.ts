@@ -20,6 +20,7 @@
  */
 
 import { existsSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, renameSync, rmSync, writeFileSync } from "node:fs";
+import * as nodeFs from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
@@ -407,7 +408,7 @@ describe("migrateLegacyConfig — additional edge cases", () => {
 	it("outer catch (line 230) fires when existsSync throws on the new path check", () => {
 		// Mock existsSync to throw on the first call (checking newPath).
 		// This bypasses all inner try-catch blocks and hits the outer catch.
-		const existsSyncSpy = vi.spyOn(require("node:fs"), "existsSync");
+		const existsSyncSpy = vi.spyOn(nodeFs, "existsSync");
 		existsSyncSpy.mockImplementationOnce(() => {
 			throw Object.assign(new Error("ENOTDIR"), { code: "ENOTDIR" });
 		});

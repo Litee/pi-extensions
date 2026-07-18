@@ -785,8 +785,8 @@ describe("snapshotWorkflowRun — undefined Statistics and Graph (lines 112-113)
 				Run: {
 					Status: "RUNNING",
 					// Statistics and Graph intentionally absent
-					Statistics: undefined as unknown as WorkflowRunResponse["Run"]["Statistics"],
-					Graph: undefined as unknown as WorkflowRunResponse["Run"]["Graph"],
+					Statistics: undefined,
+					Graph: undefined,
 				},
 			} satisfies WorkflowRunResponse),
 			getLatestJobRunId: vi.fn(),

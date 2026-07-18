@@ -455,8 +455,6 @@ describe("SpeechQueue — playback timeout", () => {
 	it("setTimeout callback fires and the signal gets aborted", async () => {
 		vi.useFakeTimers();
 
-		// Capture the AbortController so we can check its signal state
-		let capturedAc: AbortController | undefined;
 		vi.mocked(playAudioFile).mockImplementation((_path, signal) => {
 			return new Promise<void>((resolve) => {
 				if (signal) {

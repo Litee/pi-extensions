@@ -1,4 +1,4 @@
-import { describe, expect, it, vi } from "vitest";
+import { describe, expect, it } from "vitest";
 
 import { estimateStringTokens, estimateEntryTokens } from "../src/tokens.js";
 
@@ -24,7 +24,6 @@ describe("estimateEntryTokens", () => {
 	});
 
 	it("delegates to estimateMessageTokens for message entries with a message", () => {
-		const estimateMessageTokens = vi.fn(() => 42);
 		// We can't directly inject the mock, but we can test the structure
 		const entry = { type: "message", message: { role: "user" as const, content: "test" } };
 		expect(estimateEntryTokens(entry)).toBeGreaterThan(0);

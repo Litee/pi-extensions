@@ -2060,7 +2060,8 @@ describe('GlueWatcher.describeAddedWatch — empty stateLabel and seedError', ()
       region: undefined, addedAt: 0, lastPolledAt: undefined, baseline: undefined,
       terminal: false, consecutiveErrors: 0,
     }
-    const msg = watcher.describeAddedWatch({}, watch, { state: '', totalActions: 0, succeededActions: 0, failedActions: 0, runningActions: 0, reportedFailedNodes: [] } as never, undefined)
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any, @typescript-eslint/no-unsafe-assignment, @typescript-eslint/no-unsafe-call, @typescript-eslint/no-unsafe-member-access
+    const msg = (watcher as any).describeAddedWatch({}, watch, { state: '', totalActions: 0, succeededActions: 0, failedActions: 0, runningActions: 0, reportedFailedNodes: [] }, undefined)
     expect(msg).toContain('state=?')
     vi.useRealTimers()
   })
@@ -2074,7 +2075,8 @@ describe('GlueWatcher.describeAddedWatch — empty stateLabel and seedError', ()
       region: undefined, addedAt: 0, lastPolledAt: undefined, baseline: undefined,
       terminal: false, consecutiveErrors: 0,
     }
-    const msg = watcher.describeAddedWatch({}, watch, undefined, undefined)
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any, @typescript-eslint/no-unsafe-assignment, @typescript-eslint/no-unsafe-call, @typescript-eslint/no-unsafe-member-access
+    const msg = (watcher as any).describeAddedWatch({}, watch, undefined, undefined)
     expect(msg).toContain('unknown')
     vi.useRealTimers()
   })

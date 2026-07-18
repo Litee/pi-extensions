@@ -18,11 +18,11 @@ function userMessage(timestamp: number, content = "Hello"): Message {
 }
 
 function assistantMessage(timestamp: number, content: unknown = "Assistant reply"): Message {
-	return { role: "assistant", content, timestamp };
+	return { role: "assistant", content, timestamp } as Message;
 }
 
 function toolResultMessage(timestamp: number, toolName: string, content = "Tool output"): Message {
-	return { role: "tool", content, timestamp, toolName } as ToolResultMessage;
+	return { role: "tool", content, timestamp, toolName } as unknown as ToolResultMessage;
 }
 
 describe("serializeConversation", () => {
@@ -101,16 +101,14 @@ describe("serializeConversation", () => {
 	});
 
 	it("handles undefined timestamp with fallback format", () => {
-		const msg = userMessage(Date.now(), "test");
 		// Force timestamp to undefined by using a minimal message
-		const result = serializeConversation([{ role: "user", content: "hi", timestamp: undefined } as Message]);
+		const result = serializeConversation([{ role: "user", content: "hi", timestamp: undefined } as unknown as Message]);
 		expect(result).toContain("????-??-?? ??:??");
 		expect(result).toContain("hi");
 	});
 
 	it("handles invalid timestamps with fallback format", () => {
-		const msg = userMessage(Date.now(), "test");
-		const result = serializeConversation([{ role: "user", content: "hi", timestamp: "not-a-date" } as Message]);
+		const result = serializeConversation([{ role: "user", content: "hi", timestamp: "not-a-date" } as unknown as Message]);
 		expect(result).toContain("????-??-?? ??:??");
 	});
 
@@ -134,7 +132,7 @@ describe("serializeConversation", () => {
 
 	it("handles user message with null content (textOnly null branch)", () => {
 		const result = serializeConversation([
-			{ role: "user", content: null, timestamp: 1700000000000 } as Message,
+			{ role: "user", content: null, timestamp: 1700000000000 } as unknown as Message,
 		]);
 		expect(result).toContain("User @");
 		expect(result).not.toContain("null");
@@ -142,7 +140,7 @@ describe("serializeConversation", () => {
 
 	it("handles user message with non-array, non-string content (textOnly non-array branch)", () => {
 		const result = serializeConversation([
-			{ role: "user", content: 42, timestamp: 1700000000000 } as Message,
+			{ role: "user", content: 42, timestamp: 1700000000000 } as unknown as Message,
 		]);
 		expect(result).toContain("User @");
 		expect(result).not.toContain("42");
@@ -356,7 +354,7 @@ describe("renderRecallSourceEntry", () => {
 	it("renders tool result messages", () => {
 		const entry: RenderableEntry = {
 			type: "message",
-			message: { role: "tool" as const, content: "Tool output", timestamp: 1700000000000, toolName: "bash" } as unknown as Message,
+			message: { role: "tool" as const, content: "Tool output", timestamp: 1700000000000, toolName: "bash" },
 		};
 		const result = renderRecallSourceEntry(entry);
 		expect(result).toContain("Tool result: bash @");

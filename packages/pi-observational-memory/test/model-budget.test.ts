@@ -23,7 +23,7 @@ describe("boundedMaxTokens", () => {
 	});
 
 	it("returns the requested value when model.maxTokens is undefined", () => {
-		const model = { provider: "anthropic", maxTokens: undefined } as Model<Api>;
+		const model = { provider: "anthropic", maxTokens: undefined } as unknown as Model<Api>;
 		expect(boundedMaxTokens(model)).toBe(AGENT_LOOP_MAX_TOKENS);
 		expect(boundedMaxTokens(model, 16000)).toBe(16000);
 	});
