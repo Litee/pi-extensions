@@ -403,4 +403,16 @@ describe("migrateLegacyConfig — additional edge cases", () => {
 		expect(migrateLegacyConfig(agentDir, {})).toEqual({ migrated: false });
 		expect(existsSync(newPath())).toBe(false);
 	});
+
+	it("outer catch (line 230) fires when existsSync throws on the new path check", () => {
+		// Mock existsSync to throw on the first call (checking newPath).
+		// This bypasses all inner try-catch blocks and hits the outer catch.
+		const existsSyncSpy = vi.spyOn(require("node:fs"), "existsSync");
+		existsSyncSpy.mockImplementationOnce(() => {
+			throw Object.assign(new Error("ENOTDIR"), { code: "ENOTDIR" });
+		});
+
+		expect(() => migrateLegacyConfig(agentDir, {})).not.toThrow();
+		expect(migrateLegacyConfig(agentDir, {})).toEqual({ migrated: false });
+	});
 });

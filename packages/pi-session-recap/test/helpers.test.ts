@@ -94,6 +94,15 @@ describe("extractText", () => {
 	it("returns '' for an empty array", () => {
 		expect(extractText([])).toBe("");
 	});
+
+	it("skips non-object truthy entries (e.g. a string) in the content array without crashing", () => {
+		expect(
+			extractText([
+				"hello", // non-object truthy entry exercises the `typeof part !== 'object'` branch
+				{ type: "text", text: "kept" },
+			]),
+		).toBe("kept");
+	});
 });
 
 // ---------------------------------------------------------------------------
@@ -149,6 +158,15 @@ describe("extractToolCalls", () => {
 		expect(extractToolCalls(null)).toEqual([]);
 		expect(extractToolCalls("nope")).toEqual([]);
 		expect(extractToolCalls([])).toEqual([]);
+	});
+
+	it("skips non-object truthy entries (e.g. a string) in the content array without crashing", () => {
+		expect(
+			extractToolCalls([
+				"hello", // non-object truthy entry exercises the `typeof part !== 'object'` branch
+				{ type: "toolCall", name: "bash", arguments: {} },
+			]),
+		).toEqual(["- bash({})"]);
 	});
 });
 

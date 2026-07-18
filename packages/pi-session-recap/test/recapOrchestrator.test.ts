@@ -832,4 +832,139 @@ describe("recapOrchestrator", () => {
 
 		expect(onError).toHaveBeenCalledWith(expect.objectContaining({ message: "focus branch error" }));
 	});
+
+	// ---- line 363: activeController truthy branch in onFocusOut -----------
+
+	it("onFocusOut returns early when activeController is truthy (a recap is already in flight)", async () => {
+		// Hold the first call open so activeController stays truthy.
+		let releaseFirst: ((v: unknown) => void) | undefined;
+		const firstDone = new Promise((res) => {
+			releaseFirst = res;
+		});
+
+		const completeSimpleImpl = vi
+			.fn()
+			.mockImplementationOnce(async (_m: unknown, _c: unknown, opts: { signal?: AbortSignal }) => {
+				await firstDone;
+				if (opts.signal?.aborted) throw new Error("aborted");
+				return { content: [{ type: "text", text: "draft" }] };
+			});
+
+		const deps = makeDeps({ completeSimpleImpl });
+		const orch = createRecapOrchestrator(deps);
+
+		// Kick off a focus draft — this sets activeController.
+		orch.onFocusOut();
+		await Promise.resolve();
+		expect(deps.completeSimple).toHaveBeenCalledTimes(1);
+
+		// Second focus-out while activeController is still truthy must short-circuit.
+		orch.onFocusOut();
+		await Promise.resolve();
+
+		// No additional completeSimple call — the early return on line 363 fired.
+		expect(deps.completeSimple).toHaveBeenCalledTimes(1);
+
+		releaseFirst!(undefined);
+	});
+
+	// ---- line 148: ?? branches for response.usage -------------------------
+
+	it("runModelCall uses 0 for input/output when response.usage is undefined", async () => {
+		const onUsage = vi.fn();
+		const deps = makeDeps({
+			completeSimpleImpl: () =>
+				Promise.resolve({
+					content: [{ type: "text", text: "recap" }],
+					// No usage field — exercises the `?? 0` branches in runModelCall.
+				}),
+		});
+		deps.onUsage = onUsage;
+		const orch = createRecapOrchestrator(deps);
+		await orch.runGenerateAndShow({ reason: "manual" });
+
+		expect(onUsage).toHaveBeenCalledWith({ input: 0, output: 0 });
+	});
+
+	// ---- onFocusIn with outAt === undefined (line 381) --------------------
+
+	it("onFocusIn when focusedOutAt was already undefined is a no-op", () => {
+		const deps = makeDeps();
+		const orch = createRecapOrchestrator(deps);
+
+		// Never called onFocusOut, so focusedOutAt is undefined.
+		orch.onFocusIn();
+
+		// No completeSimple call — the early return on line 381 fired.
+		expect(deps.completeSimple).not.toHaveBeenCalled();
+	});
+
+	// ---- line 344: focusedOutAt === undefined in maybeGenerateDeferredFocusRecap
+
+	it("maybeGenerateDeferredFocusRecap returns early when focusedOutAt is undefined", async () => {
+		const deps = makeDeps();
+		const orch = createRecapOrchestrator(deps);
+
+		// Set focusDraftAfterAgent without ever setting focusedOutAt.
+		// This shouldn't be possible through normal API, but we can trigger
+		// the code path by calling onFocusOut (sets focusedOutAt) then
+		// onFocusIn with short duration (clears focusedOutAt) then onAgentEnd.
+		// Actually, let's just verify the early-return branch by setting
+		// focusDraftAfterAgent via the agent flow.
+		orch.onAgentStart();
+		orch.onFocusOut(); // sets focusedOutAt
+		orch.onFocusIn(); // clears focusedOutAt (duration < focusMinMs)
+		// Now focusedOutAt is undefined but focusDraftAfterAgent is still true.
+		// onAgentEnd calls maybeGenerateDeferredFocusRecap which should early-return.
+		orch.onAgentEnd();
+		await new Promise((r) => setTimeout(r, 10));
+
+		// No completeSimple call — the early return on line 344 fired.
+		expect(deps.completeSimple).not.toHaveBeenCalled();
+	});
+
+	// ---- line 348: isStaleCtxError(err) in maybeGenerateDeferredFocusRecap
+
+	it("maybeGenerateDeferredFocusRecap's catch swallows stale-ctx errors without calling onError", async () => {
+		const onError = vi.fn();
+		const deps = makeDeps();
+		deps.onError = onError;
+
+		const orch = createRecapOrchestrator(deps);
+		orch.onAgentStart();
+		orch.onFocusOut(); // parks deferred focus
+
+		// Make getBranch throw a stale-ctx error on the next call.
+		deps.getBranch.mockImplementation(() => {
+			throw new Error("This extension ctx is stale after session replacement or reload.");
+		});
+		orch.onAgentEnd();
+		await new Promise((r) => setTimeout(r, 10));
+
+		// onError should NOT be called — the stale-ctx error is swallowed.
+		expect(onError).not.toHaveBeenCalled();
+	});
+
+	// ---- line 372: isStaleCtxError(err) in onFocusOut's catch
+
+	it("onFocusOut's catch swallows stale-ctx errors without calling onError", async () => {
+		const onError = vi.fn();
+		const deps = makeDeps();
+		deps.onError = onError;
+
+		// First getBranch call (synchronous in onFocusOut): succeeds with activity.
+		// Second call (inside runGenerateAndShow): throws a stale-ctx error.
+		deps.getBranch
+			.mockReturnValueOnce(branchWithActivity())
+			.mockImplementation(() => {
+				throw new Error("This extension ctx is stale after session replacement or reload.");
+			});
+
+		const orch = createRecapOrchestrator(deps);
+		orch.onFocusOut();
+		await new Promise((r) => setTimeout(r, 10));
+
+		// onError should NOT be called — the stale-ctx error is swallowed.
+		expect(onError).not.toHaveBeenCalled();
+	});
 });
