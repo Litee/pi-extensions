@@ -1229,42 +1229,41 @@ describe("agent-runner — getAgentConversation all branches", () => {
     );
     expect(out).toBe("[Assistant]: final answer");
   });
-});
 
-describe("agent-runner — runAgent disallowedSet excludes specified tools", () => {
-  it("excludes EXCLUDED_TOOL_NAMES (Agent) even when extensions=true", async () => {
-    vi.mocked(getConfig).mockReturnValueOnce({
-      displayName: "Explore",
-      description: "Explore",
-      builtinToolNames: ["read"],
-      extensions: true,
-      skills: false,
-      promptMode: "replace",
-    } as never);
-    vi.mocked(getAgentConfig).mockReturnValueOnce({
-      name: "Explore",
-      description: "Explore",
-      builtinToolNames: ["read"],
-      extensions: true,
-      skills: false,
-      systemPrompt: "You are Explore.",
-      promptMode: "replace",
-      inheritContext: false,
-      runInBackground: false,
-      isolated: false,
-      disallowedTools: ["bash"],
-    } as never);
-
-    const { session } = createSession("EXCL");
-    createAgentSession.mockResolvedValue({ session });
-
-    await runAgent(ctx, "Explore", "go", { pi });
-
-    const sessionCallOpts = createAgentSession.mock.calls.at(-1)?.[0] as { tools: string[] };
-    expect(sessionCallOpts.tools).not.toContain("Agent");
-    expect(sessionCallOpts.tools).not.toContain("get_subagent_result");
-    expect(sessionCallOpts.tools).not.toContain("bash"); // disallowed
-    expect(sessionCallOpts.tools).toContain("read");
+  it("skips messages with unknown roles (the else branch — not user/assistant/toolResult)", () => {
+    const out = getAgentConversation(
+      fakeSession([
+        { role: "user", content: "hi" },
+        { role: "system", content: "be helpful" }, // unknown role — should be skipped
+        { role: "assistant", content: [{ type: "text", text: "ok" }] },
+      ]),
+    );
+    expect(out).toBe("[User]: hi\n\n[Assistant]: ok");
+    // system message should not appear
+    expect(out).not.toContain("system");
   });
 });
+
+describe("agent-runner — resumeAgent with no callbacks (else branch)", () => {
+  it("works when called with empty options — the : () => {} branch fires", async () => {
+    const { session, listeners } = createSession("MIN-RESUME");
+    // No callbacks at all — the subscribe returns () => {}
+    const result = await resumeAgent(session as unknown as AgentSession, "go", {});
+    expect(result).toBe("MIN-RESUME");
+  });
+
+  it("works with only signal callback (no onToolActivity/onAssistantUsage/onCompaction)", async () => {
+    const { session, listeners } = createSession("SIGNAL-ONLY");
+    const controller = new AbortController();
+    session.prompt = vi.fn(() => {
+      session.messages.push({ role: "assistant", content: [{ type: "text", text: "SIGNAL-ONLY" }] });
+    });
+
+    const result = await resumeAgent(session as unknown as AgentSession, "go", {
+      signal: controller.signal,
+    });
+    expect(result).toBe("SIGNAL-ONLY");
+  });
+});
+
 

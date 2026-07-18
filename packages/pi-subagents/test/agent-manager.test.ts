@@ -1060,6 +1060,155 @@ describe("AgentManager — parent signal + agent completes normally", () => {
   });
 });
 
+describe("AgentManager — assertValidSpawnCwd curated errors", () => {
+  let manager: AgentManager;
+  afterEach(() => manager?.dispose());
+
+  it("throws when cwd is a non-absolute path string", () => {
+    manager = new AgentManager();
+    expect(() => manager.spawn(mockPi, mockCtx, "X", "p", {
+      description: "x",
+      cwd: "relative/path",
+    })).toThrow(/absolute path/);
+  });
+
+  it("throws when cwd is a non-string (number)", () => {
+    manager = new AgentManager();
+    // @ts-expect-error — testing runtime validation
+    expect(() => manager.spawn(mockPi, mockCtx, "X", "p", {
+      description: "x",
+      cwd: 123,
+    })).toThrow(/absolute path/);
+  });
+
+  it("throws when cwd is a non-absolute path with null (null is allowed, number is not)", () => {
+    manager = new AgentManager();
+    // null is explicitly allowed — means "unset"
+    const id = manager.spawn(mockPi, mockCtx, "X", "p", {
+      description: "x",
+      cwd: null as unknown as string,
+    });
+    expect(id).toBeDefined();
+    manager.abort(id);
+  });
+
+  it("throws when cwd is a file path (not a directory)", () => {
+    const { mkdtempSync, writeFileSync, rmSync } = require("node:fs");
+    const { tmpdir } = require("node:os");
+		const { join } = require("node:path");
+    const dir = mkdtempSync(join(tmpdir(), "pi-wt-test-"));
+    try {
+      writeFileSync(join(dir, "a-file.txt"), "content");
+      manager = new AgentManager();
+      expect(() => manager.spawn(mockPi, mockCtx, "X", "p", {
+        description: "x",
+        cwd: join(dir, "a-file.txt"),
+      })).toThrow(/not a directory/);
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
+  it("throws when cwd does not exist", () => {
+    manager = new AgentManager();
+    expect(() => manager.spawn(mockPi, mockCtx, "X", "p", {
+      description: "x",
+      cwd: "/nonexistent/path/that/does/not/exist",
+    })).toThrow(/does not exist/);
+  });
+});
+
+describe("AgentManager — worktree customCwd in result message", () => {
+  let manager: AgentManager;
+  afterEach(() => manager?.dispose());
+
+  it("appends repoNote and customCwd instruction when worktree has changes AND customCwd was set", async () => {
+    const { createWorktree, cleanupWorktree } = await import("../src/worktree.js");
+    const { mkdtempSync, rmSync: rmSync2 } = require("node:fs");
+    const { tmpdir: tmpdir2 } = require("node:os");
+    const { join: join2 } = require("node:path");
+    const customCwd = mkdtempSync(join2(tmpdir2(), "pi-custom-cwd-"));
+    vi.mocked(createWorktree).mockReturnValueOnce({ path: "/tmp/wt", branch: "subagent/abc", baseSha: "abc123", workPath: "/tmp/wt/sub" });
+    vi.mocked(cleanupWorktree).mockReturnValueOnce({ hasChanges: true, branch: "subagent/abc" });
+    const sess = mockSession();
+    vi.mocked(runAgent).mockResolvedValue({ responseText: "initial", session: sess, aborted: false, steered: false });
+
+    manager = new AgentManager();
+    const id = manager.spawn(mockPi, mockCtx, "general-purpose", "test", {
+      description: "x",
+      isolation: "worktree",
+      cwd: customCwd,
+    });
+    const record = manager.getRecord(id)!;
+    await record.promise;
+    // With customCwd set, the message should include the repoNote and customCwd instruction
+    expect(record.result).toContain(`in \`${customCwd}\``);
+    expect(record.result).toContain(`run in \`${customCwd}\``);
+    rmSync2(customCwd, { recursive: true, force: true });
+  });
+
+  it("does NOT append customCwd instruction when customCwd was NOT set", async () => {
+    const { createWorktree, cleanupWorktree } = await import("../src/worktree.js");
+    vi.mocked(createWorktree).mockReturnValueOnce({ path: "/tmp/wt", branch: "subagent/abc", baseSha: "abc123", workPath: "/tmp/wt" });
+    vi.mocked(cleanupWorktree).mockReturnValueOnce({ hasChanges: true, branch: "subagent/abc" });
+    const sess = mockSession();
+    vi.mocked(runAgent).mockResolvedValue({ responseText: "initial", session: sess, aborted: false, steered: false });
+
+    manager = new AgentManager();
+    const id = manager.spawn(mockPi, mockCtx, "general-purpose", "test", {
+      description: "x",
+      isolation: "worktree",
+    });
+    const record = manager.getRecord(id)!;
+    await record.promise;
+    // Without customCwd, no repoNote or customCwd instruction
+    expect(record.result).not.toContain("in `");
+    expect(record.result).not.toContain("run in `");
+  });
+});
+
+describe("AgentManager — catch handler with worktree cleanup on error", () => {
+  let manager: AgentManager;
+  afterEach(() => manager?.dispose());
+
+  it("cleans up worktree on runAgent error and sets error status", async () => {
+    const { createWorktree, cleanupWorktree } = await import("../src/worktree.js");
+    vi.mocked(createWorktree).mockReturnValueOnce({ path: "/tmp/wt", branch: "subagent/err", baseSha: "abc123", workPath: "/tmp/wt" });
+    vi.mocked(cleanupWorktree).mockReturnValueOnce({ hasChanges: false, branch: undefined });
+    vi.mocked(runAgent).mockRejectedValue(new Error("run failed"));
+
+    manager = new AgentManager();
+    const id = manager.spawn(mockPi, mockCtx, "general-purpose", "test", {
+      description: "x",
+      isolation: "worktree",
+      isBackground: true,
+    });
+    await manager.getRecord(id)!.promise;
+    expect(manager.getRecord(id)!.status).toBe("error");
+    expect(cleanupWorktree).toHaveBeenCalled();
+  });
+
+  it("does not overwrite status='stopped' when agent was externally aborted then rejects", async () => {
+    manager = new AgentManager();
+    let rejectRun!: (e: Error) => void;
+    vi.mocked(runAgent).mockReturnValue(
+      new Promise((_, rej) => { rejectRun = rej as (e: Error) => void; }),
+    );
+
+    const id = manager.spawn(mockPi, mockCtx, "general-purpose", "test", {
+      description: "x",
+      isBackground: true,
+    });
+    const record = manager.getRecord(id)!;
+    manager.abort(id);
+    expect(record.status).toBe("stopped");
+
+    rejectRun(new Error("aborted"));
+    await record.promise;
+    expect(record.status).toBe("stopped"); // must not be overwritten to "error"
+  });
+});
+
 describe("AgentManager — cleanup timer ages out completed records", () => {
   let manager: AgentManager;
   afterEach(() => {
