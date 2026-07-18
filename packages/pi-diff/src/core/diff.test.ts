@@ -292,6 +292,22 @@ describe("sepLabelSplit", () => {
 	it("metadata style shows context without raw hunk header or ellipses", () => {
 		expect(sepLabelSplit("metadata", makeMeta("fn()"), 5)).toBe(" fn() ");
 	});
+
+	it("metadata style returns empty when no context and no gap", () => {
+		expect(sepLabelSplit("metadata", makeMeta(), null)).toBe("");
+	});
+
+	it("metadata style returns empty when no context and gap is zero", () => {
+		expect(sepLabelSplit("metadata", makeMeta(), 0)).toBe("");
+	});
+
+	it("auto style returns empty when no context and no gap", () => {
+		expect(sepLabelSplit("auto", makeMeta(), null)).toBe("");
+	});
+
+	it("auto style returns empty when no context and gap is zero", () => {
+		expect(sepLabelSplit("auto", makeMeta(), 0)).toBe("");
+	});
 });
 
 describe("resolveSepStyle", () => {

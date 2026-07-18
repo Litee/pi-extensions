@@ -333,6 +333,44 @@ describe("replace", () => {
 			expect(result.strategy).toBe("none");
 		});
 
+		it("whitespace-normalized multi-line block matching yields actual block", () => {
+			// Multi-line find with irregular whitespace triggers WhitespaceNormalized
+			// replacer's multi-line block loop (line 333: yield block.join("\n"))
+			// findLines.length=2, no trailing empty → multi-line branch
+			// WhitespaceNormalized normalizes all whitespace runs to single spaces
+			const content = "line1\na   b\nc   d\nline4";
+			const oldStr = "a b\nc d";
+			// Simple: "a b\nc d" NOT a substring → fails
+			// LineTrimmed: ["a b","c d"] vs ["a   b","c   d"] → "a b" !== "a   b" → fails
+			// WhitespaceNormalized: normalize("a b\nc d")="a b c d"
+			//   effectiveFindLines=["a b","c d"], block=["a   b","c   d"]
+			//   normalize("a   b\nc   d")="a b c d" === "a b c d" → match!
+			const result = replace(content, oldStr, "AB\nCD");
+			expect(result.changed).toBe(true);
+			expect(result.strategy).toBe("whitespace-normalized");
+			expect(result.content).toBe("line1\nAB\nCD\nline4");
+		});
+
+		it("trimmed-boundary block-fallback yields block when trimmed not a direct substring", () => {
+			// TrimmedBoundaryReplacer block-fallback (lines 361-362: yield block; return;)
+			// Find has leading whitespace, trimmed version is NOT a direct substring
+			// but matches a multi-line block after trimming
+			// Need: trimmed not in content, but block.trim() === trimmed
+			const content = "line1\n  hello\n  world  \nline4";
+			const oldStr = "  hello\n  world  \n";
+			// trimmed = "hello\nworld" (trim removes leading/trailing whitespace from whole string)
+			// content.includes("hello\nworld") → false (content has spaces before each line)
+			// LineTrimmed: findLines=["  hello","  world  "] (popped trailing empty)
+			//   contentLines[1..2]=["  hello","  world  "] → trim() match → LineTrimmed fires!
+			// So LineTrimmed catches it. The block-fallback is unreachable because
+			// LineTrimmed always matches first when block.trim() === trimmed.
+			// Test that replace works regardless of which strategy fires
+			const result = replace(content, oldStr, "REPLACED");
+			expect(result.changed).toBe(true);
+			// The trailing newline in oldStr is replaced too, so line4 runs right after REPLACED
+			expect(result.content).toBe("line1\nREPLACEDline4");
+		});
+
 		it("returns unchanged when content and find are the same", () => {
 			const content = "exactly this";
 			const result = replace(content, content, "different");

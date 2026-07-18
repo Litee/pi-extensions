@@ -161,4 +161,46 @@ describe("formatConflictSummary", () => {
 		};
 		expect(formatConflictSummary(region)).toContain("[3-way]");
 	});
+
+	it("uses default labels when refs are empty (|| fallback branches)", () => {
+		const region = {
+			currentRef: "",
+			current: ["a"],
+			base: [] as string[],
+			incoming: ["b"],
+			incomingRef: "",
+			hasBase: false,
+			startLine: 1,
+		};
+		const summary = formatConflictSummary(region);
+		expect(summary).toContain("current (1 lines) vs incoming (1 lines)");
+		expect(summary).not.toContain("HEAD");
+		expect(summary).not.toContain("branch");
+	});
+
+	it("uses default label for currentRef only", () => {
+		const region = {
+			currentRef: "",
+			current: ["x"],
+			base: [] as string[],
+			incoming: ["y"],
+			incomingRef: "master",
+			hasBase: false,
+			startLine: 1,
+		};
+		expect(formatConflictSummary(region)).toBe("Conflict: current (1 lines) vs master (1 lines)");
+	});
+
+	it("uses default label for incomingRef only", () => {
+		const region = {
+			currentRef: "feature",
+			current: ["x"],
+			base: [] as string[],
+			incoming: ["y"],
+			incomingRef: "",
+			hasBase: false,
+			startLine: 1,
+		};
+		expect(formatConflictSummary(region)).toBe("Conflict: feature (1 lines) vs incoming (1 lines)");
+	});
 });
