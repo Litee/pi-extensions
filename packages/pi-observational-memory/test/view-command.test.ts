@@ -166,4 +166,66 @@ describe("V3 /om:view", () => {
 		expect(clipboardText).toBeUndefined();
 		expect(output).toBe("Usage: /om:view [full]");
 	});
+
+	it("accepts object-style args with mode property", async () => {
+		const { output, clipboardText, copyToClipboard } = await setup([]).run({ mode: "full" });
+
+		expect(copyToClipboard).toHaveBeenCalledTimes(1);
+		expect(clipboardText).toContain("── Reflections ──");
+		expect(clipboardText).toContain("No recorded reflections.");
+		expect(output).toContain(COPY_SUCCESS);
+	});
+
+	it("rejects object-style args with unsupported mode", async () => {
+		const { output, clipboardText, copyToClipboard } = await setup([]).run({ mode: "diff" });
+
+		expect(copyToClipboard).not.toHaveBeenCalled();
+		expect(clipboardText).toBeUndefined();
+		expect(output).toBe("Usage: /om:view [full]");
+	});
+
+	it("defaults to visible rendering when object has no mode property", async () => {
+		const { output, clipboardText, copyToClipboard } = await setup([]).run({ other: "value" });
+
+		expect(copyToClipboard).toHaveBeenCalledTimes(1);
+		expect(clipboardText).toContain("── Reflections ──");
+		expect(clipboardText).toContain("No visible reflections.");
+		expect(output).toContain(COPY_SUCCESS);
+	});
+
+	it("defaults to visible rendering when args is a plain number", async () => {
+		const { output, clipboardText, copyToClipboard } = await setup([]).run(42);
+
+		expect(copyToClipboard).toHaveBeenCalledTimes(1);
+		expect(clipboardText).toContain("── Reflections ──");
+		expect(clipboardText).toContain("No visible reflections.");
+		expect(output).toContain(COPY_SUCCESS);
+	});
+
+	it("defaults to visible rendering when firstArg returns undefined from array with non-string", async () => {
+		const { output, clipboardText, copyToClipboard } = await setup([]).run([42]);
+
+		expect(copyToClipboard).toHaveBeenCalledTimes(1);
+		expect(clipboardText).toContain("── Reflections ──");
+		expect(clipboardText).toContain("No visible reflections.");
+		expect(output).toContain(COPY_SUCCESS);
+	});
+
+	it("renders default visible when args is a string with extra words", async () => {
+		const { output, clipboardText, copyToClipboard } = await setup([]).run("full extra");
+
+		expect(copyToClipboard).toHaveBeenCalledTimes(1);
+		expect(clipboardText).toContain("── Reflections ──");
+		expect(clipboardText).toContain("No recorded reflections.");
+		expect(output).toContain(COPY_SUCCESS);
+	});
+
+	it("renders visible when first element is a non-string in array", async () => {
+		const { output, clipboardText, copyToClipboard } = await setup([]).run([null]);
+
+		expect(copyToClipboard).toHaveBeenCalledTimes(1);
+		expect(clipboardText).toContain("── Reflections ──");
+		expect(clipboardText).toContain("No visible reflections.");
+		expect(output).toContain(COPY_SUCCESS);
+	});
 });

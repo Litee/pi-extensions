@@ -97,4 +97,139 @@ describe("Runtime V3 behavior", () => {
 		expect(runtime.consolidationInFlight).toBe(false);
 		expect(runtime.consolidationPhase).toBeUndefined();
 	});
+
+	it("notifies when configured model is not found and hasUI is true", async () => {
+		const runtime = new Runtime();
+		const notify = vi.fn();
+		const sessionModel = { provider: "openai" };
+		const registry = modelRegistry({ found: undefined });
+		runtime.config = { ...runtime.config, model: { provider: "anthropic", id: "missing" } };
+
+		const result = await runtime.resolveModel({ model: sessionModel, modelRegistry: registry, hasUI: true, ui: { notify } });
+
+		expect(notify).toHaveBeenCalledWith(
+			"Observational memory: configured model anthropic/missing not found, using session model",
+			"warning",
+		);
+		expect(result).toMatchObject({ ok: true, model: sessionModel });
+	});
+
+	it("does not notify when configured model is not found and hasUI is false", async () => {
+		const runtime = new Runtime();
+		const notify = vi.fn();
+		const sessionModel = { provider: "openai" };
+		const registry = modelRegistry({ found: undefined });
+		runtime.config = { ...runtime.config, model: { provider: "anthropic", id: "missing" } };
+
+		const result = await runtime.resolveModel({ model: sessionModel, modelRegistry: registry, hasUI: false, ui: { notify } });
+
+		expect(notify).not.toHaveBeenCalled();
+		expect(result).toMatchObject({ ok: true, model: sessionModel });
+	});
+
+	it("returns failure when no model is available and no config exists", async () => {
+		const runtime = new Runtime();
+		// Reset config to defaults (no model configured)
+		runtime.config = { ...runtime.config, model: undefined };
+
+		const result = await runtime.resolveModel({ model: undefined, modelRegistry: modelRegistry(), hasUI: false });
+
+		expect(result).toEqual({
+			ok: false,
+			reason: "no model available (session has no model and no observational-memory model configured)",
+		});
+	});
+
+	it("returns failure when API key auth fails", async () => {
+		const runtime = new Runtime();
+		runtime.config = { ...runtime.config, model: undefined };
+		const registry = modelRegistry({
+			found: { provider: "anthropic" },
+			auth: { ok: false, error: "no key" },
+		});
+
+		const result = await runtime.resolveModel({
+			model: { provider: "anthropic" },
+			modelRegistry: registry,
+			hasUI: false,
+		});
+
+		expect(result).toEqual({ ok: false, reason: 'no API key for provider "anthropic"' });
+	});
+
+	it("returns failure when apiKey is missing from auth response", async () => {
+		const runtime = new Runtime();
+		runtime.config = { ...runtime.config, model: undefined };
+		const registry = modelRegistry({
+			found: { provider: "anthropic" },
+			auth: { ok: true, apiKey: undefined, headers: {} },
+		});
+
+		const result = await runtime.resolveModel({
+			model: { provider: "anthropic" },
+			modelRegistry: registry,
+			hasUI: false,
+		});
+
+		expect(result).toEqual({ ok: false, reason: 'no API key for provider "anthropic"' });
+	});
+
+	it("includes headers when auth provides them", async () => {
+		const runtime = new Runtime();
+		runtime.config = { ...runtime.config, model: undefined };
+		const registry = modelRegistry({
+			found: { provider: "anthropic" },
+			auth: { ok: true, apiKey: "key", headers: { Authorization: "Bearer x" } },
+		});
+
+		const result = await runtime.resolveModel({
+			model: { provider: "anthropic" },
+			modelRegistry: registry,
+			hasUI: false,
+		});
+
+		expect(result).toEqual({
+			ok: true,
+			model: { provider: "anthropic" },
+			apiKey: "key",
+			headers: { Authorization: "Bearer x" },
+		});
+	});
+
+	it("handles errors thrown inside launchTrackedTask work function", async () => {
+		const runtime = new Runtime();
+		const notify = vi.fn();
+
+		const promise = runtime.launchConsolidationTask({ hasUI: true, ui: { notify } }, async () => {
+			runtime.consolidationPhase = "observer";
+			throw new Error("work failed");
+		});
+
+		await expect(promise).resolves.toBeUndefined();
+		expect(runtime.consolidationInFlight).toBe(false);
+		expect(runtime.consolidationPromise).toBeNull();
+		expect(runtime.consolidationPhase).toBeUndefined();
+		expect(notify).toHaveBeenCalledWith("Observational memory: consolidation failed: work failed", "warning");
+	});
+
+	it("handles errors thrown inside launchTrackedTask without UI", async () => {
+		const runtime = new Runtime();
+
+		const promise = runtime.launchConsolidationTask({ hasUI: false }, async () => {
+			runtime.consolidationPhase = "observer";
+			throw new Error("silent work failed");
+		});
+
+		await expect(promise).resolves.toBeUndefined();
+		expect(runtime.consolidationInFlight).toBe(false);
+		expect(runtime.consolidationPhase).toBeUndefined();
+	});
+
+	it("tracks string error messages from launchTrackedTask", () => {
+		const runtime = new Runtime();
+		const notify = vi.fn();
+
+		expect(runtime.recordConsolidationStageError({ hasUI: true, ui: { notify } }, "observer", "string error")).toBe("string error");
+		expect(runtime.lastObserverError).toBe("string error");
+	});
 });
