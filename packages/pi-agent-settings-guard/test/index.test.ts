@@ -58,6 +58,21 @@ describe("isUserSettingsFile", () => {
   it("returns false for unrelated file", () => {
     expect(isUserSettingsFile("/some/random/file.json")).toBe(false);
   });
+
+  it("resolves ~ paths when HOME is unset (nullish fallback)", () => {
+    const original = process.env["HOME"];
+    delete process.env["HOME"];
+    try {
+      // The ~-prefixed guard still matches even without HOME.
+      expect(isUserSettingsFile("~/.pi/settings.json")).toBe(true);
+      // Non-matching paths resolve normally (replace uses "").
+      expect(isUserSettingsFile("/some/random/file.json")).toBe(false);
+    } finally {
+      if (original !== undefined) {
+        process.env["HOME"] = original;
+      }
+    }
+  });
 });
 
 // ---------------------------------------------------------------------------
