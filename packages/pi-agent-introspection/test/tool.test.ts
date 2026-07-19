@@ -179,6 +179,22 @@ describe("formatSessionDebugInfo", () => {
 		expect(result).toContain(MOCK_SESSION_FILE);
 	});
 
+	it("metadata shows (none) for leafId when null", () => {
+		const result = formatSessionDebugInfo(
+			baseOpts({ metadata: true, usage: false, showEntries: false, leafId: null }),
+		);
+
+		expect(result).toContain("**Leaf ID:** (none)");
+	});
+
+	it("metadata shows (none) for session file when undefined", () => {
+		const result = formatSessionDebugInfo(
+			baseOpts({ metadata: true, usage: false, showEntries: false, sessionFile: undefined }),
+		);
+
+		expect(result).toContain("**Session file:** (none)");
+	});
+
 	it("system_prompt section appears when showSystemPrompt: true", () => {
 		const result = formatSessionDebugInfo(
 			baseOpts({
@@ -200,6 +216,21 @@ describe("formatSessionDebugInfo", () => {
 		);
 
 		expect(result).not.toContain("## System Prompt");
+	});
+
+	it("system_prompt section with undefined prompt shows empty block (0 chars)", () => {
+		const result = formatSessionDebugInfo(
+			baseOpts({
+				metadata: false,
+				usage: false,
+				showEntries: false,
+				showSystemPrompt: true,
+				systemPrompt: undefined,
+			}),
+		);
+
+		expect(result).toContain("## System Prompt (0 chars)");
+		expect(result).toContain("```\n\n```");
 	});
 
 	it("char count appears in system_prompt section header", () => {
@@ -319,6 +350,29 @@ describe("formatSessionDebugInfo", () => {
 		expect(result).toContain("my-skill");
 		expect(result).toContain("/path/to/my-skill/SKILL.md");
 		expect(result).toContain("other-skill");
+	});
+
+	it("system_prompt_options falls back to path then (unknown path) when filePath absent", () => {
+		const result = formatSessionDebugInfo(
+			baseOpts({
+				metadata: false,
+				usage: false,
+				showEntries: false,
+				showSystemPromptOptions: true,
+				systemPromptOptions: {
+					cwd: "/home/user/project",
+					skills: [
+						{ name: "path-only", path: "/path/to/path-only/SKILL.md" } as never,
+						{ name: "no-path" } as never,
+					],
+				},
+			}),
+		);
+
+		// Skill with no filePath but a path → path fallback used
+		expect(result).toContain("path-only (/path/to/path-only/SKILL.md)");
+		// Skill with neither filePath nor path → (unknown path) fallback used
+		expect(result).toContain("no-path ((unknown path))");
 	});
 
 	it("system_prompt_options section shows context file paths (not content)", () => {
