@@ -345,3 +345,51 @@ describe("SocketClient — data handler settled=true guard", () => {
 		await new Promise<void>((r) => setTimeout(r, 30));
 	});
 });
+
+// ---------------------------------------------------------------------------
+// Request already settled when the timer/error fires — `if (settled) return` guards
+// ---------------------------------------------------------------------------
+
+describe("SocketClient — timer fires after settlement (settled guard)", () => {
+	it("timeout timer is a no-op once the request already settled", async () => {
+		await startServer((req) => ({
+			id: req["id"],
+			ok: true,
+			result: { tabs: [{ id: 1 }] },
+		}));
+		// Response arrives almost immediately (settled=true); the timer (200ms)
+		// fires later and must hit the `if (settled) return` guard, not reject.
+		const client = new SocketClient(sockFile, { timeoutMs: 200 });
+		const result = await client.listTabs();
+		expect(result).toBeDefined();
+		await new Promise<void>((r) => setTimeout(r, 300));
+	});
+});
+
+describe("SocketClient — error fires after settlement (settled guard)", () => {
+	it("socket error after settlement is ignored", async () => {
+		server = net.createServer((conn) => {
+			openConns.add(conn);
+			conn.on("close", () => openConns.delete(conn));
+			const decoder = new Decoder();
+			conn.on("data", (chunk: Buffer) => {
+				for (const msg of decoder.push(chunk)) {
+					const req = msg as Record<string, unknown>;
+					// Respond (client settles), then abruptly destroy to surface a
+					// post-settlement error that the `if (settled) return` guard swallows.
+					conn.write(encode({ id: req["id"], ok: true, result: { tabs: [{ id: 1 }] } }));
+					setTimeout(() => conn.destroy(), 10);
+				}
+			});
+		});
+		await new Promise<void>((resolve, reject) => {
+			server!.listen(sockFile, resolve);
+			server!.on("error", reject);
+		});
+		const client = new SocketClient(sockFile);
+		const result = await client.listTabs();
+		expect(result).toBeDefined();
+		// Let the post-settlement destroy surface its error event (ignored).
+		await new Promise<void>((r) => setTimeout(r, 60));
+	});
+});

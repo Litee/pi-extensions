@@ -121,6 +121,33 @@ describe("buildListTabsResult", () => {
 	});
 });
 
+describe("formatTabLine — missing optional fields (?? fallback branches)", () => {
+	it("uses fallbacks when id/url/title are absent and normalizedUrl is null", () => {
+		// normalizedUrl: null exercises both `tab.normalizedUrl ?? null` and
+		// `normalizedUrl ?? "null"`; absent id/url/title exercise their `??` fallbacks.
+		const tab: SlimBrowserTab = { normalizedUrl: null };
+		const line = formatTabLine(tab);
+		expect(line).toContain("tab id=?");
+		expect(line).toContain("tab url=");
+		expect(line).toContain("tab title=");
+		expect(line).toContain("normalized url=null");
+		expect(line).toContain("last accessed=unknown");
+	});
+});
+
+// ---------------------------------------------------------------------------
+// buildListTabsResult — singular header
+// ---------------------------------------------------------------------------
+
+describe("buildListTabsResult — singular header", () => {
+	it("uses singular 'tab' (no trailing 's') when exactly one tab is present", () => {
+		const { content } = buildListTabsResult([
+			{ id: 1, url: "https://a.com", title: "A", normalizedUrl: "https://a.com/" },
+		]);
+		expect(content[0]!.text).toMatch(/^1 tab open$/);
+	});
+});
+
 // ---------------------------------------------------------------------------
 // buildTabContentResult
 // ---------------------------------------------------------------------------

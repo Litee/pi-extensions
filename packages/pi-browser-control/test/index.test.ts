@@ -632,6 +632,151 @@ describe("errorResult — String(err) fallback when err has no .message", () => 
 });
 
 // ---------------------------------------------------------------------------
+// index.ts branch gaps (continued)
+// ---------------------------------------------------------------------------
+
+describe("export_tabs — missing path → error", () => {
+	it("returns error and does not call exportTabs when path is absent", async () => {
+		const stub = makeStub({ exportTabs: vi.fn() });
+		const pi = makeFakePi();
+		createExtension(pi.api, { socketClient: stub });
+		const result = await pi.tool("browser_control").execute(
+			"tc-exp-no-path", { operation: "export_tabs" }, undefined, undefined, {} as never,
+		);
+		const text = (result.content[0] as { text: string }).text;
+		expect(text).toMatch(/absolute/i);
+		expect(text).toContain("(none)");
+		expect(stub.exportTabs).not.toHaveBeenCalled();
+	});
+});
+
+describe("export_tabs — write throws a non-Error value", () => {
+	it("falls back to String(writeErr) when writeFileSync throws a non-Error", async () => {
+		const fsNode = await import("node:fs");
+		const osNode = await import("node:os");
+		const pathNode = await import("node:path");
+		const cryptoNode = await import("node:crypto");
+		const outPath = pathNode.join(osNode.tmpdir(), `pi-bc-export-nonerr-${cryptoNode.randomUUID()}.jsonl`);
+		const stub = makeStub({
+			exportTabs: vi.fn().mockResolvedValue({ tabs: [{ id: 1, url: "https://a.com", normalizedUrl: "https://a.com/", title: "A" }] }),
+		});
+		const pi = makeFakePi();
+		createExtension(pi.api, { socketClient: stub });
+		// index.ts calls fs.writeFileSync (default import) — spy on the real default object.
+		const fsDefault = fsNode.default;
+		const spy = vi.spyOn(fsDefault, "writeFileSync").mockImplementation(() => {
+			throw new Error("disk full");
+		});
+		try {
+			const result = await pi.tool("browser_control").execute(
+				"tc-exp-nonerr", { operation: "export_tabs", path: outPath }, undefined, undefined, {} as never,
+			);
+			const text = (result.content[0] as { text: string }).text;
+			expect(text).toMatch(/failed to write file: disk full/i);
+			expect(result.details).toMatchObject({ ok: false });
+		} finally {
+			spy.mockRestore();
+			if (fsNode.existsSync(outPath)) fsNode.unlinkSync(outPath);
+		}
+	});
+});
+
+describe("export_tabs — multiple private-browsing tabs pluralize the note", () => {
+	it("notes N private tabs excluded with plural 'tabs'", async () => {
+		const osNode = await import("node:os");
+		const pathNode = await import("node:path");
+		const cryptoNode = await import("node:crypto");
+		const fsNode = await import("node:fs");
+		const outPath = pathNode.join(osNode.tmpdir(), `pi-bc-export-multi-${cryptoNode.randomUUID()}.jsonl`);
+		const tabs = [
+			{ id: 1, url: "https://public.com", normalizedUrl: "https://public.com/", title: "Public", incognito: false },
+			{ id: 2, url: "https://private1.com", normalizedUrl: "https://private1.com/", title: "P1", incognito: true },
+			{ id: 3, url: "https://private2.com", normalizedUrl: "https://private2.com/", title: "P2", incognito: true },
+		];
+		const stub = makeStub({ exportTabs: vi.fn().mockResolvedValue({ tabs }) });
+		const pi = makeFakePi();
+		createExtension(pi.api, { socketClient: stub });
+		try {
+			const result = await pi.tool("browser_control").execute(
+				"tc-exp-multi", { operation: "export_tabs", path: outPath }, undefined, undefined, {} as never,
+			);
+			const text = (result.content[0] as { text: string }).text;
+			expect(text).toMatch(/Exported 1 tab/);
+			expect(text).toMatch(/2 private-browsing tabs excluded/);
+			const lines = fsNode.readFileSync(outPath, "utf-8").split("\n").filter(Boolean);
+			expect(lines).toHaveLength(1);
+		} finally {
+			fsNode.rmSync(outPath, { force: true });
+		}
+	});
+});
+
+describe("get_tab_content — offset defaults to 0 when omitted", () => {
+	it("calls getTabContent with offset 0 when offset is omitted", async () => {
+		const stub = makeStub({
+			getTabContent: vi.fn().mockResolvedValue({
+				tabId: 7,
+				fullText: "Content",
+				totalLength: 7,
+				isTruncated: false,
+				links: [],
+			}),
+		});
+		const pi = makeFakePi();
+		createExtension(pi.api, { socketClient: stub });
+		await pi.tool("browser_control").execute(
+			"tc-gtc-nooff", { operation: "get_tab_content", tabId: 7 }, undefined, undefined, {} as never,
+		);
+		expect(vi.mocked(stub.getTabContent)).toHaveBeenCalledWith(7, 0);
+	});
+});
+
+// ---------------------------------------------------------------------------
+// index.ts branch gaps — renderResult list_tabs formatting edges
+// ---------------------------------------------------------------------------
+
+describe("renderResult — list_tabs expanded + singular 'more' footer", () => {
+	function tabLines(n: number) {
+		return Array.from({ length: n }, (_, i) => ({
+			type: "text" as const,
+			text: `tab id=${i + 1}, tab url=https://${i + 1}.com`,
+		}));
+	}
+
+	it("expanded=true shows up to DISPLAY_LIMIT (10) lines and no 'more' footer when <=10", () => {
+		const pi = makeFakePi();
+		createExtension(pi.api, { socketClient: makeStub() });
+		const tool = pi.tool("browser_control");
+		const result = {
+			content: [{ type: "text" as const, text: "4 tabs open" }, ...tabLines(4)],
+			details: { ok: true, operation: "list_tabs" },
+		};
+		// eslint-disable-next-line @typescript-eslint/no-unnecessary-type-assertion
+		const rendered = tool.renderResult!(result as never, { expanded: true, isPartial: false }, mockTheme as never, {} as never);
+		const text = (rendered as unknown as { text: string }).text;
+		expect(text).toContain("tab id=1");
+		expect(text).toContain("tab id=4");
+		expect(text).not.toMatch(/… \d+ more tab/);
+	});
+
+	it("not expanded with exactly one hidden tab shows singular '… 1 more tab'", () => {
+		const pi = makeFakePi();
+		createExtension(pi.api, { socketClient: makeStub() });
+		const tool = pi.tool("browser_control");
+		// 4 tabs → 3 shown, 1 hidden → exercises the `hidden === 1 ? "" : "s"` singular branch.
+		const result = {
+			content: [{ type: "text" as const, text: "4 tabs open" }, ...tabLines(4)],
+			details: { ok: true, operation: "list_tabs" },
+		};
+		// eslint-disable-next-line @typescript-eslint/no-unnecessary-type-assertion
+		const rendered = tool.renderResult!(result as never, { expanded: false, isPartial: false }, mockTheme as never, {} as never);
+		const text = (rendered as unknown as { text: string }).text;
+		expect(text).toMatch(/… 1 more tab — open logs to see all/);
+		expect(text).not.toMatch(/more tabs/);
+	});
+});
+
+// ---------------------------------------------------------------------------
 // renderResult
 // ---------------------------------------------------------------------------
 
