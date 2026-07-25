@@ -185,4 +185,40 @@ describe("readActivePlugins", () => {
 		const result = readActivePlugins(claudeDir);
 		expect(result.map((p) => p.pluginName).sort()).toEqual(["alpha", "beta"]);
 	});
+
+	it("exercises the sort comparator fallback for both a and b when neither entry has a date", () => {
+		// Both entries lack lastUpdated and installedAt, so the sort comparator's
+		// `?? ""` fallback fires for both the `a` side (line 51) and the `b` side
+		// (line 52).  This is the missing branch that the existing "tolerates sort
+		// comparator" test does not cover — that test only has one entry without dates.
+		writeManifest(claudeDir, {
+			plugins: {
+				"alpha@owner": [
+					{ scope: "project", installPath: "/first" },
+					{ scope: "project", installPath: "/second" },
+				],
+			},
+		});
+		const result = readActivePlugins(claudeDir);
+		expect(result).toEqual([
+			{ pluginKey: "alpha@owner", pluginName: "alpha", installPath: "/first" },
+		]);
+	});
+
+	it("handles a pluginKey that is an empty string", () => {
+		// Exercises line 58: `pluginKey.split("@")[0] ?? pluginKey`.
+		// For an empty string, split returns [""] and [0] is "", which is
+		// falsy but not nullish — so ?? pluginKey is NOT taken.  The result
+		// is an empty pluginName, which is the correct behaviour for this
+		// edge case.
+		writeManifest(claudeDir, {
+			plugins: {
+				"": [{ scope: "user", installPath: "/empty-key" }],
+			},
+		});
+		const result = readActivePlugins(claudeDir);
+		expect(result).toEqual([
+			{ pluginKey: "", pluginName: "", installPath: "/empty-key" },
+		]);
+	});
 });
