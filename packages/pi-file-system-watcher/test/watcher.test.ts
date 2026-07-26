@@ -17,6 +17,8 @@ import type { FsBaseline } from "../src/types.js";
 // Module mocks
 // ---------------------------------------------------------------------------
 
+
+
 vi.mock("node:fs", () => ({
   readFileSync: vi.fn().mockImplementation(() => {
     throw Object.assign(new Error("ENOENT: no such file or directory"), { code: "ENOENT" });
@@ -1409,4 +1411,144 @@ describe("FsWatcher view — additional branch coverage", () => {
     const fields = watcher.view.renderItemDetail(w, { theme: {} as never, width: 80 });
     expect(fields.find((f) => f.label === "size")?.value).toBe("1234 bytes");
   });
+
+  it("renderItemRowText shows only icon when formatTimeLeft returns '-'", () => {
+    // formatTimeLeft returns '-' when timeoutAt is 0 or undefined → ttl === '-'
+    // This exercises the `ttl && ttl !== '-'` branch where ttl === '-'
+    const w = { ...baseWatch, timeoutAt: 0, terminal: false };
+    const text = watcher.view.renderItemRowText(w);
+    // When ttl is '-', the ternary falls through to just watchIcon
+    expect(text).toContain("🔔");
+    expect(text).not.toContain("-");
+  });
 });
+
+// ---------------------------------------------------------------------------
+// detectChanges — baselines.get fallback branch
+// ---------------------------------------------------------------------------
+
+describe("FsWatcher.detectChanges — baselines.get fallback", () => {
+  it("returns { exists: false } when baselines.get() is undefined", async () => {
+    const { watcher } = makeWatcher({ exists: false }, 9_999);
+    const addResult = await watcher.executeTool({
+      action: "add",
+      path: "/tmp/foo",
+      target: "creation",
+      timeoutSeconds: 1,
+    });
+    const watchId = addResult.details["watchId"] as string;
+    const watch = watcher["watches"].get(watchId)!;
+
+    // Remove the baseline from the map so baselines.get() returns undefined
+    watcher["baselines"].delete(watchId);
+    watch.timeoutAt = 5_000; // past relative to now=9_999
+
+    const result = await watcher.detectChanges(watch);
+    expect(result.observedChange).toBe(true);
+    expect(result.events[0]!.eventType).toBe("timeout");
+    expect(result.newBaseline).toEqual({ exists: false });
+  });
+});
+
+// ---------------------------------------------------------------------------
+// normaliseWatch — migration shim for legacy target values
+// ---------------------------------------------------------------------------
+
+describe("FsWatcher.normaliseWatch — legacy target migration", () => {
+  let watcher: FsWatcher;
+  beforeEach(() => {
+    ({ watcher } = makeWatcher());
+  });
+
+  it("remaps legacy target 'exists' → 'creation'", () => {
+    const result = watcher.normaliseWatch({
+      watchId: "w1",
+      path: "/tmp/foo",
+      target: "exists",
+      terminal: false,
+      consecutiveErrors: 0,
+      addedAt: 0,
+      timeoutAt: undefined,
+      lastPolledAt: undefined,
+    });
+    expect(result).not.toBeNull();
+    expect(result?.target).toBe("creation");
+  });
+
+  it("remaps legacy target 'changed' → 'modification'", () => {
+    const result = watcher.normaliseWatch({
+      watchId: "w1",
+      path: "/tmp/foo",
+      target: "changed",
+      terminal: false,
+      consecutiveErrors: 0,
+      addedAt: 0,
+      timeoutAt: undefined,
+      lastPolledAt: undefined,
+    });
+    expect(result).not.toBeNull();
+    expect(result?.target).toBe("modification");
+  });
+
+  it("remaps legacy target 'removed' → 'deletion'", () => {
+    const result = watcher.normaliseWatch({
+      watchId: "w1",
+      path: "/tmp/foo",
+      target: "removed",
+      terminal: false,
+      consecutiveErrors: 0,
+      addedAt: 0,
+      timeoutAt: undefined,
+      lastPolledAt: undefined,
+    });
+    expect(result).not.toBeNull();
+    expect(result?.target).toBe("deletion");
+  });
+
+  it("normalises addedAt when it is Infinity (non-finite) → 0", () => {
+    const result = watcher.normaliseWatch({
+      watchId: "w1",
+      path: "/tmp/foo",
+      target: "creation",
+      terminal: false,
+      consecutiveErrors: 0,
+      addedAt: Infinity,
+      timeoutAt: undefined,
+      lastPolledAt: undefined,
+    });
+    expect(result).not.toBeNull();
+    expect(result?.addedAt).toBe(0);
+  });
+
+  it("normalises terminal when it is not a boolean → false", () => {
+    const result = watcher.normaliseWatch({
+      watchId: "w1",
+      path: "/tmp/foo",
+      target: "creation",
+      terminal: "yes" as unknown as boolean,
+      consecutiveErrors: 0,
+      addedAt: 0,
+      timeoutAt: undefined,
+      lastPolledAt: undefined,
+    });
+    expect(result).not.toBeNull();
+    expect(result?.terminal).toBe(false);
+  });
+
+  it("normalises consecutiveErrors when it is Infinity (non-finite) → 0", () => {
+    const result = watcher.normaliseWatch({
+      watchId: "w1",
+      path: "/tmp/foo",
+      target: "creation",
+      terminal: false,
+      consecutiveErrors: Infinity,
+      addedAt: 0,
+      timeoutAt: undefined,
+      lastPolledAt: undefined,
+    });
+    expect(result).not.toBeNull();
+    expect(result?.consecutiveErrors).toBe(0);
+  });
+});
+
+
