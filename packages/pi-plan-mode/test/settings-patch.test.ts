@@ -146,3 +146,24 @@ describe("resolveAgentDir", () => {
 		expect(resolveAgentDir()).toBe("/tmp/custom-agent-dir");
 	});
 });
+
+// ---------------------------------------------------------------------------
+// resolveAgentDir — empty string env var (branch coverage)
+// ---------------------------------------------------------------------------
+
+describe("resolveAgentDir — edge cases", () => {
+	const original = process.env["PI_CODING_AGENT_DIR"];
+
+	afterEach(() => {
+		if (original === undefined) {
+			delete process.env["PI_CODING_AGENT_DIR"];
+		} else {
+			process.env["PI_CODING_AGENT_DIR"] = original;
+		}
+	});
+
+	it("returns fallback when PI_CODING_AGENT_DIR is an empty string", () => {
+		process.env["PI_CODING_AGENT_DIR"] = "";
+		expect(resolveAgentDir()).toBe(join(homedir(), ".pi", "agent"));
+	});
+});

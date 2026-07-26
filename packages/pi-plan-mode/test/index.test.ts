@@ -911,3 +911,137 @@ describe("plan-mode shortcut handlers", () => {
 		expect(pi.appendEntry).toHaveBeenCalled();
 	});
 });
+
+// ---------------------------------------------------------------------------
+// session_start — branch coverage for snapshot field guards (lines 272, 278, 290)
+// ---------------------------------------------------------------------------
+
+describe("plan-mode session_start snapshot field guards", () => {
+	it("uses ?? fallback when persisted enabled is undefined (line 272)", async () => {
+		// Arrange — legacy-style entry where enabled is absent; planModeEnabled
+		// starts as false from the flag, so ?? should fall through to it.
+		const pi = makeFakePi();
+		const ctx = {
+			...makeFakeCtx(),
+			sessionManager: {
+				getEntries: vi.fn(() => [
+					{
+						type: "custom",
+						customType: "pi-plan-mode:state",
+						data: { modelSnapshot: { id: "claude-opus-4-20250514", provider: "anthropic" } },
+					},
+				]),
+			},
+		};
+		pi.getFlag = vi.fn(() => false);
+		planModeExtension(pi as never);
+
+		const onCalls = pi.on.mock.calls as Array<[string, (...args: unknown[]) => unknown]>;
+		const sessionStartHandler = onCalls.find(([e]) => e === "session_start")![1];
+		await sessionStartHandler({}, ctx);
+
+		// planModeEnabled should be false (from ?? fallback), so no tools/model change.
+		expect(pi.setActiveTools).not.toHaveBeenCalled();
+		expect(pi.setModel).not.toHaveBeenCalled();
+	});
+
+	it("skips thinkingLevelSnapshot assignment when field is falsy (line 278)", async () => {
+		// Arrange — new-format entry without thinkingLevelSnapshot.
+		const pi = makeFakePi();
+		const ctx = {
+			...makeFakeCtx(),
+			sessionManager: {
+				getEntries: vi.fn(() => [
+					{
+						type: "custom",
+						customType: "pi-plan-mode:state",
+						data: {
+							enabled: true,
+							modelSnapshot: { id: "claude-opus-4-20250514", provider: "anthropic" },
+							toolsSnapshot: ["read", "bash"],
+							// thinkingLevelSnapshot is absent → falsy
+						},
+					},
+				]),
+			},
+		};
+		pi.getFlag = vi.fn(() => false);
+		planModeExtension(pi as never);
+
+		const onCalls = pi.on.mock.calls as Array<[string, (...args: unknown[]) => unknown]>;
+		const sessionStartHandler = onCalls.find(([e]) => e === "session_start")![1];
+		await sessionStartHandler({}, ctx);
+
+		// thinkingLevelSnapshot remains undefined (not set by session_start).
+		// Plan mode is enabled, so tools should be set.
+		expect(pi.setActiveTools).toHaveBeenCalled();
+		// setModel/setThinkingLevel NOT called here — applyPlanModeConfig reads from
+		// config file (absent), not from in-memory snapshots.
+	});
+
+	it("skips toolSnapshot.save when toolsSnapshot is empty array (line 290)", async () => {
+		// Arrange — new-format entry with an empty toolsSnapshot.
+		const pi = makeFakePi();
+		const ctx = {
+			...makeFakeCtx(),
+			sessionManager: {
+				getEntries: vi.fn(() => [
+					{
+						type: "custom",
+						customType: "pi-plan-mode:state",
+						data: {
+							enabled: true,
+							modelSnapshot: { id: "claude-opus-4-20250514", provider: "anthropic" },
+							thinkingLevelSnapshot: "high",
+							toolsSnapshot: [], // empty array → falsy guard
+						},
+					},
+				]),
+			},
+		};
+		pi.getFlag = vi.fn(() => false);
+		planModeExtension(pi as never);
+
+		const onCalls = pi.on.mock.calls as Array<[string, (...args: unknown[]) => unknown]>;
+		const sessionStartHandler = onCalls.find(([e]) => e === "session_start")![1];
+		await sessionStartHandler({}, ctx);
+
+		// plan mode is enabled, so tools should be set (using NORMAL_MODE_TOOLS as fallback).
+		expect(pi.setActiveTools).toHaveBeenCalled();
+		// No toolSnapshot.save was called because toolsSnapshot was empty — tools come
+		// from toolSnapshot.getSaved() which returns null → NORMAL_MODE_TOOLS.
+		// setModel/setThinkingLevel are NOT called here because applyPlanModeConfig reads
+		// from the config file (which doesn't exist), not from the in-memory snapshots.
+	});
+
+	it("skips toolSnapshot.save when toolsSnapshot is missing entirely (line 290)", async () => {
+		// Arrange — new-format entry without toolsSnapshot field.
+		const pi = makeFakePi();
+		const ctx = {
+			...makeFakeCtx(),
+			sessionManager: {
+				getEntries: vi.fn(() => [
+					{
+						type: "custom",
+						customType: "pi-plan-mode:state",
+						data: {
+							enabled: true,
+							modelSnapshot: { id: "claude-opus-4-20250514", provider: "anthropic" },
+							thinkingLevelSnapshot: "medium",
+							// toolsSnapshot is absent → undefined → falsy
+						},
+					},
+				]),
+			},
+		};
+		pi.getFlag = vi.fn(() => false);
+		planModeExtension(pi as never);
+
+		const onCalls = pi.on.mock.calls as Array<[string, (...args: unknown[]) => unknown]>;
+		const sessionStartHandler = onCalls.find(([e]) => e === "session_start")![1];
+		await sessionStartHandler({}, ctx);
+
+		expect(pi.setActiveTools).toHaveBeenCalled();
+		// setModel/setThinkingLevel NOT called during session_start — config file absent.
+	});
+});
