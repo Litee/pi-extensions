@@ -357,4 +357,60 @@ describe("rebuildPreparationWithKeepRecentTokens — additional paths", () => {
 		// Should not fallback - fallbackReason should be undefined
 		assert.equal(result.fallbackReason, undefined, `Unexpected fallback: ${result.fallbackReason}`);
 	});
+
+	it("returns fallback when keepRecentTokens is Infinity", () => {
+		const result = rebuildPreparationWithKeepRecentTokens(createBranchEntries(), createPreparation(), Infinity);
+		assert.match(result.fallbackReason ?? "", /resolved invalid keepRecentTokens/);
+	});
+
+	it("returns fallback when branchEntries is a single compaction entry", () => {
+		const entries = [
+			{
+				type: "compaction" as const,
+				id: "comp-1",
+				parentId: null,
+				timestamp: "2026-04-04T00:00:00.000Z",
+				summary: "only compaction",
+				firstKeptEntryId: "e1",
+				tokensBefore: 100,
+				fromHook: false,
+			},
+		] as import("@earendil-works/pi-coding-agent").SessionEntry[];
+		const result = rebuildPreparationWithKeepRecentTokens(entries, createPreparation(), 1);
+		assert.match(result.fallbackReason ?? "", /already compacted/);
+	});
+
+	it("uses prevCompactionIndex+1 as boundaryStart when firstKeptEntryId is not found", () => {
+		const entries = [
+			{
+				type: "message" as const,
+				id: "e0",
+				parentId: null,
+				timestamp: "2026-04-04T00:00:00.000Z",
+				message: { role: "user", content: "A", timestamp: Date.now() },
+			},
+			{
+				type: "compaction" as const,
+				id: "comp-1",
+				parentId: "e0",
+				timestamp: "2026-04-04T00:00:01.000Z",
+				summary: "old summary",
+				firstKeptEntryId: "nonexistent", // not in branch
+				tokensBefore: 100,
+				fromHook: false,
+			},
+			{
+				type: "message" as const,
+				id: "e2",
+				parentId: "comp-1",
+				timestamp: "2026-04-04T00:00:02.000Z",
+				message: { role: "user", content: "B", timestamp: Date.now() },
+			},
+		] as import("@earendil-works/pi-coding-agent").SessionEntry[];
+
+		const result = rebuildPreparationWithKeepRecentTokens(entries, createPreparation(), 100000);
+		assert.equal(result.fallbackReason, undefined, `Unexpected fallback: ${result.fallbackReason}`);
+		// Should have used prevCompactionIndex+1 = 2 as boundaryStart
+		assert.ok(result.preparation, "expected preparation");
+	});
 });

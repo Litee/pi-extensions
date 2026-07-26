@@ -595,4 +595,212 @@ describe("parsePolicyPatch — profile branches", () => {
 		if (result.ok) return;
 		assert.ok(result.error.includes("match"), `got: ${result.error}`);
 	});
+
+	it("parses profile with all optional fields: trigger, models, summary, summaryRetention, template, updateTemplate", () => {
+		const result = parsePolicyPatch({
+			profiles: {
+				fast: {
+					match: "openai/gpt-4",
+					trigger: { minTokens: 50000, maxTokens: 300000 },
+					models: ["anthropic/claude-3-opus"],
+					summary: { thinkingLevel: "high", preservationInstruction: "Keep errors." },
+					summaryRetention: { mode: "tokens", value: 20000 },
+					template: "~/.pi/templates/fast.md",
+					updateTemplate: "~/.pi/templates/fast-update.md",
+				},
+			},
+		});
+		assert.equal(result.ok, true);
+		if (!result.ok) return;
+		const profile = result.value.profiles?.['fast'];
+		assert.ok(profile);
+		assert.deepEqual(profile.trigger, { minTokens: 50000, maxTokens: 300000 });
+		assert.deepEqual(profile.models, [{ model: "anthropic/claude-3-opus" }]);
+		assert.deepEqual(profile.summary, { thinkingLevel: "high", preservationInstruction: "Keep errors." });
+		assert.deepEqual(profile.summaryRetention, { mode: "tokens", value: 20000 });
+		assert.equal(profile.template, "~/.pi/templates/fast.md");
+		assert.equal(profile.updateTemplate, "~/.pi/templates/fast-update.md");
+	});
+
+	it("parses profile with only summaryRetention override", () => {
+		const result = parsePolicyPatch({
+			profiles: {
+				fast: {
+					match: "openai/gpt-4",
+					summaryRetention: { mode: "percent", value: 25 },
+				},
+			},
+		});
+		assert.equal(result.ok, true);
+		if (!result.ok) return;
+		assert.deepEqual(result.value.profiles?.['fast']?.summaryRetention, { mode: "percent", value: 25 });
+	});
+
+	it("rejects profile with invalid model selector in match", () => {
+		const result = parsePolicyPatch({
+			profiles: { fast: { match: "no-slash", trigger: { minTokens: 10 } } },
+		});
+		assert.equal(result.ok, false);
+	});
+
+	it("rejects profile with non-object summary field", () => {
+		const result = parsePolicyPatch({
+			profiles: { fast: { match: "openai/gpt-4", summary: "bad" } },
+		});
+		assert.equal(result.ok, false);
+	});
+
+	it("rejects profile with array summaryRetention", () => {
+		const result = parsePolicyPatch({
+			profiles: { fast: { match: "openai/gpt-4", summaryRetention: ["bad"] } },
+		});
+		assert.equal(result.ok, false);
+	});
+
+	it("rejects profile with non-string template", () => {
+		const result = parsePolicyPatch({
+			profiles: { fast: { match: "openai/gpt-4", template: 123 } },
+		});
+		assert.equal(result.ok, false);
+	});
+
+	it("rejects profile with non-string updateTemplate", () => {
+		const result = parsePolicyPatch({
+			profiles: { fast: { match: "openai/gpt-4", updateTemplate: null } },
+		});
+		assert.equal(result.ok, false);
+	});
+
+	it("rejects profile with empty template string", () => {
+		const result = parsePolicyPatch({
+			profiles: { fast: { match: "openai/gpt-4", template: "" } },
+		});
+		assert.equal(result.ok, false);
+	});
+
+	it("rejects profile with template containing only whitespace", () => {
+		const result = parsePolicyPatch({
+			profiles: { fast: { match: "openai/gpt-4", template: "   " } },
+		});
+		assert.equal(result.ok, false);
+	});
+
+	it("rejects profile with updateTemplate containing surrounding whitespace", () => {
+		const result = parsePolicyPatch({
+			profiles: { fast: { match: "openai/gpt-4", updateTemplate: " path " } },
+		});
+		assert.equal(result.ok, false);
+	});
+
+	it("rejects profile with trigger containing unknown key", () => {
+		const result = parsePolicyPatch({
+			profiles: { fast: { match: "openai/gpt-4", trigger: { unknownKey: 100 } } },
+		});
+		assert.equal(result.ok, false);
+	});
+
+	it("rejects profile with trigger containing valid key but invalid value", () => {
+		const result = parsePolicyPatch({
+			profiles: { fast: { match: "openai/gpt-4", trigger: { builtinSkipMarginPercent: "abc" } } },
+		});
+		assert.equal(result.ok, false);
+	});
+
+	it("rejects profile with non-object trigger section", () => {
+		const result = parsePolicyPatch({
+			profiles: { fast: { match: "openai/gpt-4", trigger: null } },
+		});
+		assert.equal(result.ok, false);
+	});
+
+	it("rejects profile with array trigger section", () => {
+		const result = parsePolicyPatch({
+			profiles: { fast: { match: "openai/gpt-4", trigger: [{}] } },
+		});
+		assert.equal(result.ok, false);
+	});
+
+	it("rejects profile with array models section", () => {
+		const result = parsePolicyPatch({
+			profiles: { fast: { match: "openai/gpt-4", models: "not-an-array" } },
+		});
+		assert.equal(result.ok, false);
+	});
+
+	it("rejects profile with non-object summaryRetention", () => {
+		const result = parsePolicyPatch({
+			profiles: { fast: { match: "openai/gpt-4", summaryRetention: "bad" } },
+		});
+		assert.equal(result.ok, false);
+	});
+
+	it("rejects profiles section with array value", () => {
+		const result = parsePolicyPatch({ profiles: [{ fast: {} }] });
+		assert.equal(result.ok, false);
+	});
+
+	it("rejects profiles section with null value", () => {
+		const result = parsePolicyPatch({ profiles: null });
+		assert.equal(result.ok, false);
+	});
+
+	it("rejects models section with non-array value", () => {
+		const result = parsePolicyPatch({ models: "openai/gpt-4" });
+		assert.equal(result.ok, false);
+	});
+
+	it("rejects models section with null value", () => {
+		const result = parsePolicyPatch({ models: null });
+		assert.equal(result.ok, false);
+	});
+
+	it("rejects trigger section with non-object value", () => {
+		const result = parsePolicyPatch({ trigger: "bad" });
+		assert.equal(result.ok, false);
+	});
+
+	it("rejects trigger section with array value", () => {
+		const result = parsePolicyPatch({ trigger: [{}] });
+		assert.equal(result.ok, false);
+	});
+
+	it("rejects trigger section with null value", () => {
+		const result = parsePolicyPatch({ trigger: null });
+		assert.equal(result.ok, false);
+	});
+
+	it("rejects ui section with non-object value", () => {
+		const result = parsePolicyPatch({ ui: "bad" });
+		assert.equal(result.ok, false);
+	});
+
+	it("rejects ui section with null value", () => {
+		const result = parsePolicyPatch({ ui: null });
+		assert.equal(result.ok, false);
+	});
+
+	it("rejects summary section with non-object value", () => {
+		const result = parsePolicyPatch({ summary: "bad" });
+		assert.equal(result.ok, false);
+	});
+
+	it("rejects summary section with null value", () => {
+		const result = parsePolicyPatch({ summary: null });
+		assert.equal(result.ok, false);
+	});
+
+	it("rejects unknown section with non-object value", () => {
+		const result = parsePolicyPatch({ unknownSection: "bad" });
+		assert.equal(result.ok, false);
+	});
+
+	it("rejects unknown section with null value", () => {
+		const result = parsePolicyPatch({ unknownSection: null });
+		assert.equal(result.ok, false);
+	});
+
+	it("rejects unknown section with array value", () => {
+		const result = parsePolicyPatch({ unknownSection: [{}] });
+		assert.equal(result.ok, false);
+	});
 });

@@ -195,6 +195,33 @@ describe("buildSummaryPrompt — additional branches", () => {
 		expect(result).toContain("TEMPLATE");
 		expect(result).not.toContain("undefined");
 	});
+
+	it("uses updateTemplate when both previousSummary and updateTemplate are provided (ternary true branch)", () => {
+		const result = buildSummaryPrompt("BASE", "UPDATE", "prev", undefined, "");
+		// Ternary `previousSummary && updateTemplate ? updateTemplate : template` → updateTemplate
+		expect(result).toContain("UPDATE");
+		expect(result).not.toContain("BASE");
+	});
+
+	it("uses base template when previousSummary is provided but updateTemplate is undefined (ternary false branch)", () => {
+		const result = buildSummaryPrompt("BASE", undefined, "prev", undefined, "");
+		// Ternary `previousSummary && undefined ? ... : template` → template
+		expect(result).toContain("BASE");
+		expect(result).toContain("previous-summary");
+	});
+
+	it("uses base template when previousSummary is undefined (if branch false)", () => {
+		const result = buildSummaryPrompt("BASE", undefined, undefined, undefined, "");
+		// if (previousSummary) → false → else branch
+		expect(result).toContain("The messages above are a conversation to summarize");
+		expect(result).not.toContain("previous-summary");
+	});
+
+	it("includes both customInstructions and preservationInstruction", () => {
+		const result = buildSummaryPrompt("BASE", undefined, undefined, "Focus on errors.", "Keep paths.");
+		expect(result).toContain("Keep paths.");
+		expect(result).toContain("Additional focus: Focus on errors.");
+	});
 });
 
 describe("discoverTemplate — findTemplate path with error (empty update template)", () => {
@@ -267,5 +294,32 @@ describe("discoverTemplate — named profile lookup", () => {
 		// Template is not found; result has no template key (or fallbackReason)
 		assert.ok(result.template === undefined || result.fallbackReason !== undefined || Object.keys(result).length === 0,
 			`Expected no template in result, got: ${JSON.stringify(result)}`);
+	});
+});
+
+// ---------------------------------------------------------------------------
+// discoverTemplate — global profile path (line 356)
+// ---------------------------------------------------------------------------
+
+describe("discoverTemplate — global profile template", () => {
+	let cwd = "";
+	let globalTemplatePath = "";
+
+	beforeEach(() => {
+		cwd = mkdtempSync(join(tmpdir(), "pi-cc-template-global-"));
+		globalTemplatePath = join(homedir(), ".pi", "agent", "compaction-templates", "global-profile.md");
+		mkdirSync(join(homedir(), ".pi", "agent", "compaction-templates"), { recursive: true });
+		writeFileSync(globalTemplatePath, "Global profile template", "utf8");
+	});
+
+	afterEach(() => {
+		rmSync(cwd, { recursive: true, force: true });
+		try { rmSync(join(homedir(), ".pi", "agent", "compaction-templates", "global-profile.md"), { force: true }); } catch {}
+	});
+
+	it("uses the global profile template when project profile does not exist", () => {
+		const result = discoverTemplate(cwd, "global-profile");
+		assert.equal(result.template, "Global profile template");
+		assert.equal(result.resolvedPath, globalTemplatePath);
 	});
 });

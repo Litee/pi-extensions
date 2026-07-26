@@ -112,6 +112,18 @@ describe("computeFileLists", () => {
 		const result = computeFileLists(null);
 		assert.deepEqual(result, { readFiles: [], modifiedFiles: [] });
 	});
+
+	it("returns empty lists for non-Set/non-Array input (toFilePathSet else branch)", () => {
+		// Pass a plain object — toFilePathSet falls through to `return new Set<string>()`
+		// eslint-disable-next-line @typescript-eslint/no-unnecessary-type-assertion
+		const result = computeFileLists({ read: "not-a-set-or-array" } as never);
+		assert.deepEqual(result, { readFiles: [], modifiedFiles: [] });
+	});
+
+	it("handles undefined fileOps (?? operator right branch)", () => {
+		const result = computeFileLists(undefined);
+		assert.deepEqual(result, { readFiles: [], modifiedFiles: [] });
+	});
 });
 
 // ---------------------------------------------------------------------------
@@ -264,6 +276,20 @@ describe("generateTemplateSummary", () => {
 		);
 	});
 
+	it("throws with 'Unknown error' when errorMessage is undefined (|| right branch)", async () => {
+		mockCompleteSimple.mockResolvedValueOnce({
+			stopReason: "error",
+			errorMessage: undefined,
+			content: [],
+		} as never);
+
+		const signal = new AbortController().signal;
+		await assert.rejects(
+			() => generateTemplateSummary([], makeModel(), undefined, "Summarize.", 4096, signal, "off"),
+			/Summarization failed: Unknown error/,
+		);
+	});
+
 	it("passes headers when provided", async () => {
 		let capturedOptions: unknown;
 		mockCompleteSimple.mockImplementationOnce(((_model: unknown, _session: unknown, opts: unknown) => {
@@ -342,6 +368,89 @@ describe("generateTurnPrefixSummary", () => {
 		const modelWithReasoning = { id: "test-model", provider: "openai", contextWindow: 4096, reasoning: true } as never;
 		await generateTurnPrefixSummary([], modelWithReasoning, undefined, 4096, signal, "medium");
 		const opts = capturedOptions as { reasoning?: string };
+		assert.equal(opts.reasoning, "medium");
+	});
+
+	it("throws turn prefix summary with 'Unknown error' when errorMessage is undefined", async () => {
+		mockCompleteSimple.mockResolvedValueOnce({
+			stopReason: "error",
+			errorMessage: undefined,
+			content: [],
+		} as never);
+
+		const signal = new AbortController().signal;
+		await assert.rejects(
+			() => generateTurnPrefixSummary([], makeModel(), undefined, 4096, signal, "off"),
+			/Turn prefix summarization failed: Unknown error/,
+		);
+	});
+
+	it("works with undefined apiKey (ternary false branch in getSummarizationCompletionOptions)", async () => {
+		let capturedOptions: unknown;
+		mockCompleteSimple.mockImplementationOnce(((_model: unknown, _session: unknown, opts: unknown) => {
+			capturedOptions = opts;
+			return Promise.resolve({
+				stopReason: "end_turn",
+				content: [{ type: "text", text: "ok" }],
+			});
+		}) as never);
+
+		const signal = new AbortController().signal;
+		await generateTurnPrefixSummary([], makeModel(), undefined, 4096, signal, "off");
+		const opts = capturedOptions as { apiKey?: string };
+		assert.equal(opts.apiKey, undefined);
+	});
+
+	it("works with undefined headers (ternary false branch in getSummarizationCompletionOptions)", async () => {
+		let capturedOptions: unknown;
+		mockCompleteSimple.mockImplementationOnce(((_model: unknown, _session: unknown, opts: unknown) => {
+			capturedOptions = opts;
+			return Promise.resolve({
+				stopReason: "end_turn",
+				content: [{ type: "text", text: "ok" }],
+			});
+		}) as never);
+
+		const signal = new AbortController().signal;
+		await generateTurnPrefixSummary([], makeModel(), "key", 4096, signal, "off", undefined);
+		const opts = capturedOptions as { headers?: Record<string, string> };
+		assert.equal(opts.headers, undefined);
+	});
+
+	it("works with undefined apiKey in reasoning path (model.reasoning=true, thinkingLevel!=off)", async () => {
+		let capturedOptions: unknown;
+		mockCompleteSimple.mockImplementationOnce(((_model: unknown, _session: unknown, opts: unknown) => {
+			capturedOptions = opts;
+			return Promise.resolve({
+				stopReason: "end_turn",
+				content: [{ type: "text", text: "ok" }],
+			});
+		}) as never);
+
+		const signal = new AbortController().signal;
+		const modelWithReasoning = { id: "test-model", provider: "openai", contextWindow: 4096, reasoning: true } as never;
+		// thinkingLevel="low" != "off" and model.reasoning=true → second return path
+		await generateTurnPrefixSummary([], modelWithReasoning, undefined, 4096, signal, "low");
+		const opts = capturedOptions as { apiKey?: string; reasoning?: string };
+		assert.equal(opts.apiKey, undefined);
+		assert.equal(opts.reasoning, "low");
+	});
+
+	it("works with undefined headers in reasoning path (model.reasoning=true, thinkingLevel!=off)", async () => {
+		let capturedOptions: unknown;
+		mockCompleteSimple.mockImplementationOnce(((_model: unknown, _session: unknown, opts: unknown) => {
+			capturedOptions = opts;
+			return Promise.resolve({
+				stopReason: "end_turn",
+				content: [{ type: "text", text: "ok" }],
+			});
+		}) as never);
+
+		const signal = new AbortController().signal;
+		const modelWithReasoning = { id: "test-model", provider: "openai", contextWindow: 4096, reasoning: true } as never;
+		await generateTemplateSummary([], modelWithReasoning, "key", "Summarize.", 4096, signal, "medium", undefined);
+		const opts = capturedOptions as { headers?: Record<string, string>; reasoning?: string };
+		assert.equal(opts.headers, undefined);
 		assert.equal(opts.reasoning, "medium");
 	});
 });
