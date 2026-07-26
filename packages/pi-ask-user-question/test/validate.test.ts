@@ -178,4 +178,33 @@ describe("validate()", () => {
 			expect(r.message).toContain("question[1].options[0]");
 		}
 	});
+
+	// -- undefined elements in the questions array (defensive gap handling) --
+	it("rejects an undefined element in the questions array (dedup loop)", () => {
+		const params: TParams = {
+			questions: [
+				q("OK", [{ label: "A" }, { label: "B" }]),
+				undefined as unknown as TParams["questions"][number],
+			],
+		};
+		const r = validate(params);
+		expect(r).toMatchObject({ ok: false, error: "missing_question" });
+		if (r.ok === false) {
+			expect(r.message).toContain("question[1] is missing");
+		}
+	});
+
+	it("rejects an undefined element in the questions array (validation loop)", () => {
+		const params: TParams = {
+			questions: [
+				undefined as unknown as TParams["questions"][number],
+				q("OK", [{ label: "A" }, { label: "B" }]),
+			],
+		};
+		const r = validate(params);
+		expect(r).toMatchObject({ ok: false, error: "missing_question" });
+		if (r.ok === false) {
+			expect(r.message).toContain("question[0] is missing");
+		}
+	});
 });

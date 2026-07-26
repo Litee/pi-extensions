@@ -534,4 +534,86 @@ describe("DialogController — guard branches (inputMode != none)", () => {
     // Tab 0 should have rows — returns them
     expect(ctrl.currentRows().length).toBeGreaterThan(0);
   });
+
+  it("enter() is a no-op when inputMode is not 'none'", () => {
+    const ctrl = new DialogController([single("Q1", ["A", "B"])]);
+    // Open text input mode so enter() hits the guard
+    ctrl.moveDown();
+    ctrl.moveDown(); // on text sentinel
+    ctrl.enter();   // sets inputMode = "text"
+    const tabBefore = ctrl.getState().currentTab;
+    const answeredBefore = ctrl.allAnswered();
+    // Enter while inputMode is active — should be a no-op
+    ctrl.enter();
+    expect(ctrl.getState().currentTab).toBe(tabBefore);
+    expect(ctrl.allAnswered()).toBe(answeredBefore);
+  });
+
+  // -- defensive ?? fallback branches (triggered by corrupting internal state) --
+
+  it("getCurrentNoteDraft() falls back to '' when notesByTab[currentTab] is absent", () => {
+    const ctrl = new DialogController([single("Q1", ["A", "B"])]);
+    ctrl.beginNote(); // sets noteTargetOptionIndex = 0
+    // Corrupt internal state: set notesByTab[0] to undefined so ?? "" fallback triggers
+    Object.assign(ctrl.getState().notesByTab, { 0: undefined });
+    expect(ctrl.getCurrentNoteDraft()).toBe("");
+  });
+
+  it("toggleCurrent() returns early when multiSel[currentTab] is absent", () => {
+    const ctrl = new DialogController([multi("Q1", ["A", "B"])]);
+    // Corrupt internal state: set multiSel[0] to undefined so ?? 0 fallback triggers
+    Object.assign(ctrl.getState().multiSel, { 0: undefined });
+    // toggleCurrent should be a no-op (early return) — no crash
+    expect(() => ctrl.toggleCurrent()).not.toThrow();
+    expect(ctrl.isDone()).toBe(false);
+  });
+
+  it("recordMulti() returns early when multiSel[currentTab] is absent", () => {
+    const ctrl = new DialogController([multi("Q1", ["A", "B"])]);
+    // Pre-select an option so the controller has a multi answer
+    ctrl.toggleCurrent();
+    // Corrupt internal state: set multiSel[0] to undefined so ?? 0 fallback triggers
+    Object.assign(ctrl.getState().multiSel, { 0: undefined });
+    // Calling toggleCurrent again removes the option from the set,
+    // which would call recordMulti() — but set is now undefined, so it returns early
+    ctrl.moveDown(); // move to option 1
+    ctrl.toggleCurrent(); // select option 1, then...
+    ctrl.moveUp();   // back to option 0
+    ctrl.toggleCurrent(); // deselect option 1 — recordMulti() called with undefined set
+  });
+
+  it("submitInput(note) else-branches when target is null or notes map absent", () => {
+    const ctrl = new DialogController([single("Q1", ["A", "B"])]);
+    // Open note mode, then corrupt state so target === null
+    ctrl.beginNote();
+    const state = ctrl.getState();
+    state.noteTargetOptionIndex = null;
+    // notesByTab[0] exists, so the notes !== undefined branch is taken,
+    // but target === null means the outer if block is skipped (else path).
+    ctrl.submitInput("some note");
+    // inputMode should be reset to "none" even when target is null
+    expect(ctrl.getState().inputMode).toBe("none");
+  });
+
+  it("submitInput(note) ?? fallback when notesByTab[tab] is absent", () => {
+    const ctrl = new DialogController([single("Q1", ["A", "B"])]);
+    ctrl.beginNote();
+    // Set notesByTab[0] to undefined so the ?? {} fallback is triggered
+    Object.assign(ctrl.getState().notesByTab, { 0: undefined });
+    ctrl.submitInput("note");
+    expect(ctrl.getState().inputMode).toBe("none");
+  });
+
+  it("enter() ?? fallback when multiSel[currentTab] is absent on next row", () => {
+    const ctrl = new DialogController([multi("Q1", ["A", "B"])]);
+    // Navigate to the "Next" sentinel row
+    ctrl.moveDown();
+    ctrl.moveDown();
+    // Set multiSel[0] to undefined so the ?? 0 fallback triggers
+    Object.assign(ctrl.getState().multiSel, { 0: undefined });
+    // enter() on "next" row with undefined multiSel — ?? 0 evaluates to 0, so no advance
+    const tabBefore = ctrl.getState().currentTab;
+    ctrl.enter();
+    expect(ctrl.getState().currentTab).toBe(tabBefore);
+  });
 });
