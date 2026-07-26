@@ -85,6 +85,20 @@ describe("parseCheckerJson", () => {
 	it("returns undefined for non-JSON output", () => {
 		expect(parseCheckerJson("the goal looks done to me")).toBeUndefined();
 	});
+
+	// Branch 82: parsed === null — JSON.parse("null") returns null, triggers continue
+	it("returns undefined when JSON parses to null (line 82 branch)", () => {
+		expect(parseCheckerJson("null")).toBeUndefined();
+	});
+
+	// Branch 92: typeof obj["reason"] === "string" is false — non-string reason defaults to ""
+	it("defaults reason to empty string when reason is not a string (line 92 branch)", () => {
+		const out = parseCheckerJson(
+			'{"verdict":"complete","confidence":"high","reason":42}',
+		);
+		expect(out?.verdict).toBe("complete");
+		expect(out?.reason).toBe(""); // non-string reason → empty string
+	});
 });
 
 // --- orchestrator coverage with DI ------------------------------------------
@@ -347,4 +361,39 @@ describe("createCompletionChecker.run", () => {
     const result = await checker.run({ objective: "x", transcript: "y", signal: ctrl.signal });
     // Signal was aborted after completeSimple, so checker returns undefined
     expect(result).toBeUndefined();
+  });
+
+  // Branch 146: splitModelSpec returns undefined for malformed spec → skip getModel, fall through to ctx.model
+  it("falls back to ctx.model when override spec is malformed (line 146 branch)", async () => {
+    const completeSimple = vi.fn(() => ({
+      content: [{ type: "text", text: '{"verdict":"complete","confidence":"high","reason":"overrode"}' }],
+    }));
+    const checker = createCompletionChecker({
+      completeSimple: completeSimple as never,
+      getModel: (() => undefined) as never,
+      ctx: fakeCtx({ model: { reasoning: false, id: "fallback" }, apiKey: "k" }),
+      config: { modelOverride: () => "noslash" }, // no slash → splitModelSpec returns undefined
+    });
+    const result = await checker.run({ objective: "x", transcript: "y", signal: new AbortController().signal });
+    expect(result?.verdict).toBe("complete");
+    expect(result?.reason).toBe("overrode");
+    // completeSimple was called with the fallback model (not getModel)
+    expect(completeSimple).toHaveBeenCalledOnce();
+  });
+
+  // Branch 150: getModel returns undefined for valid spec → fall through to ctx.model
+  it("falls back to ctx.model when getModel returns undefined for valid override spec (line 150 branch)", async () => {
+    const completeSimple = vi.fn(() => ({
+      content: [{ type: "text", text: '{"verdict":"complete","confidence":"high","reason":"fallback reason"}' }],
+    }));
+    const checker = createCompletionChecker({
+      completeSimple: completeSimple as never,
+      getModel: (() => undefined) as never, // valid spec but model not found
+      ctx: fakeCtx({ model: { reasoning: false, id: "ctx-model" }, apiKey: "k" }),
+      config: { modelOverride: () => "some-provider/some-model" }, // valid spec → splitModelSpec succeeds
+    });
+    const result = await checker.run({ objective: "x", transcript: "y", signal: new AbortController().signal });
+    expect(result?.verdict).toBe("complete");
+    expect(result?.reason).toBe("fallback reason");
+    expect(completeSimple).toHaveBeenCalledOnce();
   });
