@@ -172,6 +172,93 @@ describe("parseName", () => {
 });
 
 // ---------------------------------------------------------------------------
+// extractText — non-string, non-array content
+// ---------------------------------------------------------------------------
+
+describe("extractText edge cases", () => {
+	// extractText is not exported; test via buildTranscript which uses it.
+	it("returns empty string for null content", () => {
+		const entries: Entry[] = [
+			{ type: "message", message: { role: "user", content: null } },
+		];
+		expect(buildTranscript(entries)).toBe("");
+	});
+
+	it("returns empty string for non-string, non-array content (number)", () => {
+		const entries: Entry[] = [
+			{ type: "message", message: { role: "user", content: 42 as unknown as string } },
+		];
+		expect(buildTranscript(entries)).toBe("");
+	});
+
+	it("skips non-object array elements", () => {
+		const entries: Entry[] = [
+			{ type: "message", message: { role: "assistant", content: [null, "not-an-object", 42, { type: "text", text: "ok" }] as unknown as string } },
+		];
+		const result = buildTranscript(entries);
+		expect(result).toContain("Assistant: ok");
+	});
+});
+
+// ---------------------------------------------------------------------------
+// extractToolCalls — array with non-object elements
+// ---------------------------------------------------------------------------
+
+describe("extractToolCalls edge cases", () => {
+	it("handles array content with non-object elements (skips them)", () => {
+		const content: unknown[] = [null, "string", 42, true];
+		// extractToolCalls is not exported; test via buildTranscript
+		const entries: Entry[] = [
+			{ type: "message", message: { role: "assistant", content } },
+		];
+		const result = buildTranscript(entries);
+		expect(result).toBe(""); // no tool calls, no text
+	});
+});
+
+// ---------------------------------------------------------------------------
+// buildTranscript — non-message entries, unknown roles, empty toolResult text
+// ---------------------------------------------------------------------------
+
+describe("buildTranscript — non-message and unknown roles", () => {
+	it("skips entries that are not messages", () => {
+		const entries: Entry[] = [
+			{ type: "toolCall", message: { role: "user", content: "ignored" } },
+			{ type: "message", message: { role: "user", content: "visible" } },
+		];
+		const result = buildTranscript(entries);
+		expect(result).toContain("User: visible");
+		expect(result).not.toContain("ignored");
+	});
+
+	it("skips messages with unknown role", () => {
+		const entries: Entry[] = [
+			{ type: "message", message: { role: "system" as string, content: "system prompt" } },
+			{ type: "message", message: { role: "user", content: "user msg" } },
+		];
+		const result = buildTranscript(entries);
+		expect(result).not.toContain("system prompt");
+		expect(result).toContain("User: user msg");
+	});
+
+	it("skips toolResult when text content is empty", () => {
+		const entries: Entry[] = [
+			{ type: "message", message: { role: "toolResult", content: "", toolName: "read" } },
+		];
+		const result = buildTranscript(entries);
+		expect(result).toBe("");
+	});
+
+	it("skips toolResult when content is null", () => {
+		const entries: Entry[] = [
+			{ type: "message", message: { role: "toolResult", content: null as unknown as string, toolName: "read" } },
+		];
+		const result = buildTranscript(entries);
+		expect(result).toBe("");
+	});
+});
+
+// ---------------------------------------------------------------------------
 // generateSessionName
 // ---------------------------------------------------------------------------
 

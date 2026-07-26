@@ -110,6 +110,16 @@ describe("resolveWorkspaceId", () => {
 		const id = await resolveWorkspaceId(exec, { HERDR_PANE_ID: "p_6" });
 		expect(id).toBeNull();
 	});
+
+	it("returns null when workspace_id is empty string", async () => {
+		const exec = makeExec(() => Promise.resolve({
+			code: 0,
+			stdout: JSON.stringify({ result: { pane: { workspace_id: "" } } }),
+			stderr: "",
+		}));
+		const id = await resolveWorkspaceId(exec, { HERDR_PANE_ID: "p_6" });
+		expect(id).toBeNull();
+	});
 });
 
 // ---------------------------------------------------------------------------
