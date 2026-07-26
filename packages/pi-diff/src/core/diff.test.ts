@@ -253,6 +253,39 @@ describe("sepLabelUnified", () => {
 		expect(sepLabelUnified("context", makeMeta(), 5)).toBe(" 5 unmodified lines ");
 	});
 
+	it("context style returns empty when no context and no gap", () => {
+		expect(sepLabelUnified("context", makeMeta(), null)).toBe("");
+	});
+
+	it("context style returns empty when no context and gap is zero", () => {
+		expect(sepLabelUnified("context", makeMeta(), 0)).toBe("");
+	});
+
+	it("gap style returns empty when gap is zero", () => {
+		expect(sepLabelUnified("gap", makeMeta(), 0)).toBe("");
+	});
+
+	it("metadata style returns empty when no context and no gap", () => {
+		expect(sepLabelUnified("metadata", makeMeta(), null)).toBe("");
+	});
+
+	it("metadata style returns empty when no context and gap is zero", () => {
+		expect(sepLabelUnified("metadata", makeMeta(), 0)).toBe("");
+	});
+
+	it("auto style returns empty when gap is zero", () => {
+		expect(sepLabelUnified("auto", makeMeta(), 0)).toBe("");
+	});
+
+	it("uses custom content directly", () => {
+		expect(sepLabelUnified("auto", undefined, null, "edit 2")).toBe(" edit 2 ");
+	});
+
+	it("custom content overrides all other styles", () => {
+		expect(sepLabelUnified("simple", makeMeta("fn()"), 5, "custom")).toBe(" custom ");
+		expect(sepLabelUnified("gap", makeMeta(), null, "x")).toBe(" x ");
+	});
+
 	it("metadata style shows context without raw hunk header", () => {
 		expect(sepLabelUnified("metadata", makeMeta("fn()"), 5)).toBe(" fn() ");
 	});
@@ -279,6 +312,35 @@ describe("sepLabelSplit", () => {
 
 	it("context style shows context without decorative ellipses", () => {
 		expect(sepLabelSplit("context", makeMeta("fn()"), 5)).toBe(" fn() — 5 lines ");
+	});
+
+	it("context style shows context only when no gap", () => {
+		expect(sepLabelSplit("context", makeMeta("fn()"), null)).toBe(" fn() ");
+	});
+
+	it("context style returns empty when no context and no gap", () => {
+		expect(sepLabelSplit("context", makeMeta(), null)).toBe("");
+	});
+
+	it("context style returns empty when no context and gap is zero", () => {
+		expect(sepLabelSplit("context", makeMeta(), 0)).toBe("");
+	});
+
+	it("gap style returns empty when no gap", () => {
+		expect(sepLabelSplit("gap", makeMeta(), null)).toBe("");
+	});
+
+	it("gap style returns empty when gap is zero", () => {
+		expect(sepLabelSplit("gap", makeMeta(), 0)).toBe("");
+	});
+
+	it("uses custom content directly", () => {
+		expect(sepLabelSplit("auto", undefined, null, "edit 2")).toBe("edit 2");
+	});
+
+	it("custom content overrides all other styles", () => {
+		expect(sepLabelSplit("simple", makeMeta("fn()"), 5, "custom")).toBe("custom");
+		expect(sepLabelSplit("gap", makeMeta(), null, "x")).toBe("x");
 	});
 
 	it("simple style omits redundant separator", () => {
@@ -377,5 +439,71 @@ describe("computeHunkBlocks", () => {
 			for (const d of block.deletions) expect(d.type).toBe("del");
 			for (const a of block.additions) expect(a.type).toBe("add");
 		}
+	});
+});
+
+// ---------------------------------------------------------------------------
+// parsePatchFiles edge cases — covers lines 98, 116-117, 161
+// ---------------------------------------------------------------------------
+
+describe("parsePatchFiles edge cases", () => {
+	it("handles lines matching header regex inside hunk content", () => {
+		// The '--- not a header' line starts with '--- ' so it's skipped
+		// by the header regex inside the hunk. The patch has exactly 2 ctx
+		// lines (" a" and " c"), not 3.
+		const patch = [
+			"--- a/test.ts",
+			"+++ b/test.ts",
+			"@@ -1,3 +1,4 @@",
+			" a",
+			"--- not a header",
+			"+B",
+			" c",
+		].join("\n");
+		const result = parsePatchFiles(patch);
+		expect(result).toHaveLength(1);
+		const types = result[0]!.lines.map((l) => l.type);
+		// sep + ctx(" a") + add("+B") + ctx(" c") = 4 lines
+		expect(types).toEqual(["sep", "ctx", "add", "ctx"]);
+	});
+
+	it("handles diff --git as file-section delimiter (outer loop)", () => {
+		// diff --git inside a section triggers the outer loop split,
+		// creating a second section with no hunk header (ignored).
+		const patch = [
+			"--- a/test.ts",
+			"+++ b/test.ts",
+			"@@ -1,3 +1,4 @@",
+			" a",
+			"diff --git x y",
+			"+B",
+			" c",
+		].join("\n");
+		const result = parsePatchFiles(patch);
+		// Only the first section has a hunk header; second is ignored
+		expect(result).toHaveLength(1);
+		const types = result[0]!.lines.map((l) => l.type);
+		expect(types).toEqual(["sep", "ctx"]);
+	});
+
+	it("returns empty array for empty patch", () => {
+		const result = parsePatchFiles("");
+		expect(result).toHaveLength(0);
+	});
+
+	it("returns empty array for whitespace-only patch", () => {
+		const result = parsePatchFiles("   \n\n  ");
+		expect(result).toHaveLength(0);
+	});
+
+	it("handles patch with only header lines and no hunk content", () => {
+		const patch = [
+			"diff --git a/test.ts b/test.ts",
+			"--- a/test.ts",
+			"+++ b/test.ts",
+		].join("\n");
+		const result = parsePatchFiles(patch);
+		expect(result).toHaveLength(1);
+		expect(result[0]!.lines).toHaveLength(0);
 	});
 });

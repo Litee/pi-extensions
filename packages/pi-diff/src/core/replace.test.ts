@@ -1041,3 +1041,139 @@ describe("replace integration: edit-tool flow", () => {
 		expect(result.strategy).toBe("none");
 	});
 });
+
+// -----------------------------------------------------------------------
+// BlockAnchor multi-candidate path (lines 293-303: yield best-match)
+// -----------------------------------------------------------------------
+
+describe("BlockAnchor multi-candidate path", () => {
+	it("yields the best-match substring when multiple candidates exist", () => {
+		// Content has two blocks with same first/last anchors but different middles.
+		// oldStr matches the first block's middle but has 'const a = 2' instead
+		// of 'const a = 1', so it's NOT a substring of content.
+		// Simple fails → LineTrimmed fails → BlockAnchor finds 2 candidates,
+		// picks best (first one, higher similarity) and yields it.
+		const content = [
+			"function foo() {",
+			"  const a = 1;",
+			"  return a;",
+			"}",
+			"other code",
+			"function foo() {",
+			"  const x = 999;",
+			"  return 999;",
+			"}",
+		].join("\n");
+		const oldStr = [
+			"function foo() {",
+			"  const a = 2;",
+			"  return a;",
+			"}",
+		].join("\n");
+		const result = replace(content, oldStr, "REPLACED");
+		expect(result.changed).toBe(true);
+		expect(result.strategy).toBe("block-anchor");
+		expect(result.content).toContain("REPLACED");
+	});
+
+	it("rejects when best similarity is below threshold for multi-candidate", () => {
+		const content = [
+			"function foo() {",
+			"  const a = 1;",
+			"  return a;",
+			"}",
+			"other code",
+			"function foo() {",
+			"  const x = 999;",
+			"  return 999;",
+			"}",
+		].join("\n");
+		const oldStr = [
+			"function foo() {",
+			"  xxxxxxxxxxxxxxxxxxxxxx",
+			"  yyyyyyyyyyyyyyyyyyyyyy",
+			"}",
+		].join("\n");
+		const result = replace(content, oldStr, "REPLACED");
+		expect(result.changed).toBe(false);
+		expect(result.strategy).toBe("none");
+	});
+});
+
+// -----------------------------------------------------------------------
+// BlockAnchor single-candidate no middle lines (line 283: similarity = 1)
+// -----------------------------------------------------------------------
+
+describe("BlockAnchor single-candidate no middle lines", () => {
+	it("gives similarity 1 when anchors alone suffice (no middle lines)", () => {
+		const content = [
+			"function foo() {",
+			"  const a = 1;",
+			"  return a;",
+			"}",
+		].join("\n");
+		const oldStr = [
+			"function foo() {",
+			"",
+			"",
+			"}",
+		].join("\n");
+		const result = replace(content, oldStr, "REPLACED");
+		expect(result.changed).toBe(false);
+	});
+});
+
+// -----------------------------------------------------------------------
+// BlockAnchor multi-candidate startPos with startLine > 0 (line 296)
+// -----------------------------------------------------------------------
+
+describe("BlockAnchor startPos calculation", () => {
+	it("correctly calculates startPos when startLine > 0", () => {
+		const content = [
+			"line before",
+			"function foo() {",
+			"  const a = 1;",
+			"  return a;",
+			"}",
+			"line after",
+		].join("\n");
+		const oldStr = [
+			"function foo() {",
+			"  const a = 2;",
+			"  return a;",
+			"}",
+		].join("\n");
+		const result = replace(content, oldStr, "REPLACED");
+		expect(result.changed).toBe(true);
+		expect(result.strategy).toBe("block-anchor");
+		expect(result.content).toContain("line before");
+		expect(result.content).toContain("line after");
+		expect(result.content).not.toContain("const a = 1");
+		expect(result.content).toContain("REPLACED");
+	});
+});
+
+// -----------------------------------------------------------------------
+// replaceAll fuzzy path — exercise the continue at line 469
+// -----------------------------------------------------------------------
+
+describe("replaceAll fuzzy path", () => {
+	it("whitespace-normalized replaceAll works", () => {
+		const content = "a   b\nc   d";
+		const oldStr = "a b";
+		const result = replace(content, oldStr, "X", { replaceAll: true });
+		expect(result.changed).toBe(true);
+		expect(result.strategy).toBe("whitespace-normalized-replaceAll");
+		expect(result.content).toBe("X\nc   d");
+	});
+
+	it("multiple candidates with replaceAll replaces all", () => {
+		const content = "hello world\nhello world";
+		const oldStr = "hello world";
+		const result = replace(content, oldStr, "X", { replaceAll: true });
+		expect(result.changed).toBe(true);
+		expect(result.strategy).toBe("simple-replaceAll");
+		expect(result.content).toBe("X\nX");
+		expect(result.count).toBe(2);
+	});
+});

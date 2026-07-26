@@ -175,3 +175,32 @@ describe("config value extractors", () => {
 		expect(configShikiTheme(tmpDir)).toBeUndefined();
 	});
 });
+
+
+// ---------------------------------------------------------------------------
+// loadPiDiffConfig without cwd — covers the else branch of the ternary (line 82-87)
+// ---------------------------------------------------------------------------
+
+describe("loadPiDiffConfig without cwd", () => {
+	beforeEach(() => {
+		invalidatePiDiffConfig();
+	});
+
+	afterEach(() => {
+		invalidatePiDiffConfig();
+	});
+
+	it("returns {} when no config files exist in global paths", () => {
+		const config = loadPiDiffConfig();
+		expect(config).toEqual({});
+	});
+
+	it("uses global search paths when cwd is omitted", () => {
+		// When cwd is omitted, it searches process.cwd() then global paths.
+		// This covers the else branch of the searchPaths ternary (line 82-87).
+		const config = loadPiDiffConfig();
+		expect(config).toBeDefined();
+		expect(typeof config).toBe("object");
+	});
+});
+
