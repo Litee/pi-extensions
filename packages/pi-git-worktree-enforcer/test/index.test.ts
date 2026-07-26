@@ -181,6 +181,32 @@ describe("worktreeGuard — non-mutating tools", () => {
 });
 
 // ---------------------------------------------------------------------------
+// Non-string path is allowed through (guard clause)
+// ---------------------------------------------------------------------------
+
+describe("worktreeGuard — non-string path", () => {
+	it("allows edit when path is null", async () => {
+		const pi = makeFakePi();
+		createExtension(pi as never);
+		const result = await pi.handlers.get("tool_call")!(
+			{ type: "tool_call", toolName: "edit", toolCallId: "10", input: { path: null } },
+			makeFakeCtx(),
+		);
+		expect(result).toBeUndefined();
+	});
+
+	it("allows edit when path is a number", async () => {
+		const pi = makeFakePi();
+		createExtension(pi as never);
+		const result = await pi.handlers.get("tool_call")!(
+			{ type: "tool_call", toolName: "edit", toolCallId: "11", input: { path: 42 } },
+			makeFakeCtx(),
+		);
+		expect(result).toBeUndefined();
+	});
+});
+
+// ---------------------------------------------------------------------------
 // buildBlockReason
 // ---------------------------------------------------------------------------
 
