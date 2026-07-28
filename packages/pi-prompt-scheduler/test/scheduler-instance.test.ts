@@ -779,3 +779,37 @@ describe("CronScheduler.addJob — once job in the future", () => {
 		}
 	});
 });
+
+// ---------------------------------------------------------------------------
+// Interval callback fires and executes the job (scheduler.ts line 145)
+// ---------------------------------------------------------------------------
+
+describe("CronScheduler.addJob — interval callback fires", () => {
+	it("fires the setInterval callback, executing the job and updating storage", () => {
+		vi.useFakeTimers();
+		try {
+			const { scheduler, pi } = makeScheduler();
+			const intervalJob = mkJob({
+				id: "interval-fires",
+				type: "interval",
+				schedule: "5m",
+				intervalMs: 1000, // 1 second interval
+				runCount: 3,
+			});
+			storage.addJob(intervalJob);
+			scheduler.addJob(intervalJob);
+
+			// Advance timers to let the interval fire
+			vi.advanceTimersByTime(1500);
+
+			// The job should have been executed: marker sent, prompt delivered, storage updated
+			expect(pi.sendMessage).toHaveBeenCalled();
+			expect(pi.sendUserMessage).toHaveBeenCalledWith(intervalJob.prompt, { deliverAs: "followUp" });
+			const stored = storage.getJob("interval-fires")!;
+			expect(stored.lastStatus).toBe("success");
+			expect(stored.runCount).toBe(4);
+		} finally {
+			vi.useRealTimers();
+		}
+	});
+});

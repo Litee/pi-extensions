@@ -279,3 +279,47 @@ describe("CronScheduler.isLoadedFor", () => {
 		expect(CronScheduler.isLoadedFor(bound, undefined)).toBe(false);
 	});
 });
+
+// ---------------------------------------------------------------------------
+// validateCronExpression — non-Error throw path (scheduler.ts line 442)
+// ---------------------------------------------------------------------------
+
+describe("CronScheduler.validateCronExpression — non-Error throw", () => {
+	// We need to mock croner.Cron to throw a non-Error value.
+	// Since scheduler-pure.test.ts imports CronScheduler from scheduler.js,
+	// and scheduler.js imports Cron from croner, we mock croner at the module level.
+	vi.mock("croner", async (importOriginal) => {
+		const actual = await importOriginal<typeof import("croner")>();
+		return {
+			...actual,
+			Cron: class MockCron {
+				constructor(expr: string, _fn: () => void) {
+					if (expr === "zz zz zz zz zz zz") {
+						// Throw a non-Error value to exercise the fallback branch
+						throw "not an Error";
+					}
+					// For valid expressions, use the real Cron
+					new actual.Cron(expr, _fn);
+				}
+				stop() {}
+				nextRun() {
+					return null;
+				}
+			},
+		};
+	});
+
+	// Re-import after mock is set up
+	beforeEach(() => {
+		// Reset modules to pick up the mock
+		vi.resetModules();
+	});
+
+	it("falls back to generic message when Cron throws a non-Error value", async () => {
+		// Re-import CronScheduler to pick up the mocked croner
+		const { CronScheduler: CS } = await import("../src/scheduler.js");
+		const result = CS.validateCronExpression("zz zz zz zz zz zz");
+		expect(result.valid).toBe(false);
+		expect(result.error).toBe("Invalid cron expression");
+	});
+});

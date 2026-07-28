@@ -488,3 +488,40 @@ describe("JobsView — foreign job icon variants (line 246 branches)", () => {
 		expect(joined).toContain("✓");
 	});
 });
+
+// ---------------------------------------------------------------------------
+// Additional branch coverage: scope (s) with undefined mySessionId (lines 143-144)
+// ---------------------------------------------------------------------------
+
+describe("JobsView — scope toggle with undefined mySessionId (lines 143-144)", () => {
+	it("binds an unbound job when mySessionId is defined (line 143 true branch)", () => {
+		const unbound = mkJob({ id: "a", name: "unbound-job" });
+		delete (unbound as Partial<CronJob>).session;
+		storage.addJob(unbound);
+		const view = makeView("sess-A");
+
+		view.handleInput("s");
+		expect(storage.getJob("a")?.session).toBe("sess-A");
+	});
+
+	it("does NOT add a session field when mySessionId is undefined (line 143-144 false branch: session !== undefined is false)", () => {
+		const unbound = mkJob({ id: "a", name: "unbound-job" });
+		delete (unbound as Partial<CronJob>).session;
+		storage.addJob(unbound);
+		// Create JobsView directly with undefined session ID (bypassing makeView default)
+		const view = new JobsView(
+			storage,
+			scheduler as unknown as CronScheduler,
+			undefined, // explicit undefined — no default applied
+			theme,
+			requestRender,
+			done,
+			(s: string) => s,
+		);
+
+		view.handleInput("s");
+		// When mySessionId is undefined, the spread { ...(session !== undefined ? { session } : {}) }
+		// produces an empty object, so no session field is added.
+		expect(storage.getJob("a")?.session).toBeUndefined();
+	});
+});

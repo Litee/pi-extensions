@@ -904,7 +904,7 @@ describe("schedule_prompt tool / anti-recursion guard", () => {
 // ---------------------------------------------------------------------------
 
 describe("schedule_prompt tool — additional branch coverage", () => {
-	it("uses the default getDefaultScope when createCronTool is called without the third argument (line 71)", () => {
+	it("uses the default getDefaultScope when createCronTool is called without the third argument (line 71)", async () => {
 		// Call createCronTool without the 3rd argument to use the default (() => "session")
 		const tool = createCronTool(
 			() => storage,
@@ -914,6 +914,16 @@ describe("schedule_prompt tool — additional branch coverage", () => {
 		// The default scope function should return "session"
 		expect(tool).toBeDefined();
 		expect(tool.name).toBe("schedule_prompt");
+		// Actually exercise the default scope path: add a job and verify
+		// the session field is set (proving getDefaultScope() === "session").
+		const result = await exec(tool, {
+			action: "add",
+			schedule: "0 * * * * *",
+			prompt: "tick",
+			name: "default-scope",
+		});
+		const job = detailsOf(result).jobs[0]!;
+		expect(job.session).toBe("sess-A"); // default scope = "session" → session-bound
 	});
 
 	it("returns error content when storage.removeJob fails (line 203 throw caught by outer try/catch)", async () => {
@@ -974,5 +984,181 @@ describe("schedule_prompt tool — additional branch coverage", () => {
 			.join("\n");
 		expect(lines).toContain("Description:");
 		expect(lines).toContain("my custom description");
+	});
+});
+
+// ---------------------------------------------------------------------------
+// renderResult — expanded false branches (tool.ts line 439)
+// ---------------------------------------------------------------------------
+
+describe("renderResult — expanded false branches (line 439)", () => {
+	const fakeTheme = {
+		fg: (_cat: string, s: string) => s,
+		bold: (s: string) => s,
+	} as unknown as Theme;
+
+	it("renders add result collapsed when options is undefined (line 439 false branch: options is falsy)", () => {
+		const tool = makeTool();
+		const longPrompt = "x".repeat(300);
+		const result = {
+			content: [{ type: "text", text: "Created" }],
+			details: { action: "add" as const, jobs: [{ name: "j", id: "j1", prompt: longPrompt, type: "cron" as const, schedule: "0 * * * * *" }], jobId: "j1", jobName: "j" },
+		};
+		const rendered = (tool.renderResult as RenderResult)(result, undefined, fakeTheme);
+		const text = String((rendered).text);
+		expect(text).toContain("… ctrl+o to expand");
+	});
+
+	it("renders add result collapsed when options is a non-object (line 439 false branch: typeof options !== 'object')", () => {
+		const tool = makeTool();
+		const longPrompt = "x".repeat(300);
+		const result = {
+			content: [{ type: "text", text: "Created" }],
+			details: { action: "add" as const, jobs: [{ name: "j", id: "j1", prompt: longPrompt, type: "cron" as const, schedule: "0 * * * * *" }], jobId: "j1", jobName: "j" },
+		};
+		const rendered = (tool.renderResult as unknown as (r: unknown, o: number, t: unknown) => Text)(result, 42 as unknown as Record<string, unknown>, fakeTheme);
+		const text = String((rendered as Text).text);
+		expect(text).toContain("… ctrl+o to expand");
+	});
+
+	it("renders add result collapsed when options has no 'expanded' key (line 439 false branch: 'expanded' not in options)", () => {
+		const tool = makeTool();
+		const longPrompt = "x".repeat(300);
+		const result = {
+			content: [{ type: "text", text: "Created" }],
+			details: { action: "add" as const, jobs: [{ name: "j", id: "j1", prompt: longPrompt, type: "cron" as const, schedule: "0 * * * * *" }], jobId: "j1", jobName: "j" },
+		};
+		const rendered = (tool.renderResult as RenderWithOpts)(result, { foo: "bar" }, fakeTheme);
+		const text = String((rendered).text);
+		expect(text).toContain("… ctrl+o to expand");
+	});
+});
+
+// ---------------------------------------------------------------------------
+// renderResult — non-text content type (tool.ts line 420)
+// ---------------------------------------------------------------------------
+
+describe("renderResult — non-text content (line 420)", () => {
+	const fakeTheme = {
+		fg: (_cat: string, s: string) => s,
+		bold: (s: string) => s,
+	} as unknown as Theme;
+
+	it("renders non-text content as empty string (line 420 c.type !== 'text' branch)", () => {
+		const tool = makeTool();
+		const result = {
+			content: [{ type: "image", url: "http://example.com/img.png" }],
+			details: undefined,
+		};
+		const rendered = (tool.renderResult as RenderResult)(result, undefined, fakeTheme);
+		const text = String((rendered).text);
+		expect(text).toBe("");
+	});
+});
+
+// ---------------------------------------------------------------------------
+// renderResult — list action disabled job / no model (lines 464-474)
+// ---------------------------------------------------------------------------
+
+describe("renderResult — list action edge cases (lines 464-474)", () => {
+	const fakeTheme = {
+		fg: (cat: string, s: string) => s,
+		bold: (s: string) => s,
+	} as unknown as Theme;
+
+	it("renders disabled job with muted ✓ (line 464 false branch: !job.enabled)", () => {
+		const tool = makeTool();
+		const result = {
+			content: [{ type: "text", text: "list" }],
+			details: {
+				action: "list" as const,
+				jobs: [{ name: "disabled", id: "d1", type: "cron" as const, schedule: "0 * * * * *", prompt: "p", enabled: false, runCount: 0 }] as CronJob[],
+			},
+		};
+		const rendered = (tool.renderResult as RenderResult)(result, undefined, fakeTheme);
+		const text = String((rendered).text);
+		expect(text).toContain("disabled");
+	});
+
+	it("renders job without model — omits Model line (lines 469-471 false branch: !job.model)", () => {
+		const tool = makeTool();
+		const result = {
+			content: [{ type: "text", text: "list" }],
+			details: {
+				action: "list" as const,
+				jobs: [{ name: "no-model", id: "nm1", type: "cron" as const, schedule: "0 * * * * *", prompt: "p", enabled: true, runCount: 0, model: undefined }] as CronJob[],
+			},
+		};
+		const rendered = (tool.renderResult as RenderResult)(result, undefined, fakeTheme);
+		const text = String((rendered).text);
+		expect(text).toContain("no-model");
+		expect(text).not.toContain("Model:");
+	});
+
+	it("renders job without lastRun — omits Last run line (lines 474-476 false branch: !job.lastRun)", () => {
+		const tool = makeTool();
+		const result = {
+			content: [{ type: "text", text: "list" }],
+			details: {
+				action: "list" as const,
+				jobs: [{ name: "no-run", id: "nr1", type: "cron" as const, schedule: "0 * * * * *", prompt: "p", enabled: true, runCount: 0, lastRun: undefined }] as CronJob[],
+			},
+		};
+		const rendered = (tool.renderResult as RenderResult)(result, undefined, fakeTheme);
+		const text = String((rendered).text);
+		expect(text).toContain("no-run");
+		expect(text).not.toContain("Last run:");
+	});
+});
+
+// ---------------------------------------------------------------------------
+// execute — non-Error throw in catch block (tool.ts line 375)
+// ---------------------------------------------------------------------------
+
+describe("execute — non-Error catch (line 375)", () => {
+	it("uses String(error) fallback when a non-Error is thrown (line 375)", async () => {
+		const mockStorage = {
+			getAllJobs: vi.fn().mockReturnValue([]),
+			hasJobWithName: vi.fn().mockReturnValue(false),
+			addJob: vi.fn(),
+			getJob: vi.fn().mockReturnValue(null),
+			removeJob: vi.fn().mockReturnValue(false),
+			updateJob: vi.fn(),
+		} as unknown as CronStorage;
+		const tool = createCronTool(() => mockStorage, () => fakeScheduler as unknown as CronScheduler);
+		// Make the storage throw a non-Error value
+		mockStorage.getAllJobs.mockImplementation(() => { throw "not an Error"; });
+		const result = await exec(tool, { action: "list" });
+		const text = (result as { content: { type: string; text: string }[] }).content
+			.filter((c) => c.type === "text")
+			.map((c) => c.text)
+			.join("\n");
+		expect(text).toContain("not an Error");
+	});
+});
+
+// ---------------------------------------------------------------------------
+// renderResult — notify=false in list (tool.ts line 470)
+// ---------------------------------------------------------------------------
+
+describe("renderResult — list with notify=false (line 470)", () => {
+	const fakeTheme = {
+		fg: (cat: string, s: string) => s,
+		bold: (s: string) => s,
+	} as unknown as Theme;
+
+	it("renders subagent tag as '(subagent)' when notify is false (line 470 false branch)", () => {
+		const tool = makeTool();
+		const result = {
+			content: [{ type: "text", text: "list" }],
+			details: {
+				action: "list" as const,
+				jobs: [{ name: "notify-false", id: "nf1", type: "cron" as const, schedule: "0 * * * * *", prompt: "p", enabled: true, runCount: 0, model: "gpt-4", notify: false }] as CronJob[],
+			},
+		};
+		const rendered = (tool.renderResult as RenderResult)(result, undefined, fakeTheme);
+		const text = String((rendered).text);
+		expect(text).toContain("(subagent)");
+		expect(text).not.toContain("notifies parent");
 	});
 });
