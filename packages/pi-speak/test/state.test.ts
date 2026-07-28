@@ -120,4 +120,25 @@ describe("pickSavedState", () => {
 		expect(result?.sessionSpeed).toBeUndefined();
 		expect(result?.sessionSteps).toBeUndefined();
 	});
+
+	// L25: raw is null/undefined — the falsy branch of `raw && typeof raw === "object"`
+	it("returns undefined when data is null", () => {
+		const entries = [makeCustomEntry(SPEAK_STATE_CUSTOM_TYPE, null)];
+		expect(pickSavedState(entries)).toBeUndefined();
+	});
+
+	it("returns undefined when data is undefined", () => {
+		const entries = [makeCustomEntry(SPEAK_STATE_CUSTOM_TYPE, undefined)];
+		expect(pickSavedState(entries)).toBeUndefined();
+	});
+
+	it("returns undefined when data is a string (not object)", () => {
+		const entries = [makeCustomEntry(SPEAK_STATE_CUSTOM_TYPE, "just a string")];
+		expect(pickSavedState(entries)).toBeUndefined();
+	});
+
+	it("returns undefined when data is an array (not plain object)", () => {
+		const entries = [makeCustomEntry(SPEAK_STATE_CUSTOM_TYPE, [1, 2, 3])];
+		expect(pickSavedState(entries)).toBeUndefined();
+	});
 });

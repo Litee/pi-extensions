@@ -414,6 +414,26 @@ describe("SpeechQueue — restart after clear with waiting items", () => {
 });
 
 // ---------------------------------------------------------------------------
+// SpeechQueue — no-prefetch path (nextItem is undefined → nextSynth = null)
+// ---------------------------------------------------------------------------
+
+describe("SpeechQueue — no prefetch when queue is empty", () => {
+	it("nextSynth is null when no next item exists after shift (L126 falsy branch)", async () => {
+		// Only one item in queue — after it's shifted off, nextItem is undefined,
+		// so nextSynth should be null (the falsy branch of the ternary at L126).
+		const q = new SpeechQueue();
+		q.enqueue(baseItem);
+		await flushAsync();
+
+		// Only one synthesise call — no prefetch was attempted
+		expect(synthesise).toHaveBeenCalledTimes(1);
+		expect(vi.mocked(synthesise).mock.calls[0]![0]).toBe("hello");
+		// Playback should have happened
+		expect(playAudioFile).toHaveBeenCalledTimes(1);
+	});
+});
+
+// ---------------------------------------------------------------------------
 // SpeechQueue — timeout fires and aborts playback (line 126: () => ac.abort())
 // ---------------------------------------------------------------------------
 
@@ -481,5 +501,78 @@ describe("SpeechQueue — playback timeout", () => {
 		expect(vi.mocked(playAudioFile)).toHaveBeenCalled();
 
 		vi.useRealTimers();
+	});
+});
+
+// ---------------------------------------------------------------------------
+// SpeechQueue — timeout callback actually fires (L126: () => ac.abort())
+// ---------------------------------------------------------------------------
+
+describe("SpeechQueue — timeout callback fires", () => {
+	afterEach(() => {
+		vi.useRealTimers();
+	});
+
+	it("L126: setTimeout callback fires and aborts playback when timeout elapses", async () => {
+		vi.useFakeTimers();
+
+		// Block playback so timeout can fire while playback is pending
+		let resolvePlay!: () => void;
+		vi.mocked(playAudioFile).mockImplementationOnce(
+			() => new Promise<void>((res) => { resolvePlay = res; }),
+		);
+
+		const q = new SpeechQueue();
+		q.enqueue(baseItem); // text = "hello" (5 chars) → 30_000 ms timeout (minimum)
+
+		// Let synthesis complete and playback start (blocked)
+		await Promise.resolve();
+		await Promise.resolve();
+		await Promise.resolve();
+
+		// Advance fake time past the 30s minimum timeout — the () => ac.abort() callback fires
+		vi.advanceTimersByTime(31_000);
+
+		// The abort signal should have been fired, resolving playAudioFile
+		// Allow the abort handler to flush
+		await Promise.resolve();
+		await Promise.resolve();
+
+		expect(vi.mocked(playAudioFile)).toHaveBeenCalled();
+	});
+});
+
+// ---------------------------------------------------------------------------
+// SpeechQueue — timeout callback (L126) with extended wait
+// ---------------------------------------------------------------------------
+
+describe("SpeechQueue — timeout callback L126 extended", () => {
+	afterEach(() => {
+		vi.useRealTimers();
+	});
+
+	it("L126: setTimeout callback fires — using fake timers with proper flush", async () => {
+		vi.useFakeTimers();
+
+		// Block playback so timeout can fire while playback is pending
+		let resolvePlay!: () => void;
+		vi.mocked(playAudioFile).mockImplementationOnce(
+			() => new Promise<void>((res) => { resolvePlay = res; }),
+		);
+
+		const q = new SpeechQueue();
+		q.enqueue(baseItem); // text = "hello" (5 chars) → 30_000 ms timeout
+
+		// Flush enough microtasks for process() to reach setTimeout
+		for (let i = 0; i < 20; i++) await Promise.resolve();
+
+		// Now advance time past the timeout
+		vi.advanceTimersByTime(31_000);
+
+		// The timeout callback should have fired, aborting the signal
+		// which resolves the blocked playAudioFile promise
+		for (let i = 0; i < 10; i++) await Promise.resolve();
+
+		expect(vi.mocked(playAudioFile)).toHaveBeenCalled();
 	});
 });

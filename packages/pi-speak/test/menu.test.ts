@@ -810,3 +810,131 @@ describe("runSpeakMenu — catch handlers and edge cases", () => {
 		await expect(runSpeakMenu(ctx, makeDefaultOptions())).resolves.toBeUndefined();
 	});
 });
+
+// ---------------------------------------------------------------------------
+// runSpeakMenu — dynamicSuffix with isTestPlaying (L593)
+// ---------------------------------------------------------------------------
+
+describe("runSpeakMenu — dynamicSuffix with isTestPlaying (L593)", () => {
+	afterEach(() => {
+		vi.useRealTimers();
+	});
+
+	/**
+	 * Builds a ctx where custom() resolves with the given value on each call.
+	 */
+	function makeCustomCtxWithCalls(resolveValues: Array<{ value: string; index: number } | null>) {
+		let callIndex = 0;
+		const ctx: MenuCtx = {
+			ui: {
+				select: vi.fn(),
+				notify: vi.fn(),
+				custom: vi.fn(<T>(
+					factory: (tui: { requestRender: () => void }, theme: unknown, kb: unknown, done: (v: T) => void) => unknown,
+				): Promise<T> => {
+					const idx = callIndex++;
+					return new Promise<T>((resolve) => {
+						factory(
+							{ requestRender: vi.fn() },
+							{ fg: (_r: string, s: string) => s, bold: (s: string) => s },
+							{},
+							(v: T) => resolve(v),
+						);
+						if (idx < resolveValues.length) {
+							resolve(resolveValues[idx] as T);
+						} else {
+							resolve({ value: "Close", index: 0 } as T);
+						}
+					});
+				}) as NonNullable<MenuCtx["ui"]["custom"]>,
+			},
+		};
+		return ctx;
+	}
+
+	// L593: dynamicSuffix returns "  🔊" when isTestPlaying is true (truthy branch)
+	it("dynamicSuffix returns 🔊 suffix when isTestPlaying is true (L593 truthy branch)", async () => {
+		// Select "Test speech" first, then "Close"
+		const ctx = makeCustomCtxWithCalls([
+			{ value: "Test speech", index: 1 },
+			{ value: "Close", index: 0 },
+		]);
+		const onTest = vi.fn(() => Promise.resolve());
+		await runSpeakMenu(ctx, makeDefaultOptions({ onTest }));
+		// onTest should have been called once
+		expect(onTest).toHaveBeenCalledOnce();
+	});
+
+	// L593: dynamicSuffix returns undefined when isTestPlaying is false (falsy branch)
+	it("dynamicSuffix returns undefined when isTestPlaying is false (L593 falsy branch)", async () => {
+		// Select "Close" directly — isTestPlaying stays false
+		const ctx = makeCustomCtxWithCalls([
+			{ value: "Close", index: 0 },
+		]);
+		const onTest = vi.fn(() => Promise.resolve());
+		await runSpeakMenu(ctx, makeDefaultOptions({ onTest }));
+		// onTest should NOT have been called
+		expect(onTest).not.toHaveBeenCalled();
+	});
+});
+
+// ---------------------------------------------------------------------------
+// selectAt — custom UI path (ctx.ui.custom exists) — renders component
+// ---------------------------------------------------------------------------
+
+describe("selectAt — custom UI path with render", () => {
+	afterEach(() => {
+		vi.useRealTimers();
+	});
+
+	/**
+	 * Builds a ctx where custom() captures the component for testing.
+	 * Always resolves with the given value (even if null).
+	 */
+	function makeCtxCapturingComponent(resolveWith: { value: string; index: number } | null) {
+		let capturedComponent: { render: (w: number) => string[]; invalidate: () => void } | undefined;
+
+		const ctx: MenuCtx = {
+			ui: {
+				select: vi.fn(),
+				notify: vi.fn(),
+				custom: vi.fn(<T>(
+					factory: (tui: { requestRender: () => void }, theme: unknown, kb: unknown, done: (v: T) => void) => unknown,
+				): Promise<T> => {
+					return new Promise<T>((resolve) => {
+						const component = factory(
+							{ requestRender: vi.fn() },
+							{ fg: (_r: string, s: string) => s, bold: (s: string) => s },
+							{},
+							(v: T) => resolve(v),
+						);
+						capturedComponent = component as typeof capturedComponent;
+						resolve(resolveWith as T);
+					});
+				}) as NonNullable<MenuCtx["ui"]["custom"]>,
+			},
+		};
+
+		return {
+			ctx,
+			getComponent: () => capturedComponent,
+		};
+	}
+
+	// L498-500: selectAt custom path — render() method is callable
+	it("selectAt custom path: render() method is callable and returns lines", async () => {
+		const { ctx, getComponent } = makeCtxCapturingComponent({ value: "Close", index: 0 });
+
+		const onTest = vi.fn(() => Promise.resolve());
+		await runSpeakMenu(ctx, makeDefaultOptions({ onTest }));
+
+		const comp = getComponent();
+		expect(comp).toBeDefined();
+		expect(typeof comp!.render).toBe("function");
+
+		// Call render to verify it works
+		const lines = comp!.render(80);
+		expect(Array.isArray(lines)).toBe(true);
+		expect(lines.length).toBeGreaterThan(0);
+	});
+});

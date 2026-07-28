@@ -180,6 +180,35 @@ describe("playAudioFile — with AbortSignal (opts branch)", () => {
 });
 
 // ---------------------------------------------------------------------------
+// playAudioFile — no-signal branch (opts = {})
+// ---------------------------------------------------------------------------
+
+describe("playAudioFile — no signal (opts = {})", () => {
+	beforeEach(() => {
+		vi.resetAllMocks();
+		mockPlatform.mockReturnValue("darwin");
+	});
+
+	it("passes empty opts when no AbortSignal is provided", async () => {
+		let capturedOpts: unknown = undefined;
+		mockExecFile.mockImplementation((_cmd, _args, optsOrCb?: unknown, maybeCb?: unknown) => {
+			if (typeof optsOrCb === "object" && optsOrCb !== null) {
+				capturedOpts = optsOrCb;
+			}
+			const cb = (typeof optsOrCb === "function" ? optsOrCb : maybeCb) as ExecFileCallback | undefined;
+			cb?.(null, "", "");
+			return {} as ReturnType<typeof execFile>;
+		});
+
+		await playAudioFile("/tmp/test.wav");
+
+		// opts should be an empty object (no signal property)
+		expect(capturedOpts).toEqual({});
+		expect(capturedOpts).not.toHaveProperty("signal");
+	});
+});
+
+// ---------------------------------------------------------------------------
 // isInPath — platform-specific command branch (L67: platform() === 'win32')
 // ---------------------------------------------------------------------------
 
