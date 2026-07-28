@@ -167,4 +167,12 @@ describe("renameWorkspace", () => {
 		expect(result.ok).toBe(false);
 		if (!result.ok) expect(result.reason).toContain("2");
 	});
+
+	it("uses String(err) when exec throws a non-Error value (branch: err instanceof Error === false)", async () => {
+		// eslint-disable-next-line @typescript-eslint/no-explicit-any
+		const exec = makeExec(() => { throw "string error" as any; });
+		const result = await renameWorkspace(exec, "w652f1910e89a56", "my session");
+		expect(result.ok).toBe(false);
+		if (!result.ok) expect(result.reason).toBe("string error");
+	});
 });

@@ -12,6 +12,67 @@ describe("buildTranscript", () => {
 		expect(buildTranscript([])).toBe("");
 	});
 
+	it("skips entries without a message object", () => {
+		const entries: Entry[] = [
+			{ type: "other" },
+			{ type: "message" },
+		];
+		expect(buildTranscript(entries)).toBe("");
+	});
+
+	it("skips entries with a message but no role", () => {
+		const entries: Entry[] = [
+			{ type: "message", message: { content: "hello" } },
+		];
+		expect(buildTranscript(entries)).toBe("");
+	});
+
+	it("handles content that is a plain string for user role", () => {
+		const entries: Entry[] = [
+			{ type: "message", message: { role: "user", content: "plain string content" } },
+		];
+		const result = buildTranscript(entries);
+		expect(result).toBe("User: plain string content");
+	});
+
+	it("handles content that is null for user role", () => {
+		const entries: Entry[] = [
+			{ type: "message", message: { role: "user", content: null } },
+		];
+		expect(buildTranscript(entries)).toBe("");
+	});
+
+	it("handles content that is a non-array object for user role", () => {
+		const entries: Entry[] = [
+			{ type: "message", message: { role: "user", content: { foo: "bar" } } },
+		];
+		expect(buildTranscript(entries)).toBe("");
+	});
+
+	it("skips falsy content blocks in array", () => {
+		const entries: Entry[] = [
+			{ type: "message", message: { role: "assistant", content: [null, undefined, { type: "text", text: "ok" }] } },
+		];
+		const result = buildTranscript(entries);
+		expect(result).toBe("Assistant: ok");
+	});
+
+	it("skips content blocks with non-text type", () => {
+		const entries: Entry[] = [
+			{ type: "message", message: { role: "assistant", content: [{ type: "image", url: "http://x" }] } },
+		];
+		const result = buildTranscript(entries);
+		expect(result).toBe("");
+	});
+
+	it("skips content blocks where text is not a string", () => {
+		const entries: Entry[] = [
+			{ type: "message", message: { role: "assistant", content: [{ type: "text", text: 123 as unknown as string }] } },
+		];
+		const result = buildTranscript(entries);
+		expect(result).toBe("");
+	});
+
 	it("includes user and assistant text", () => {
 		const entries: Entry[] = [
 			{ type: "message", message: { role: "user", content: "hello" } },
@@ -54,6 +115,116 @@ describe("buildTranscript", () => {
 		];
 		const result = buildTranscript(entries);
 		expect(result).toContain("Result(read): file contents here");
+	});
+
+	it("uses 'tool' as fallback when toolName is null/undefined (toolName ?? 'tool' null branch)", () => {
+		const entries: Entry[] = [
+			{
+				type: "message",
+				message: {
+					role: "toolResult",
+					content: "some output",
+					toolName: undefined,
+				},
+			},
+		];
+		const result = buildTranscript(entries);
+		expect(result).toContain("Result(tool): some output");
+	});
+
+	it("skips toolResult with null content", () => {
+		const entries: Entry[] = [
+			{
+				type: "message",
+				message: {
+					role: "toolResult",
+					content: null,
+					toolName: "read",
+				},
+			},
+		];
+		expect(buildTranscript(entries)).toBe("");
+	});
+
+	it("skips toolResult with empty string content", () => {
+		const entries: Entry[] = [
+			{
+				type: "message",
+				message: {
+					role: "toolResult",
+					content: "",
+					toolName: "read",
+				},
+			},
+		];
+		expect(buildTranscript(entries)).toBe("");
+	});
+
+	it("includes tool calls from assistant messages", () => {
+		const entries: Entry[] = [
+			{
+				type: "message",
+				message: {
+					role: "assistant",
+					content: [
+						{ type: "text", text: "Let me check" },
+						{ type: "toolCall", name: "read", arguments: { path: "/foo/bar.txt" } },
+					],
+				},
+			},
+		];
+		const result = buildTranscript(entries);
+		expect(result).toContain("Assistant: Let me check");
+		expect(result).toContain("- read({\"path\":\"/foo/bar.txt\"})");
+	});
+
+	it("skips toolCall blocks without a name (typeof b.name !== string branch)", () => {
+		const entries: Entry[] = [
+			{
+				type: "message",
+				message: {
+					role: "assistant",
+					content: [
+						{ type: "toolCall" as unknown as string },
+					],
+				},
+			},
+		];
+		const result = buildTranscript(entries);
+		expect(result).toBe("");
+	});
+
+	it("uses empty object when toolCall arguments is null (arguments ?? {} null branch)", () => {
+		const entries: Entry[] = [
+			{
+				type: "message",
+				message: {
+					role: "assistant",
+					content: [
+						{ type: "toolCall", name: "read" as string, arguments: null },
+					],
+				},
+			},
+		];
+		const result = buildTranscript(entries);
+		expect(result).toContain("- read({})");
+	});
+
+	it("skips non-toolCall blocks in assistant content (type !== toolCall branch)", () => {
+		const entries: Entry[] = [
+			{
+				type: "message",
+				message: {
+					role: "assistant",
+					content: [
+						{ type: "text", text: "hello" },
+						{ type: "image" as unknown as string, url: "http://x" },
+					],
+				},
+			},
+		];
+		const result = buildTranscript(entries);
+		expect(result).toBe("Assistant: hello");
 	});
 
 	it("truncates long text to 5K", () => {
@@ -434,5 +605,88 @@ describe("generateSessionName", () => {
 		// buildNamePrompt adds ~40 chars wrapper, transcript is sliced to 12000
 		// eslint-disable-next-line @typescript-eslint/no-unsafe-member-access
 		expect(promptText.length).toBeLessThanOrEqual(12100);
+	});
+
+	it("passes auth.headers to completeSimple when present (auth.headers true branch)", async () => {
+		const customHeaders = { "X-Custom": "header" };
+		const deps = makeDeps({
+			model: stableModel,
+			modelRegistry: {
+				getApiKeyAndHeaders: vi.fn().mockResolvedValue({
+					ok: true,
+					apiKey: "sk-xyz",
+					headers: customHeaders,
+				}),
+			},
+			completeSimple: mockCompleteSimple,
+		});
+		mockCompleteSimple.mockResolvedValue({ content: [{ type: "text", text: "name" }] });
+		await generateSessionName("transcript", deps, new AbortController().signal);
+
+		const callOpts = mockCompleteSimple.mock.calls[0]![2] as Record<string, unknown>;
+		expect(callOpts.headers).toEqual(customHeaders);
+	});
+});
+
+// ---------------------------------------------------------------------------
+// parseName
+// ---------------------------------------------------------------------------
+
+describe("parseName", () => {
+	it("returns empty string for falsy input (!raw true branch)", () => {
+		expect(parseName("")).toBe("");
+		expect(parseName(null as unknown as string)).toBe("");
+		expect(parseName(undefined as unknown as string)).toBe("");
+	});
+
+	it("returns empty string when first line is empty (!line true branch)", () => {
+		expect(parseName("\nfix auth bug")).toBe("");
+		expect(parseName("\r\nfix auth bug")).toBe("");
+	});
+
+	it("takes only the first line", () => {
+		expect(parseName("fix auth bug\nmore text")).toBe("fix auth bug");
+	});
+
+	it("strips surrounding double quotes", () => {
+		expect(parseName('"fix auth bug"')).toBe("fix auth bug");
+	});
+
+	it("strips surrounding single quotes", () => {
+		expect(parseName("'fix auth bug'")).toBe("fix auth bug");
+	});
+
+	it("strips surrounding quotes then trims", () => {
+		expect(parseName('  "fix auth bug"  ')).toBe("fix auth bug");
+	});
+
+	it("strips punctuation from the middle", () => {
+		expect(parseName("fix-auth-bug")).toBe("fix auth bug");
+		expect(parseName("fix.auth.bug")).toBe("fix auth bug");
+		expect(parseName("fix!auth!bug")).toBe("fix auth bug");
+	});
+
+	it("keeps digits in words", () => {
+		expect(parseName("fix bug 123")).toBe("fix bug 123");
+	});
+
+	it("truncates to maximum 5 words", () => {
+		expect(parseName("one two three four five six seven")).toBe("one two three four five");
+	});
+
+	it("collapses multiple spaces", () => {
+		expect(parseName("one   two    three")).toBe("one two three");
+	});
+
+	it("handles mixed case input", () => {
+		expect(parseName("Fix Auth Bug")).toBe("fix auth bug");
+	});
+
+	it("handles a single word input", () => {
+		expect(parseName("debug")).toBe("debug");
+	});
+
+	it("handles input with only special characters", () => {
+		expect(parseName("!!!")).toBe("");
 	});
 });

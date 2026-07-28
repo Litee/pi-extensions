@@ -1037,4 +1037,63 @@ describe("pi-herdr-integration — session_shutdown with no active timer", () =>
 
 		expect(true).toBe(true);
 	});
+
+
+// ---------------------------------------------------------------------------
+// tryNotify catch branch (line ~153 — stale ctx)
+// ---------------------------------------------------------------------------
+
+describe("pi-herdr-integration — tryNotify catch branch", () => {
+	it("tryNotify returns false when ctx.ui.notify throws during auto-generate", async () => {
+		const pi = makeFakePi();
+		const ctx = makeFakeCtx({
+			model: { name: "test-model" },
+			getBranch: () => [
+				{ type: "message", message: { role: "user", content: "hello" } },
+			],
+		});
+		const notifyFn = ctx.ui.notify as ReturnType<typeof vi.fn>;
+		// First call (line 190: "Generating session name in background...") should succeed
+		// Subsequent calls (tryNotify) should throw to simulate a stale context
+		notifyFn.mockImplementationOnce(() => {});
+		notifyFn.mockImplementation(() => { throw new Error("stale ctx"); });
+		createExtensionInHerdr(pi);
+
+		const handler = pi.commands.get("name-session-and-space")!;
+		await handler("", ctx);
+		// Flush the fire-and-forget IIFE
+		await new Promise((r) => setTimeout(r, 0));
+
+		// tryNotify should have returned false (caught the error), so the
+		// success path (setSessionName + rename) was never reached
+		expect(pi.setSessionName).not.toHaveBeenCalled();
+		expect(pi.exec).not.toHaveBeenCalled();
+	});
+});
+
+// ---------------------------------------------------------------------------
+// tryRenameWithName guards
+// ---------------------------------------------------------------------------
+
+describe("pi-herdr-integration — tryRenameWithName guards", () => {
+	it("bails out immediately when name is empty string", async () => {
+		const pi = makeFakePi({ sessionName: "" });
+		const ctx = makeFakeCtx();
+		createExtensionInHerdr(pi);
+
+		await fireAgentEnd(pi, ctx, { HERDR_ENV: "1", HERDR_PANE_ID: "p_6" });
+
+		expect(pi.exec).not.toHaveBeenCalled();
+	});
+
+	it("bails out when name matches subagent pattern (SUBAGENT_NAME_RE true branch in tryRenameWithName)", async () => {
+		const pi = makeFakePi({ sessionName: "worker#abcdef" });
+		const ctx = makeFakeCtx();
+		createExtensionInHerdr(pi);
+
+		await fireAgentEnd(pi, ctx, { HERDR_ENV: "1", HERDR_PANE_ID: "p_6" });
+
+		expect(pi.exec).not.toHaveBeenCalled();
+	});
+});
 });
