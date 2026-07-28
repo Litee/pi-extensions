@@ -90,4 +90,20 @@ describe("feedFocusBytes", () => {
 		// Conservative upper bound: well under the 64-byte safety cap.
 		expect(rest.length).toBeLessThanOrEqual(4);
 	});
+
+	// ---------------------------------------------------------------------------
+	// Branch coverage: rest.length <= BUF_SAFETY_CAP (the false branch of the
+	// safety-net on line 45). The "bounds" test above exercises the true branch
+	// (rest is sliced), but the false branch — where rest is kept as-is — needs
+	// a case where rest is non-empty yet short enough to skip the slice.
+	// ---------------------------------------------------------------------------
+
+	it("keeps `rest` as-is when it is short (exercise the false branch of the safety net)", () => {
+		// A partial ESC prefix at the end of a chunk: rest = "\x1b[" (2 bytes).
+		const { rest } = feedFocusBytes("", FOCUS_OUT + "\x1b[");
+		expect(rest).toBe("\x1b[");
+		// rest is 2 bytes, well under BUF_SAFETY_CAP (64) — the false branch
+		// of `if (rest.length > BUF_SAFETY_CAP)` must have fired.
+		expect(rest.length).toBeLessThan(64);
+	});
 });

@@ -967,4 +967,155 @@ describe("recapOrchestrator", () => {
 		// onError should NOT be called — the stale-ctx error is swallowed.
 		expect(onError).not.toHaveBeenCalled();
 	});
+
+	// ---- line 120: reasoning ternary false branch (model without reasoning) ----
+
+	it("runModelCall omits the reasoning field when the model has no reasoning property", async () => {
+		const deps = makeDeps();
+		// Remove the reasoning property entirely (not false, not true).
+		const model = { provider: "anthropic", id: "claude-sonnet-4-6" };
+		(deps.ctx as unknown as { model: unknown }).model = model;
+		const orch = createRecapOrchestrator(deps);
+		await orch.runGenerateAndShow({ reason: "manual" });
+
+		expect(deps.completeSimple).toHaveBeenCalledTimes(1);
+		const opts = deps.completeSimple.mock.calls[0]![2] as Record<string, unknown>;
+		expect("reasoning" in opts).toBe(false);
+	});
+
+	// ---- line 233: ctx.hasUI false in runGenerateAndShow ----
+
+	it("runGenerateAndShow does not paint the widget or status when ctx.hasUI is false", async () => {
+		const deps = makeDeps({ hasUI: false });
+		const orch = createRecapOrchestrator(deps);
+		await orch.runGenerateAndShow({ reason: "manual" });
+
+		expect(deps.completeSimple).toHaveBeenCalledTimes(1);
+		// Placeholder was set before the model call, but the final recap is not painted.
+		const finalPaints = deps.setWidget.mock.calls.filter(
+			(a) => a[1] !== undefined && !(a[1] as string).includes("generating…"),
+		);
+		expect(finalPaints).toHaveLength(0);
+	});
+
+	// ---- line 266: showStatus false (resume/focus reason) ----
+
+	it("does not set the status line for 'resume' and 'focus' reasons (showStatus=false branch)", async () => {
+		const deps = makeDeps();
+		const orch = createRecapOrchestrator(deps);
+
+		await orch.runGenerateAndShow({ reason: "resume" });
+		expect(deps.setStatus).not.toHaveBeenCalled();
+
+		// Reset for focus test.
+		deps.setStatus.mockClear();
+		await orch.runGenerateAndShow({ reason: "focus" });
+		expect(deps.setStatus).not.toHaveBeenCalled();
+	});
+
+	// ---- line 299: activeController truthy in scheduleRecap ----
+
+	it("scheduleRecap does not arm a timer when an active request is in flight (activeController truthy)", () => {
+		vi.useFakeTimers();
+		const deps = makeDeps();
+		const orch = createRecapOrchestrator(deps);
+
+		// Kick off a manual recap to set activeController.
+		orch.runGenerateAndShow({ reason: "manual" }).catch(() => {});
+		// Give the async path a chance to start.
+		vi.advanceTimersByTime(0);
+
+		// scheduleRecap while activeController is truthy should not arm a timer.
+		orch.scheduleRecap();
+		vi.advanceTimersByTime(10_000);
+		// Only the manual recap should have called completeSimple (if the branch
+		// had activity). scheduleRecap must not trigger another.
+		const callCount = deps.completeSimple.mock.calls.length;
+		expect(callCount).toBeLessThanOrEqual(1);
+	});
+
+	// ---- line 336: entries === undefined in onFocusOut (safeGetBranch returns undefined) ----
+
+	it("onFocusOut returns early when safeGetBranch returns undefined (stale ctx)", async () => {
+		const deps = makeDeps();
+		const STALE = new Error(
+			"This extension ctx is stale after session replacement or reload.",
+		);
+		// Make getBranch throw a stale-ctx error.
+		deps.getBranch.mockImplementation(() => {
+			throw STALE;
+		});
+		const orch = createRecapOrchestrator(deps);
+
+		// onFocusOut should silently return — the stale-ctx guard in safeGetBranch
+		// returns undefined, and the early return on line 336 fires.
+		expect(() => orch.onFocusOut()).not.toThrow();
+		await Promise.resolve();
+		expect(deps.completeSimple).not.toHaveBeenCalled();
+	});
+
+	// ---- line 344: focusedOutAt === undefined in maybeGenerateDeferredFocusRecap ----
+
+	it("maybeGenerateDeferredFocusRecap returns early when focusedOutAt is undefined (no focus-out recorded)", async () => {
+		const deps = makeDeps();
+		const orch = createRecapOrchestrator(deps);
+
+		// Set focusDraftAfterAgent without ever setting focusedOutAt.
+		// This happens when onFocusIn clears focusedOutAt (short duration) but
+		// the agent is still active, then onAgentEnd fires.
+		orch.onAgentStart();
+		orch.onFocusOut(); // sets focusedOutAt
+		orch.onFocusIn(); // clears focusedOutAt (duration < focusMinMs)
+		// Now focusedOutAt is undefined but focusDraftAfterAgent is still true.
+		orch.onAgentEnd();
+		await new Promise((r) => setTimeout(r, 10));
+
+		// No completeSimple call — the early return on line 344 fired.
+		expect(deps.completeSimple).not.toHaveBeenCalled();
+	});
+
+	// ---- line 348: isStaleCtxError(err) in maybeGenerateDeferredFocusRecap catch ----
+
+	it("maybeGenerateDeferredFocusRecap's catch swallows stale-ctx errors without calling onError", async () => {
+		const onError = vi.fn();
+		const deps = makeDeps();
+		deps.onError = onError;
+
+		const orch = createRecapOrchestrator(deps);
+		orch.onAgentStart();
+		orch.onFocusOut(); // parks deferred focus
+
+		// Make getBranch throw a stale-ctx error on the next call.
+		deps.getBranch.mockImplementation(() => {
+			throw new Error("This extension ctx is stale after session replacement or reload.");
+		});
+		orch.onAgentEnd(); // triggers maybeGenerateDeferredFocusRecap
+		await new Promise((r) => setTimeout(r, 10));
+
+		// onError should NOT be called — the stale-ctx error is swallowed.
+		expect(onError).not.toHaveBeenCalled();
+	});
+
+	// ---- line 372: isStaleCtxError(err) in onFocusOut's catch ----
+
+	it("onFocusOut's catch swallows stale-ctx errors from runGenerateAndShow without calling onError", async () => {
+		const onError = vi.fn();
+		const deps = makeDeps();
+		deps.onError = onError;
+
+		// First getBranch call (synchronous in onFocusOut): succeeds with activity.
+		// Second call (inside runGenerateAndShow): throws a stale-ctx error.
+		deps.getBranch
+			.mockReturnValueOnce(branchWithActivity())
+			.mockImplementation(() => {
+				throw new Error("This extension ctx is stale after session replacement or reload.");
+			});
+
+		const orch = createRecapOrchestrator(deps);
+		orch.onFocusOut();
+		await new Promise((r) => setTimeout(r, 10));
+
+		// onError should NOT be called — the stale-ctx error is swallowed.
+		expect(onError).not.toHaveBeenCalled();
+	});
 });

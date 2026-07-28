@@ -1020,4 +1020,142 @@ describe("targeted coverage — specific uncovered paths", () => {
 		pi.handlers.get("agent_end")?.({}, ctx);
 		// Verify the handlers ran without error (implicitly tests the wiring).
 	});
+
+		// ---- Branch 8 (line 137): configuredOverride true branch (cli.length > 0) ----
+
+		it("configuredOverride returns --recap-model source when the flag is set to a non-empty string", async () => {
+			const pi = makeFakePi({ flagValues: { "recap-model": "anthropic/claude-haiku-4-5" } });
+			createExtension(pi as never);
+			const ctx = makeFakeCtx();
+			await pi.commands.get("recap-settings")!.handler("", ctx);
+			const [, items] = ctx.ui.select.mock.calls[0]!;
+			expect(items.join("\n")).toMatch(/anthropic\/claude-haiku-4-5/);
+			expect(items.join("\n")).toMatch(/from --recap-model/);
+		});
+
+		// ---- Branch 17 (line 204): configuredOverride returns null ----
+
+		it("resolveStatusOptions shows no override when neither --recap-model nor config file is set", async () => {
+			const pi = makeFakePi(); // no recap-model flag
+			createExtension(pi as never);
+			const ctx = makeFakeCtx();
+			// Ensure no config file exists (already handled by agentDir cleanup).
+			await pi.commands.get("recap-settings")!.handler("", ctx);
+			const [, items] = ctx.ui.select.mock.calls[0]!;
+			expect(items.join("\n")).not.toMatch(/override/i);
+			expect(items.join("\n")).not.toMatch(/from --recap-model|pi-session-recap\.json/i);
+		});
+
+		// ---- Branch 24 (line 297): clearRecapWidget with hasUI=true ----
+
+		it("agent_start clears the recap widget when hasUI is true (the !ctx.hasUI guard is false)", async () => {
+			const pi = makeFakePi();
+			createExtension(pi as never);
+			const ctx = makeFakeCtx();
+			// ctx.hasUI is true by default in makeFakeCtx.
+			await pi.handlers.get("agent_start")?.({}, ctx);
+			// setWidget and setStatus should have been called (clearRecapWidget executed).
+			expect(ctx.ui.setWidget).toHaveBeenCalled();
+			expect(ctx.ui.setStatus).toHaveBeenCalled();
+		});
+
+		// ---- Branch 37 (line 359): session_start continues when auto enabled AND hasUI ----
+
+		it("session_start with auto enabled and hasUI=true continues past the guard (branch 37 false)", async () => {
+			vi.useFakeTimers();
+			const pi = makeFakePi({ flagValues: { "recap-auto": true } });
+			createExtension(pi as never);
+
+			const ctx = makeFakeCtx();
+			ctx.sessionManager.getBranch.mockReturnValue([
+				{ type: "message", message: { role: "user", content: [{ type: "text", text: "q" }] } },
+				{
+					type: "message",
+					message: { role: "assistant", content: [{ type: "toolCall", name: "edit", arguments: {} }] },
+				},
+			]);
+			ctx.modelRegistry.getApiKeyAndHeaders = vi.fn(() => ({ ok: false }));
+
+			// session_start with reason='resume', auto enabled, hasUI=true.
+			// The guard `if (!isAutoEnabled() || !ctx.hasUI) return;` should NOT fire.
+			await pi.handlers.get("session_start")?.({ reason: "resume" }, ctx);
+			await vi.advanceTimersByTimeAsync(500);
+
+			// getBranch should be read inside runGenerateAndShow.
+			expect(ctx.sessionManager.getBranch).toHaveBeenCalled();
+		});
+
+		// ---- Branches 10, 11, 12 (lines 149-151): rehydrateStats guard conditions ----
+
+		it("rehydrateStats skips entries that are falsy (branch 10 false)", async () => {
+			const pi = makeFakePi();
+			createExtension(pi as never);
+
+			const ctx = makeFakeCtx();
+			(ctx.sessionManager as unknown as { getEntries: () => unknown[] }).getEntries = vi.fn(() => [
+				null, // falsy entry — should be skipped
+				{ type: "custom", customType: "session-recap:stats", data: { triggerCount: 3 } },
+			]);
+
+			await pi.handlers.get("session_start")?.({ reason: "startup" }, ctx);
+			// The null entry is skipped, but the second entry is still processed.
+			await pi.commands.get("recap-settings")!.handler("", ctx);
+			const [, items] = ctx.ui.select.mock.calls[0]!;
+			expect(items.join("\n")).toContain("Triggers:       3 (this session)");
+		});
+
+		it("rehydrateStats skips entries that are not objects (branch 11 false)", async () => {
+			const pi = makeFakePi();
+			createExtension(pi as never);
+
+			const ctx = makeFakeCtx();
+			(ctx.sessionManager as unknown as { getEntries: () => unknown[] }).getEntries = vi.fn(() => [
+				"not an object", // not an object — should be skipped
+				{ type: "custom", customType: "session-recap:stats", data: { triggerCount: 5 } },
+			]);
+
+			await pi.handlers.get("session_start")?.({ reason: "startup" }, ctx);
+			await pi.commands.get("recap-settings")!.handler("", ctx);
+			const [, items] = ctx.ui.select.mock.calls[0]!;
+			expect(items.join("\n")).toContain("Triggers:       5 (this session)");
+		});
+
+		it("rehydrateStats skips entries without a 'type' property (branch 12 false)", async () => {
+			const pi = makeFakePi();
+			createExtension(pi as never);
+
+			const ctx = makeFakeCtx();
+			(ctx.sessionManager as unknown as { getEntries: () => unknown[] }).getEntries = vi.fn(() => [
+				{ customType: "session-recap:stats", data: { triggerCount: 2 } }, // no 'type' property
+				{ type: "custom", customType: "session-recap:stats", data: { triggerCount: 4 } },
+			]);
+
+			await pi.handlers.get("session_start")?.({ reason: "startup" }, ctx);
+			await pi.commands.get("recap-settings")!.handler("", ctx);
+			const [, items] = ctx.ui.select.mock.calls[0]!;
+			expect(items.join("\n")).toContain("Triggers:       4 (this session)");
+		});
+
+		// ---- Branch 15 (line 177): ternary false branch (non-number triggerCount) ----
+
+		it("rehydrateStats ignores triggerCount when it is not a number (branch 15 false)", async () => {
+			const pi = makeFakePi();
+			createExtension(pi as never);
+
+			const ctx = makeFakeCtx();
+			(ctx.sessionManager as unknown as { getEntries: () => unknown[] }).getEntries = vi.fn(() => [
+				{
+					type: "custom",
+					customType: "session-recap:stats",
+					data: { triggerCount: "not-a-number" }, // string, not number
+				},
+			]);
+
+			await pi.handlers.get("session_start")?.({ reason: "startup" }, ctx);
+			// triggerCount should remain at 0 (the default) since the stored value is not a number.
+			await pi.commands.get("recap-settings")!.handler("", ctx);
+			const [, items] = ctx.ui.select.mock.calls[0]!;
+			expect(items.join("\n")).toContain("Triggers:       0 (this session)");
+		});
+	});
 });
