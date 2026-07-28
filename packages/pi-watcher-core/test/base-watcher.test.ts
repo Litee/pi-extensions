@@ -2633,3 +2633,40 @@ describe('_makeCommandCtx — confirm YES button run callback (lines 1269-1274)'
     expect(yesItem?.label).toBe('Delete Now')
   })
 })
+
+// ---------------------------------------------------------------------------
+// onSessionStart — scan watcher populates watches from scanItems
+// ---------------------------------------------------------------------------
+
+describe('onSessionStart — scan watcher populates watches', () => {
+  it('calls scanItems and populates watches for scan-mode watcher', async () => {
+    const stub = makeStub({ itemSource: 'scan' })
+    const scanSpy = vi.fn().mockResolvedValue([
+      { id: 'scan-1', label: 'Scanned 1', terminal: false, consecutiveErrors: 0 },
+      { id: 'scan-2', label: 'Scanned 2', terminal: false, consecutiveErrors: 0 },
+    ])
+    ;(stub as unknown as { scanItems: () => Promise<StubWatch[]> }).scanItems = scanSpy
+    vi.useFakeTimers()
+    await stub.onSessionStart(makeCtx([]))
+    expect(scanSpy).toHaveBeenCalledOnce()
+    expect(stub.testWatches.size).toBe(2)
+    expect(stub.testWatches.has('scan-1')).toBe(true)
+    expect(stub.testWatches.has('scan-2')).toBe(true)
+    stub.stopPolling()
+    vi.useRealTimers()
+  })
+
+  it('scan watcher seeds baselines for scanned items', async () => {
+    const stub = makeStub({ itemSource: 'scan' })
+    const scanSpy = vi.fn().mockResolvedValue([
+      { id: 'scan-1', label: 'Scanned 1', terminal: false, consecutiveErrors: 0 },
+    ])
+    ;(stub as unknown as { scanItems: () => Promise<StubWatch[]> }).scanItems = scanSpy
+    const snapshotSpy = vi.fn().mockResolvedValue({ seenAt: 1_000_000 })
+    stub.snapshotFn = snapshotSpy
+    await stub.onSessionStart(makeCtx([]))
+    expect(scanSpy).toHaveBeenCalledOnce()
+    expect(snapshotSpy).toHaveBeenCalledOnce()
+    expect(stub.testBaselines.has('scan-1')).toBe(true)
+  })
+})

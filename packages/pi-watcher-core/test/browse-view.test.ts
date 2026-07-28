@@ -2456,3 +2456,101 @@ describe('openMenuView renderItem — non-disabled, non-selected item (line 193)
     expect(result).toContain('→')
   })
 })
+
+// ---------------------------------------------------------------------------
+// openBrowseView — early return when ctx.ui.custom is absent
+// ---------------------------------------------------------------------------
+
+describe('openBrowseView — early return when ctx.ui.custom is absent', () => {
+  it('returns immediately without calling ui.custom when custom is undefined', async () => {
+    const stubView = {
+      noun: 'item',
+      renderItemRowText: () => '',
+      renderItemRowTUI: () => [],
+      renderItemDetail: () => [],
+      renderEventRow: () => '',
+      itemSortKey: () => 0,
+    }
+    const ctx = {
+      ui: {
+        // no custom property
+        theme: { fg: (_: string, t: string) => t, bold: (t: string) => t },
+      },
+    }
+    await openBrowseView({ title: 'T', watches: [], view: stubView, filter: () => true, header: () => '' }, ctx)
+    // Should resolve without error and not call anything
+  })
+
+  it('returns immediately when ctx is null-like', async () => {
+    const stubView = {
+      noun: 'item',
+      renderItemRowText: () => '',
+      renderItemRowTUI: () => [],
+      renderItemDetail: () => [],
+      renderEventRow: () => '',
+      itemSortKey: () => 0,
+    }
+    await openBrowseView({ title: 'T', watches: [], view: stubView, filter: () => true, header: () => '' }, null as unknown as object)
+    // Should resolve without error
+  })
+})
+
+// ---------------------------------------------------------------------------
+// openBrowseView — fallback theme when ctx.ui.theme is absent
+// ---------------------------------------------------------------------------
+
+describe('openBrowseView — fallback theme when ctx.ui.theme is absent', () => {
+  it('uses plain text (identity) theme when ctx.ui.theme is undefined', async () => {
+    let capturedFactory: ((tui: unknown, theme: unknown, kb: unknown, done: (v: void) => void) => { render(w: number): string[] }) | null = null
+    const ctx = {
+      ui: {
+        custom: (factory: typeof capturedFactory) => { capturedFactory = factory; return Promise.resolve() },
+        // no theme property → fallback theme used
+      },
+    }
+    const stubView = {
+      noun: 'item',
+      renderItemRowText: () => '',
+      renderItemRowTUI: () => [],
+      renderItemDetail: () => [],
+      renderEventRow: () => '',
+      itemSortKey: () => 0,
+    }
+    await openBrowseView({ title: 'T', watches: [], view: stubView, filter: () => true, header: () => '' }, ctx)
+    expect(capturedFactory).not.toBeNull()
+    // When theme is absent, fg and bold are identity functions
+    const component = capturedFactory!({ requestRender: vi.fn() }, null, null, vi.fn())
+    const lines = component.render(20)
+    // Should render without error (identity theme just passes text through)
+    expect(lines).toBeDefined()
+  })
+})
+
+// ---------------------------------------------------------------------------
+// openMenuView — early return when ctx.ui.custom is not a function
+// ---------------------------------------------------------------------------
+
+describe('openMenuView — early return when ctx.ui.custom is not a function', () => {
+  it('returns immediately when ctx.ui.custom is undefined', async () => {
+    const ctx = { ui: { custom: undefined } }
+    await openMenuView('Test', () => [], ctx)
+    // Should resolve without error
+  })
+
+  it('returns immediately when ctx.ui.custom is null', async () => {
+    const ctx = { ui: { custom: null } }
+    await openMenuView('Test', () => [], ctx)
+    // Should resolve without error
+  })
+
+  it('returns immediately when ctx.ui is absent', async () => {
+    const ctx = {}
+    await openMenuView('Test', () => [], ctx)
+    // Should resolve without error
+  })
+
+  it('returns immediately when ctx is null-like', async () => {
+    await openMenuView('Test', () => [], null as unknown as object)
+    // Should resolve without error
+  })
+})
