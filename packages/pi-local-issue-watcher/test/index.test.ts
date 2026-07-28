@@ -749,6 +749,57 @@ describe("/local-issue-watcher command", () => {
 		);
 	});
 
+	// -- hasUI calculation branches (command.ts lines 102-103) --
+
+	it("hasUI falls through to anyCtx.ui?.hasUI when anyCtx.hasUI is undefined", async () => {
+		const pi = makeFakePi();
+		extensionWithDbRoot(pi, dbRoot);
+		// hasUI is undefined → falls through to ui.hasUI
+		const uiObj = {
+			hasUI: true,
+			notify: vi.fn(),
+			select: vi.fn().mockResolvedValueOnce(ITEM_CLOSE),
+		};
+		const ctx = { ui: uiObj };
+		await pi.commands.get("local-issue-watcher")!.handler("", ctx);
+		// Handler proceeds normally — ui.hasUI=true → hasUI=true → rt.ui set
+		// (no select-unavailable warning)
+		expect(uiObj.notify).not.toHaveBeenCalledWith(
+			expect.stringMatching(/requires an interactive UI/),
+		);
+	});
+
+	it("hasUI falls through to anyCtx.ui !== undefined when both hasUI and ui?.hasUI are absent", async () => {
+		const pi = makeFakePi();
+		extensionWithDbRoot(pi, dbRoot);
+		// hasUI is undefined, ui is defined but ui.hasUI is not → ui !== undefined is true
+		const uiObj = {
+			notify: vi.fn(),
+			select: vi.fn().mockResolvedValueOnce(ITEM_CLOSE),
+		};
+		const ctx = { ui: uiObj };
+		await pi.commands.get("local-issue-watcher")!.handler("", ctx);
+		// Handler proceeds — ui !== undefined → hasUI=true
+		expect(uiObj.notify).not.toHaveBeenCalledWith(
+			expect.stringMatching(/requires an interactive UI/),
+		);
+	});
+
+	it("hasUI is false when ctx.hasUI is explicitly false — handler still works", async () => {
+		const pi = makeFakePi();
+		extensionWithDbRoot(pi, dbRoot);
+		const uiObj = {
+			hasUI: false,
+			notify: vi.fn(),
+			select: vi.fn().mockResolvedValueOnce(ITEM_CLOSE),
+		};
+		const ctx = { hasUI: false, ui: uiObj };
+		await pi.commands.get("local-issue-watcher")!.handler("", ctx);
+		// hasUI=false → rt.ui is NOT modified, but the menu still works
+		// (hasUI only controls rt.ui assignment, not the menu loop)
+		expect(uiObj.select).toHaveBeenCalledTimes(1);
+	});
+
 	it("'Browse issues …' → calls the test-injected picker", async () => {
 		mkdirSync(join(dbRoot, "skill-a"), { recursive: true });
 		writeFileSync(
@@ -1341,6 +1392,48 @@ describe("enabled/disabled lifecycle", () => {
 			(c) => (c[0] as { content: string }).content?.includes("update:"),
 		);
 		expect(diffs).toHaveLength(0);
+	});
+
+	// -- hasUI calculation in session_start handler (index.ts lines 503-504) --
+
+	it("session_start: hasUI falls through to anyCtx.ui?.hasUI when hasUI is undefined", async () => {
+		writeIssue("skill-a", "0001-a.json", { id: "0001", status: "open", skill: "skill-a" });
+		const pi = makeFakePi();
+		extensionWithDbRoot(pi, dbRoot);
+		// hasUI is undefined → falls through to ui.hasUI
+		// Build ctx using makeFakeCtx base, then override hasUI
+		const baseCtx = makeFakeCtx([makeEnabledEntry()]);
+		const ctx = { ...baseCtx, hasUI: undefined } as never;
+		await pi.sessionStartHandler!({}, ctx);
+		// rt.ui should have been set (hasUI=true path via ui.hasUI)
+		expect(pi.sendMessage).toHaveBeenCalled();
+	});
+
+	it("session_start: hasUI falls through to anyCtx.ui !== undefined when both hasUI and ui?.hasUI are absent", async () => {
+		writeIssue("skill-a", "0001-a.json", { id: "0001", status: "open", skill: "skill-a" });
+		const pi = makeFakePi();
+		extensionWithDbRoot(pi, dbRoot);
+		// hasUI is undefined, ui.hasUI is undefined → falls through to ui !== undefined
+		const baseCtx = makeFakeCtx([makeEnabledEntry()]);
+		const ctx = {
+			...baseCtx,
+			hasUI: undefined,
+			ui: { ...baseCtx.ui, hasUI: undefined } as never,
+		} as never;
+		await pi.sessionStartHandler!({}, ctx);
+		expect(pi.sendMessage).toHaveBeenCalled();
+	});
+
+	it("session_start: hasUI is false when ctx.hasUI is explicitly false — rt.ui set to null", async () => {
+		writeIssue("skill-a", "0001-a.json", { id: "0001", status: "open", skill: "skill-a" });
+		const pi = makeFakePi();
+		extensionWithDbRoot(pi, dbRoot);
+		// hasUI is explicitly false → rt.ui = null
+		const baseCtx = makeFakeCtx([makeEnabledEntry()]);
+		const ctx = { ...baseCtx, hasUI: false } as never;
+		await pi.sessionStartHandler!({}, ctx);
+		// Handler should still proceed (hasUI only affects rt.ui assignment)
+		expect(pi.sendMessage).toHaveBeenCalled();
 	});
 });
 

@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { buildChatMessageContent, buildFirstUpdateContent, buildMissingDbRootChatMessage, buildMissingDbRootStatus, buildStartupAnnouncement, buildStartupChatMessage, buildStatusDetailMessage, formatStatusSummary } from "../src/format.js";
+import { buildChatMessageContent, buildFirstUpdateContent, buildMissingDbRootChatMessage, buildMissingDbRootStatus, buildParseFailureToast, buildStartupAnnouncement, buildStartupChatMessage, buildStatusDetailMessage, formatCompactStatusSummary, formatStatusSummary } from "../src/format.js";
 import type { Change } from "../src/diff.js";
 import type { Snapshot } from "../src/types.js";
 
@@ -384,5 +384,166 @@ describe("buildFirstUpdateContent", () => {
 		const earlyMorning = new Date(2026, 0, 1, 1, 2, 3);
 		const out = buildFirstUpdateContent({}, earlyMorning);
 		expect(out).toMatch(/^\[01:02\]/);
+	});
+});
+
+// ---------------------------------------------------------------------------
+// buildParseFailureToast
+// ---------------------------------------------------------------------------
+
+describe("buildParseFailureToast", () => {
+	it("uses singular 'issue file' for count 1", () => {
+		expect(buildParseFailureToast(1)).toBe(
+			"local-issue-watcher: 1 issue file failed to parse; skipping.",
+		);
+	});
+
+	it("uses plural 'issue files' for count > 1", () => {
+		expect(buildParseFailureToast(5)).toBe(
+			"local-issue-watcher: 5 issue files failed to parse; skipping.",
+		);
+	});
+
+	it("uses plural 'issue files' for count 0", () => {
+		expect(buildParseFailureToast(0)).toBe(
+			"local-issue-watcher: 0 issue files failed to parse; skipping.",
+		);
+	});
+});
+
+// ---------------------------------------------------------------------------
+// formatCompactStatusSummary
+// ---------------------------------------------------------------------------
+
+describe("formatCompactStatusSummary", () => {
+	it("returns '0 open' for empty snapshot", () => {
+		expect(formatCompactStatusSummary({})).toBe("0 open");
+	});
+
+	it("returns 'N open' where N is the count of open issues", () => {
+		const snap: Snapshot = {
+			"/a": issue("open"),
+			"/b": issue("open"),
+			"/c": issue("done"),
+		};
+		expect(formatCompactStatusSummary(snap)).toBe("2 open");
+	});
+
+	it("ignores non-open statuses", () => {
+		const snap: Snapshot = {
+			"/a": issue("done"),
+			"/b": issue("wont_fix"),
+			"/c": issue("in_progress"),
+		};
+		expect(formatCompactStatusSummary(snap)).toBe("0 open");
+	});
+
+	it("treats falsy status as non-open (info.status || '' === 'open' is false)", () => {
+		const snap: Snapshot = {
+			"/a": { ...issue("open"), status: "" as unknown as string },
+			"/b": issue("done"),
+		};
+		expect(formatCompactStatusSummary(snap)).toBe("0 open");
+	});
+});
+
+// ---------------------------------------------------------------------------
+// buildStatusDetailMessage — falsy status falls back to 'unknown'
+// ---------------------------------------------------------------------------
+
+describe("buildStatusDetailMessage — falsy status", () => {
+	it("uses 'unknown' when status is an empty string (info.status || 'unknown')", () => {
+		const snap: Snapshot = {
+			"/a": { ...issue("open"), status: "" as unknown as string },
+		};
+		const msg = buildStatusDetailMessage("/db", snap);
+		// The 'unknown' count should appear in the issues line
+		expect(msg).toContain("1 unknown");
+		// open count should be 0 since the status was falsy
+		expect(msg).toContain("0 open");
+	});
+});
+
+// ---------------------------------------------------------------------------
+// buildFirstUpdateContent — falsy status treated as non-open
+// ---------------------------------------------------------------------------
+
+describe("buildFirstUpdateContent — falsy status", () => {
+	const NOW = new Date(2026, 4, 3, 14, 7, 0);
+
+	function makeIssue(
+		overrides: Partial<Snapshot[string]>,
+	): Snapshot[string] {
+		return {
+			mtimeNs: 1n,
+			issueId: "0001",
+			status: "open",
+			title: "default title",
+			description: "",
+			comments: [],
+			skill: "skill-a",
+			skillVersion: "1.0.0",
+			...overrides,
+		};
+	}
+
+	it("ignores issues with falsy status (info.status || '' === 'open' is false)", () => {
+		const snap: Snapshot = {
+			"/db/a.json": makeIssue({
+				issueId: "0001",
+				status: "" as unknown as string,
+			}),
+		};
+		const out = buildFirstUpdateContent(snap, NOW);
+		expect(out).toBe("[14:07] tracking 0 open issues");
+		expect(out).not.toContain("0001");
+	});
+
+	it("sorts correctly when first path > second path (a > b branch in comparator)", () => {
+		const snap: Snapshot = {
+			"/db/skill-b/0002-b.json": makeIssue({
+				issueId: "0002",
+				skill: "skill-b",
+				title: "beta",
+				status: "open",
+			}),
+			"/db/skill-a/0001-a.json": makeIssue({
+				issueId: "0001",
+				skill: "skill-a",
+				title: "alpha",
+				status: "open",
+			}),
+		};
+		const out = buildFirstUpdateContent(snap, NOW);
+		const lines = out.split("\n");
+		// After sorting, skill-a should come before skill-b
+		expect(lines[1]).toBe("- issue #0001 (skill-a): \"alpha\" [open]");
+		expect(lines[2]).toBe("- issue #0002 (skill-b): \"beta\" [open]");
+	});
+});
+
+// ---------------------------------------------------------------------------
+// buildStartupChatMessage — falsy status treated as non-open
+// ---------------------------------------------------------------------------
+
+describe("buildStartupChatMessage — falsy status", () => {
+	it("treats falsy status as non-open (info.status || '' === 'open' is false)", () => {
+		const snap: Snapshot = {
+			"/a": { ...issue("open"), status: "" as unknown as string },
+		};
+		expect(buildStartupChatMessage("/db", snap)).toBe("active (0 open)");
+	});
+});
+
+// ---------------------------------------------------------------------------
+// formatStatusSummary — falsy status falls back to 'unknown'
+// ---------------------------------------------------------------------------
+
+describe("formatStatusSummary — falsy status", () => {
+	it("uses 'unknown' when status is falsy (info.status || 'unknown')", () => {
+		const snap: Snapshot = {
+			"/a": { ...issue("open"), status: "" as unknown as string },
+		};
+		expect(formatStatusSummary(snap)).toBe("1 unknown");
 	});
 });
