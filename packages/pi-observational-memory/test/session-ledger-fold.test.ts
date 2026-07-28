@@ -114,4 +114,65 @@ describe("session-ledger V3 folding", () => {
 		expect(foldLedger(mainBranch).observations.map((obs) => obs.id)).toEqual(["aaaa00000000"]);
 		expect(foldLedger(forkBranch).observations.map((obs) => obs.id)).toEqual(["bbbb00000000"]);
 	});
+
+	it("returns empty lists for empty entries array", () => {
+		const folded = foldLedger([]);
+
+		expect(folded.observations).toEqual([]);
+		expect(folded.activeObservations).toEqual([]);
+		expect(folded.droppedObservationIds).toEqual(new Set());
+		expect(folded.reflections).toEqual([]);
+		expect(folded.observationsById).toEqual(new Map());
+		expect(folded.reflectionsById).toEqual(new Map());
+	});
+
+	it("handles upToEntryId that matches the last entry", () => {
+		const obs1 = observation("aaaaaaaaaaaa", { relevance: "low", tokenCount: 10 });
+		const obs2 = observation("bbbbbbbbbbbb", { relevance: "high", tokenCount: 20 });
+		const entries = [
+			textCustomMessage("raw-1", "aaaaaaaa"),
+			observationsRecordedEntry("om-obs1", { observations: [obs1], coversUpToId: "raw-1" }),
+			textCustomMessage("raw-2", "bbbbbb"),
+			observationsRecordedEntry("om-obs2", { observations: [obs2], coversUpToId: "raw-2" }),
+		];
+		const folded = foldLedger(entries, { upToEntryId: "om-obs2" });
+
+		expect(folded.observations.map((o) => o.id)).toEqual(["aaaaaaaaaaaa", "bbbbbbbbbbbb"]);
+	});
+
+	it("handles upToEntryId that does not exist (defaults to tip)", () => {
+		const obs1 = observation("aaaaaaaaaaaa", { relevance: "low", tokenCount: 10 });
+		const entries = [
+			textCustomMessage("raw-1", "aaaaaaaa"),
+			observationsRecordedEntry("om-obs", { observations: [obs1], coversUpToId: "raw-1" }),
+		];
+		const folded = foldLedger(entries, { upToEntryId: "nonexistent" });
+
+		expect(folded.observations.map((o) => o.id)).toEqual(["aaaaaaaaaaaa"]);
+	});
+
+	it("handles dropped ids with no corresponding observation", () => {
+		const entries = [
+			textCustomMessage("raw-1", "aaaaaaaa"),
+			observationsDroppedEntry("om-drop", { observationIds: ["deadbeef0000"], coversUpToId: "raw-1" }),
+		];
+		const folded = foldLedger(entries);
+
+		expect(folded.observations).toEqual([]);
+		expect(folded.droppedObservationIds.has("deadbeef0000")).toBe(true);
+	});
+
+	it("ignores invalid V3 data shapes", () => {
+		const entries = [
+			textCustomMessage("raw-1", "aaaaaaaa"),
+			{ type: "custom" as const, id: "om-obs", customType: V3_OBSERVATIONS_RECORDED, data: { invalid: true } },
+			{ type: "custom" as const, id: "om-ref", customType: V3_REFLECTIONS_RECORDED, data: { invalid: true } },
+			{ type: "custom" as const, id: "om-drop", customType: V3_OBSERVATIONS_DROPPED, data: { invalid: true } },
+		];
+		const folded = foldLedger(entries);
+
+		expect(folded.observations).toEqual([]);
+		expect(folded.reflections).toEqual([]);
+		expect(folded.droppedObservationIds).toEqual(new Set());
+	});
 });

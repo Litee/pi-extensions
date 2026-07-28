@@ -127,6 +127,20 @@ describe("Runtime V3 behavior", () => {
 		expect(result).toMatchObject({ ok: true, model: sessionModel });
 	});
 
+	it("does not notify when configured model IS found (uses configured without warning)", async () => {
+		const runtime = new Runtime();
+		const notify = vi.fn();
+		const sessionModel = { provider: "openai" };
+		const configured = { provider: "anthropic", id: "configured" };
+		const registry = modelRegistry({ found: configured });
+		runtime.config = { ...runtime.config, model: { provider: "anthropic", id: "configured" } };
+
+		const result = await runtime.resolveModel({ model: sessionModel, modelRegistry: registry, hasUI: true, ui: { notify } });
+
+		expect(notify).not.toHaveBeenCalled();
+		expect(result).toMatchObject({ ok: true, model: configured });
+	});
+
 	it("returns failure when no model is available and no config exists", async () => {
 		const runtime = new Runtime();
 		// Reset config to defaults (no model configured)

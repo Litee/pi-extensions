@@ -161,6 +161,31 @@ describe("serializeConversation", () => {
 		expect(result).toContain("ok");
 		expect(result).toContain("[non-text content omitted]");
 	});
+
+	it("renders thinking blocks when includeThinking is true via serializeConversation", () => {
+		// serializeConversation calls textAndPlaceholders with { includeThinking: true, omitRedactedThinking: true }
+		// The includeThinking branch renders [thinking: ...] when thinking key exists
+		const content = [{ type: "thinking", thinking: "Let me reason about this" }];
+		const msg = assistantMessage(1700000000000, content);
+		const result = serializeConversation([msg]);
+		expect(result).toContain("[thinking: Let me reason about this]");
+	});
+
+	it("handles null content in textOnly branch", () => {
+		// textOnly(null) returns ""
+		const msg = { role: "user" as const, content: null, timestamp: 1700000000000 };
+		const result = serializeConversation([msg as unknown as Message]);
+		expect(result).toContain("User @");
+		expect(result).not.toContain("null");
+	});
+
+	it("handles non-array content in textOnly branch", () => {
+		// textOnly(42) returns "42"
+		const msg = { role: "user" as const, content: 42, timestamp: 1700000000000 };
+		const result = serializeConversation([msg as unknown as Message]);
+		expect(result).toContain("User @");
+		expect(result).toContain("42");
+	});
 });
 
 describe("truncateRecordContent", () => {

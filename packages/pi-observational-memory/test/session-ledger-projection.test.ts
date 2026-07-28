@@ -204,4 +204,56 @@ describe("session-ledger V3 projections", () => {
 		expect(diff.observationsOnlyInFull.map((obs) => obs.id)).toEqual(["bbbbbbbbbbbb"]);
 		expect(diff.reflectionsOnlyInFull.map((ref) => ref.id)).toEqual(["eeeeeeeeeeee"]);
 	});
+
+	it("reports no drift when visible equals full", () => {
+		const proj = { observations: [observation("aaaaaaaaaaaa")], reflections: [reflection("eeeeeeeeeeee", ["aaaaaaaaaaaa"])] };
+		const diff = diffProjection(proj, proj);
+
+		expect(diff.observationsOnlyInFull).toEqual([]);
+		expect(diff.reflectionsOnlyInFull).toEqual([]);
+		expect(diff.droppedOnlyInFull).toEqual([]);
+	});
+
+	it("reports no drift when both are empty", () => {
+		const diff = diffProjection({ observations: [], reflections: [] }, { observations: [], reflections: [] });
+
+		expect(diff.observationsOnlyInFull).toEqual([]);
+		expect(diff.reflectionsOnlyInFull).toEqual([]);
+		expect(diff.droppedOnlyInFull).toEqual([]);
+	});
+
+	it("reports dropped-only-in-full when visible has more observations than full", () => {
+		const visible = { observations: [observation("aaaaaaaaaaaa"), observation("bbbbbbbbbbbb")], reflections: [] };
+		const full = { observations: [observation("aaaaaaaaaaaa")], reflections: [] };
+
+		const diff = diffProjection(visible, full);
+
+		expect(diff.droppedOnlyInFull.map((obs) => obs.id)).toEqual(["bbbbbbbbbbbb"]);
+	});
+
+	it("handles latestFullFoldBoundaryId with no compaction entries", () => {
+		const entries = [textCustomMessage("raw-1", "aaaa")];
+		expect(latestFullFoldBoundaryId(entries)).toBeUndefined();
+	});
+
+	it("handles latestFullFoldBoundaryId with compaction but no fullFold", () => {
+		const entries = [
+			compactionEntry("cmp-1", { firstKeptEntryId: "raw-1", details: memoryDetails({ fullFold: false }) }),
+		];
+		expect(latestFullFoldBoundaryId(entries)).toBeUndefined();
+	});
+
+	it("handles latestFullFoldBoundaryId with fullFold but no firstKeptEntryId", () => {
+		const entries = [
+			compactionEntry("cmp-1", { details: memoryDetails({ fullFold: true }) }),
+		];
+		expect(latestFullFoldBoundaryId(entries)).toBeUndefined();
+	});
+
+	it("handles latestFullFoldBoundaryId with fullFold but missing firstKeptEntryId in entries", () => {
+		const entries = [
+			compactionEntry("cmp-1", { firstKeptEntryId: "missing", details: memoryDetails({ fullFold: true }) }),
+		];
+		expect(latestFullFoldBoundaryId(entries)).toBeUndefined();
+	});
 });

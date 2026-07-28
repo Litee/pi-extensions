@@ -182,4 +182,89 @@ describe("V3 compaction trigger", () => {
 
 		expect(ctx.compact).toHaveBeenCalledTimes(1);
 	});
+
+	it("handles compact() throwing synchronously", async () => {
+		const { handler, runtime } = captureHandler({ compactAfterTokens: 3 });
+		const ctx = fakeCtx([dueBranch], {
+			compact: vi.fn(() => { throw new Error("compaction failed"); }),
+		});
+
+		handler(agentEnd(), ctx);
+		await vi.runAllTimersAsync();
+
+		expect(runtime.compactInFlight).toBe(false);
+		expect(ctx.ui.notify).toHaveBeenCalledWith(
+			"Observational memory: compact threw: compaction failed",
+			"error",
+		);
+	});
+
+	it("handles compact onComplete callback", async () => {
+		const { handler, runtime } = captureHandler({ compactAfterTokens: 3 });
+		const ctx = fakeCtx([dueBranch]);
+		let onCompleteCb: (() => void) | undefined;
+		ctx.compact.mockImplementation((opts: { onComplete?: () => void }) => {
+			onCompleteCb = opts.onComplete;
+		});
+
+		handler(agentEnd(), ctx);
+		await vi.runAllTimersAsync();
+
+		expect(runtime.compactInFlight).toBe(true);
+		expect(onCompleteCb).toBeDefined();
+		expect(ctx.ui.notify).toHaveBeenCalledWith(
+			"Observational memory: compaction threshold reached (~3 tokens); triggering compaction",
+			"info",
+		);
+
+		onCompleteCb!();
+		expect(runtime.compactInFlight).toBe(false);
+		expect(ctx.ui.notify).toHaveBeenCalledWith("Observational memory: compaction complete", "info");
+	});
+
+	it("handles compact onError callback with generic error", async () => {
+		const { handler, runtime } = captureHandler({ compactAfterTokens: 3 });
+		const ctx = fakeCtx([dueBranch]);
+		let onErrorCb: ((error: { message: string }) => void) | undefined;
+		ctx.compact.mockImplementation((opts: { onError?: (error: { message: string }) => void }) => {
+			onErrorCb = opts.onError;
+		});
+
+		handler(agentEnd(), ctx);
+		await vi.runAllTimersAsync();
+
+		onErrorCb!({ message: "compaction error" });
+		expect(runtime.compactInFlight).toBe(false);
+		expect(ctx.ui.notify).toHaveBeenCalledWith("Observational memory: compaction error", "error");
+	});
+
+	it("skips onError notification for compaction cancelled", async () => {
+		const { handler, runtime } = captureHandler({ compactAfterTokens: 3 });
+		const ctx = fakeCtx([dueBranch]);
+		let onErrorCb: ((error: { message: string }) => void) | undefined;
+		ctx.compact.mockImplementation((opts: { onError?: (error: { message: string }) => void }) => {
+			onErrorCb = opts.onError;
+		});
+
+		handler(agentEnd(), ctx);
+		await vi.runAllTimersAsync();
+
+		onErrorCb!({ message: "Compaction cancelled" });
+		expect(runtime.compactInFlight).toBe(false);
+		// Should not notify for cancelled compaction
+		expect(ctx.ui.notify).not.toHaveBeenCalledWith(
+			expect.stringContaining("Compaction cancelled"),
+			"error",
+		);
+	});
+
+	it("handles no UI when hasUI is false", async () => {
+		const { handler } = captureHandler({ compactAfterTokens: 3 });
+		const ctx = fakeCtx([dueBranch], { hasUI: false, ui: undefined });
+
+		handler(agentEnd(), ctx);
+		await vi.runAllTimersAsync();
+
+		expect(ctx.compact).toHaveBeenCalledTimes(1);
+	});
 });

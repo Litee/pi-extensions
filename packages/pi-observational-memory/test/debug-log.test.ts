@@ -104,4 +104,26 @@ describe("debug logging", () => {
 
 		expect(existsSync(join(agentDir, "observational-memory"))).toBe(false);
 	});
+
+	it("swallows errors during debug log writes without crashing", () => {
+		// Force the directory path to be unwritable by pointing to /proc which is read-only
+		mock.agentDir = "/proc/1/agent";
+
+		expect(() => withDebugLogContext({ enabled: true, sessionId: "session-123" }, () => debugLog("dropper.result"))).not.toThrow();
+	});
+
+	it("handles non-string data values gracefully", () => {
+		withDebugLogContext({ enabled: true, sessionId: "session-123" }, () => {
+			debugLog("test.event", { num: 42, bool: true, arr: [1, 2], nested: { a: 1 } });
+		});
+
+		const logPath = join(agentDir, "observational-memory", "debug", "session-123.ndjson");
+		const lines = readJsonLines(logPath);
+		expect(lines).toHaveLength(1);
+		const data = (lines[0] as { data: Record<string, unknown> }).data;
+		expect(data.num).toBe(42);
+		expect(data.bool).toBe(true);
+		expect(data.arr).toEqual([1, 2]);
+		expect(data.nested).toEqual({ a: 1 });
+	});
 });

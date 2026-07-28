@@ -6,6 +6,8 @@ import {
 	RECALL_OBSERVATION_TOOL_NAME,
 	formatRecallCallForTui,
 	formatRecallRenderedResultForTui,
+	formatRecallResultForTui,
+	formatRecallHeaderForTui,
 	recallObservationTool,
 	registerRecallTool,
 	type RecallObservationToolDetails,
@@ -125,5 +127,288 @@ describe("V3 recall tool", () => {
 
 		expect(result.details.status).toBe("not_found");
 		expect(text).toContain("No observation or reflection with id aaaaaaaaaaaa was found");
+	});
+});
+
+describe("recall TUI rendering helpers", () => {
+	function makeDetails(overrides: Partial<RecallObservationToolDetails> = {}): RecallObservationToolDetails {
+		return {
+			status: "ok",
+			memoryId: "aaaaaaaaaaaa",
+			observationId: "aaaaaaaaaaaa",
+			collision: false,
+			partial: false,
+			reflections: [],
+			directObservationMatches: [],
+			observations: [],
+			matches: [],
+			sourceEntries: [],
+			unavailableSupportingObservations: [],
+			missingSourceEntryIds: [],
+			nonSourceEntryIds: [],
+			...overrides,
+		};
+	}
+
+	describe("formatRecallHeaderForTui", () => {
+		it("renders failure status for invalid_id", () => {
+			const details = makeDetails({ status: "invalid_id" });
+			expect(formatRecallHeaderForTui(details)).toBe("× failure");
+		});
+
+		it("renders failure status for not_found", () => {
+			const details = makeDetails({ status: "not_found" });
+			expect(formatRecallHeaderForTui(details)).toBe("× failure");
+		});
+
+		it("renders success with reflections, observations, sources, and tokens", () => {
+			const details = makeDetails({
+				status: "ok",
+				reflections: [{ id: "rrrrrrrrrrr1", content: "A fact", supportingObservationIds: [] }],
+				observations: [{ id: "aaaaaaaaaaaa", content: "An observation", timestamp: "2026-01-01T00:00:00Z", relevance: "high" }],
+				matches: [{ id: "aaaaaaaaaaaa", content: "An observation", timestamp: "2026-01-01T00:00:00Z", relevance: "high" }],
+				sourceEntries: [{ id: "raw-1", origin: "User", timestamp: "2026-01-01 00:00", tokens: 10, qualifiers: [] }],
+			});
+			const header = formatRecallHeaderForTui(details);
+			expect(header).toContain("✓ success");
+			expect(header).toContain("1 reflection");
+			expect(header).toContain("1 observation");
+			expect(header).toContain("1 source");
+			expect(header).toContain("~10 tokens");
+		});
+
+		it("renders plural correctly for multiple items", () => {
+			const details = makeDetails({
+				status: "ok",
+				reflections: [{ id: "rrrrrrrrrrr1", content: "A", supportingObservationIds: [] }, { id: "rrrrrrrrrrr2", content: "B", supportingObservationIds: [] }],
+				observations: [{ id: "aaaaaaaaaaaa", content: "A", timestamp: "2026-01-01T00:00:00Z", relevance: "high" }, { id: "bbbbbbbbbbbb", content: "B", timestamp: "2026-01-01T00:00:00Z", relevance: "high" }],
+				matches: [{ id: "aaaaaaaaaaaa", content: "A", timestamp: "2026-01-01T00:00:00Z", relevance: "high" }, { id: "bbbbbbbbbbbb", content: "B", timestamp: "2026-01-01T00:00:00Z", relevance: "high" }],
+				sourceEntries: [{ id: "raw-1", origin: "User", timestamp: "2026-01-01 00:00", tokens: 5, qualifiers: [] }, { id: "raw-2", origin: "Assistant", timestamp: "2026-01-01 00:01", tokens: 15, qualifiers: [] }],
+			});
+			const header = formatRecallHeaderForTui(details);
+			expect(header).toContain("2 reflections");
+			expect(header).toContain("2 observations");
+			expect(header).toContain("2 sources");
+		});
+
+		it("renders partial status suffix when partial is true and status is not ok", () => {
+			const details = makeDetails({
+				status: "partial" as RecallObservationToolDetails["status"],
+				partial: true,
+				reflections: [],
+				observations: [],
+				matches: [],
+				sourceEntries: [],
+			});
+			expect(formatRecallHeaderForTui(details)).toContain("partial");
+		});
+
+		it("omits partial suffix when partial is true but status is ok", () => {
+			const details = makeDetails({
+				status: "ok",
+				partial: true,
+				reflections: [],
+				observations: [],
+				matches: [],
+				sourceEntries: [],
+			});
+			expect(formatRecallHeaderForTui(details)).not.toContain("partial");
+		});
+	});
+
+	describe("formatRecallResultForTui", () => {
+		it("renders raw text result when details is missing", () => {
+			const result: AgentToolResult<RecallObservationToolDetails> = {
+				content: [{ type: "text", text: "raw text output" }],
+				details: undefined,
+			};
+			expect(formatRecallResultForTui(result, false)).toBe("raw text output");
+		});
+
+		it("renders empty recall when no content and no details", () => {
+			const result: AgentToolResult<RecallObservationToolDetails> = {
+				content: [],
+				details: undefined,
+			};
+			expect(formatRecallResultForTui(result, false)).toBe("recall");
+		});
+
+		it("renders observation-only rows with source metadata", () => {
+			const details = makeDetails({
+				status: "ok",
+				observations: [{ id: "aaaaaaaaaaaa", content: "An observation", timestamp: "2026-01-01T00:00:00Z", relevance: "high" }],
+				matches: [{ id: "aaaaaaaaaaaa", content: "An observation", timestamp: "2026-01-01T00:00:00Z", relevance: "high" }],
+				sourceEntries: [{ id: "raw-1", origin: "User", timestamp: "2026-01-01 00:00", tokens: 10, qualifiers: [], content: "User said hello" }],
+			});
+			const result: AgentToolResult<RecallObservationToolDetails> = { content: [], details };
+			const rendered = formatRecallResultForTui(result, true);
+			expect(rendered).toContain("✓ observation");
+			expect(rendered).toContain("✓ source");
+			expect(rendered).toContain("User said hello");
+		});
+
+		it("renders memory rows with reflections and observations", () => {
+			const details = makeDetails({
+				status: "ok",
+				reflections: [{ id: "rrrrrrrrrrr1", content: "A reflection", supportingObservationIds: [] }],
+				observations: [{ id: "aaaaaaaaaaaa", content: "An observation", timestamp: "2026-01-01T00:00:00Z", relevance: "high" }],
+				sourceEntries: [],
+			});
+			const result: AgentToolResult<RecallObservationToolDetails> = { content: [], details };
+			const rendered = formatRecallResultForTui(result, false);
+			expect(rendered).toContain("✓ reflection");
+			expect(rendered).toContain("A reflection");
+			expect(rendered).toContain("✓ observation");
+			expect(rendered).toContain("An observation");
+		});
+
+		it("renders dropped observation note", () => {
+			const details = makeDetails({
+				status: "ok",
+				observations: [{ id: "aaaaaaaaaaaa", content: "An observation", timestamp: "2026-01-01T00:00:00Z", relevance: "high", status: "dropped" }],
+				matches: [{ id: "aaaaaaaaaaaa", content: "An observation", timestamp: "2026-01-01T00:00:00Z", relevance: "high", status: "dropped" }],
+				sourceEntries: [],
+			});
+			const result: AgentToolResult<RecallObservationToolDetails> = { content: [], details };
+			const rendered = formatRecallResultForTui(result, false);
+			expect(rendered).toContain("dropped");
+		});
+
+		it("renders collision note", () => {
+			const details = makeDetails({
+				status: "ok",
+				collision: true,
+				observations: [{ id: "aaaaaaaaaaaa", content: "An observation", timestamp: "2026-01-01T00:00:00Z", relevance: "high" }],
+				matches: [{ id: "aaaaaaaaaaaa", content: "An observation", timestamp: "2026-01-01T00:00:00Z", relevance: "high" }],
+				sourceEntries: [],
+			});
+			const result: AgentToolResult<RecallObservationToolDetails> = { content: [], details };
+			const rendered = formatRecallResultForTui(result, false);
+			expect(rendered).toContain("id collision");
+		});
+
+		it("renders missing source note", () => {
+			const details = makeDetails({
+				status: "ok",
+				missingSourceEntryIds: ["missing-raw"],
+				observations: [{ id: "aaaaaaaaaaaa", content: "An observation", timestamp: "2026-01-01T00:00:00Z", relevance: "high" }],
+				matches: [{ id: "aaaaaaaaaaaa", content: "An observation", timestamp: "2026-01-01T00:00:00Z", relevance: "high" }],
+				sourceEntries: [],
+			});
+			const result: AgentToolResult<RecallObservationToolDetails> = { content: [], details };
+			const rendered = formatRecallResultForTui(result, false);
+			expect(rendered).toContain("missing source");
+			expect(rendered).toContain("missing-raw");
+		});
+
+		it("renders non-source note", () => {
+			const details = makeDetails({
+				status: "ok",
+				nonSourceEntryIds: ["compaction-1"],
+				observations: [{ id: "aaaaaaaaaaaa", content: "An observation", timestamp: "2026-01-01T00:00:00Z", relevance: "high" }],
+				matches: [{ id: "aaaaaaaaaaaa", content: "An observation", timestamp: "2026-01-01T00:00:00Z", relevance: "high" }],
+				sourceEntries: [],
+			});
+			const result: AgentToolResult<RecallObservationToolDetails> = { content: [], details };
+			const rendered = formatRecallResultForTui(result, false);
+			expect(rendered).toContain("non-source");
+		});
+
+		it("renders unavailable supporting observations note", () => {
+			const details = makeDetails({
+				status: "ok",
+				unavailableSupportingObservations: [{ observationId: "missing-obs" }],
+				observations: [],
+				matches: [],
+				sourceEntries: [],
+			});
+			const result: AgentToolResult<RecallObservationToolDetails> = { content: [], details };
+			const rendered = formatRecallResultForTui(result, false);
+			expect(rendered).toContain("missing support");
+			expect(rendered).toContain("missing-obs");
+		});
+
+		it("renders expanded sources with content when expanded is true", () => {
+			const details = makeDetails({
+				status: "ok",
+				observations: [{ id: "aaaaaaaaaaaa", content: "An observation", timestamp: "2026-01-01T00:00:00Z", relevance: "high" }],
+				matches: [{ id: "aaaaaaaaaaaa", content: "An observation", timestamp: "2026-01-01T00:00:00Z", relevance: "high" }],
+				sourceEntries: [{ id: "raw-1", origin: "User", timestamp: "2026-01-01 00:00", tokens: 10, qualifiers: [], content: "User said hello" }],
+			});
+			const result: AgentToolResult<RecallObservationToolDetails> = { content: [], details };
+			const renderedExpanded = formatRecallResultForTui(result, true);
+			const renderedCollapsed = formatRecallResultForTui(result, false);
+			expect(renderedExpanded).toContain("User said hello");
+			expect(renderedCollapsed).toContain("(Ctrl+O to expand)");
+		});
+
+		it("renders invalid_id note", () => {
+			const details = makeDetails({ status: "invalid_id", memoryId: "not-hex" });
+			const result: AgentToolResult<RecallObservationToolDetails> = { content: [], details };
+			const rendered = formatRecallResultForTui(result, false);
+			expect(rendered).toContain("invalid id");
+			expect(rendered).toContain("not-hex");
+		});
+
+		it("renders not_found note", () => {
+			const details = makeDetails({ status: "not_found", memoryId: "aaaaaaaaaaaa" });
+			const result: AgentToolResult<RecallObservationToolDetails> = { content: [], details };
+			const rendered = formatRecallResultForTui(result, false);
+			expect(rendered).toContain("not found");
+		});
+
+		it("renders unavailable evidence note when sources are empty but observations exist", () => {
+			const details = makeDetails({
+				status: "ok",
+				observations: [{ id: "aaaaaaaaaaaa", content: "An observation", timestamp: "2026-01-01T00:00:00Z", relevance: "high" }],
+				matches: [{ id: "aaaaaaaaaaaa", content: "An observation", timestamp: "2026-01-01T00:00:00Z", relevance: "high" }],
+				sourceEntries: [],
+			});
+			const result: AgentToolResult<RecallObservationToolDetails> = { content: [], details };
+			const rendered = formatRecallResultForTui(result, false);
+			expect(rendered).toContain("unavailable evidence");
+		});
+	});
+
+	describe("formatRecallRenderedResultForTui", () => {
+		it("renders header and body together", () => {
+			const details = makeDetails({
+				status: "ok",
+				reflections: [{ id: "rrrrrrrrrrr1", content: "A fact", supportingObservationIds: [] }],
+				observations: [{ id: "aaaaaaaaaaaa", content: "An observation", timestamp: "2026-01-01T00:00:00Z", relevance: "high" }],
+				matches: [{ id: "aaaaaaaaaaaa", content: "An observation", timestamp: "2026-01-01T00:00:00Z", relevance: "high" }],
+				sourceEntries: [{ id: "raw-1", origin: "User", timestamp: "2026-01-01 00:00", tokens: 10, qualifiers: [] }],
+			});
+			const result: AgentToolResult<RecallObservationToolDetails> = { content: [], details };
+			const rendered = formatRecallRenderedResultForTui(result, false);
+			expect(rendered).toContain("✓ success");
+			expect(rendered).toContain("✓ reflection");
+			expect(rendered).toContain("✓ observation");
+		});
+
+		it("renders body only when details is missing", () => {
+			const result: AgentToolResult<RecallObservationToolDetails> = {
+				content: [{ type: "text", text: "body text" }],
+				details: undefined,
+			};
+			expect(formatRecallRenderedResultForTui(result, false)).toContain("body text");
+		});
+
+		it("renders header only when body is empty", () => {
+			const details = makeDetails({ status: "invalid_id" });
+			const result: AgentToolResult<RecallObservationToolDetails> = { content: [], details };
+			const rendered = formatRecallRenderedResultForTui(result, false);
+			expect(rendered).toContain("× failure");
+		});
+	});
+
+	describe("formatRecallCallForTui", () => {
+		it("renders with id", () => {
+			expect(formatRecallCallForTui("aaaaaaaaaaaa")).toBe("recall aaaaaaaaaaaa");
+		});
+
+		it("renders with ellipsis for undefined id", () => {
+			expect(formatRecallCallForTui(undefined)).toBe("recall ...");
+		});
 	});
 });

@@ -168,4 +168,30 @@ describe("V3 /om:status", () => {
 		expect(output).toContain("Consolidation: running");
 		expect(output).not.toContain("Consolidation: running (");
 	});
+
+	it("shows no drift suffixes when drift is zero", async () => {
+		const obs = observation("aaaaaaaaaaaa", { tokenCount: 5 });
+		const entries = [
+			textCustomMessage("raw-1", "aaaaaaaa"),
+			observationsRecordedEntry("om-obs", { observations: [obs], coversUpToId: "raw-1" }),
+		];
+		const output = await setup({ entries }).run();
+
+		expect(output).toContain("Observations: 1 recorded / 0 dropped / 1 active / 1 visible");
+		expect(output).not.toContain("+");
+		expect(output).not.toContain("-");
+	});
+
+	it("shows no added suffix when count is zero", async () => {
+		const output = await setup({ entries: [] }).run();
+
+		expect(output).toContain("Observations: 0 recorded / 0 dropped / 0 active / 0 visible");
+		expect(output).not.toContain("+0");
+	});
+
+	it("shows no removed suffix when count is zero", async () => {
+		const output = await setup({ entries: [] }).run();
+
+		expect(output).not.toContain("-0");
+	});
 });

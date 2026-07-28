@@ -228,4 +228,22 @@ describe("V3 /om:view", () => {
 		expect(clipboardText).toContain("No visible reflections.");
 		expect(output).toContain(COPY_SUCCESS);
 	});
+
+	it("renders visible when object has non-string mode property", async () => {
+		const { output, clipboardText, copyToClipboard } = await setup([]).run({ mode: 42 });
+
+		expect(copyToClipboard).toHaveBeenCalledTimes(1);
+		expect(clipboardText).toContain("── Reflections ──");
+		expect(clipboardText).toContain("No visible reflections.");
+		expect(output).toContain(COPY_SUCCESS);
+	});
+
+	it("renders visible when object has null mode property", async () => {
+		const { output, clipboardText, copyToClipboard } = await setup([]).run({ mode: null });
+
+		expect(copyToClipboard).toHaveBeenCalledTimes(1);
+		expect(clipboardText).toContain("── Reflections ──");
+		expect(clipboardText).toContain("No visible reflections.");
+		expect(output).toContain(COPY_SUCCESS);
+	});
 });

@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from "vitest";
 
-import { copyTextToClipboard, getClipboardCommands, type ClipboardCommand } from "../src/clipboard.js";
+import { copyTextToClipboard, getClipboardCommands, runClipboardCommand, type ClipboardCommand } from "../src/clipboard.js";
 
 describe("clipboard helper", () => {
 	it("uses pbcopy on macOS", () => {
@@ -41,5 +41,32 @@ describe("clipboard helper", () => {
 
 		await expect(copyTextToClipboard("text", runner, commands)).resolves.toBe(false);
 		expect(runner).toHaveBeenCalledTimes(2);
+	});
+
+	describe("runClipboardCommand", () => {
+		it("resolves false on child error", async () => {
+			const result = await runClipboardCommand({ command: "nonexistent-binary-xyz", args: [] }, "text");
+			expect(result).toBe(false);
+		});
+
+		it("resolves false on timeout", async () => {
+			const originalSpawn = await import("node:child_process");
+			const mockSpawn = vi.fn(() => ({
+				stdio: { pipe: vi.fn() },
+				on: vi.fn((event: string, cb: (...args: unknown[]) => void) => {
+					if (event === "error") cb(new Error("spawn ENOENT"));
+				}),
+				stdin: { on: vi.fn(), end: vi.fn() },
+				kill: vi.fn(),
+			}));
+
+			vi.doMock("node:child_process", () => ({ spawn: mockSpawn }));
+			const { runClipboardCommand: runCmd } = await import("../src/clipboard.js");
+
+			const result = await runCmd({ command: "test", args: [] }, "text");
+			expect(result).toBe(false);
+
+			vi.doUnmock("node:child_process");
+		});
 	});
 });

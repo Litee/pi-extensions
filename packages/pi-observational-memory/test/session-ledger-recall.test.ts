@@ -243,4 +243,94 @@ describe("session-ledger recall", () => {
 		expect(result.observations).toHaveLength(1);
 		expect(result.reflections).toHaveLength(1);
 	});
+
+	it("returns not_found for empty entries array", () => {
+		const result = recallMemorySources([], "aaaaaaaaaaaa");
+
+		expect(result.status).toBe("not_found");
+		expect(result.kind).toBeUndefined();
+		expect(result.reflections).toEqual([]);
+		expect(result.observations).toEqual([]);
+		expect(result.collision).toBe(false);
+		expect(result.partial).toBe(false);
+	});
+
+	it("returns observation kind when only direct observation matches", () => {
+		const entries = [
+			sourceEntry("src-1"),
+			observationsEntry("obs-entry-1", [observation({ id: OBS_1, sourceEntryIds: ["src-1"] })]),
+		];
+		const result = recallMemorySources(entries, OBS_1);
+
+		expect(result.kind).toBe("observation");
+	});
+
+	it("returns reflection kind when only reflection matches", () => {
+		const entries = [
+			reflectionsEntry("ref-entry-1", [reflection({ id: REF_1, supportingObservationIds: [OBS_1] })]),
+		];
+		const result = recallMemorySources(entries, REF_1);
+
+		expect(result.kind).toBe("reflection");
+	});
+
+	it("deduplicates source entries by id", () => {
+		const entries = [
+			sourceEntry("src-1"),
+			observationsEntry("obs-entry-1", [observation({ id: OBS_1, sourceEntryIds: ["src-1", "src-1"] })]),
+		];
+		const result = recallMemorySources(entries, OBS_1);
+
+		expect(result.sourceEntries.map((e) => e.id)).toEqual(["src-1"]);
+	});
+
+	it("deduplicates missing and non-source entry ids", () => {
+		const entries = [
+			sourceEntry("src-1"),
+			compactionEntry("comp-1"),
+			observationsEntry("obs-entry-1", [observation({ id: OBS_1, sourceEntryIds: ["missing-1", "missing-1", "comp-1", "comp-1"] })]),
+		];
+		const result = recallMemorySources(entries, OBS_1);
+
+		expect(result.missingSourceEntryIds).toEqual(["missing-1"]);
+		expect(result.nonSourceEntryIds).toEqual(["comp-1"]);
+	});
+
+	it("handles dropped observation with sources", () => {
+		const entries = [
+			sourceEntry("src-1"),
+			observationsEntry("obs-entry-1", [observation({ id: OBS_1, sourceEntryIds: ["src-1"] })]),
+			droppedEntry("drop-entry-1", [OBS_1]),
+		];
+		const result = recallMemorySources(entries, OBS_1);
+
+		expect(result.status).toBe("found");
+		if (result.status !== "found") return;
+		expect(result.observations[0].status).toBe("dropped");
+		expect(result.partial).toBe(false);
+	});
+
+	it("handles multiple observations with same id from different entries", () => {
+		const entries = [
+			sourceEntry("src-1"),
+			observationsEntry("obs-entry-1", [observation({ id: SAME_ID, sourceEntryIds: ["src-1"] })]),
+			sourceEntry("src-2"),
+			observationsEntry("obs-entry-2", [observation({ id: SAME_ID, sourceEntryIds: ["src-2"] })]),
+		];
+		const result = recallMemorySources(entries, SAME_ID);
+
+		expect(result.collision).toBe(true);
+		expect(result.observations).toHaveLength(2);
+	});
+
+	it("returns missing supporting observation ids as unique strings", () => {
+		const entries = [
+			sourceEntry("src-1"),
+			observationsEntry("obs-entry-1", [observation({ id: OBS_1, sourceEntryIds: ["src-1"] })]),
+			reflectionsEntry("ref-entry-1", [reflection({ id: REF_1, supportingObservationIds: [OBS_1, MISSING_OBS, MISSING_OBS] })]),
+		];
+		const result = recallMemorySources(entries, REF_1);
+
+		expect(result.missingSupportingObservationIds).toEqual([MISSING_OBS]);
+	});
 });

@@ -455,6 +455,90 @@ describe("V3 consolidation trigger", () => {
 		expect(ctx.ui.notify).not.toHaveBeenCalledWith(expect.stringContaining("dropper running"), "info");
 	});
 
+	it("notifies when observer returns no observations", async () => {
+		const entries = [textCustomMessage("raw-1", "aaaaaaaa")];
+		const { fire, runLaunchedWork, ctx } = setup({ entries });
+
+		fire();
+		await runLaunchedWork();
+
+		expect(ctx.ui.notify).toHaveBeenCalledWith("Observational memory: observer returned no observations", "warning");
+	});
+
+	it("notifies when model resolution fails for reflector", async () => {
+		const entries = [
+			textCustomMessage("raw-1", "aaaaaaaa"),
+			observationsRecordedEntry("om-obs", { observations: [obsA], coversUpToId: "raw-1" }),
+		];
+		const { fire, runLaunchedWork, runtime, ctx } = setup({ entries, reflectAfterTokens: 1 });
+		runtime.resolveModel.mockResolvedValueOnce({ ok: false, reason: "no model" });
+
+		fire();
+		await runLaunchedWork();
+
+		expect(ctx.ui.notify).toHaveBeenCalledWith("Observational memory: reflector skipped — no model", "warning");
+	});
+
+	it("notifies when model resolution fails for dropper", async () => {
+		const newRef = reflection("ffffffffffff", ["aaaaaaaaaaaa"]);
+		mockAgents.runReflector.mockResolvedValueOnce([newRef]);
+		const entries = [
+			textCustomMessage("raw-1", "aaaaaaaa"),
+			observationsRecordedEntry("om-obs", { observations: [obsA], coversUpToId: "raw-1" }),
+		];
+		const { fire, runLaunchedWork, runtime, ctx } = setup({ entries, reflectAfterTokens: 1, observationsPoolMaxTokens: 10 });
+		runtime.resolveModel.mockResolvedValueOnce({ ok: true, model: { reasoning: true }, apiKey: "key" });
+		runtime.resolveModel.mockResolvedValueOnce({ ok: true, model: { reasoning: true }, apiKey: "key" });
+		runtime.resolveModel.mockResolvedValueOnce({ ok: false, reason: "no model" });
+
+		fire();
+		await runLaunchedWork();
+
+		expect(ctx.ui.notify).toHaveBeenCalledWith("Observational memory: dropper skipped — no model", "warning");
+	});
+
+	it("notifies when dropper runs after reflection", async () => {
+		const newRef = reflection("ffffffffffff", ["aaaaaaaaaaaa"]);
+		mockAgents.runReflector.mockResolvedValueOnce([newRef]);
+		mockAgents.runDropper.mockResolvedValueOnce(["aaaaaaaaaaaa"]);
+		const entries = [
+			textCustomMessage("raw-1", "aaaaaaaa"),
+			observationsRecordedEntry("om-obs", { observations: [obsA], coversUpToId: "raw-1" }),
+		];
+		const { fire, runLaunchedWork, ctx } = setup({ entries, reflectAfterTokens: 1, observationsPoolMaxTokens: 10, observationsPoolTargetTokens: 5 });
+
+		fire();
+		await runLaunchedWork();
+
+		expect(ctx.ui.notify).toHaveBeenCalledWith(
+			"Observational memory: dropper running after reflection — active observation pool ~10 / 5 target tokens (200%)",
+			"info",
+		);
+	});
+
+	it("notifies when observer runs on a chunk", async () => {
+		const entries = [textCustomMessage("raw-1", "aaaaaaaa")];
+		const { fire, runLaunchedWork, ctx } = setup({ entries, reflectAfterTokens: 999 });
+
+		fire();
+		await runLaunchedWork();
+
+		expect(ctx.ui.notify).toHaveBeenCalledWith("Observational memory: observer running on ~1-token chunk", "info");
+	});
+
+	it("notifies when reflector runs", async () => {
+		const entries = [
+			textCustomMessage("raw-1", "aaaaaaaa"),
+			observationsRecordedEntry("om-obs", { observations: [obsA], coversUpToId: "raw-1" }),
+		];
+		const { fire, runLaunchedWork, ctx } = setup({ entries, observeAfterTokens: 999 });
+
+		fire();
+		await runLaunchedWork();
+
+		expect(ctx.ui.notify).toHaveBeenCalledWith("Observational memory: reflector running (~10 tokens)", "info");
+	});
+
 	it("preserves stage failure boundaries", async () => {
 		mockAgents.runObserver.mockRejectedValueOnce(new Error("observe failed"));
 		const observerFailure = setup({ entries: [textCustomMessage("raw-1", "aaaaaaaa")] });

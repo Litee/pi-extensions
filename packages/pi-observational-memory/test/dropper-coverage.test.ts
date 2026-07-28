@@ -90,4 +90,121 @@ describe("V3 dropper reflection coverage helpers", () => {
 		expect(line).not.toContain("drop-priority");
 		expect(line).not.toContain("drop-resistance");
 	});
+
+	it("renders observation lines for all coverage tiers", () => {
+		const obs = observation("aaaaaaaaaaaa", { relevance: "low", content: "Low fact" });
+		expect(observationToDropperLine(obs, "none")).toContain("[coverage: none]");
+		expect(observationToDropperLine(obs, "partial")).toContain("[coverage: partial]");
+		expect(observationToDropperLine(obs, "strong")).toContain("[coverage: strong]");
+	});
+
+	it("summarizes coverage transitions for equal before/after (no transition)", () => {
+		const observations = [observation("aaaaaaaaaaaa", { relevance: "high", tokenCount: 5 })];
+		const coverage = reflectionCoverageMap(observations, []);
+
+		const transitions = summarizeCoverageTransitionsByRelevance(observations, coverage, coverage);
+
+		expect(transitions.high).toEqual({});
+		expect(transitions.low).toEqual({});
+		expect(transitions.medium).toEqual({});
+		expect(transitions.critical).toEqual({});
+	});
+
+	it("summarizes coverage transitions for none->partial", () => {
+		const observations = [observation("aaaaaaaaaaaa", { relevance: "medium", tokenCount: 3 })];
+		const before = reflectionCoverageMap(observations, []);
+		const after = reflectionCoverageMap(observations, [reflection("rrrrrrrrrrr1", ["aaaaaaaaaaaa"])]);
+
+		const transitions = summarizeCoverageTransitionsByRelevance(observations, before, after);
+
+		expect(transitions.medium).toEqual({ "none->partial": { count: 1, tokens: 3 } });
+	});
+
+	it("summarizes coverage transitions for partial->strong", () => {
+		const observations = [observation("aaaaaaaaaaaa", { relevance: "critical", tokenCount: 7 })];
+		const before = reflectionCoverageMap(observations, [reflection("rrrrrrrrrrr1", ["aaaaaaaaaaaa"])]);
+		const after = reflectionCoverageMap(observations, [
+			reflection("rrrrrrrrrrr1", ["aaaaaaaaaaaa"]),
+			reflection("rrrrrrrrrrr2", ["aaaaaaaaaaaa"]),
+		]);
+
+		const transitions = summarizeCoverageTransitionsByRelevance(observations, before, after);
+
+		expect(transitions.critical).toEqual({ "partial->strong": { count: 1, tokens: 7 } });
+	});
+
+	it("summarizes coverage transitions for strong->none (coverage removed)", () => {
+		const observations = [observation("aaaaaaaaaaaa", { relevance: "low", tokenCount: 4 })];
+		const before = reflectionCoverageMap(observations, [
+			reflection("rrrrrrrrrrr1", ["aaaaaaaaaaaa"]),
+			reflection("rrrrrrrrrrr2", ["aaaaaaaaaaaa"]),
+		]);
+		const after = reflectionCoverageMap(observations, []);
+
+		const transitions = summarizeCoverageTransitionsByRelevance(observations, before, after);
+
+		expect(transitions.low).toEqual({ "strong->none": { count: 1, tokens: 4 } });
+	});
+
+	it("summarizes mixed transitions across multiple observations", () => {
+		const obs1 = observation("aaaaaaaaaaaa", { relevance: "low", tokenCount: 3 });
+		const obs2 = observation("bbbbbbbbbbbb", { relevance: "high", tokenCount: 5 });
+		const obs3 = observation("cccccccccccc", { relevance: "critical", tokenCount: 7 });
+		const observations = [obs1, obs2, obs3];
+		const before = reflectionCoverageMap(observations, [
+			reflection("rrrrrrrrrrr1", ["bbbbbbbbbbbb"]),
+		]);
+		const after = reflectionCoverageMap(observations, [
+			reflection("rrrrrrrrrrr1", ["bbbbbbbbbbbb"]),
+			reflection("rrrrrrrrrrr2", ["aaaaaaaaaaaa", "bbbbbbbbbbbb"]),
+			reflection("rrrrrrrrrrr3", ["cccccccccccc"]),
+		]);
+
+		const transitions = summarizeCoverageTransitionsByRelevance(observations, before, after);
+
+		expect(transitions.low).toEqual({ "none->partial": { count: 1, tokens: 3 } });
+		expect(transitions.high).toEqual({ "partial->strong": { count: 1, tokens: 5 } });
+		expect(transitions.critical).toEqual({ "none->partial": { count: 1, tokens: 7 } });
+	});
+
+	it("handles empty observations list", () => {
+		const transitions = summarizeCoverageTransitionsByRelevance([], {}, {});
+		expect(transitions.low).toEqual({});
+		expect(transitions.medium).toEqual({});
+		expect(transitions.high).toEqual({});
+		expect(transitions.critical).toEqual({});
+	});
+
+	it("coverageTierForObservation returns tier from map or defaults to none", () => {
+		const obs = observation("aaaaaaaaaaaa");
+		const coverage = reflectionCoverageMap([obs], []);
+		expect(coverageTierForObservation(obs, coverage)).toBe("none");
+
+		const coverage2 = reflectionCoverageMap([obs], [reflection("rrrrrrrrrrr1", ["aaaaaaaaaaaa"])]);
+		expect(coverageTierForObservation(obs, coverage2)).toBe("partial");
+	});
+
+	it("summarizeCoverageByRelevanceForIds filters by provided ids", () => {
+		const obs1 = observation("aaaaaaaaaaaa", { relevance: "low", tokenCount: 3 });
+		const obs2 = observation("bbbbbbbbbbbb", { relevance: "critical", tokenCount: 5 });
+		const observations = [obs1, obs2];
+		const coverage = reflectionCoverageMap(observations, []);
+
+		const summary = summarizeCoverageByRelevanceForIds(["aaaaaaaaaaaa"], observations, coverage);
+
+		expect(summary.low.none.count).toBe(1);
+		expect(summary.low.none.tokens).toBe(3);
+		expect(summary.critical.none.count).toBe(0);
+	});
+
+	it("summarizeCoverageByRelevanceForIds handles ids not in observations list", () => {
+		const obs1 = observation("aaaaaaaaaaaa", { relevance: "low", tokenCount: 3 });
+		const observations = [obs1];
+		const coverage = reflectionCoverageMap(observations, []);
+
+		const summary = summarizeCoverageByRelevanceForIds(["missing", "aaaaaaaaaaaa"], observations, coverage);
+
+		expect(summary.low.none.count).toBe(1);
+		expect(summary.low.none.tokens).toBe(3);
+	});
 });

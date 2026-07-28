@@ -140,4 +140,75 @@ describe("session-ledger V3 progress helpers", () => {
 
 		expect(rawTokensSinceLastCompaction(entries)).toBe(3); // raw-1 + raw-2 from live tail starting at firstKeptEntryId
 	});
+
+	it("returns -1 for latestCoverageIndex when no coverage entries exist", () => {
+		const entries = [textCustomMessage("raw-1", "aaaa")];
+		expect(latestCoverageIndex(entries, V3_OBSERVATIONS_RECORDED)).toBe(-1);
+		expect(latestCoverageIndex(entries, V3_REFLECTIONS_RECORDED)).toBe(-1);
+		expect(latestCoverageIndex(entries, V3_OBSERVATIONS_DROPPED)).toBe(-1);
+	});
+
+	it("returns undefined for latestCoverageMarkerId when no coverage entries exist", () => {
+		const entries = [textCustomMessage("raw-1", "aaaa")];
+		expect(latestCoverageMarkerId(entries, V3_OBSERVATIONS_RECORDED)).toBeUndefined();
+	});
+
+	it("handles earlierCoverageMarkerId with both ids missing", () => {
+		const entries = [textCustomMessage("raw-1", "aaaa")];
+		expect(earlierCoverageMarkerId(entries, "missing-a", "missing-b")).toBeUndefined();
+	});
+
+	it("handles earlierCoverageMarkerId with firstId missing", () => {
+		const entries = [
+			textCustomMessage("raw-1", "aaaa"),
+			textCustomMessage("raw-2", "bbbb"),
+		];
+		expect(earlierCoverageMarkerId(entries, "missing", "raw-2")).toBe("raw-2");
+	});
+
+	it("handles earlierCoverageMarkerId with secondId missing", () => {
+		const entries = [
+			textCustomMessage("raw-1", "aaaa"),
+			textCustomMessage("raw-2", "bbbb"),
+		];
+		expect(earlierCoverageMarkerId(entries, "raw-1", "missing")).toBe("raw-1");
+	});
+
+	it("handles earlierCoverageMarkerId with both ids present and first is earlier", () => {
+		const entries = [
+			textCustomMessage("raw-1", "aaaa"),
+			textCustomMessage("raw-2", "bbbb"),
+			textCustomMessage("raw-3", "cccc"),
+		];
+		expect(earlierCoverageMarkerId(entries, "raw-1", "raw-3")).toBe("raw-1");
+	});
+
+	it("handles earlierCoverageMarkerId with both ids present and second is earlier", () => {
+		const entries = [
+			textCustomMessage("raw-1", "aaaa"),
+			textCustomMessage("raw-2", "bbbb"),
+			textCustomMessage("raw-3", "cccc"),
+		];
+		expect(earlierCoverageMarkerId(entries, "raw-3", "raw-1")).toBe("raw-1");
+	});
+
+	it("handles empty entries array for rawTokensAfterIndex", () => {
+		expect(rawTokensAfterIndex([], 0)).toBe(0);
+	});
+
+	it("handles empty entries array for rawTokensSinceObservationCoverage", () => {
+		expect(rawTokensSinceObservationCoverage([])).toBe(0);
+	});
+
+	it("handles empty entries array for rawTokensSinceReflectionCoverage", () => {
+		expect(rawTokensSinceReflectionCoverage([])).toBe(0);
+	});
+
+	it("handles empty entries array for rawTokensSinceDropCoverage", () => {
+		expect(rawTokensSinceDropCoverage([])).toBe(0);
+	});
+
+	it("handles empty entries array for rawTokensSinceLastCompaction", () => {
+		expect(rawTokensSinceLastCompaction([])).toBe(0);
+	});
 });
