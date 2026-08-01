@@ -14,6 +14,7 @@ export default function (pi: ExtensionAPI): void {
   let lastUpdate = 0;
   let prevTokens = 0;
   let prevTime = 0;
+  let firstSample = true;
 
   // Reset when a new assistant message starts
   pi.on("message_start", (event) => {
@@ -45,7 +46,7 @@ export default function (pi: ExtensionAPI): void {
       const estimatedTokens = Math.round(chars / CHARS_PER_TOKEN);
       const now = Date.now();
       const deltaTime = (now - prevTime) / 1000;
-      const rate = deltaTime > 0
+      const rawRate = deltaTime > 0
         ? (estimatedTokens - prevTokens) / deltaTime
         : 0;
 
@@ -55,14 +56,19 @@ export default function (pi: ExtensionAPI): void {
       prevTokens = estimatedTokens;
       prevTime = now;
 
+      // Exponential moving average for smoothing (alpha=0.4)
+      displayedRate = firstSample
+        ? rawRate
+        : 0.4 * rawRate + 0.6 * displayedRate;
+      firstSample = false;
+
       // Update display only if values changed (reduces flicker)
-      if (estimatedTokens !== displayedTokens || displayedRate !== rate) {
+      if (estimatedTokens !== displayedTokens) {
         displayedTokens = estimatedTokens;
-        displayedRate = rate;
         const formattedTokens = estimatedTokens < 1000
           ? String(estimatedTokens)
           : `${(estimatedTokens / 1000).toFixed(1)}k`;
-        ctx.ui.setStatus("thinking-tokens", `thinking: ${formattedTokens} t, ${rate.toFixed(1)}/s`);
+        ctx.ui.setStatus("thinking-tokens", `thinking: ${formattedTokens} t, ${displayedRate.toFixed(1)}/s`);
       }
     }
   });
