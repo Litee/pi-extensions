@@ -9,17 +9,17 @@ const THROTTLE_MS = 1000;
 export default function (pi: ExtensionAPI): void {
   let currentMessageId: number | null = null;
   let thinkingCharCount = 0;
-  let startTime = 0;
   let displayedTokens = 0;
   let displayedRate = 0;
   let lastUpdate = 0;
+  let prevTokens = 0;
+  let prevTime = 0;
 
   // Reset when a new assistant message starts
   pi.on("message_start", (event) => {
     if (event.message.role === "assistant") {
       currentMessageId = event.message.timestamp;
       thinkingCharCount = 0;
-      startTime = Date.now();
       displayedTokens = 0;
       displayedRate = 0;
       lastUpdate = 0;
@@ -43,13 +43,17 @@ export default function (pi: ExtensionAPI): void {
     if (chars > thinkingCharCount) {
       thinkingCharCount = chars;
       const estimatedTokens = Math.round(chars / CHARS_PER_TOKEN);
-      const elapsed = (Date.now() - startTime) / 1000;
-      const rate = elapsed > 0 ? estimatedTokens / elapsed : 0;
+      const now = Date.now();
+      const deltaTime = (now - prevTime) / 1000;
+      const rate = deltaTime > 0
+        ? (estimatedTokens - prevTokens) / deltaTime
+        : 0;
 
       // Throttle: only update if at least THROTTLE_MS ms since last update
-      const now = Date.now();
       if (now - lastUpdate < THROTTLE_MS) return;
       lastUpdate = now;
+      prevTokens = estimatedTokens;
+      prevTime = now;
 
       // Update display only if values changed (reduces flicker)
       if (estimatedTokens !== displayedTokens || displayedRate !== rate) {
