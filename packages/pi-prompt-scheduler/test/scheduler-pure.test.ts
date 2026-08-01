@@ -296,6 +296,7 @@ describe("CronScheduler.validateCronExpression — non-Error throw", () => {
 				constructor(expr: string, _fn: () => void) {
 					if (expr === "zz zz zz zz zz zz") {
 						// Throw a non-Error value to exercise the fallback branch
+						// eslint-disable-next-line @typescript-eslint/only-throw-error
 						throw "not an Error";
 					}
 					// For valid expressions, use the real Cron

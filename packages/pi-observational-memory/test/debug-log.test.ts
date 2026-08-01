@@ -121,9 +121,9 @@ describe("debug logging", () => {
 		const lines = readJsonLines(logPath);
 		expect(lines).toHaveLength(1);
 		const data = (lines[0] as { data: Record<string, unknown> }).data;
-		expect(data.num).toBe(42);
-		expect(data.bool).toBe(true);
-		expect(data.arr).toEqual([1, 2]);
-		expect(data.nested).toEqual({ a: 1 });
+		expect(data["num"]).toBe(42);
+		expect(data["bool"]).toBe(true);
+		expect(data["arr"]).toEqual([1, 2]);
+		expect(data["nested"]).toEqual({ a: 1 });
 	});
 });

@@ -1157,5 +1157,4 @@ describe("targeted coverage — specific uncovered paths", () => {
 			const [, items] = ctx.ui.select.mock.calls[0]!;
 			expect(items.join("\n")).toContain("Triggers:       0 (this session)");
 		});
-	});
 });

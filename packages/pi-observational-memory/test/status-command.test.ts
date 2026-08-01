@@ -174,6 +174,10 @@ describe("V3 /om:status", () => {
 		const entries = [
 			textCustomMessage("raw-1", "aaaaaaaa"),
 			observationsRecordedEntry("om-obs", { observations: [obs], coversUpToId: "raw-1" }),
+			compactionEntry("comp-1", {
+				firstKeptEntryId: "raw-1",
+				details: memoryDetails({ fullFold: true, observations: [obs] }),
+			}),
 		];
 		const output = await setup({ entries }).run();
 

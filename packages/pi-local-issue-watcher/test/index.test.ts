@@ -1405,6 +1405,8 @@ describe("enabled/disabled lifecycle", () => {
 		const baseCtx = makeFakeCtx([makeEnabledEntry()]);
 		const ctx = { ...baseCtx, hasUI: undefined } as never;
 		await pi.sessionStartHandler!({}, ctx);
+		// The handler defers pi.sendMessage via setImmediate (#0015); flush it.
+		await vi.advanceTimersByTimeAsync(0);
 		// rt.ui should have been set (hasUI=true path via ui.hasUI)
 		expect(pi.sendMessage).toHaveBeenCalled();
 	});
@@ -1421,6 +1423,8 @@ describe("enabled/disabled lifecycle", () => {
 			ui: { ...baseCtx.ui, hasUI: undefined } as never,
 		} as never;
 		await pi.sessionStartHandler!({}, ctx);
+		// The handler defers pi.sendMessage via setImmediate (#0015); flush it.
+		await vi.advanceTimersByTimeAsync(0);
 		expect(pi.sendMessage).toHaveBeenCalled();
 	});
 
@@ -1432,6 +1436,8 @@ describe("enabled/disabled lifecycle", () => {
 		const baseCtx = makeFakeCtx([makeEnabledEntry()]);
 		const ctx = { ...baseCtx, hasUI: false } as never;
 		await pi.sessionStartHandler!({}, ctx);
+		// The handler defers pi.sendMessage via setImmediate (#0015); flush it.
+		await vi.advanceTimersByTimeAsync(0);
 		// Handler should still proceed (hasUI only affects rt.ui assignment)
 		expect(pi.sendMessage).toHaveBeenCalled();
 	});

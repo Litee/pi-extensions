@@ -2490,7 +2490,7 @@ describe('openBrowseView — early return when ctx.ui.custom is absent', () => {
       renderEventRow: () => '',
       itemSortKey: () => 0,
     }
-    await openBrowseView({ title: 'T', watches: [], view: stubView, filter: () => true, header: () => '' }, null as unknown as object)
+    await openBrowseView({ title: 'T', watches: [], view: stubView, filter: () => true, header: () => '' }, null)
     // Should resolve without error
   })
 })
@@ -2550,7 +2550,7 @@ describe('openMenuView — early return when ctx.ui.custom is not a function', (
   })
 
   it('returns immediately when ctx is null-like', async () => {
-    await openMenuView('Test', () => [], null as unknown as object)
+    await openMenuView('Test', () => [], null)
     // Should resolve without error
   })
 })

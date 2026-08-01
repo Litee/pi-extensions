@@ -479,22 +479,27 @@ describe("V3 consolidation trigger", () => {
 		expect(ctx.ui.notify).toHaveBeenCalledWith("Observational memory: reflector skipped — no model", "warning");
 	});
 
-	it("notifies when model resolution fails for dropper", async () => {
+	it("shares one resolved model across the reflector and dropper stages", async () => {
 		const newRef = reflection("ffffffffffff", ["aaaaaaaaaaaa"]);
 		mockAgents.runReflector.mockResolvedValueOnce([newRef]);
 		const entries = [
 			textCustomMessage("raw-1", "aaaaaaaa"),
 			observationsRecordedEntry("om-obs", { observations: [obsA], coversUpToId: "raw-1" }),
 		];
-		const { fire, runLaunchedWork, runtime, ctx } = setup({ entries, reflectAfterTokens: 1, observationsPoolMaxTokens: 10 });
+		const { fire, runLaunchedWork, runtime, ctx } = setup({ entries, reflectAfterTokens: 1, observationsPoolMaxTokens: 10, observationsPoolTargetTokens: 5 });
 		runtime.resolveModel.mockResolvedValueOnce({ ok: true, model: { reasoning: true }, apiKey: "key" });
-		runtime.resolveModel.mockResolvedValueOnce({ ok: true, model: { reasoning: true }, apiKey: "key" });
-		runtime.resolveModel.mockResolvedValueOnce({ ok: false, reason: "no model" });
 
 		fire();
 		await runLaunchedWork();
 
-		expect(ctx.ui.notify).toHaveBeenCalledWith("Observational memory: dropper skipped — no model", "warning");
+		// The resolver caches the first resolveModel result for the whole pipeline run,
+		// so the dropper reuses the reflector's model without a second call.
+		expect(runtime.resolveModel).toHaveBeenCalledTimes(1);
+		expect(mockAgents.runDropper).toHaveBeenCalledTimes(1);
+		expect(ctx.ui.notify).toHaveBeenCalledWith(
+			"Observational memory: dropper running after reflection — active observation pool ~10 / 5 target tokens (200%)",
+			"info",
+		);
 	});
 
 	it("notifies when dropper runs after reflection", async () => {
@@ -523,7 +528,8 @@ describe("V3 consolidation trigger", () => {
 		fire();
 		await runLaunchedWork();
 
-		expect(ctx.ui.notify).toHaveBeenCalledWith("Observational memory: observer running on ~1-token chunk", "info");
+		// "aaaaaaaa" is 8 chars -> ceil(8/4) = 2 tokens for the chunk.
+		expect(ctx.ui.notify).toHaveBeenCalledWith("Observational memory: observer running on ~2-token chunk", "info");
 	});
 
 	it("notifies when reflector runs", async () => {
@@ -536,7 +542,8 @@ describe("V3 consolidation trigger", () => {
 		fire();
 		await runLaunchedWork();
 
-		expect(ctx.ui.notify).toHaveBeenCalledWith("Observational memory: reflector running (~10 tokens)", "info");
+		// Only the raw-1 source entry (8 chars -> 2 tokens) counts toward reflection tokens.
+		expect(ctx.ui.notify).toHaveBeenCalledWith("Observational memory: reflector running (~2 tokens)", "info");
 	});
 
 	it("preserves stage failure boundaries", async () => {

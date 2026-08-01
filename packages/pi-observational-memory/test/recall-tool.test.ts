@@ -11,6 +11,7 @@ import {
 	recallObservationTool,
 	registerRecallTool,
 	type RecallObservationToolDetails,
+	type RecallSourceEntryDetails,
 } from "../src/tools/recall-observation.js";
 import {
 	observation,
@@ -131,6 +132,31 @@ describe("V3 recall tool", () => {
 });
 
 describe("recall TUI rendering helpers", () => {
+	// Local stand-ins for the non-exported detail types in recall-observation.ts.
+	type LocalObservationDetails = {
+		id: string;
+		content: string;
+		timestamp: string;
+		relevance: "low" | "medium" | "high" | "critical";
+		status?: "active" | "dropped";
+	};
+	type LocalReflectionDetails = {
+		id: string;
+		content: string;
+		supportingObservationIds: string[];
+		reflectionIndex: number;
+	};
+	type LocalMatchDetails = {
+		status: "active" | "dropped" | "source_unavailable" | "no_source";
+		observationEntryId: string;
+		observationRecordIndex: number;
+		observation: LocalObservationDetails;
+		sourceEntryIds?: string[];
+		sourceEntries?: RecallSourceEntryDetails[];
+		missingSourceEntryIds?: string[];
+		nonSourceEntryIds?: string[];
+	};
+
 	function makeDetails(overrides: Partial<RecallObservationToolDetails> = {}): RecallObservationToolDetails {
 		return {
 			status: "ok",
@@ -150,6 +176,29 @@ describe("recall TUI rendering helpers", () => {
 		};
 	}
 
+	function reflectionDetails(id: string, content: string): LocalReflectionDetails {
+		return { id, content, supportingObservationIds: [], reflectionIndex: 0 };
+	}
+
+	function observationDetails(id: string, status?: "active" | "dropped"): LocalObservationDetails {
+		return {
+			id,
+			content: "An observation",
+			timestamp: "2026-01-01T00:00:00Z",
+			relevance: "high",
+			...(status !== undefined ? { status } : {}),
+		};
+	}
+
+	function matchFor(obs: LocalObservationDetails): LocalMatchDetails {
+		return {
+			status: "active",
+			observationEntryId: "obs-entry-1",
+			observationRecordIndex: 0,
+			observation: obs,
+		};
+	}
+
 	describe("formatRecallHeaderForTui", () => {
 		it("renders failure status for invalid_id", () => {
 			const details = makeDetails({ status: "invalid_id" });
@@ -164,9 +213,9 @@ describe("recall TUI rendering helpers", () => {
 		it("renders success with reflections, observations, sources, and tokens", () => {
 			const details = makeDetails({
 				status: "ok",
-				reflections: [{ id: "rrrrrrrrrrr1", content: "A fact", supportingObservationIds: [] }],
-				observations: [{ id: "aaaaaaaaaaaa", content: "An observation", timestamp: "2026-01-01T00:00:00Z", relevance: "high" }],
-				matches: [{ id: "aaaaaaaaaaaa", content: "An observation", timestamp: "2026-01-01T00:00:00Z", relevance: "high" }],
+				reflections: [reflectionDetails("rrrrrrrrrrr1", "A fact")],
+				observations: [matchFor(observationDetails("aaaaaaaaaaaa"))],
+				matches: [matchFor(observationDetails("aaaaaaaaaaaa"))],
 				sourceEntries: [{ id: "raw-1", origin: "User", timestamp: "2026-01-01 00:00", tokens: 10, qualifiers: [] }],
 			});
 			const header = formatRecallHeaderForTui(details);
@@ -180,10 +229,13 @@ describe("recall TUI rendering helpers", () => {
 		it("renders plural correctly for multiple items", () => {
 			const details = makeDetails({
 				status: "ok",
-				reflections: [{ id: "rrrrrrrrrrr1", content: "A", supportingObservationIds: [] }, { id: "rrrrrrrrrrr2", content: "B", supportingObservationIds: [] }],
-				observations: [{ id: "aaaaaaaaaaaa", content: "A", timestamp: "2026-01-01T00:00:00Z", relevance: "high" }, { id: "bbbbbbbbbbbb", content: "B", timestamp: "2026-01-01T00:00:00Z", relevance: "high" }],
-				matches: [{ id: "aaaaaaaaaaaa", content: "A", timestamp: "2026-01-01T00:00:00Z", relevance: "high" }, { id: "bbbbbbbbbbbb", content: "B", timestamp: "2026-01-01T00:00:00Z", relevance: "high" }],
-				sourceEntries: [{ id: "raw-1", origin: "User", timestamp: "2026-01-01 00:00", tokens: 5, qualifiers: [] }, { id: "raw-2", origin: "Assistant", timestamp: "2026-01-01 00:01", tokens: 15, qualifiers: [] }],
+				reflections: [reflectionDetails("rrrrrrrrrrr1", "A"), reflectionDetails("rrrrrrrrrrr2", "B")],
+				observations: [matchFor(observationDetails("aaaaaaaaaaaa")), matchFor(observationDetails("bbbbbbbbbbbb"))],
+				matches: [matchFor(observationDetails("aaaaaaaaaaaa")), matchFor(observationDetails("bbbbbbbbbbbb"))],
+				sourceEntries: [
+					{ id: "raw-1", origin: "User", timestamp: "2026-01-01 00:00", tokens: 5, qualifiers: [] },
+					{ id: "raw-2", origin: "Assistant", timestamp: "2026-01-01 00:01", tokens: 15, qualifiers: [] },
+				],
 			});
 			const header = formatRecallHeaderForTui(details);
 			expect(header).toContain("2 reflections");
@@ -220,7 +272,7 @@ describe("recall TUI rendering helpers", () => {
 		it("renders raw text result when details is missing", () => {
 			const result: AgentToolResult<RecallObservationToolDetails> = {
 				content: [{ type: "text", text: "raw text output" }],
-				details: undefined,
+				details: undefined as never,
 			};
 			expect(formatRecallResultForTui(result, false)).toBe("raw text output");
 		});
@@ -228,7 +280,7 @@ describe("recall TUI rendering helpers", () => {
 		it("renders empty recall when no content and no details", () => {
 			const result: AgentToolResult<RecallObservationToolDetails> = {
 				content: [],
-				details: undefined,
+				details: undefined as never,
 			};
 			expect(formatRecallResultForTui(result, false)).toBe("recall");
 		});
@@ -236,9 +288,13 @@ describe("recall TUI rendering helpers", () => {
 		it("renders observation-only rows with source metadata", () => {
 			const details = makeDetails({
 				status: "ok",
-				observations: [{ id: "aaaaaaaaaaaa", content: "An observation", timestamp: "2026-01-01T00:00:00Z", relevance: "high" }],
-				matches: [{ id: "aaaaaaaaaaaa", content: "An observation", timestamp: "2026-01-01T00:00:00Z", relevance: "high" }],
-				sourceEntries: [{ id: "raw-1", origin: "User", timestamp: "2026-01-01 00:00", tokens: 10, qualifiers: [], content: "User said hello" }],
+				observations: [matchFor(observationDetails("aaaaaaaaaaaa"))],
+				matches: [
+					{
+						...matchFor(observationDetails("aaaaaaaaaaaa")),
+						sourceEntries: [{ id: "raw-1", origin: "User", timestamp: "2026-01-01 00:00", tokens: 10, qualifiers: [], content: "User said hello" }],
+					},
+				],
 			});
 			const result: AgentToolResult<RecallObservationToolDetails> = { content: [], details };
 			const rendered = formatRecallResultForTui(result, true);
@@ -250,8 +306,8 @@ describe("recall TUI rendering helpers", () => {
 		it("renders memory rows with reflections and observations", () => {
 			const details = makeDetails({
 				status: "ok",
-				reflections: [{ id: "rrrrrrrrrrr1", content: "A reflection", supportingObservationIds: [] }],
-				observations: [{ id: "aaaaaaaaaaaa", content: "An observation", timestamp: "2026-01-01T00:00:00Z", relevance: "high" }],
+				reflections: [reflectionDetails("rrrrrrrrrrr1", "A reflection")],
+				observations: [matchFor(observationDetails("aaaaaaaaaaaa"))],
 				sourceEntries: [],
 			});
 			const result: AgentToolResult<RecallObservationToolDetails> = { content: [], details };
@@ -265,8 +321,8 @@ describe("recall TUI rendering helpers", () => {
 		it("renders dropped observation note", () => {
 			const details = makeDetails({
 				status: "ok",
-				observations: [{ id: "aaaaaaaaaaaa", content: "An observation", timestamp: "2026-01-01T00:00:00Z", relevance: "high", status: "dropped" }],
-				matches: [{ id: "aaaaaaaaaaaa", content: "An observation", timestamp: "2026-01-01T00:00:00Z", relevance: "high", status: "dropped" }],
+				observations: [matchFor(observationDetails("aaaaaaaaaaaa", "dropped"))],
+				matches: [matchFor(observationDetails("aaaaaaaaaaaa", "dropped"))],
 				sourceEntries: [],
 			});
 			const result: AgentToolResult<RecallObservationToolDetails> = { content: [], details };
@@ -278,8 +334,8 @@ describe("recall TUI rendering helpers", () => {
 			const details = makeDetails({
 				status: "ok",
 				collision: true,
-				observations: [{ id: "aaaaaaaaaaaa", content: "An observation", timestamp: "2026-01-01T00:00:00Z", relevance: "high" }],
-				matches: [{ id: "aaaaaaaaaaaa", content: "An observation", timestamp: "2026-01-01T00:00:00Z", relevance: "high" }],
+				observations: [matchFor(observationDetails("aaaaaaaaaaaa"))],
+				matches: [matchFor(observationDetails("aaaaaaaaaaaa"))],
 				sourceEntries: [],
 			});
 			const result: AgentToolResult<RecallObservationToolDetails> = { content: [], details };
@@ -291,8 +347,8 @@ describe("recall TUI rendering helpers", () => {
 			const details = makeDetails({
 				status: "ok",
 				missingSourceEntryIds: ["missing-raw"],
-				observations: [{ id: "aaaaaaaaaaaa", content: "An observation", timestamp: "2026-01-01T00:00:00Z", relevance: "high" }],
-				matches: [{ id: "aaaaaaaaaaaa", content: "An observation", timestamp: "2026-01-01T00:00:00Z", relevance: "high" }],
+				observations: [matchFor(observationDetails("aaaaaaaaaaaa"))],
+				matches: [matchFor(observationDetails("aaaaaaaaaaaa"))],
 				sourceEntries: [],
 			});
 			const result: AgentToolResult<RecallObservationToolDetails> = { content: [], details };
@@ -305,8 +361,8 @@ describe("recall TUI rendering helpers", () => {
 			const details = makeDetails({
 				status: "ok",
 				nonSourceEntryIds: ["compaction-1"],
-				observations: [{ id: "aaaaaaaaaaaa", content: "An observation", timestamp: "2026-01-01T00:00:00Z", relevance: "high" }],
-				matches: [{ id: "aaaaaaaaaaaa", content: "An observation", timestamp: "2026-01-01T00:00:00Z", relevance: "high" }],
+				observations: [matchFor(observationDetails("aaaaaaaaaaaa"))],
+				matches: [matchFor(observationDetails("aaaaaaaaaaaa"))],
 				sourceEntries: [],
 			});
 			const result: AgentToolResult<RecallObservationToolDetails> = { content: [], details };
@@ -331,9 +387,13 @@ describe("recall TUI rendering helpers", () => {
 		it("renders expanded sources with content when expanded is true", () => {
 			const details = makeDetails({
 				status: "ok",
-				observations: [{ id: "aaaaaaaaaaaa", content: "An observation", timestamp: "2026-01-01T00:00:00Z", relevance: "high" }],
-				matches: [{ id: "aaaaaaaaaaaa", content: "An observation", timestamp: "2026-01-01T00:00:00Z", relevance: "high" }],
-				sourceEntries: [{ id: "raw-1", origin: "User", timestamp: "2026-01-01 00:00", tokens: 10, qualifiers: [], content: "User said hello" }],
+				observations: [matchFor(observationDetails("aaaaaaaaaaaa"))],
+				matches: [
+					{
+						...matchFor(observationDetails("aaaaaaaaaaaa")),
+						sourceEntries: [{ id: "raw-1", origin: "User", timestamp: "2026-01-01 00:00", tokens: 10, qualifiers: [], content: "User said hello" }],
+					},
+				],
 			});
 			const result: AgentToolResult<RecallObservationToolDetails> = { content: [], details };
 			const renderedExpanded = formatRecallResultForTui(result, true);
@@ -360,8 +420,8 @@ describe("recall TUI rendering helpers", () => {
 		it("renders unavailable evidence note when sources are empty but observations exist", () => {
 			const details = makeDetails({
 				status: "ok",
-				observations: [{ id: "aaaaaaaaaaaa", content: "An observation", timestamp: "2026-01-01T00:00:00Z", relevance: "high" }],
-				matches: [{ id: "aaaaaaaaaaaa", content: "An observation", timestamp: "2026-01-01T00:00:00Z", relevance: "high" }],
+				observations: [matchFor(observationDetails("aaaaaaaaaaaa"))],
+				matches: [matchFor(observationDetails("aaaaaaaaaaaa"))],
 				sourceEntries: [],
 			});
 			const result: AgentToolResult<RecallObservationToolDetails> = { content: [], details };
@@ -374,9 +434,9 @@ describe("recall TUI rendering helpers", () => {
 		it("renders header and body together", () => {
 			const details = makeDetails({
 				status: "ok",
-				reflections: [{ id: "rrrrrrrrrrr1", content: "A fact", supportingObservationIds: [] }],
-				observations: [{ id: "aaaaaaaaaaaa", content: "An observation", timestamp: "2026-01-01T00:00:00Z", relevance: "high" }],
-				matches: [{ id: "aaaaaaaaaaaa", content: "An observation", timestamp: "2026-01-01T00:00:00Z", relevance: "high" }],
+				reflections: [reflectionDetails("rrrrrrrrrrr1", "A fact")],
+				observations: [matchFor(observationDetails("aaaaaaaaaaaa"))],
+				matches: [matchFor(observationDetails("aaaaaaaaaaaa"))],
 				sourceEntries: [{ id: "raw-1", origin: "User", timestamp: "2026-01-01 00:00", tokens: 10, qualifiers: [] }],
 			});
 			const result: AgentToolResult<RecallObservationToolDetails> = { content: [], details };
@@ -389,7 +449,7 @@ describe("recall TUI rendering helpers", () => {
 		it("renders body only when details is missing", () => {
 			const result: AgentToolResult<RecallObservationToolDetails> = {
 				content: [{ type: "text", text: "body text" }],
-				details: undefined,
+				details: undefined as never,
 			};
 			expect(formatRecallRenderedResultForTui(result, false)).toContain("body text");
 		});

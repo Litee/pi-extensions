@@ -50,7 +50,6 @@ describe("clipboard helper", () => {
 		});
 
 		it("resolves false on timeout", async () => {
-			const originalSpawn = await import("node:child_process");
 			const mockSpawn = vi.fn(() => ({
 				stdio: { pipe: vi.fn() },
 				on: vi.fn((event: string, cb: (...args: unknown[]) => void) => {

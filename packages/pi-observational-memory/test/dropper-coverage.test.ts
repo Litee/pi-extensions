@@ -1,10 +1,12 @@
 import { describe, expect, it } from "vitest";
 
 import {
+	coverageTierForObservation,
 	observationToDropperLine,
 	reflectionCoverageMap,
 	reflectionCoverageTierForCount,
 	summarizeCoverageByRelevance,
+	summarizeCoverageByRelevanceForIds,
 	summarizeCoverageTransitionsByRelevance,
 } from "../src/agents/dropper/agent.js";
 import { observation, reflection } from "./fixtures/session.js";
@@ -168,7 +170,7 @@ describe("V3 dropper reflection coverage helpers", () => {
 	});
 
 	it("handles empty observations list", () => {
-		const transitions = summarizeCoverageTransitionsByRelevance([], {}, {});
+		const transitions = summarizeCoverageTransitionsByRelevance([], new Map(), new Map());
 		expect(transitions.low).toEqual({});
 		expect(transitions.medium).toEqual({});
 		expect(transitions.high).toEqual({});

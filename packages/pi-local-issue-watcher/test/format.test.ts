@@ -440,7 +440,7 @@ describe("formatCompactStatusSummary", () => {
 
 	it("treats falsy status as non-open (info.status || '' === 'open' is false)", () => {
 		const snap: Snapshot = {
-			"/a": { ...issue("open"), status: "" as unknown as string },
+			"/a": { ...issue("open"), status: "" },
 			"/b": issue("done"),
 		};
 		expect(formatCompactStatusSummary(snap)).toBe("0 open");
@@ -454,7 +454,7 @@ describe("formatCompactStatusSummary", () => {
 describe("buildStatusDetailMessage — falsy status", () => {
 	it("uses 'unknown' when status is an empty string (info.status || 'unknown')", () => {
 		const snap: Snapshot = {
-			"/a": { ...issue("open"), status: "" as unknown as string },
+			"/a": { ...issue("open"), status: "" },
 		};
 		const msg = buildStatusDetailMessage("/db", snap);
 		// The 'unknown' count should appear in the issues line
@@ -491,7 +491,7 @@ describe("buildFirstUpdateContent — falsy status", () => {
 		const snap: Snapshot = {
 			"/db/a.json": makeIssue({
 				issueId: "0001",
-				status: "" as unknown as string,
+				status: "",
 			}),
 		};
 		const out = buildFirstUpdateContent(snap, NOW);
@@ -529,7 +529,7 @@ describe("buildFirstUpdateContent — falsy status", () => {
 describe("buildStartupChatMessage — falsy status", () => {
 	it("treats falsy status as non-open (info.status || '' === 'open' is false)", () => {
 		const snap: Snapshot = {
-			"/a": { ...issue("open"), status: "" as unknown as string },
+			"/a": { ...issue("open"), status: "" },
 		};
 		expect(buildStartupChatMessage("/db", snap)).toBe("active (0 open)");
 	});
@@ -542,7 +542,7 @@ describe("buildStartupChatMessage — falsy status", () => {
 describe("formatStatusSummary — falsy status", () => {
 	it("uses 'unknown' when status is falsy (info.status || 'unknown')", () => {
 		const snap: Snapshot = {
-			"/a": { ...issue("open"), status: "" as unknown as string },
+			"/a": { ...issue("open"), status: "" },
 		};
 		expect(formatStatusSummary(snap)).toBe("1 unknown");
 	});

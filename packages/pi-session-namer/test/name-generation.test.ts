@@ -124,7 +124,7 @@ describe("buildTranscript", () => {
 				message: {
 					role: "toolResult",
 					content: "some output",
-					toolName: undefined,
+					// toolName omitted — missing prop reads as undefined
 				},
 			},
 		];
@@ -357,14 +357,14 @@ describe("extractText edge cases", () => {
 
 	it("returns empty string for non-string, non-array content (number)", () => {
 		const entries: Entry[] = [
-			{ type: "message", message: { role: "user", content: 42 as unknown as string } },
+			{ type: "message", message: { role: "user", content: 42 } },
 		];
 		expect(buildTranscript(entries)).toBe("");
 	});
 
 	it("skips non-object array elements", () => {
 		const entries: Entry[] = [
-			{ type: "message", message: { role: "assistant", content: [null, "not-an-object", 42, { type: "text", text: "ok" }] as unknown as string } },
+			{ type: "message", message: { role: "assistant", content: [null, "not-an-object", 42, { type: "text", text: "ok" }] } },
 		];
 		const result = buildTranscript(entries);
 		expect(result).toContain("Assistant: ok");
@@ -404,7 +404,7 @@ describe("buildTranscript — non-message and unknown roles", () => {
 
 	it("skips messages with unknown role", () => {
 		const entries: Entry[] = [
-			{ type: "message", message: { role: "system" as string, content: "system prompt" } },
+			{ type: "message", message: { role: "system", content: "system prompt" } },
 			{ type: "message", message: { role: "user", content: "user msg" } },
 		];
 		const result = buildTranscript(entries);
@@ -422,7 +422,7 @@ describe("buildTranscript — non-message and unknown roles", () => {
 
 	it("skips toolResult when content is null", () => {
 		const entries: Entry[] = [
-			{ type: "message", message: { role: "toolResult", content: null as unknown as string, toolName: "read" } },
+			{ type: "message", message: { role: "toolResult", content: null, toolName: "read" } },
 		];
 		const result = buildTranscript(entries);
 		expect(result).toBe("");
@@ -624,7 +624,7 @@ describe("generateSessionName", () => {
 		await generateSessionName("transcript", deps, new AbortController().signal);
 
 		const callOpts = mockCompleteSimple.mock.calls[0]![2] as Record<string, unknown>;
-		expect(callOpts.headers).toEqual(customHeaders);
+		expect(callOpts["headers"]).toEqual(customHeaders);
 	});
 });
 

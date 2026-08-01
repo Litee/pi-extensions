@@ -5,12 +5,22 @@
  */
 
 import type { ExtensionContext, Theme } from "@earendil-works/pi-coding-agent";
+import type { Text } from "@earendil-works/pi-tui";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import type { CronScheduler } from "../src/scheduler.js";
 import { MemCronStorage } from "../src/storage.js";
 import { createCronTool } from "../src/tool.js";
 import type { CronJob, CronToolDetails, CronToolParamsType } from "../src/types.js";
+
+// Local renderer signatures (renderResult returns a pi-tui Text whose public
+// surface we only read via .text).
+type RenderResult = (result: unknown, opts: unknown, theme: unknown) => { text?: string };
+type RenderWithOpts = (
+	result: unknown,
+	opts: Record<string, unknown>,
+	theme: unknown,
+) => { text?: string };
 
 // ---------------------------------------------------------------------------
 // Fixtures
@@ -589,8 +599,6 @@ describe("schedule_prompt tool / renderResult", () => {
 		bold: (s: string) => s,
 	} as unknown as Theme;
 
-	type RenderResult = (result: unknown, opts: unknown, theme: unknown) => { text?: string };
-
 	it("renders an error line when details.error is set", () => {
 		const tool = makeTool();
 		const rendered = (tool.renderResult as unknown as RenderResult)(
@@ -667,12 +675,6 @@ describe("schedule_prompt tool / renderResult", () => {
 	// -------------------------------------------------------------------------
 	// add / update prompt-collapse behaviour (issue #0001)
 	// -------------------------------------------------------------------------
-
-	type RenderWithOpts = (
-		result: unknown,
-		opts: { expanded?: boolean },
-		theme: unknown,
-	) => { text?: string };
 
 	function renderAdd(
 		tool: ReturnType<typeof makeTool>,
@@ -1004,7 +1006,7 @@ describe("renderResult — expanded false branches (line 439)", () => {
 			content: [{ type: "text", text: "Created" }],
 			details: { action: "add" as const, jobs: [{ name: "j", id: "j1", prompt: longPrompt, type: "cron" as const, schedule: "0 * * * * *" }], jobId: "j1", jobName: "j" },
 		};
-		const rendered = (tool.renderResult as RenderResult)(result, undefined, fakeTheme);
+		const rendered = (tool.renderResult as unknown as RenderResult)(result, undefined, fakeTheme);
 		const text = String((rendered).text);
 		expect(text).toContain("… ctrl+o to expand");
 	});
@@ -1016,8 +1018,8 @@ describe("renderResult — expanded false branches (line 439)", () => {
 			content: [{ type: "text", text: "Created" }],
 			details: { action: "add" as const, jobs: [{ name: "j", id: "j1", prompt: longPrompt, type: "cron" as const, schedule: "0 * * * * *" }], jobId: "j1", jobName: "j" },
 		};
-		const rendered = (tool.renderResult as unknown as (r: unknown, o: number, t: unknown) => Text)(result, 42 as unknown as Record<string, unknown>, fakeTheme);
-		const text = String((rendered as Text).text);
+		const rendered = (tool.renderResult as unknown as (r: unknown, o: Record<string, unknown>, t: unknown) => Text)(result, 42 as unknown as Record<string, unknown>, fakeTheme);
+		const text = String((rendered as unknown as { text?: string }).text);
 		expect(text).toContain("… ctrl+o to expand");
 	});
 
@@ -1028,7 +1030,7 @@ describe("renderResult — expanded false branches (line 439)", () => {
 			content: [{ type: "text", text: "Created" }],
 			details: { action: "add" as const, jobs: [{ name: "j", id: "j1", prompt: longPrompt, type: "cron" as const, schedule: "0 * * * * *" }], jobId: "j1", jobName: "j" },
 		};
-		const rendered = (tool.renderResult as RenderWithOpts)(result, { foo: "bar" }, fakeTheme);
+		const rendered = (tool.renderResult as unknown as RenderWithOpts)(result, { foo: "bar" }, fakeTheme);
 		const text = String((rendered).text);
 		expect(text).toContain("… ctrl+o to expand");
 	});
@@ -1050,7 +1052,7 @@ describe("renderResult — non-text content (line 420)", () => {
 			content: [{ type: "image", url: "http://example.com/img.png" }],
 			details: undefined,
 		};
-		const rendered = (tool.renderResult as RenderResult)(result, undefined, fakeTheme);
+		const rendered = (tool.renderResult as unknown as RenderResult)(result, undefined, fakeTheme);
 		const text = String((rendered).text);
 		expect(text).toBe("");
 	});
@@ -1062,7 +1064,7 @@ describe("renderResult — non-text content (line 420)", () => {
 
 describe("renderResult — list action edge cases (lines 464-474)", () => {
 	const fakeTheme = {
-		fg: (cat: string, s: string) => s,
+		fg: (_cat: string, s: string) => s,
 		bold: (s: string) => s,
 	} as unknown as Theme;
 
@@ -1075,7 +1077,7 @@ describe("renderResult — list action edge cases (lines 464-474)", () => {
 				jobs: [{ name: "disabled", id: "d1", type: "cron" as const, schedule: "0 * * * * *", prompt: "p", enabled: false, runCount: 0 }] as CronJob[],
 			},
 		};
-		const rendered = (tool.renderResult as RenderResult)(result, undefined, fakeTheme);
+		const rendered = (tool.renderResult as unknown as RenderResult)(result, undefined, fakeTheme);
 		const text = String((rendered).text);
 		expect(text).toContain("disabled");
 	});
@@ -1086,10 +1088,10 @@ describe("renderResult — list action edge cases (lines 464-474)", () => {
 			content: [{ type: "text", text: "list" }],
 			details: {
 				action: "list" as const,
-				jobs: [{ name: "no-model", id: "nm1", type: "cron" as const, schedule: "0 * * * * *", prompt: "p", enabled: true, runCount: 0, model: undefined }] as CronJob[],
+				jobs: [{ name: "no-model", id: "nm1", type: "cron" as const, schedule: "0 * * * * *", prompt: "p", enabled: true, runCount: 0, model: undefined }] as unknown as CronJob[],
 			},
 		};
-		const rendered = (tool.renderResult as RenderResult)(result, undefined, fakeTheme);
+		const rendered = (tool.renderResult as unknown as RenderResult)(result, undefined, fakeTheme);
 		const text = String((rendered).text);
 		expect(text).toContain("no-model");
 		expect(text).not.toContain("Model:");
@@ -1101,10 +1103,10 @@ describe("renderResult — list action edge cases (lines 464-474)", () => {
 			content: [{ type: "text", text: "list" }],
 			details: {
 				action: "list" as const,
-				jobs: [{ name: "no-run", id: "nr1", type: "cron" as const, schedule: "0 * * * * *", prompt: "p", enabled: true, runCount: 0, lastRun: undefined }] as CronJob[],
+				jobs: [{ name: "no-run", id: "nr1", type: "cron" as const, schedule: "0 * * * * *", prompt: "p", enabled: true, runCount: 0, lastRun: undefined }] as unknown as CronJob[],
 			},
 		};
-		const rendered = (tool.renderResult as RenderResult)(result, undefined, fakeTheme);
+		const rendered = (tool.renderResult as unknown as RenderResult)(result, undefined, fakeTheme);
 		const text = String((rendered).text);
 		expect(text).toContain("no-run");
 		expect(text).not.toContain("Last run:");
@@ -1117,17 +1119,19 @@ describe("renderResult — list action edge cases (lines 464-474)", () => {
 
 describe("execute — non-Error catch (line 375)", () => {
 	it("uses String(error) fallback when a non-Error is thrown (line 375)", async () => {
+		const getAllJobs = vi.fn().mockReturnValue([]);
 		const mockStorage = {
-			getAllJobs: vi.fn().mockReturnValue([]),
+			getAllJobs,
 			hasJobWithName: vi.fn().mockReturnValue(false),
 			addJob: vi.fn(),
 			getJob: vi.fn().mockReturnValue(null),
 			removeJob: vi.fn().mockReturnValue(false),
 			updateJob: vi.fn(),
-		} as unknown as CronStorage;
+		} as unknown as MemCronStorage;
 		const tool = createCronTool(() => mockStorage, () => fakeScheduler as unknown as CronScheduler);
-		// Make the storage throw a non-Error value
-		mockStorage.getAllJobs.mockImplementation(() => { throw "not an Error"; });
+		// Make the storage throw a non-Error value (exercises the String(error) fallback)
+		// eslint-disable-next-line @typescript-eslint/only-throw-error
+		getAllJobs.mockImplementation(() => { throw "not an Error"; });
 		const result = await exec(tool, { action: "list" });
 		const text = (result as { content: { type: string; text: string }[] }).content
 			.filter((c) => c.type === "text")
@@ -1143,7 +1147,7 @@ describe("execute — non-Error catch (line 375)", () => {
 
 describe("renderResult — list with notify=false (line 470)", () => {
 	const fakeTheme = {
-		fg: (cat: string, s: string) => s,
+		fg: (_cat: string, s: string) => s,
 		bold: (s: string) => s,
 	} as unknown as Theme;
 
@@ -1156,7 +1160,7 @@ describe("renderResult — list with notify=false (line 470)", () => {
 				jobs: [{ name: "notify-false", id: "nf1", type: "cron" as const, schedule: "0 * * * * *", prompt: "p", enabled: true, runCount: 0, model: "gpt-4", notify: false }] as CronJob[],
 			},
 		};
-		const rendered = (tool.renderResult as RenderResult)(result, undefined, fakeTheme);
+		const rendered = (tool.renderResult as unknown as RenderResult)(result, undefined, fakeTheme);
 		const text = String((rendered).text);
 		expect(text).toContain("(subagent)");
 		expect(text).not.toContain("notifies parent");

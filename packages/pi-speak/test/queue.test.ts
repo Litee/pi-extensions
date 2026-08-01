@@ -517,9 +517,9 @@ describe("SpeechQueue — timeout callback fires", () => {
 		vi.useFakeTimers();
 
 		// Block playback so timeout can fire while playback is pending
-		let resolvePlay!: () => void;
+
 		vi.mocked(playAudioFile).mockImplementationOnce(
-			() => new Promise<void>((res) => { resolvePlay = res; }),
+			() => new Promise<void>(() => {}),
 		);
 
 		const q = new SpeechQueue();
@@ -555,9 +555,9 @@ describe("SpeechQueue — timeout callback L126 extended", () => {
 		vi.useFakeTimers();
 
 		// Block playback so timeout can fire while playback is pending
-		let resolvePlay!: () => void;
+
 		vi.mocked(playAudioFile).mockImplementationOnce(
-			() => new Promise<void>((res) => { resolvePlay = res; }),
+			() => new Promise<void>(() => {}),
 		);
 
 		const q = new SpeechQueue();

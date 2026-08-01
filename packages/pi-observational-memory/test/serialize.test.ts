@@ -180,11 +180,11 @@ describe("serializeConversation", () => {
 	});
 
 	it("handles non-array content in textOnly branch", () => {
-		// textOnly(42) returns "42"
+		// textOnly(42) hits the non-array branch and returns "" (content omitted)
 		const msg = { role: "user" as const, content: 42, timestamp: 1700000000000 };
 		const result = serializeConversation([msg as unknown as Message]);
 		expect(result).toContain("User @");
-		expect(result).toContain("42");
+		expect(result).not.toContain("42");
 	});
 });
 

@@ -287,7 +287,7 @@ describe("session-ledger recall", () => {
 	it("deduplicates missing and non-source entry ids", () => {
 		const entries = [
 			sourceEntry("src-1"),
-			compactionEntry("comp-1"),
+			nonSourceEntry("comp-1"),
 			observationsEntry("obs-entry-1", [observation({ id: OBS_1, sourceEntryIds: ["missing-1", "missing-1", "comp-1", "comp-1"] })]),
 		];
 		const result = recallMemorySources(entries, OBS_1);
@@ -300,13 +300,13 @@ describe("session-ledger recall", () => {
 		const entries = [
 			sourceEntry("src-1"),
 			observationsEntry("obs-entry-1", [observation({ id: OBS_1, sourceEntryIds: ["src-1"] })]),
-			droppedEntry("drop-entry-1", [OBS_1]),
+			dropsEntry("drop-entry-1", [OBS_1]),
 		];
 		const result = recallMemorySources(entries, OBS_1);
 
 		expect(result.status).toBe("found");
 		if (result.status !== "found") return;
-		expect(result.observations[0].status).toBe("dropped");
+		expect(result.observations[0]!.status).toBe("dropped");
 		expect(result.partial).toBe(false);
 	});
 

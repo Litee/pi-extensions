@@ -10,6 +10,9 @@ import {
 	reflection,
 	reflectionsRecordedEntry,
 	textCustomMessage,
+	V3_OBSERVATIONS_RECORDED,
+	V3_OBSERVATIONS_DROPPED,
+	V3_REFLECTIONS_RECORDED,
 } from "./fixtures/session.js";
 
 describe("session-ledger V3 folding", () => {
