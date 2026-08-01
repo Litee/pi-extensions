@@ -369,6 +369,27 @@ describe("extractText edge cases", () => {
 		const result = buildTranscript(entries);
 		expect(result).toContain("Assistant: ok");
 	});
+
+	it("skips object blocks whose type is not 'text' (image/toolCall)", () => {
+		const entries: Entry[] = [
+			{
+				type: "message",
+				message: {
+					role: "assistant",
+					content: [
+						{ type: "text", text: "hello" },
+						{ type: "image", url: "http://example.com/img.png" },
+						{ type: "toolCall", name: "read", arguments: { path: "/foo" } },
+					],
+				},
+			},
+		];
+		const result = buildTranscript(entries);
+		// Only text blocks should be extracted
+		expect(result).toContain("Assistant: hello");
+		expect(result).not.toContain("image");
+		expect(result).not.toContain("toolCall");
+	});
 });
 
 // ---------------------------------------------------------------------------
@@ -384,6 +405,44 @@ describe("extractToolCalls edge cases", () => {
 		];
 		const result = buildTranscript(entries);
 		expect(result).toBe(""); // no tool calls, no text
+	});
+
+	it("skips object blocks whose type is not 'toolCall' (text/image)", () => {
+		const entries: Entry[] = [
+			{
+				type: "message",
+				message: {
+					role: "assistant",
+					content: [
+						{ type: "text", text: "let me check" },
+						{ type: "toolCall", name: "read", arguments: { path: "/foo/bar.ts" } },
+						{ type: "image", url: "http://example.com/img.png" },
+					],
+				},
+			},
+		];
+		const result = buildTranscript(entries);
+		expect(result).toContain("Assistant: let me check");
+		expect(result).toContain("read(");
+		expect(result).not.toContain("image");
+	});
+
+	it("lists tool calls for assistant content with only non-text blocks", () => {
+		const entries: Entry[] = [
+			{
+				type: "message",
+				message: {
+					role: "assistant",
+					content: [
+						{ type: "image", url: "http://example.com/img.png" },
+						{ type: "toolCall", name: "read", arguments: { path: "/foo" } },
+					],
+				},
+			},
+		];
+		const result = buildTranscript(entries);
+		// No text to display, but tool calls should still be listed
+		expect(result).toContain("read(");
 	});
 });
 

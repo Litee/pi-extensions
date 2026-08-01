@@ -30,6 +30,19 @@ describe("renderToolMarkdown", () => {
 		expect(renderToolMarkdown(tool, new Set())).toContain("_(no description)_");
 	});
 
+	it("handles description being undefined (?.) nullish branch", () => {
+		const tool = { name: "x", description: undefined, parameters: {} } as unknown as ToolInfo;
+		const md = renderToolMarkdown(tool, new Set());
+		expect(md).toContain("_(no description)_");
+	});
+
+	it("handles parameters being undefined (?? nullish branch)", () => {
+		const tool = { name: "x", description: "test", parameters: undefined } as unknown as ToolInfo;
+		const md = renderToolMarkdown(tool, new Set());
+		expect(md).toContain("```json");
+		expect(md).not.toContain("[schema unavailable]");
+	});
+
 	it("includes the rendered source label and token estimate", () => {
 		const tool = mkTool({ name: "read", description: "x" });
 		const md = renderToolMarkdown(tool, new Set());

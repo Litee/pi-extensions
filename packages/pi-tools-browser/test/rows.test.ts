@@ -174,4 +174,11 @@ describe("buildToolRows", () => {
 		// With a generous minDescWidth, the whole description should survive.
 		expect(row.label).toContain(desc);
 	});
+
+	it("omits the description tail when description is undefined (?.) nullish branch", () => {
+		const tool = { name: "orphan", description: undefined, parameters: {} } as unknown as ToolInfo;
+		const rows = buildToolRows([tool], new Set(), theme, layout);
+		const row = rows.find((r) => r.toolName === "orphan")!;
+		expect(row.label).not.toContain("—");
+	});
 });

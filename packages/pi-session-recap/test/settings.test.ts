@@ -365,6 +365,63 @@ it("end-to-end: write → read roundtrip through the real fs", () => {
 	expect(readUserRecapConfig(newPath())?.model).toBe("anthropic/claude-haiku-4-5");
 });
 
+describe("readLegacySettingsJsonModel — guard branches (lines 155-159)", () => {
+	it("leg 2: ignores settings.json when sessionRecap is an array (not an object)", () => {
+		writeJson(settingsJsonPath(), { sessionRecap: ["bad"] });
+		expect(migrateLegacyConfig(agentDir, {})).toEqual({ migrated: false });
+		expect(existsSync(newPath())).toBe(false);
+	});
+
+	it("leg 2: ignores settings.json when sessionRecap is a string (not an object)", () => {
+		writeJson(settingsJsonPath(), { sessionRecap: "not-an-object" });
+		expect(migrateLegacyConfig(agentDir, {})).toEqual({ migrated: false });
+		expect(existsSync(newPath())).toBe(false);
+	});
+
+	it("leg 2: ignores settings.json when sessionRecap.model is a number", () => {
+		writeJson(settingsJsonPath(), { sessionRecap: { model: 42 } });
+		expect(migrateLegacyConfig(agentDir, {})).toEqual({ migrated: false });
+		expect(existsSync(newPath())).toBe(false);
+	});
+
+	it("leg 2: ignores settings.json when sessionRecap.model is null", () => {
+		writeJson(settingsJsonPath(), { sessionRecap: { model: null } });
+		expect(migrateLegacyConfig(agentDir, {})).toEqual({ migrated: false });
+		expect(existsSync(newPath())).toBe(false);
+	});
+
+	it("leg 2: ignores settings.json when top-level settings.json is an array", () => {
+		mkdirSync(agentDir, { recursive: true });
+		writeFileSync(settingsJsonPath(), JSON.stringify(["not", "an", "object"]), "utf8");
+		expect(migrateLegacyConfig(agentDir, {})).toEqual({ migrated: false });
+		expect(existsSync(newPath())).toBe(false);
+	});
+
+	it("leg 2: ignores settings.json when sessionRecap is missing entirely", () => {
+		writeJson(settingsJsonPath(), { defaultModel: "openai/gpt-5" });
+		expect(migrateLegacyConfig(agentDir, {})).toEqual({ migrated: false });
+		expect(existsSync(newPath())).toBe(false);
+	});
+
+	it("leg 2: ignores settings.json when sessionRecap is a boolean", () => {
+		writeJson(settingsJsonPath(), { sessionRecap: true });
+		expect(migrateLegacyConfig(agentDir, {})).toEqual({ migrated: false });
+		expect(existsSync(newPath())).toBe(false);
+	});
+
+	it("leg 2: ignores settings.json when sessionRecap is a number", () => {
+		writeJson(settingsJsonPath(), { sessionRecap: 123 });
+		expect(migrateLegacyConfig(agentDir, {})).toEqual({ migrated: false });
+		expect(existsSync(newPath())).toBe(false);
+	});
+
+	it("leg 2: ignores settings.json when sessionRecap.model is an object", () => {
+		writeJson(settingsJsonPath(), { sessionRecap: { model: { nested: true } } });
+		expect(migrateLegacyConfig(agentDir, {})).toEqual({ migrated: false });
+		expect(existsSync(newPath())).toBe(false);
+	});
+});
+
 // ---------------------------------------------------------------------------
 // Additional coverage: readLegacySettingsJsonModel invalid JSON + leg-1 EXDEV
 // ---------------------------------------------------------------------------

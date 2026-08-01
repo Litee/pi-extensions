@@ -66,6 +66,11 @@ describe("truncate", () => {
 		// Degenerate but must not throw.
 		expect(truncate("abcdef", 1)).toBe("…");
 	});
+
+	it("returns empty string when max is 0 or negative (max <= 0 branch)", () => {
+		expect(truncate("abcdef", 0)).toBe("");
+		expect(truncate("abcdef", -5)).toBe("");
+	});
 });
 
 describe("formatTokens", () => {
@@ -100,6 +105,13 @@ describe("estimateToolTokens", () => {
 		const tool = mkTool({ name: "noop" });
 		// name(4) + "{}"(2) = 6 → ceil(6/4) = 2
 		expect(estimateToolTokens(tool)).toBe(2);
+	});
+
+	it("handles parameters being undefined (?? nullish branch)", () => {
+		// mkTool defaults parameters to {}, so force undefined via a raw cast.
+		const tool = { name: "x", description: "d", parameters: undefined } as unknown as ToolInfo;
+		// name(1) + description(1) + "{}"(2) = 4 → ceil(4/4) = 1
+		expect(estimateToolTokens(tool)).toBe(1);
 	});
 
 	it("handles non-serializable parameter shapes without throwing", () => {
