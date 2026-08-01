@@ -5,6 +5,8 @@
  * See src/index.ts for upstream attribution.
  */
 
+import { createHash } from "node:crypto";
+
 export type ContentBlock = {
 	type?: string;
 	text?: string;
@@ -15,12 +17,22 @@ export type ContentBlock = {
 export type Entry = {
 	id?: string;
 	type: string;
+	/** compaction / branch_summary entries carry a distilled task summary. */
+	summary?: string;
 	message?: {
 		role?: string;
 		content?: unknown;
 		toolName?: string;
 	};
 };
+
+/** Cap on transcript chars fed to the model AND hashed by the dedupe key. */
+export const TRANSCRIPT_CHAR_CAP = 12000;
+
+/** Task-framing context limits (tier 1 of the transcript). */
+const COMPACTION_SUMMARY_CHARS = 600;
+const EARLIER_USER_PROMPTS = 4;
+const EARLIER_PROMPT_CHARS = 300;
 
 /**
  * Split a `provider/id` model spec into its components. Returns `undefined`
@@ -70,49 +82,90 @@ export function extractToolCalls(content: unknown): string[] {
 }
 
 /**
- * Compact transcript of the assistant's activity since the last user message.
+ * Two-tier transcript:
  *
- * When `fromLastUser` is false (used for `/resume`), the whole branch is
- * formatted. User/assistant text is truncated to 1200 chars per message,
- * tool results to 400 chars.
+ *   Tier 1 — task framing (cheap): the most recent compaction/branch summary
+ *   if present, plus the last few *user* prompts before the latest one,
+ *   trimmed hard. This is what lets the model state the high-level task
+ *   instead of parroting the last tool call. (Claude Code feeds the last 30
+ *   raw messages to Haiku for this; we're on the active model, so we keep the
+ *   framing to user prompts only — old tool results add cost, not
+ *   orientation.)
+ *
+ *   Tier 2 — recent detail: everything since the last user message, with the
+ *   same per-item trimming as before (assistant text, tool calls, results).
  */
-export function buildRecentTranscript(entries: Entry[], fromLastUser = true, skipLastUserCount = 0): string {
-	let slice = entries;
-	if (fromLastUser) {
-		let found = 0;
-		let targetIdx = -1;
-		for (let i = entries.length - 1; i >= 0; i--) {
-			const e = entries[i];
-			if (e && e.type === "message" && e.message?.role === "user") {
-				if (found >= skipLastUserCount) {
-					targetIdx = i;
-					break;
-				}
-				found++;
-			}
-		}
-		if (targetIdx >= 0) slice = entries.slice(targetIdx);
+export function buildTranscript(entries: Entry[]): string {
+	const userIdxs: number[] = [];
+	for (let i = 0; i < entries.length; i++) {
+		const e = entries[i];
+		if (e && e.type === "message" && e.message?.role === "user") userIdxs.push(i);
 	}
+	const lastUserIdx = userIdxs.length > 0 ? (userIdxs[userIdxs.length - 1] ?? -1) : -1;
 
 	const lines: string[] = [];
+
+	// Tier 1a: most recent compaction / branch summary — already-distilled task context.
+	for (let i = entries.length - 1; i >= 0; i--) {
+		const e = entries[i];
+		if (
+			e &&
+			(e.type === "compaction" || e.type === "branch_summary") &&
+			typeof e.summary === "string" &&
+			e.summary.trim()
+		) {
+			lines.push(`Session summary so far: ${e.summary.trim().slice(0, COMPACTION_SUMMARY_CHARS)}`);
+			break;
+		}
+	}
+
+	// Tier 1b: earlier user prompts (task framing), oldest → newest.
+	const earlier = userIdxs.slice(0, -1).slice(-EARLIER_USER_PROMPTS);
+	const earlierLines: string[] = [];
+	for (const i of earlier) {
+		const t = extractText(entries[i]?.message?.content).trim();
+		if (t) earlierLines.push(`- ${t.slice(0, EARLIER_PROMPT_CHARS)}`);
+	}
+	if (earlierLines.length > 0) {
+		lines.push("Earlier user prompts (task framing):");
+		lines.push(...earlierLines);
+	}
+
+	// Tier 2: full compact detail since the last user message (inclusive).
+	const slice = lastUserIdx >= 0 ? entries.slice(lastUserIdx) : entries;
+	const detail: string[] = [];
 	for (const e of slice) {
-		if (e.type !== "message" || !e.message?.role) continue;
+		if (!e || e.type !== "message" || !e.message?.role) continue;
 		const role = e.message.role;
 		if (role === "user") {
 			const t = extractText(e.message.content).trim();
-			if (t) lines.push(`User: ${t.slice(0, 1200)}`);
+			if (t) detail.push(`User: ${t.slice(0, 1200)}`);
 		} else if (role === "assistant") {
 			const t = extractText(e.message.content).trim();
-			if (t) lines.push(`Assistant: ${t.slice(0, 1200)}`);
+			if (t) detail.push(`Assistant: ${t.slice(0, 1200)}`);
 			const calls = extractToolCalls(e.message.content);
-			if (calls.length) lines.push(...calls);
+			if (calls.length) detail.push(...calls);
 		} else if (role === "toolResult") {
 			const t = extractText(e.message.content).trim();
 			const name = e.message.toolName ?? "tool";
-			if (t) lines.push(`Result(${name}): ${t.slice(0, 400)}`);
+			if (t) detail.push(`Result(${name}): ${t.slice(0, 400)}`);
 		}
 	}
+	if (detail.length > 0) {
+		lines.push("Recent activity (since the user's last message):");
+		lines.push(...detail);
+	}
+
 	return lines.join("\n");
+}
+
+/**
+ * Fingerprint of the recap-relevant transcript. Hashes exactly the capped
+ * prompt payload, so irrelevant session metadata or over-cap transcript
+ * changes do not spend another recap call.
+ */
+export function recapStateKey(transcript: string): string {
+	return createHash("sha256").update(transcript.slice(0, TRANSCRIPT_CHAR_CAP)).digest("hex");
 }
 
 /**
@@ -133,7 +186,7 @@ export function hasMeaningfulActivity(entries: Entry[]): boolean {
 	let assistantWords = 0;
 	let toolCalls = 0;
 	for (const e of tail) {
-		if (e.type !== "message") continue;
+		if (!e || e.type !== "message") continue;
 		if (e.message?.role === "assistant") {
 			const t = extractText(e.message.content);
 			assistantWords += t.split(/\s+/).filter(Boolean).length;
@@ -144,12 +197,29 @@ export function hasMeaningfulActivity(entries: Entry[]): boolean {
 }
 
 /**
- * Keep only the first line of a model response, trimmed. Used as a belt-and-
- * braces guard against multi-line recap outputs.
+ * Word-wrap `text` to `width` columns, then truncate to `maxLines` lines with
+ * `" …"` appended to the last kept line when truncation happened. Used for
+ * the recap widget body so a long draft doesn't sprawl above the editor.
  */
-export function firstLine(text: string): string | undefined {
-	if (!text) return undefined;
-	return text.split(/\r?\n/, 1)[0]?.trim();
+export function wrapText(text: string, width: number, maxLines: number): string[] {
+	const words = text.split(/\s+/).filter(Boolean);
+	const lines: string[] = [];
+	let cur = "";
+	for (const w of words) {
+		if (cur && cur.length + 1 + w.length > width) {
+			lines.push(cur);
+			cur = w;
+		} else {
+			cur = cur ? `${cur} ${w}` : w;
+		}
+	}
+	if (cur) lines.push(cur);
+	if (lines.length > maxLines) {
+		const kept = lines.slice(0, maxLines);
+		kept[maxLines - 1] = `${kept[maxLines - 1] ?? ""} …`;
+		return kept;
+	}
+	return lines;
 }
 
 // ---------------------------------------------------------------------------
@@ -191,13 +261,14 @@ export interface StatusLineOptions {
 	/** Whole seconds for the idle fallback after turn_end. */
 	idleSeconds: number;
 	/**
-	 * Min focus-out seconds before a refocus shows a recap. `null` when
-	 * `--recap-disable-focus` is set — focus reporting is off entirely.
+	 * Seconds of continuous terminal blur before an away recap is drafted.
+	 * `null` when `--recap-disable-focus` is set — focus reporting is off
+	 * entirely and the idle fallback is the only automatic trigger.
 	 */
-	focusMinSeconds: number | null;
+	awaySeconds: number | null;
 	/** Active disabled-flags, in presentation order. */
 	disabledFlags: ReadonlyArray<DisabledFlag>;
-	/** Number of recap triggers fired this session (idle + focus + manual). */
+	/** Number of recap triggers fired this session (idle + away + manual). */
 	triggerCount: number;
 	/**
 	 * Cumulative token usage for recap LLM calls this session.
@@ -232,10 +303,10 @@ export function buildStatusLine(opts: StatusLineOptions): string {
 
 	lines.push(`  Auto-recap:     ${opts.autoRecapEnabled ? "enabled" : "disabled"}`);
 	lines.push(`  Idle trigger:   ${opts.idleSeconds}s after turn_end`);
-	if (opts.focusMinSeconds === null) {
-		lines.push(`  Focus trigger:  disabled`);
+	if (opts.awaySeconds === null) {
+		lines.push(`  Away trigger:   disabled`);
 	} else {
-		lines.push(`  Focus trigger:  enabled (min ${opts.focusMinSeconds}s away)`);
+		lines.push(`  Away trigger:   enabled (${opts.awaySeconds}s blur)`);
 	}
 	const flags = opts.disabledFlags.length > 0 ? opts.disabledFlags.join(", ") : "(none)";
 	lines.push(`  Triggers:       ${opts.triggerCount} (this session)`);

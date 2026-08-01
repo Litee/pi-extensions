@@ -12,7 +12,7 @@ below to diff against upstream and pick up future changes.
 ## Copied versions
 
 - **Initially ported:** `be58913` (local commit `e20c62b`)
-- **Last synced:** `b9ffdc7` (`Release session-recap v0.1.3`, 2026-05-12)
+- **Last synced:** `60d70f2` (`Merge pull request #86 from tmustier/fix/usage-simplify-reconciliation`, 2026-07-22)
 
 For intentional local divergences see **Differences from upstream** in [`README.md`](./README.md).
 
@@ -21,5 +21,11 @@ For intentional local divergences see **Differences from upstream** in [`README.
 ```bash
 UP=$(mktemp -d)/tmustier-pi-extensions
 git clone --quiet https://github.com/tmustier/pi-extensions.git "$UP"
-git -C "$UP" log --follow b9ffdc7..origin/HEAD -- session-recap/
+git -C "$UP" log --follow 60d70f2..origin/HEAD -- session-recap/index.ts
 ```
+
+Note: the `git log --follow <sha>..origin/HEAD -- session-recap/` (directory
+pathspec) form errors on some git versions ("--follow requires exactly one
+pathspec"), so the recipe targets `session-recap/index.ts` instead — the
+file that carries every substantive upstream change; package/README-only
+commits are rare and show up as directory diffs when needed.

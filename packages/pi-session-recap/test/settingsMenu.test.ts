@@ -24,7 +24,7 @@ const baseStatus: StatusLineOptions = {
 	activeModelSpec: "anthropic/claude-sonnet-4-6",
 	autoRecapEnabled: true,
 	idleSeconds: 300,
-	focusMinSeconds: 3,
+	awaySeconds: 90,
 	disabledFlags: [],
 	triggerCount: 0,
 	tokenUsage: null,
@@ -75,7 +75,7 @@ describe("buildMenuItems", () => {
 		expect(items[0]?.startsWith("Model:")).toBe(true);
 		expect(items.some((it) => it.startsWith("Auto-recap:"))).toBe(true);
 		expect(items.some((it) => it.startsWith("Idle trigger:"))).toBe(true);
-		expect(items.some((it) => it.startsWith("Focus trigger:"))).toBe(true);
+		expect(items.some((it) => it.startsWith("Away trigger:"))).toBe(true);
 		expect(items.some((it) => it.startsWith("Triggers:"))).toBe(true);
 		expect(items.some((it) => it.startsWith("Disabled flags:"))).toBe(true);
 

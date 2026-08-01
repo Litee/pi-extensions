@@ -9,10 +9,10 @@
  *      omitting the field = no tools sent). This is the "tools disabled"
  *      regression guard.
  *
- *   2. The user-message prompt contains the structural tokens we care
- *      about: `goal:` as the recap lead, `Next:` for the optional step,
- *      no `recap:` self-prefix (the widget already paints that label),
- *      and the `Skip:` negative-list line.
+ *   2. The user-message prompt follows the v0.2 "stepped away / re-enter
+ *      flow" framing: 1-3 short plain-text sentences, lead with the
+ *      high-level task, end with the concrete next step, skip status
+ *      reports, and say explicitly if the last turn aborted/errored.
  *
  *   3. The transcript is actually embedded inside the prompt's
  *      `<transcript>` block — if this regresses, the LLM is being asked
@@ -82,7 +82,7 @@ function makeFakePi(): StubPi {
 /**
  * Branch with one user message + one assistant message carrying a tool
  * call. Clears `hasMeaningfulActivity` (toolCalls > 0), and
- * `buildRecentTranscript` will emit both a `User:` line and a tool-call
+ * `buildTranscript` will emit both a `User:` line and a tool-call
  * summary line.
  */
 function branchWithActivity(): unknown[] {
@@ -126,9 +126,6 @@ function makeFakeCtx(branch: unknown[]) {
 		},
 		sessionManager: {
 			getBranch: vi.fn(() => branch),
-			// Stable leaf so the post-await "leaf moved" check doesn't discard
-			// the recap.
-			getLeafId: vi.fn(() => "leaf-1"),
 		},
 		modelRegistry: {
 			// Return a usable key so generateRecap gets past the auth gate.
@@ -153,7 +150,7 @@ describe("generateRecap prompt contract", () => {
 		vi.mocked(completeSimple).mockReset();
 		vi.mocked(completeSimple).mockResolvedValue({
 			role: "assistant",
-			content: [{ type: "text", text: "goal: add Skip rule. Edited index.ts. Next: run tests." }],
+			content: [{ type: "text", text: "Building a parser. Next: run the tests." }],
 			api: "anthropic-messages",
 			provider: "anthropic",
 			model: "claude-sonnet-4-6",
@@ -231,41 +228,58 @@ describe("generateRecap prompt contract", () => {
 
 	// --- (2) prompt structure ----------------------------------------------
 
-	it("user prompt's Format line leads with `goal:` as the template token", async () => {
+	it("user prompt opens with the stepped-away / re-enter-flow framing", async () => {
 		const { context } = await runManualRecap();
 		const prompt = userPromptText(context);
-		expect(prompt).toMatch(/`goal:\s*<[^>]+>`|goal:\s*<overall goal>/);
+		expect(prompt).toMatch(/stepped away/i);
+		expect(prompt).toMatch(/re-enter flow/i);
 	});
 
-	it("user prompt's Format line does NOT start with a `recap:` self-prefix (the widget already paints that label)", async () => {
-		// Kept separate from the `goal:` assertion so a regression that removes
-		// `goal:` doesn't short-circuit this independent invariant. Literal
-		// `recap:` inside the rules body is fine (e.g. "Do not prefix with
-		// `recap:`"); only the Format template line is forbidden from using it.
+	it("user prompt asks for 1-3 short plain-text sentences with no preamble / markdown / bullets", async () => {
 		const { context } = await runManualRecap();
 		const prompt = userPromptText(context);
-		const formatLine = prompt.split("\n").find((l) => l.includes("Format:"));
-		expect(formatLine).toBeDefined();
-		expect(formatLine!).not.toMatch(/`recap:\s*</);
+		expect(prompt).toMatch(/1-3 short sentences/i);
+		expect(prompt).toMatch(/plain text/i);
+		expect(prompt).toMatch(/no preamble, no markdown, no bullets/i);
 	});
 
-	it("user prompt preserves the `Next:` optional clause and its omission rule", async () => {
+	it("user prompt says to start with the high-level task, not implementation minutiae", async () => {
 		const { context } = await runManualRecap();
 		const prompt = userPromptText(context);
-		expect(prompt).toContain("Next:");
-		expect(prompt.toLowerCase()).toContain("omit the `next:` clause");
+		const rule = prompt.split("\n").find((l) => l.startsWith("- Start by stating"));
+		expect(rule).toBeDefined();
+		expect(rule!).toMatch(/high-level task/i);
+		expect(rule!).toMatch(/not implementation minutiae/i);
 	});
 
-	it("user prompt includes a `Skip:` negative-list line (root-cause narrative, em-dash tangents, etc.)", async () => {
+	it("user prompt says to end with the concrete next step", async () => {
 		const { context } = await runManualRecap();
 		const prompt = userPromptText(context);
-		const skipLine = prompt.split("\n").find((l) => l.trimStart().startsWith("- Skip:"));
-		expect(skipLine, "expected a `- Skip: …` rule line in the recap prompt").toBeDefined();
-		// Keep this loose — we assert the intent, not the exact words. If the
-		// Skip list shrinks below these three we've probably lost the signal.
-		expect(skipLine!.toLowerCase()).toContain("root-cause");
-		expect(skipLine!.toLowerCase()).toContain("em-dash");
-		expect(skipLine!.toLowerCase()).toContain("to-do");
+		const rule = prompt.split("\n").find((l) => l.startsWith("- End with"));
+		expect(rule).toBeDefined();
+		expect(rule!).toMatch(/concrete next step/i);
+	});
+
+	it("user prompt instructs the model to skip status reports and orient the reader", async () => {
+		const { context } = await runManualRecap();
+		const prompt = userPromptText(context);
+		const rule = prompt.split("\n").find((l) => l.startsWith("- Skip"));
+		expect(rule).toBeDefined();
+		expect(rule!.toLowerCase()).toContain("status reports");
+		expect(rule!.toLowerCase()).toContain("orient");
+	});
+
+	it("user prompt says to state explicitly when the last turn aborted or errored", async () => {
+		const { context } = await runManualRecap();
+		const prompt = userPromptText(context);
+		expect(prompt).toMatch(/aborted or errored/i);
+		expect(prompt).toMatch(/"aborted during X"/);
+	});
+
+	it("user prompt caps the output at ~400 characters", async () => {
+		const { context } = await runManualRecap();
+		const prompt = userPromptText(context);
+		expect(prompt).toMatch(/~400 characters/);
 	});
 
 	it("user prompt embeds the session transcript inside a `<transcript>` block", async () => {
@@ -285,5 +299,47 @@ describe("generateRecap prompt contract", () => {
 		const { context } = await runManualRecap();
 		expect(typeof context.systemPrompt).toBe("string");
 		expect(context.systemPrompt!.length).toBeGreaterThan(0);
+	});
+
+	// --- (4) model-call options --------------------------------------------
+
+	it("sends cacheRetention 'none' and maxTokens 256 for the recap call", async () => {
+		const { options } = await runManualRecap();
+		const o = options as Record<string, unknown>;
+		expect(o["cacheRetention"]).toBe("none");
+		expect(o["maxTokens"]).toBe(256);
+	});
+
+	// --- (5) error handling ------------------------------------------------
+
+	it("writes a session-recap:error entry via pi.appendEntry when the model call fails with a non-provider error", async () => {
+		vi.mocked(completeSimple).mockRejectedValue(new Error("provider returned 429"));
+
+		const pi = makeFakePi();
+		createExtension(pi as never);
+		const ctx = makeFakeCtx(branchWithActivity());
+		await pi.commands.get("recap")!.handler("", ctx);
+
+		const errorCalls = pi.appendEntry.mock.calls.filter(
+			(c: unknown[]) => c[0] === "session-recap:error",
+		);
+		expect(errorCalls).toHaveLength(1);
+		expect(errorCalls[0]![1]).toEqual({ message: "provider returned 429" });
+	});
+
+	it("skips silently (no error entry) when the provider is unknown to pi-ai", async () => {
+		vi.mocked(completeSimple).mockRejectedValue(
+			new Error("No API provider registered for api: bridge"),
+		);
+
+		const pi = makeFakePi();
+		createExtension(pi as never);
+		const ctx = makeFakeCtx(branchWithActivity());
+		await pi.commands.get("recap")!.handler("", ctx);
+
+		const errorCalls = pi.appendEntry.mock.calls.filter(
+			(c: unknown[]) => c[0] === "session-recap:error",
+		);
+		expect(errorCalls).toHaveLength(0);
 	});
 });

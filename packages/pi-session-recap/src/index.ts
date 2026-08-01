@@ -1,23 +1,58 @@
 /**
  * session-recap
  *
+ * "While you were away" recap for pi, modelled on Claude Code's away-summary.
+ * A recap is only drafted after a *genuine* absence, and is waiting above the
+ * editor when you return:
+ *
+ *   1) Away timer: terminal focus reporting via DECSET ?1004. After the
+ *      terminal has been continuously blurred for `--recap-away-seconds`
+ *      (default 90s), a recap is generated and shown so it's parked above
+ *      the editor when you refocus.
+ *
+ *   2) Turn-end while away: if a turn finishes while the terminal is blurred
+ *      (the prime multi-tab moment — the agent finished while you were in
+ *      another tab), a recap is drafted after a short debounce.
+ *
+ *   3) Idle fallback: only when the terminal has not demonstrated focus
+ *      reporting support (no ESC[I / ESC[O seen this session). N seconds
+ *      after the last `turn_end` with no input, generate anyway. `turn_end`
+ *      (not `agent_end`) is used so this fires even for errored/aborted turns.
+ *
+ * Also fires on `/resume` / `/fork` (session_start reason) to recap where the
+ * prior session left off.
+ *
+ * Recap content follows Claude Code's prompt philosophy: state the high-level
+ * task first (what the user is building/fixing), then the concrete next step.
+ * Skip status reports — the last assistant message is already on screen; what
+ * the user has lost is the task thread.
+ *
+ * Model: defaults to the user's currently active model with reasoning/thinking
+ * disabled and cache writes disabled. This piggybacks on the user's configured
+ * auth. Custom providers using a built-in pi-ai API work normally; providers
+ * with a custom API handler are skipped silently. Override explicitly with
+ * `--recap-model "<provider>/<id>"`.
+ *
+ * Flags:
+ *   --recap-away-seconds <n>   Continuous blur before an away recap (default 90)
+ *   --recap-idle-seconds <n>   Idle-fallback delay after turn_end (default 300)
+ *   --recap-disable-focus      Disable DECSET ?1004 focus reporting
+ *   --recap-during-active      Allow away recaps while an agent turn is running
+ *   --recap-auto               Enable automatic recaps (local-only, default off)
+ *   --recap-model <p/id>       Override the default (active) model
+ *
+ * Command:
+ *   /recap                     Force-generate a recap right now
+ *
  * Upstream source: https://github.com/tmustier/pi-extensions/tree/main/session-recap
- * Design-of-record:  https://github.com/tmustier/pi-extensions/blob/main/session-recap/DESIGN.md
- * Copied verbatim from tmustier/pi-extensions @ session-recap v0.1.1.
+ * Copied from tmustier/pi-extensions @ session-recap v0.2.2 (see UPSTREAM.md).
  * Original author: Thomas Mustier. MIT licensed.
  *
- * Claude-Code-style session recap for pi. See README.md for full docs;
- * the implementation is split across:
- *
- *   ./helpers.ts            — pure transcript / status-line helpers
- *   ./prompt.ts             — LLM prompt template (snapshot-tested)
- *   ./focusParser.ts        — pure DECSET ?1004 ESC-sequence scanner
- *   ./recapOrchestrator.ts  — active-request / leaf-id / idle-timer state machine
- *   ./subcommands.ts        — pure `/recap` subcommand classifier
- *   ./settings.ts           — user-config file read + legacy-env migration
- *
- * This file is now just flag registration + pi.on(...) subscriptions
- * delegating to the orchestrator + command dispatch.
+ * Local adaptations (documented in README.md "Differences from upstream"):
+ * the implementation is split across ./helpers.ts, ./prompt.ts,
+ * ./focusParser.ts, ./recapOrchestrator.ts, ./subcommands.ts, ./settings.ts
+ * and ./settingsMenu.ts; this file is flag registration + pi.on(...)
+ * subscriptions + the `/recap` / `/recap-settings` commands + stats.
  */
 
 import { completeSimple, getModel } from "@earendil-works/pi-ai";
@@ -40,21 +75,22 @@ export const WIDGET_KEY = "pi-session-recap";
 export const STATUS_KEY = "pi-session-recap";
 
 const DEFAULT_IDLE_SECONDS = 300;
-const DEFAULT_FOCUS_MIN_SECONDS = 3;
+const DEFAULT_AWAY_SECONDS = 90;
 
 const FOCUS_ENABLE = "\x1b[?1004h";
 const FOCUS_DISABLE = "\x1b[?1004l";
 
 export default function (pi: ExtensionAPI) {
 	pi.registerFlag("recap-idle-seconds", {
-		description: "Seconds after turn_end before the session recap is generated",
+		description:
+			"Idle-fallback: seconds after turn_end before a recap when the terminal doesn't report focus",
 		type: "string",
 		default: String(DEFAULT_IDLE_SECONDS),
 	});
-	pi.registerFlag("recap-focus-min-seconds", {
-		description: "Minimum focus-out duration (seconds) before showing a recap on refocus",
+	pi.registerFlag("recap-away-seconds", {
+		description: "Seconds of continuous terminal blur before an away recap is generated",
 		type: "string",
-		default: String(DEFAULT_FOCUS_MIN_SECONDS),
+		default: String(DEFAULT_AWAY_SECONDS),
 	});
 	pi.registerFlag("recap-disable-focus", {
 		description: "Disable DECSET ?1004 focus reporting (idle fallback still runs)",
@@ -62,12 +98,12 @@ export default function (pi: ExtensionAPI) {
 		default: false,
 	});
 	pi.registerFlag("recap-during-active", {
-		description: "Allow focus-triggered recaps while an agent turn is still running",
+		description: "Allow away recaps while an agent turn is still running",
 		type: "boolean",
 		default: false,
 	});
 	pi.registerFlag("recap-auto", {
-		description: "Enable automatic session recaps (idle, focus, and resume triggers)",
+		description: "Enable automatic session recaps (idle, away, and resume triggers)",
 		type: "boolean",
 		default: false,
 	});
@@ -89,9 +125,9 @@ export default function (pi: ExtensionAPI) {
 		const n = Number(pi.getFlag("recap-idle-seconds") ?? DEFAULT_IDLE_SECONDS);
 		return Math.max(MIN_IDLE_SECONDS, Number.isFinite(n) ? n : DEFAULT_IDLE_SECONDS);
 	};
-	const focusMinSeconds = (): number => {
-		const n = Number(pi.getFlag("recap-focus-min-seconds") ?? DEFAULT_FOCUS_MIN_SECONDS);
-		return Math.max(0, Number.isFinite(n) ? n : DEFAULT_FOCUS_MIN_SECONDS);
+	const awaySeconds = (): number => {
+		const n = Number(pi.getFlag("recap-away-seconds") ?? DEFAULT_AWAY_SECONDS);
+		return Math.max(5, Number.isFinite(n) ? n : DEFAULT_AWAY_SECONDS);
 	};
 	const isAutoEnabled = (): boolean => Boolean(pi.getFlag("recap-auto"));
 	const isFocusDisabled = (): boolean => Boolean(pi.getFlag("recap-disable-focus"));
@@ -111,12 +147,44 @@ export default function (pi: ExtensionAPI) {
 		isAutoEnabled,
 		isFocusDisabled,
 		idleMs: () => idleSeconds() * 1000,
-		focusMinMs: () => focusMinSeconds() * 1000,
+		awayMs: () => awaySeconds() * 1000,
 		modelOverride,
 		allowDuringActive,
 	};
 
 	// Orchestrator is keyed per-ctx: pi delivers each lifecycle callback with
+	// the same ExtensionContext instance, so we cache by identity. This keeps
+	// the deps object plain (no globals) while allowing every `pi.on(...)`
+	// callback to delegate without threading a second argument.
+	let orchestrator: RecapOrchestrator | undefined;
+	let orchestratorCtx: ExtensionContext | undefined;
+	const getOrchestrator = (ctx: ExtensionContext): RecapOrchestrator => {
+		if (orchestrator && orchestratorCtx === ctx) return orchestrator;
+		orchestratorCtx = ctx;
+		orchestrator = createRecapOrchestrator({
+			completeSimple,
+			getModel,
+			ctx,
+			config,
+			widgetKey: WIDGET_KEY,
+			statusKey: STATUS_KEY,
+			onError: (err) =>
+				pi.appendEntry("session-recap:error", {
+					message: err instanceof Error ? err.message : String(err),
+				}),
+			onTrigger: () => {
+				triggerCount += 1;
+				persistStats();
+			},
+			onUsage: (usage) => {
+				totalInputTokens += usage.input;
+				totalOutputTokens += usage.output;
+				persistStats();
+			},
+		});
+		return orchestrator;
+	};
+
 	// --- session-level counters --------------------------------------------
 	// Persisted via pi.appendEntry("session-recap:stats", ...) and rehydrated
 	// on session_start from the most recent such entry.
@@ -155,38 +223,6 @@ export default function (pi: ExtensionAPI) {
 		} catch {
 			/* defensive — stale ctx or missing sessionManager */
 		}
-	};
-
-	// the same ExtensionContext instance, so we cache by identity. This keeps
-	// the deps object plain (no globals) while allowing every `pi.on(...)`
-	// callback to delegate without threading a second argument.
-	let orchestrator: RecapOrchestrator | undefined;
-	let orchestratorCtx: ExtensionContext | undefined;
-	const getOrchestrator = (ctx: ExtensionContext): RecapOrchestrator => {
-		if (orchestrator && orchestratorCtx === ctx) return orchestrator;
-		orchestratorCtx = ctx;
-		orchestrator = createRecapOrchestrator({
-			completeSimple,
-			getModel,
-			ctx,
-			config,
-			widgetKey: WIDGET_KEY,
-			statusKey: STATUS_KEY,
-			onError: (err) =>
-				pi.appendEntry("session-recap:error", {
-					message: err instanceof Error ? err.message : String(err),
-				}),
-			onTrigger: () => {
-				triggerCount += 1;
-				persistStats();
-			},
-			onUsage: (usage) => {
-				totalInputTokens += usage.input;
-				totalOutputTokens += usage.output;
-				persistStats();
-			},
-		});
-		return orchestrator;
 	};
 
 	const clearRecapWidget = (ctx: ExtensionContext) => {
@@ -251,10 +287,7 @@ export default function (pi: ExtensionAPI) {
 	// --- lifecycle subscriptions --------------------------------------------
 
 	pi.on("turn_end", (_event, ctx) => {
-		const orch = getOrchestrator(ctx);
-		orch.invalidateDraft();
-		orch.scheduleRecap();
-		orch.checkDeferredFocus();
+		getOrchestrator(ctx).onTurnEnd();
 	});
 
 	pi.on("turn_start", (_event, ctx) => {
@@ -263,13 +296,12 @@ export default function (pi: ExtensionAPI) {
 
 	pi.on("input", (_event, ctx) => {
 		const orch = getOrchestrator(ctx);
-		orch.reset();
+		orch.onInput();
 		clearRecapWidget(ctx);
 	});
 
 	pi.on("agent_start", (_event, ctx) => {
 		const orch = getOrchestrator(ctx);
-		orch.reset();
 		orch.onAgentStart();
 		clearRecapWidget(ctx);
 	});
@@ -337,7 +369,7 @@ export default function (pi: ExtensionAPI) {
 			activeModelSpec: activeModelSpec(ctx),
 			autoRecapEnabled: isAutoEnabled(),
 			idleSeconds: idleSeconds(),
-			focusMinSeconds: focusOff ? null : focusMinSeconds(),
+			awaySeconds: focusOff ? null : awaySeconds(),
 			disabledFlags,
 			triggerCount,
 			tokenUsage: totalInputTokens > 0 || totalOutputTokens > 0
@@ -347,7 +379,7 @@ export default function (pi: ExtensionAPI) {
 	};
 
 	pi.registerCommand("recap", {
-		description: "Generate a one-line recap of recent activity",
+		description: "Generate a recap of recent session activity",
 		handler: async (args, ctx) => {
 			const sub = dispatchRecap(args);
 			if (sub.kind === "generate") {

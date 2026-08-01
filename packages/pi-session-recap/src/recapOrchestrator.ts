@@ -1,10 +1,16 @@
 /**
  * State machine for generating and revealing session recaps.
  *
- * Extracted from `src/index.ts` so the four interacting concerns —
- * active-request ownership, the leaf-id snapshot-before-await, the idle
- * timer, and the focus-out/focus-in parking slot — can be unit-tested
- * with a plain deps object and no pi-tui / pi-ai / terminal dependencies.
+ * Extracted from `src/index.ts` so the three interacting concerns —
+ * the away timer + post-turn debounce, the idle fallback for terminals
+ * without focus reporting, and the active-request ownership with
+ * fingerprint dedupe — can be unit-tested with a plain deps object and
+ * no pi-tui / pi-ai / terminal dependencies.
+ *
+ * Semantics follow upstream tmustier/pi-extensions session-recap v0.2.2:
+ * a recap is only drafted after a *genuine* absence (continuous blur ≥
+ * `--recap-away-seconds`, or a turn ending while blurred, or — on
+ * terminals that never report focus — an idle timeout after turn_end).
  *
  * See src/index.ts for upstream attribution.
  */
@@ -13,11 +19,12 @@ import type { completeSimple as completeSimpleFn, getModel as getModelFn } from 
 import type { ExtensionContext } from "@earendil-works/pi-coding-agent";
 
 import {
-	buildRecentTranscript,
+	buildTranscript,
 	type Entry,
-	firstLine,
 	hasMeaningfulActivity,
+	recapStateKey,
 	splitModel,
+	wrapText,
 } from "./helpers.js";
 import { buildRecapPrompt, RECAP_SYSTEM_PROMPT } from "./prompt.js";
 
@@ -25,19 +32,28 @@ export type RecapReason = "idle" | "manual" | "resume" | "focus";
 
 type Model = Parameters<typeof completeSimpleFn>[0];
 
+// Debounce after a turn ends while blurred, so mid-loop turn_ends (which are
+// immediately followed by the next turn_start) don't trigger drafts.
+const POST_TURN_DEBOUNCE_MS = 3000;
+
+// Widget body wrapping.
+const WRAP_WIDTH = 100;
+const MAX_BODY_LINES = 4;
+
 export interface RecapOrchestratorConfig {
 	isAutoEnabled: () => boolean;
-	/** Unused by the orchestrator itself; surfaced so the outer index.ts keeps a single config object. */
+	/** Focus reporting is off entirely — the idle fallback is never disarmed. */
 	isFocusDisabled?: () => boolean;
 	idleMs: () => number;
-	focusMinMs: () => number;
+	/** Continuous-blur threshold before an away recap is drafted. */
+	awayMs: () => number;
 	/** Spec string for --recap-model override, or undefined to use ctx.model. */
 	modelOverride: () => string | undefined;
 	/**
-	 * Opt-in: allow focus-triggered recaps to fire while an agent turn is
+	 * Opt-in: allow away-triggered recaps to fire while an agent turn is
 	 * still running. Default (undefined or false) preserves the legacy
 	 * "always defer until agent_end" behaviour. Mirrors upstream
-	 * tmustier/pi-extensions session-recap v0.1.3's `--recap-during-active`.
+	 * tmustier/pi-extensions session-recap v0.2.2's `--recap-during-active`.
 	 */
 	allowDuringActive?: () => boolean;
 }
@@ -75,15 +91,14 @@ function isStaleCtxError(err: unknown): boolean {
 
 /**
  * Internal: resolve the target model, fetch auth, fire `completeSimple`,
- * and return the first line of the response. Mirrors the original
- * `generateRecap` inline function byte-for-byte except the prompt text
- * now lives in `./prompt.ts`.
+ * and return the flattened recap text. Mirrors the original upstream
+ * `generateRecap` function except the prompt text lives in `./prompt.ts`.
  */
 async function runModelCall(
 	transcript: string,
 	deps: RecapOrchestratorDeps,
 	signal: AbortSignal,
-): Promise<{ text: string; usage: { input: number; output: number } } | undefined> {
+): Promise<{ text: string | undefined; usage: { input: number; output: number } } | undefined> {
 	const { completeSimple, getModel, ctx, config } = deps;
 
 	let model: Model | undefined = ctx.model;
@@ -100,75 +115,78 @@ async function runModelCall(
 	}
 	if (!model) return undefined;
 
+	// Note: apiKey may legitimately be absent for env/ambient-auth providers —
+	// only bail when auth resolution itself failed.
 	const auth = await ctx.modelRegistry.getApiKeyAndHeaders(model);
-	if (!auth?.ok || !auth.apiKey) return undefined;
+	if (!auth?.ok) return undefined;
 
-	const response = await completeSimple(
-		model,
-		{
-			systemPrompt: RECAP_SYSTEM_PROMPT,
-			messages: [
-				{
-					role: "user",
-					content: [{ type: "text", text: buildRecapPrompt(transcript) }],
-					timestamp: Date.now(),
-				},
-			],
-		},
-		{
-			apiKey: auth.apiKey,
-			...(auth.headers ? { headers: auth.headers } : {}),
-			signal,
-			// Recaps are tiny, throwaway UI hints — don't pay for prompt-cache
-			// entries and don't spend reasoning tokens on them. For reasoning
-			// models we still have to set the field; "minimal" is the lowest
-			// value SimpleStreamOptions.reasoning accepts (there is no "off"
-			// at request time).
-			//
-			// We deliberately do NOT cap maxTokens here. On AWS Bedrock,
-			// adaptive-thinking Claude (Sonnet 4.6, Opus 4.6/4.7) does not run
-			// `adjustMaxTokensForThinking`, so a tight cap is shared between
-			// thinking and visible text — thinking consumes the budget and the
-			// response contains only thinking blocks (which the orchestrator
-			// filters out), so the recap widget never renders. The recap
-			// prompt asks for a single line, so the model stops itself well
-			// before any reasonable provider default.
-			...(model.reasoning ? { reasoning: "minimal" as const } : {}),
-			cacheRetention: "none" as const,
-		},
-	);
+	let response;
+	try {
+		response = await completeSimple(
+			model,
+			{
+				systemPrompt: RECAP_SYSTEM_PROMPT,
+				messages: [
+					{
+						role: "user",
+						content: [{ type: "text", text: buildRecapPrompt(transcript) }],
+						timestamp: Date.now(),
+					},
+				],
+			},
+			{
+				...(auth.apiKey ? { apiKey: auth.apiKey } : {}),
+				...(auth.headers ? { headers: auth.headers } : {}),
+				...(auth.env ? { env: auth.env } : {}),
+				signal,
+				// Recaps are tiny, throwaway UI hints. Do not pay to create/read
+				// prompt cache entries, and do not spend reasoning tokens.
+				cacheRetention: "none" as const,
+				maxTokens: 256,
+			},
+		);
+	} catch (err) {
+		// Custom providers registered only with pi (e.g. via a bridge extension)
+		// are unknown to pi-ai's provider registry, so completeSimple cannot
+		// route the call. Skip the recap silently, matching the documented
+		// "failed auth resolution → skipped silently" behavior.
+		if (err instanceof Error && err.message.startsWith("No API provider registered for api:")) {
+			return undefined;
+		}
+		throw err;
+	}
 
 	const text = response.content
 		.filter((c): c is { type: "text"; text: string } => c.type === "text")
 		.map((c) => c.text)
-		.join("\n")
+		.join(" ")
+		.replace(/\s+/g, " ")
 		.trim();
 
-	return { text: firstLine(text) ?? "", usage: { input: response.usage?.input ?? 0, output: response.usage?.output ?? 0 } };
+	return {
+		text: text ? text.slice(0, 600) : undefined,
+		usage: { input: response.usage?.input ?? 0, output: response.usage?.output ?? 0 },
+	};
 }
 
 export interface RecapOrchestrator {
-	scheduleRecap(): void;
-	cancelActive(): void;
-	clearTimer(): void;
+	/** Event hook: turn ended — arm the away/post-turn and idle-fallback paths. */
+	onTurnEnd(): void;
+	/** Event hook: turn started — any armed trigger or in-flight draft is stale. */
+	onTurnStart(): void;
+	/** Event hook: user typed — cancel everything and drop pending state. */
+	onInput(): void;
+	/** Event hook: agent turn started — defer away recaps until agent_end. */
+	onAgentStart(): void;
+	/** Event hook: agent turn ended — flush any deferred away recap. */
+	onAgentEnd(): void;
+	/** Focus reporting: terminal blurred — arm the away timer. */
 	onFocusOut(): void;
+	/** Focus reporting: terminal focused — cancel the away timer. */
 	onFocusIn(): void;
 	runGenerateAndShow(opts: { reason: RecapReason }): Promise<void>;
-	/** Event hook: clear draft bookkeeping on new turn / input / agent_start. */
-	invalidateDraft(): void;
-	/** Event hook: clear all pending state + detach for session_shutdown. */
+	/** Event hook: clear all pending state for session_shutdown / replacement. */
 	reset(): void;
-	/** Event hook: agent turn started — defer focus recaps until agent_end. */
-	onAgentStart(): void;
-	/** Event hook: agent turn ended — flush any deferred focus recap. */
-	onAgentEnd(): void;
-	/**
-	 * Event hook for turn_start: clear timer, cancel active, clear pending state.
-	 * More aggressive than clearTimer() alone; mirrors Claude Code's turn_start logic.
-	 */
-	onTurnStart(): void;
-	/** Check and fire any deferred focus recap (called from turn_end). */
-	checkDeferredFocus(): void;
 }
 
 /**
@@ -179,24 +197,29 @@ export function createRecapOrchestrator(deps: RecapOrchestratorDeps): RecapOrche
 	const widgetKey = deps.widgetKey ?? DEFAULT_WIDGET_KEY;
 	const statusKey = deps.statusKey ?? DEFAULT_STATUS_KEY;
 
-	let idleTimer: ReturnType<typeof setTimeout> | undefined;
+	let idleTimer: ReturnType<typeof setTimeout> | undefined; // fallback for no-focus-support terminals
+	let awayTimer: ReturnType<typeof setTimeout> | undefined; // continuous-blur timer
+	let postTurnTimer: ReturnType<typeof setTimeout> | undefined; // turn ended while blurred
 	let activeController: AbortController | undefined;
-	let activeReason: RecapReason | undefined;
-	let focusedOutAt: number | undefined;
-	let pendingRecap: string | undefined;
-	let lastDraftedLeafId: string | undefined;
-	// Agent activity tracking: defer focus recaps that arrive while the model
-	// is still running, mirroring Claude Code's away-summary pending-bit logic.
+
+	// Agent activity state. Like Claude Code's away summary, we don't draft
+	// while a turn is still loading: if the away/post-turn trigger fires
+	// mid-turn, we set a pending bit and generate on agent_end (if still
+	// blurred). This avoids summarising a half-written branch.
 	let agentActive = false;
 	let focusDraftAfterAgent = false;
 
-	const getLeafId = (): string | undefined => {
-		try {
-			return deps.ctx.sessionManager.getLeafId() ?? undefined;
-		} catch {
-			return undefined;
-		}
-	};
+	// Focus reporting state.
+	let focusedOutAt: number | undefined;
+	// True once we've seen any ESC[I / ESC[O this session — i.e. the terminal
+	// demonstrably supports focus reporting, so the idle fallback is redundant.
+	let focusEventsSeen = false;
+
+	// Fingerprint of the recap-relevant transcript we last drafted. More
+	// precise than the raw branch leaf: pi appends metadata entries such as
+	// session names, model/thinking changes, labels, or leaf markers that can
+	// advance the leaf without changing the recap prompt at all.
+	let lastDraftedStateKey: string | undefined;
 
 	/**
 	 * Read the current session branch through the captured ctx. Returns
@@ -210,9 +233,11 @@ export function createRecapOrchestrator(deps: RecapOrchestratorDeps): RecapOrche
 			return deps.ctx.sessionManager.getBranch();
 		} catch (err) {
 			if (isStaleCtxError(err)) {
-				// Drop any pending idle timer — it would hit the same stale
+				// Drop any pending timers — they would hit the same stale
 				// ctx on every subsequent fire.
-				clearTimer();
+				clearIdleTimer();
+				clearAwayTimer();
+				clearPostTurnTimer();
 				return undefined;
 			}
 			throw err;
@@ -233,13 +258,26 @@ export function createRecapOrchestrator(deps: RecapOrchestratorDeps): RecapOrche
 		if (!ctx.hasUI) return;
 		const theme = ctx.ui.theme;
 		const header = theme.fg("accent", theme.bold("✦ recap"));
-		ctx.ui.setWidget(widgetKey, [header, theme.fg("dim", recap)], { placement: "aboveEditor" });
+		const body = wrapText(recap, WRAP_WIDTH, MAX_BODY_LINES).map((l) => theme.fg("dim", l));
+		ctx.ui.setWidget(widgetKey, [header, ...body], { placement: "aboveEditor" });
 	};
 
-	const clearTimer = () => {
+	const clearIdleTimer = () => {
 		if (idleTimer) {
 			clearTimeout(idleTimer);
 			idleTimer = undefined;
+		}
+	};
+	const clearAwayTimer = () => {
+		if (awayTimer) {
+			clearTimeout(awayTimer);
+			awayTimer = undefined;
+		}
+	};
+	const clearPostTurnTimer = () => {
+		if (postTurnTimer) {
+			clearTimeout(postTurnTimer);
+			postTurnTimer = undefined;
 		}
 	};
 
@@ -247,8 +285,20 @@ export function createRecapOrchestrator(deps: RecapOrchestratorDeps): RecapOrche
 		if (activeController) {
 			activeController.abort();
 			activeController = undefined;
-			activeReason = undefined;
 		}
+	};
+
+	// The idle fallback only exists for terminals that don't report focus.
+	// Once we've seen a real focus event, the away/post-turn triggers own the
+	// job and the idle path would just be noise while the user is watching.
+	const idleFallbackEligible = (): boolean =>
+		(deps.config.isFocusDisabled?.() ?? false) || !focusEventsSeen;
+
+	const fireRecap = (reason: RecapReason) => {
+		void runGenerateAndShow({ reason }).catch((err: unknown) => {
+			if (isStaleCtxError(err)) return;
+			deps.onError?.(err);
+		});
 	};
 
 	const runGenerateAndShow = async (opts: { reason: RecapReason }): Promise<void> => {
@@ -257,34 +307,31 @@ export function createRecapOrchestrator(deps: RecapOrchestratorDeps): RecapOrche
 		if (entries === undefined) return;
 		if (!hasMeaningfulActivity(entries) && opts.reason !== "manual") return;
 
-		const fromLastUser = opts.reason !== "resume";
-		// For manual /recap, the last user message IS the "/recap" command itself.
-		// Skip it so we summarise the actual prior conversation.
-		const skipLastUser = opts.reason === "manual" ? 1 : 0;
-		const transcript = buildRecentTranscript(entries, fromLastUser, skipLastUser);
+		const transcript = buildTranscript(entries);
 		if (!transcript.trim()) {
 			if (opts.reason === "manual" && ctx.hasUI)
 				ctx.ui.notify("Nothing to recap yet — start a conversation first.", "info");
 			return;
 		}
 
-		// Snapshot the leaf we're summarising BEFORE we await.
-		const startLeaf = getLeafId();
+		// Snapshot the exact recap prompt we're summarising BEFORE we await. If
+		// recap-relevant content changes while the model call is in flight,
+		// discard the stale draft; metadata-only branch changes should not
+		// invalidate it.
+		const startStateKey = recapStateKey(transcript);
+		if (opts.reason !== "manual" && lastDraftedStateKey === startStateKey) return;
 
-		// Take ownership of the active-request slot.
+		// Take ownership of the active-request slot. Any prior request is
+		// cancelled; we only clear shared state in the finally if we're still
+		// the current owner, so a late-completing aborted call can't stomp on
+		// a newer in-flight request.
 		cancelActive();
 		const controller = new AbortController();
 		activeController = controller;
-		activeReason = opts.reason;
 
-		const showStatus = opts.reason !== "resume" && opts.reason !== "focus";
-		if (ctx.hasUI) {
-			const theme = ctx.ui.theme;
-			const header = theme.fg("accent", theme.bold("✦ recap"));
-			ctx.ui.setWidget(widgetKey, [header, theme.fg("dim", "generating…")], { placement: "aboveEditor" });
-			if (showStatus)
-				ctx.ui.setStatus(statusKey, theme.fg("dim", "✦ drafting recap…"));
-		}
+		const showStatus = opts.reason === "manual" || opts.reason === "idle";
+		if (showStatus && ctx.hasUI)
+			ctx.ui.setStatus(statusKey, ctx.ui.theme.fg("dim", "✦ drafting recap…"));
 
 		deps.onTrigger?.();
 
@@ -300,145 +347,164 @@ export function createRecapOrchestrator(deps: RecapOrchestratorDeps): RecapOrche
 					ctx.ui.notify("Recap returned empty — the conversation may be too short.", "info");
 				return;
 			}
-			if (getLeafId() !== startLeaf && opts.reason !== "manual") return;
-			lastDraftedLeafId = startLeaf;
-			clearTimer();
 
-			const recap = result.text;
-			if (opts.reason === "focus") {
-				if (focusedOutAt === undefined) showRecap(recap);
-				else pendingRecap = recap;
-			} else {
-				showRecap(recap);
-			}
+			// Discard the recap if the recap prompt changed while we were
+			// drafting. If only session metadata changed, the prompt key stays
+			// the same and the draft remains valid.
+			const current = safeGetBranch();
+			if (current === undefined) return;
+			if (recapStateKey(buildTranscript(current)) !== startStateKey) return;
+
+			// Stamp the prompt we actually summarised, not the live branch leaf.
+			lastDraftedStateKey = startStateKey;
+			// Another trigger has produced a recap for this content — kill the
+			// other timers so we don't issue a second call later.
+			clearIdleTimer();
+			clearPostTurnTimer();
+
+			// Show immediately. Away/post-turn recaps are drafted while the
+			// user is away, so the widget is parked above the editor when they
+			// return; if they returned mid-draft, it's still the "just got
+			// back" moment.
+			showRecap(result.text);
 		} catch (err) {
 			if (!controller.signal.aborted) deps.onError?.(err);
 		} finally {
 			if (activeController === controller) {
 				activeController = undefined;
-				activeReason = undefined;
 				if (showStatus && ctx.hasUI) ctx.ui.setStatus(statusKey, undefined);
 			}
 		}
 	};
 
-	const scheduleRecap = () => {
-		clearTimer();
+	// Shared gate for the away-timer / post-turn / deferred-after-agent paths.
+	// Requires the terminal to still be blurred.
+	const tryAwayRecap = () => {
 		if (!deps.config.isAutoEnabled() || !safeHasUI()) return;
-		idleTimer = setTimeout(() => {
-			idleTimer = undefined;
-			// The captured ctx may have been invalidated between scheduling
-			// and firing (session replaced / reloaded with a dropped
-			// session_shutdown). runGenerateAndShow defends its own ctx
-			// reads; we additionally guard against any synchronous throw
-			// escaping into Timeout._onTimeout as an unhandled rejection.
-			void runGenerateAndShow({ reason: "idle" }).catch((err: unknown) => {
-				if (isStaleCtxError(err)) return;
-				deps.onError?.(err);
-			});
-		}, deps.config.idleMs());
-	};
-
-	const maybeGenerateDeferredFocusRecap = () => {
-		if (!focusDraftAfterAgent) return;
-		if (focusedOutAt === undefined) return;
-		if (agentActive) return;
-		focusDraftAfterAgent = false;
-		void runGenerateAndShow({ reason: "focus" }).catch((err: unknown) => {
-			if (isStaleCtxError(err)) return;
-			deps.onError?.(err);
-		});
-	};
-
-	const onFocusOut = () => {
-		focusedOutAt = Date.now();
-		// If the agent is mid-turn, don't draft against the half-written branch.
-		// Park the request and flush it once agent_end (or turn_end) fires —
-		// unless the user opted into `--recap-during-active`, in which case we
-		// fall through and let the focus draft race against the live turn.
+		if (focusedOutAt === undefined) return; // user came back — drop it
 		if (agentActive && !(deps.config.allowDuringActive?.() ?? false)) {
+			// Turn still loading: defer to agent_end (Claude Code's pending bit).
 			focusDraftAfterAgent = true;
 			return;
 		}
-		if (!deps.config.isAutoEnabled() || activeController) return;
+		if (activeController) return; // one request at a time
 
-		const leaf = getLeafId();
-		if (lastDraftedLeafId && leaf === lastDraftedLeafId) return;
+		// runGenerateAndShow fingerprints the recap prompt and returns before
+		// the model call when we have already drafted for the same content.
+		fireRecap("focus");
+	};
 
-		const entries = safeGetBranch();
-		if (entries === undefined) return;
-		if (!hasMeaningfulActivity(entries)) return;
-		void runGenerateAndShow({ reason: "focus" }).catch((err: unknown) => {
-			if (isStaleCtxError(err)) return;
-			deps.onError?.(err);
-		});
+	const scheduleIdleRecap = () => {
+		clearIdleTimer();
+		if (!deps.config.isAutoEnabled() || !safeHasUI()) return;
+		idleTimer = setTimeout(() => {
+			idleTimer = undefined;
+			// Re-check at fire time: a focus event may have arrived since arming.
+			if (!idleFallbackEligible()) return;
+			fireRecap("idle");
+		}, deps.config.idleMs());
+	};
+
+	const onTurnEnd = () => {
+		if (!deps.config.isAutoEnabled() || !safeHasUI()) return;
+
+		// Prime multi-tab moment: the agent produced output while the user is
+		// away. Debounced so mid-loop turn_ends (followed by the next
+		// turn_start within moments) don't trigger drafts; tryAwayRecap also
+		// defers if the agent loop is still active when the timer fires.
+		if (focusedOutAt !== undefined) {
+			clearPostTurnTimer();
+			postTurnTimer = setTimeout(() => {
+				postTurnTimer = undefined;
+				tryAwayRecap();
+			}, POST_TURN_DEBOUNCE_MS);
+		}
+
+		// Fallback for terminals without focus reporting.
+		if (idleFallbackEligible()) scheduleIdleRecap();
+	};
+
+	const onTurnStart = () => {
+		// Another turn is starting in the same agent loop — any armed trigger
+		// or in-flight draft is stale. The dedupe stamp itself is content-based,
+		// so it does not need manual invalidation.
+		clearIdleTimer();
+		clearPostTurnTimer();
+		cancelActive();
+	};
+
+	const onInput = () => {
+		clearIdleTimer();
+		clearPostTurnTimer();
+		clearAwayTimer();
+		cancelActive();
+		focusDraftAfterAgent = false;
+	};
+
+	const onAgentStart = () => {
+		agentActive = true;
+		clearIdleTimer();
+		clearPostTurnTimer();
+		cancelActive();
+	};
+
+	const onAgentEnd = () => {
+		agentActive = false;
+		if (focusDraftAfterAgent) {
+			focusDraftAfterAgent = false;
+			tryAwayRecap();
+		}
+	};
+
+	const onFocusOut = () => {
+		focusEventsSeen = true;
+		focusedOutAt = Date.now();
+		// Focus reporting works — the idle fallback is now redundant.
+		clearIdleTimer();
+		if (!deps.config.isAutoEnabled()) return;
+		clearAwayTimer();
+		awayTimer = setTimeout(() => {
+			awayTimer = undefined;
+			tryAwayRecap();
+		}, deps.config.awayMs());
 	};
 
 	const onFocusIn = () => {
-		focusDraftAfterAgent = false;
-		const outAt = focusedOutAt;
+		focusEventsSeen = true;
 		focusedOutAt = undefined;
-		if (outAt === undefined) return;
-		const duration = Date.now() - outAt;
-		if (duration < deps.config.focusMinMs()) {
-			pendingRecap = undefined;
-			lastDraftedLeafId = undefined;
-			if (activeReason === "focus") cancelActive();
-			return;
-		}
-		if (pendingRecap) {
-			const recap = pendingRecap;
-			pendingRecap = undefined;
-			showRecap(recap);
-		}
-	};
-
-	const invalidateDraft = () => {
-		lastDraftedLeafId = undefined;
+		focusDraftAfterAgent = false;
+		clearAwayTimer();
+		// The user is back and looking at the output — a post-turn recap now
+		// would just repeat what's on screen.
+		clearPostTurnTimer();
+		clearIdleTimer();
+		// Note: an in-flight draft (triggered by a genuine absence) is left to
+		// finish — it lands moments after return, which is exactly when it helps.
 	};
 
 	const reset = () => {
 		agentActive = false;
 		focusDraftAfterAgent = false;
-		clearTimer();
-		cancelActive();
 		focusedOutAt = undefined;
-		pendingRecap = undefined;
-		lastDraftedLeafId = undefined;
-	};
-
-	const onAgentStart = () => {
-		agentActive = true;
-	};
-
-	const onAgentEnd = () => {
-		agentActive = false;
-		maybeGenerateDeferredFocusRecap();
-	};
-
-	const onTurnStart = () => {
-		clearTimer();
+		focusEventsSeen = false;
+		// Content-based dedupe is per-session state — a fresh session must be
+		// able to draft the same content again.
+		lastDraftedStateKey = undefined;
+		clearIdleTimer();
+		clearAwayTimer();
+		clearPostTurnTimer();
 		cancelActive();
-		pendingRecap = undefined;
-		lastDraftedLeafId = undefined;
-	};
-
-	const checkDeferredFocus = () => {
-		maybeGenerateDeferredFocusRecap();
 	};
 
 	return {
-		scheduleRecap,
-		cancelActive,
-		clearTimer,
+		onTurnEnd,
+		onTurnStart,
+		onInput,
+		onAgentStart,
+		onAgentEnd,
 		onFocusOut,
 		onFocusIn,
 		runGenerateAndShow,
-		invalidateDraft,
 		reset,
-		onAgentStart,
-		onAgentEnd,
-		onTurnStart,
-		checkDeferredFocus,
 	};
 }

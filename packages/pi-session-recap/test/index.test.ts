@@ -187,7 +187,7 @@ describe("/recap command dispatch (#0004)", () => {
 		const pi = makeFakePi();
 		createExtension(pi as never);
 		const recap = pi.commands.get("recap");
-		expect(recap?.description).toBe("Generate a one-line recap of recent activity");
+		expect(recap?.description).toBe("Generate a recap of recent session activity");
 		expect(recap?.description).not.toMatch(/status/i);
 
 		const settings = pi.commands.get("recap-settings");
@@ -304,7 +304,7 @@ describe("flag-key wiring — pi.getFlag must match pi.registerFlag names (no `-
 		const pi = makeFakePi({
 			flagValues: {
 				"recap-idle-seconds": "45",
-				"recap-focus-min-seconds": "7",
+				"recap-away-seconds": "7",
 				"recap-auto": false,
 				"recap-disable-focus": true,
 				"recap-model": "anthropic/claude-haiku-4-5",
@@ -323,8 +323,8 @@ describe("flag-key wiring — pi.getFlag must match pi.registerFlag names (no `-
 
 		// Numeric flags flow through.
 		expect(body).toContain("Idle trigger:   45s after turn_end");
-		// --recap-disable-focus wins over focus seconds.
-		expect(body).toContain("Focus trigger:  disabled");
+		// --recap-disable-focus wins over away seconds.
+		expect(body).toContain("Away trigger:   disabled");
 		expect(body).toContain("Auto-recap:     disabled");
 		expect(body).toContain("Disabled flags: --recap-disable-focus");
 		expect(body).toContain("anthropic/claude-haiku-4-5");
@@ -335,10 +335,10 @@ describe("flag-key wiring — pi.getFlag must match pi.registerFlag names (no `-
 		expect(items[items.length - 1]).toBe("Close");
 	});
 
-	it("surfaces `recap-focus-min-seconds` in the Focus trigger row of the `/recap-settings` menu when `recap-disable-focus` is false", async () => {
+	it("surfaces `recap-away-seconds` in the Away trigger row of the `/recap-settings` menu when `recap-disable-focus` is false", async () => {
 		const pi = makeFakePi({
 			flagValues: {
-				"recap-focus-min-seconds": "7",
+				"recap-away-seconds": "7",
 				// recap-disable-focus deliberately omitted → defaults to false.
 			},
 		});
@@ -348,7 +348,7 @@ describe("flag-key wiring — pi.getFlag must match pi.registerFlag names (no `-
 		await pi.commands.get("recap-settings")!.handler("", ctx);
 
 		const [, items] = ctx.ui.select.mock.calls[0] as [string, string[]];
-		expect(items.join("\n")).toContain("Focus trigger:  enabled (min 7s away)");
+		expect(items.join("\n")).toContain("Away trigger:   enabled (7s blur)");
 	});
 
 	it("regression guard — `pi.getFlag` is never called with a `--`-prefixed key on session_start, /recap (no args), or /recap-settings", async () => {
@@ -378,10 +378,26 @@ describe("flag-key wiring — pi.getFlag must match pi.registerFlag names (no `-
 		await recap("banana", makeFakeCtx());
 		// /recap-settings exercises all five registered flags via
 		// resolveStatusOptions → configuredOverride / idleSeconds /
-		// focusMinSeconds / isDisabled / isFocusDisabled.
+		// awaySeconds / isAutoEnabled / isFocusDisabled.
 		await settings("", makeFakeCtx());
 
 		expect(offenders).toEqual([]);
+	});
+
+	it("registers `--recap-away-seconds` (default 90) and drops the legacy `--recap-focus-min-seconds`", () => {
+		const pi = makeFakePi();
+		createExtension(pi as never);
+
+		const registered = new Map(
+			(pi.registerFlag.mock.calls as Array<[string, { default?: unknown }]>).map(
+				([name, def]) => [name, def],
+			),
+		);
+		expect(registered.get("recap-away-seconds")?.default).toBe("90");
+		expect(registered.has("recap-focus-min-seconds")).toBe(false);
+		// The v0.2 away-timer semantics need no min-blur knob.
+		expect(registered.has("recap-idle-seconds")).toBe(true);
+		expect(registered.has("recap-auto")).toBe(true);
 	});
 });
 
@@ -732,25 +748,12 @@ describe("onError callback writes an error entry via pi.appendEntry", () => {
 		rmSync(agentDir, { recursive: true, force: true });
 	});
 
-	it("appends a session-recap:error entry when the orchestrator's onError fires", async () => {
-		// We need to trigger the onError callback in index.ts. The orchestrator
-		// fires onError when completeSimple throws a non-abort error. We need
-		// to reach the model call, so auth must succeed and model must exist.
-		// We stub completeSimple via the pi-ai module mock pathway used by the
-		// orchestrator; the simplest approach is to intercept at ctx.modelRegistry.
-		//
-		// However, since createExtension calls the real completeSimple/getModel
-		// from @earendil-works/pi-ai, we can only observe the side-effect:
-		// pi.appendEntry("session-recap:error", { message: "..." }). We force an
-		// error by making getApiKeyAndHeaders return ok=true with a key, then
-		// letting the real completeSimple fail (it will, in test env).
-		//
-		// Simpler: just exercise the orchestrator path where the caught error's
-		// non-abort status would trigger onError. We'll verify pi.appendEntry
-		// is called with the error type. We trigger via a scenario where
-		// completeSimple throws (auth succeeds so we reach it). In test env the
-		// real completeSimple can't reach a provider — it will throw an error
-		// which is caught by the try-catch in runGenerateAndShow.
+	it("skips silently (no widget, no error entry) when the active model's provider is unknown to pi-ai", async () => {
+		// Port of upstream tests/unknown-api-provider.test.mjs: a custom provider
+		// registered only inside pi (e.g. a bridge extension) is unknown to
+		// pi-ai's registry, so the real completeSimple throws
+		// "No API provider registered for api: …" in test env. That error must
+		// be swallowed: no recap widget, and no session-recap:error entry.
 
 		const pi = makeFakePi();
 		createExtension(pi as never);
@@ -766,17 +769,21 @@ describe("onError callback writes an error entry via pi.appendEntry", () => {
 				},
 			},
 		]);
-		// Auth succeeds so we reach completeSimple, which then throws in test env.
+		// Auth succeeds so we reach completeSimple, which then throws the
+		// unregistered-provider error in test env.
 		ctx.modelRegistry.getApiKeyAndHeaders = vi.fn(() => ({ ok: true, apiKey: "test-key" }));
 
-		// Use /recap command (manual path) to run generateAndShow.
 		await pi.commands.get("recap")!.handler("", ctx);
 
-		// pi.appendEntry should have been called with "session-recap:error".
+		// No widget body was ever painted and no error entry was written.
+		const paintedWidgets = ctx.ui.setWidget.mock.calls.filter(
+			(c: unknown[]) => c[1] !== undefined,
+		);
+		expect(paintedWidgets).toHaveLength(0);
 		const errorCalls = pi.appendEntry.mock.calls.filter(
 			(c: unknown[]) => c[0] === "session-recap:error",
 		);
-		expect(errorCalls.length).toBeGreaterThan(0);
+		expect(errorCalls).toHaveLength(0);
 	});
 });
 
@@ -839,13 +846,12 @@ describe("focus reporting — TTY wiring (attachFocusReporting / detachFocusRepo
 		expect(onSpy).toHaveBeenCalledWith("data", expect.any(Function));
 		expect(capturedListener).toBeDefined();
 
-		// Fire a FOCUS_OUT then FOCUS_IN through the listener.
-		// FOCUS_OUT sets focusedOutAt; FOCUS_IN then calls deps.config.focusMinMs()
-		// (which exercises index.ts line 114: `focusMinMs: () => focusMinSeconds() * 1000`).
+		// Fire a FOCUS_OUT then FOCUS_IN through the listener: FOCUS_OUT arms
+		// the away timer in the orchestrator, FOCUS_IN cancels it.
 		if (capturedListener) {
 			// FOCUS_OUT first: sets focusedOutAt in the orchestrator.
 			capturedListener(Buffer.from("\x1b[O", "binary"));
-			// FOCUS_IN: triggers onFocusIn → calls focusMinMs() → covers line 114.
+			// FOCUS_IN: triggers onFocusIn → clears the away timer.
 			capturedListener(Buffer.from("\x1b[I", "binary"));
 		}
 
@@ -909,15 +915,15 @@ describe("flag edge cases — non-numeric flag values fall back to defaults", ()
 		expect(items1.join("\n")).toContain("Idle trigger:   300s after turn_end");
 	});
 
-	it("focusMinSeconds() falls back to DEFAULT_FOCUS_MIN_SECONDS when the flag value is not finite", async () => {
-		const pi = makeFakePi({ flagValues: { "recap-focus-min-seconds": "not-a-number" } });
+	it("awaySeconds() falls back to DEFAULT_AWAY_SECONDS when the flag value is not finite", async () => {
+		const pi = makeFakePi({ flagValues: { "recap-away-seconds": "not-a-number" } });
 		createExtension(pi as never);
 		const ctx = makeFakeCtx();
 
 		await pi.commands.get("recap-settings")!.handler("", ctx);
 		const [, items2] = ctx.ui.select.mock.calls[0]!;
-		// The focus trigger should show the default (3s) since NaN falls back.
-		expect(items2.join("\n")).toContain("Focus trigger:  enabled (min 3s away)");
+		// The away trigger should show the default (90s) since NaN falls back.
+		expect(items2.join("\n")).toContain("Away trigger:   enabled (90s blur)");
 	});
 
 	it("configuredOverride reads from pi-session-recap.json when no --recap-model flag is set", async () => {
@@ -993,32 +999,14 @@ describe("targeted coverage — specific uncovered paths", () => {
 		const pi = makeFakePi();
 		createExtension(pi as never);
 		const ctx = makeFakeCtx();
-		// Start a session, start an agent, then fire agent_end.
-		// The orchestrator inside index.ts will call config.allowDuringActive?.()
-		// in onFocusOut when agentActive=true. We can trigger this by:
-		// 1. Starting the orchestrator
-		// 2. Calling agent_start (sets agentActive=true)
-		// 3. Calling turn_end (scheduleRecap + checkDeferredFocus)
-		// But to actually call onFocusOut with agentActive=true, we'd need TTY.
-		// Instead, use the deferred focus path: agent_start → onFocusOut via
-		// the orchestrator's direct method (which the index.ts wires).
-		// Since we can't call onFocusOut directly in index.ts, we use the
-		// lifecycle: agent_start sets agentActive=true, then agent_end clears it.
-		// allowDuringActive is called in onFocusOut when agentActive=true.
-		// We can trigger onFocusOut indirectly via the turn_end handler which
-		// calls checkDeferredFocus — but that requires focusDraftAfterAgent=true.
-		// Simplest: just ensure allowDuringActive is called once.
-		// The turn_end → checkDeferredFocus → maybeGenerateDeferredFocusRecap
-		// path: needs focusDraftAfterAgent=true. But without direct access to
-		// the orchestrator, we can't set that.
-		// 
-		// Best we can do: call agent_start so the orchestrator knows agentActive,
-		// then call agent_end so checkDeferredFocus runs. allowDuringActive is
-		// only called from onFocusOut though. So for a unit test in index.ts
-		// context without TTY, we just verify the handler fires without throwing.
+		// agent_start marks the turn active, agent_end flushes any deferred
+		// away recap. With no focus events in flight neither path can reach
+		// the model, but the handlers must fire without throwing — that
+		// exercises the index.ts → orchestrator delegation wiring (the
+		// allowDuringActive branch itself is covered in the orchestrator
+		// unit tests via onFocusOut with agentActive=true).
 		pi.handlers.get("agent_start")?.({}, ctx);
 		pi.handlers.get("agent_end")?.({}, ctx);
-		// Verify the handlers ran without error (implicitly tests the wiring).
 	});
 
 		// ---- Branch 8 (line 137): configuredOverride true branch (cli.length > 0) ----

@@ -1,13 +1,15 @@
 import { describe, expect, it } from "vitest";
 
 import {
-	buildRecentTranscript,
 	buildStatusLine,
+	buildTranscript,
 	extractText,
 	extractToolCalls,
-	firstLine,
 	hasMeaningfulActivity,
+	recapStateKey,
 	splitModel,
+	TRANSCRIPT_CHAR_CAP,
+	wrapText,
 	type Entry,
 } from "../src/helpers.js";
 
@@ -171,7 +173,7 @@ describe("extractToolCalls", () => {
 });
 
 // ---------------------------------------------------------------------------
-// buildRecentTranscript
+// buildTranscript (two-tier)
 // ---------------------------------------------------------------------------
 
 function userMsg(text: string): Entry {
@@ -197,71 +199,145 @@ function toolResultMsg(toolName: string, text: string): Entry {
 	};
 }
 
-describe("buildRecentTranscript", () => {
-	it("returns only the segment from the last user message forward by default", () => {
-		const out = buildRecentTranscript([
+describe("buildTranscript — tier 1a (compaction / branch summary)", () => {
+	it("puts the most recent compaction summary at the top", () => {
+		const out = buildTranscript([
+			{ type: "compaction", summary: "Building a parser." },
+			userMsg("q"),
+			assistantMsg("a"),
+		]);
+		expect(out.startsWith("Session summary so far: Building a parser.")).toBe(true);
+	});
+
+	it("caps the compaction summary at 600 chars", () => {
+		const out = buildTranscript([
+			{ type: "compaction", summary: "x".repeat(2000) },
+			userMsg("q"),
+			assistantMsg("a"),
+		]);
+		expect(out).toContain(`Session summary so far: ${"x".repeat(600)}`);
+		expect(out.includes("x".repeat(601))).toBe(false);
+	});
+
+	it("ignores compaction entries without a usable summary", () => {
+		const out = buildTranscript([
+			{ type: "compaction" }, // no summary field
+			{ type: "compaction", summary: "   " }, // whitespace-only
+			userMsg("q"),
+			assistantMsg("a"),
+		]);
+		expect(out).not.toContain("Session summary so far:");
+	});
+
+	it("uses only the most recent compaction / branch_summary entry", () => {
+		const out = buildTranscript([
+			{ type: "compaction", summary: "older summary" },
+			{ type: "branch_summary", summary: "newer summary" },
+			userMsg("q"),
+			assistantMsg("a"),
+		]);
+		expect(out).toContain("Session summary so far: newer summary");
+		expect(out).not.toContain("older summary");
+	});
+});
+
+describe("buildTranscript — tier 1b (earlier user prompts)", () => {
+	it("lists the earlier user prompts oldest → newest under a header, excluding the latest one", () => {
+		const out = buildTranscript([
+			userMsg("first task"),
+			assistantMsg("a1"),
+			userMsg("second task"),
+			assistantMsg("a2"),
+			userMsg("third task"),
+			assistantMsg("a3"),
+		]);
+		const lines = out.split("\n");
+		const headerIdx = lines.findIndex((l) => l.startsWith("Earlier user prompts"));
+		expect(headerIdx).toBeGreaterThanOrEqual(0);
+		const bullets = lines.slice(headerIdx + 1).filter((l) => l.startsWith("- "));
+		expect(bullets).toEqual(["- first task", "- second task"]);
+		// The latest user prompt belongs to tier 2, not the framing block.
+		expect(bullets.join("\n")).not.toContain("third task");
+	});
+
+	it("keeps at most 4 earlier prompts", () => {
+		const entries: Entry[] = [];
+		for (let i = 0; i < 7; i++) entries.push(userMsg(`prompt ${i}`), assistantMsg(`answer ${i}`));
+		const out = buildTranscript(entries);
+		const lines = out.split("\n");
+		const headerIdx = lines.findIndex((l) => l.startsWith("Earlier user prompts"));
+		const bullets = lines.slice(headerIdx + 1).filter((l) => l.startsWith("- "));
+		expect(bullets).toHaveLength(4);
+		expect(bullets[0]).toContain("prompt 2"); // oldest of the retained window
+		expect(bullets[3]).toContain("prompt 5");
+	});
+
+	it("caps each earlier prompt at 300 chars", () => {
+		const out = buildTranscript([
+			userMsg(`huge ${"x".repeat(500)}`),
+			userMsg("latest"),
+			assistantMsg("a"),
+		]);
+		const bullet = out.split("\n").find((l) => l.startsWith("- "))!;
+		expect(bullet.length).toBeLessThanOrEqual("- ".length + 300);
+	});
+
+	it("omits the framing block when there is at most one user message", () => {
+		const out = buildTranscript([userMsg("only task"), assistantMsg("a")]);
+		expect(out).not.toContain("Earlier user prompts");
+	});
+
+	it("skips empty earlier prompts", () => {
+		const out = buildTranscript([
+			userMsg(""),
+			userMsg("framing task"),
+			userMsg("latest task"),
+			assistantMsg("a"),
+		]);
+		const bullets = out.split("\n").filter((l) => l.startsWith("- "));
+		expect(bullets).toEqual(["- framing task"]);
+	});
+});
+
+describe("buildTranscript — tier 2 (recent detail)", () => {
+	it("renders the recent activity since the last user message (inclusive)", () => {
+		const out = buildTranscript([
 			userMsg("old question"),
 			assistantMsg("old answer"),
-			userMsg("new question"),
-			assistantMsg("new answer"),
+			userMsg("recent question"),
+			assistantMsg("recent answer"),
 		]);
-		expect(out).toContain("User: new question");
-		expect(out).toContain("Assistant: new answer");
-		expect(out).not.toContain("old question");
+		expect(out).toContain("Recent activity (since the user's last message):");
+		expect(out).toContain("User: recent question");
+		expect(out).toContain("Assistant: recent answer");
+		// Tier 2 starts at the last user message — pre-last-user assistant
+		// output must not appear in the detail block.
 		expect(out).not.toContain("old answer");
 	});
 
-	it("returns the whole branch when fromLastUser=false (resume path)", () => {
-		const out = buildRecentTranscript(
-			[
-				userMsg("first"),
-				assistantMsg("second"),
-				userMsg("third"),
-				assistantMsg("fourth"),
-			],
-			false,
-		);
-		expect(out).toContain("User: first");
-		expect(out).toContain("Assistant: second");
-		expect(out).toContain("User: third");
-		expect(out).toContain("Assistant: fourth");
+	it("falls back to the whole branch when there is no user message", () => {
+		const out = buildTranscript([assistantMsg("stray assistant"), assistantMsg("more")]);
+		expect(out).not.toContain("Earlier user prompts");
+		expect(out).toContain("Recent activity (since the user's last message):");
+		expect(out).toContain("Assistant: stray assistant");
 	});
 
-	it("falls back to the whole branch when there is no user message (fromLastUser=true)", () => {
-		const out = buildRecentTranscript([
-			assistantMsg("stray assistant"),
-			assistantMsg("another one"),
-		]);
-		expect(out).toContain("stray assistant");
-		expect(out).toContain("another one");
-	});
-
-	it("includes tool call bullet lines right after the assistant line", () => {
-		const out = buildRecentTranscript([
+	it("includes tool call bullet lines and tool results in the detail block", () => {
+		const out = buildTranscript([
 			userMsg("q"),
 			assistantMsg("working on it", [
 				{ name: "bash", args: { cmd: "ls" } },
 				{ name: "read", args: { path: "/tmp" } },
 			]),
-		]);
-		const lines = out.split("\n");
-		const aIdx = lines.findIndex((l) => l.startsWith("Assistant:"));
-		expect(aIdx).toBeGreaterThanOrEqual(0);
-		expect(lines[aIdx + 1]).toMatch(/^- bash\(/);
-		expect(lines[aIdx + 2]).toMatch(/^- read\(/);
-	});
-
-	it("renders tool results using the toolName field", () => {
-		const out = buildRecentTranscript([
-			userMsg("q"),
-			assistantMsg("call", [{ name: "bash" }]),
 			toolResultMsg("bash", "hello output"),
 		]);
+		expect(out).toMatch(/- bash\(/);
+		expect(out).toMatch(/- read\(/);
 		expect(out).toContain("Result(bash): hello output");
 	});
 
 	it("defaults tool result name to 'tool' when toolName is missing", () => {
-		const out = buildRecentTranscript([
+		const out = buildTranscript([
 			userMsg("q"),
 			{
 				type: "message",
@@ -271,101 +347,119 @@ describe("buildRecentTranscript", () => {
 		expect(out).toContain("Result(tool): body");
 	});
 
-	it("truncates user/assistant text to 1200 chars", () => {
-		const huge = "x".repeat(2000);
-		const out = buildRecentTranscript([userMsg(huge), assistantMsg(huge)]);
-		// Two lines: "User: <=1200 chars>" and "Assistant: <=1200 chars>".
-		const userLine = out.split("\n").find((l) => l.startsWith("User: "))!;
-		const asstLine = out.split("\n").find((l) => l.startsWith("Assistant: "))!;
-		expect(userLine.length).toBeLessThanOrEqual("User: ".length + 1200);
-		expect(asstLine.length).toBeLessThanOrEqual("Assistant: ".length + 1200);
-	});
-
-	it("truncates tool results to 400 chars", () => {
-		const huge = "y".repeat(1000);
-		const out = buildRecentTranscript([
-			userMsg("q"),
-			assistantMsg("a", [{ name: "bash" }]),
+	it("truncates user/assistant text to 1200 chars and tool results to 400 chars", () => {
+		const huge = "y".repeat(2000);
+		const out = buildTranscript([
+			userMsg(huge),
+			assistantMsg(huge),
 			toolResultMsg("bash", huge),
 		]);
-		const line = out.split("\n").find((l) => l.startsWith("Result(bash): "))!;
-		expect(line.length).toBeLessThanOrEqual("Result(bash): ".length + 400);
+		const userLine = out.split("\n").find((l) => l.startsWith("User: "))!;
+		const asstLine = out.split("\n").find((l) => l.startsWith("Assistant: "))!;
+		const resultLine = out.split("\n").find((l) => l.startsWith("Result(bash): "))!;
+		expect(userLine.length).toBeLessThanOrEqual("User: ".length + 1200);
+		expect(asstLine.length).toBeLessThanOrEqual("Assistant: ".length + 1200);
+		expect(resultLine.length).toBeLessThanOrEqual("Result(bash): ".length + 400);
 	});
 
 	it("skips entries with empty text", () => {
-		const out = buildRecentTranscript([
+		const out = buildTranscript([
 			userMsg(""),
 			assistantMsg("   "),
 			userMsg("real"),
 			assistantMsg("reply"),
 		]);
-		const lines = out.split("\n").filter(Boolean);
-		expect(lines).toEqual(["User: real", "Assistant: reply"]);
+		expect(out).toContain("User: real");
+		expect(out).toContain("Assistant: reply");
+		expect(out).not.toMatch(/^User: $/m);
+		expect(out).not.toMatch(/^Assistant: $/m);
 	});
 
-	it("ignores non-message entries", () => {
-		const out = buildRecentTranscript([
+	it("ignores non-message entries and entries without a role", () => {
+		const out = buildTranscript([
 			{ type: "thinking", message: { role: "assistant", content: "dropped" } },
-			userMsg("q"),
-			assistantMsg("a"),
-		]);
-		expect(out).not.toContain("dropped");
-		expect(out).toContain("User: q");
-	});
-
-	it("ignores entries whose message has no role", () => {
-		const out = buildRecentTranscript([
 			userMsg("q"),
 			{ type: "message", message: { content: [{ type: "text", text: "no-role" }] } },
 			assistantMsg("a"),
 		]);
+		expect(out).not.toContain("dropped");
 		expect(out).not.toContain("no-role");
 	});
 
 	it("returns '' when there are no meaningful entries", () => {
-		expect(buildRecentTranscript([])).toBe("");
-		expect(buildRecentTranscript([userMsg("")])).toBe("");
+		expect(buildTranscript([])).toBe("");
+		expect(buildTranscript([userMsg("")])).toBe("");
 	});
 
-	it("omits the Assistant: line when the assistant message has no text (only tool calls)", () => {
-		const out = buildRecentTranscript([
-			userMsg("do it"),
-			assistantMsg("", [{ name: "bash" }]),
-		]);
-		// Tool call line present, but no 'Assistant:' line (empty text is falsy).
+	it("omits the Assistant: line when the assistant message has only tool calls", () => {
+		const out = buildTranscript([userMsg("do it"), assistantMsg("", [{ name: "bash" }])]);
 		expect(out).not.toMatch(/^Assistant:/m);
 		expect(out).toContain("- bash(");
 	});
+});
 
-	it("omits the Result() line when the toolResult message has no text", () => {
-		const out = buildRecentTranscript([
-			userMsg("q"),
-			// toolResult with no text content — only non-text blocks.
-			{
-				type: "message",
-				message: {
-					role: "toolResult",
-					toolName: "bash",
-					content: [], // empty content → extractText returns ""
-				},
-			},
-		]);
-		expect(out).not.toContain("Result(");
+// ---------------------------------------------------------------------------
+// recapStateKey
+// ---------------------------------------------------------------------------
+
+describe("recapStateKey", () => {
+	it("is deterministic for identical transcripts", () => {
+		expect(recapStateKey("some transcript")).toBe(recapStateKey("some transcript"));
 	});
 
-	it("uses 'tool' as the tool name when toolName is absent from the toolResult message (covers ?? fallback)", () => {
-		const out = buildRecentTranscript([
-			userMsg("q"),
-			{
-				type: "message",
-				message: {
-					role: "toolResult",
-					// intentionally no toolName — exercises the `?? 'tool'` fallback
-					content: [{ type: "text", text: "output" }],
-				},
-			},
-		]);
-		expect(out).toContain("Result(tool): output");
+	it("differs for different transcripts", () => {
+		expect(recapStateKey("alpha")).not.toBe(recapStateKey("beta"));
+	});
+
+	it("hashes only the capped prefix — content beyond the cap does not change the key", () => {
+		const base = "x".repeat(TRANSCRIPT_CHAR_CAP);
+		expect(recapStateKey(base)).toBe(recapStateKey(`${base}trailing changes`));
+		// A change within the capped prefix must still change the key.
+		expect(recapStateKey(base)).not.toBe(recapStateKey(`${base.slice(0, -1)}y`));
+	});
+
+	it("produces a 64-char hex digest", () => {
+		expect(recapStateKey("anything")).toMatch(/^[0-9a-f]{64}$/);
+	});
+});
+
+// ---------------------------------------------------------------------------
+// wrapText
+// ---------------------------------------------------------------------------
+
+describe("wrapText", () => {
+	it("returns a single line for short input", () => {
+		expect(wrapText("hello world", 100, 4)).toEqual(["hello world"]);
+	});
+
+	it("word-wraps long text at the width", () => {
+		// "aaa bbb ccc" is 11 chars > 10 → first line ends at "aaa bbb".
+		expect(wrapText("aaa bbb ccc ddd", 10, 4)).toEqual(["aaa bbb", "ccc ddd"]);
+	});
+
+	it("truncates beyond maxLines with ' …' appended to the last kept line", () => {
+		const text = Array.from({ length: 20 }, (_, i) => `word${i}`).join(" ");
+		const lines = wrapText(text, 10, 3);
+		expect(lines).toHaveLength(3);
+		expect(lines[2]!.endsWith(" …")).toBe(true);
+	});
+
+	it("does not truncate when the line count is exactly maxLines", () => {
+		expect(wrapText("aaa bbb ccc", 5, 3)).toEqual(["aaa", "bbb", "ccc"]);
+	});
+
+	it("keeps a single over-width word on its own line", () => {
+		const word = "x".repeat(50);
+		expect(wrapText(word, 10, 4)).toEqual([word]);
+	});
+
+	it("collapses repeated whitespace", () => {
+		expect(wrapText("a   b\nc", 100, 4)).toEqual(["a b c"]);
+	});
+
+	it("returns an empty array for empty / whitespace-only input", () => {
+		expect(wrapText("", 100, 4)).toEqual([]);
+		expect(wrapText("   \n ", 100, 4)).toEqual([]);
 	});
 });
 
@@ -439,36 +533,6 @@ describe("hasMeaningfulActivity", () => {
 });
 
 // ---------------------------------------------------------------------------
-// firstLine
-// ---------------------------------------------------------------------------
-
-describe("firstLine", () => {
-	it("returns undefined for empty input", () => {
-		expect(firstLine("")).toBeUndefined();
-	});
-
-	it("returns the string trimmed when it has no newlines", () => {
-		expect(firstLine("  hello world  ")).toBe("hello world");
-	});
-
-	it("drops every line after the first, LF-separated", () => {
-		expect(firstLine("first\nsecond\nthird")).toBe("first");
-	});
-
-	it("handles CRLF line endings", () => {
-		expect(firstLine("first\r\nsecond")).toBe("first");
-	});
-
-	it("trims the first line", () => {
-		expect(firstLine("   first line   \nsecond")).toBe("first line");
-	});
-
-	it("returns an empty string when the first line is whitespace only", () => {
-		expect(firstLine("   \n\nreal")).toBe("");
-	});
-});
-
-// ---------------------------------------------------------------------------
 // buildStatusLine (tracker issue #0004)
 // ---------------------------------------------------------------------------
 
@@ -476,8 +540,8 @@ describe("buildStatusLine", () => {
 	const base = {
 		activeModelSpec: "anthropic/claude-sonnet-4-6",
 		autoRecapEnabled: true,
-		idleSeconds: 120,
-		focusMinSeconds: 3 as number | null,
+		idleSeconds: 300,
+		awaySeconds: 90 as number | null,
 		disabledFlags: [] as ReadonlyArray<"--recap-disable-focus">,
 		triggerCount: 0,
 		tokenUsage: null,
@@ -498,8 +562,8 @@ describe("buildStatusLine", () => {
 				"recap status",
 				"  Model:          amazon-bedrock/global.anthropic.claude-haiku-4-5  (from --recap-model)",
 				"  Auto-recap:     enabled",
-				"  Idle trigger:   120s after turn_end",
-				"  Focus trigger:  enabled (min 3s away)",
+				"  Idle trigger:   300s after turn_end",
+				"  Away trigger:   enabled (90s blur)",
 				"  Triggers:       0 (this session)",
 				"  Disabled flags: (none)",
 			].join("\n"),
@@ -521,8 +585,8 @@ describe("buildStatusLine", () => {
 				"recap status",
 				"  Model:          anthropic/claude-haiku-4-5  (from pi-session-recap.json)",
 				"  Auto-recap:     enabled",
-				"  Idle trigger:   120s after turn_end",
-				"  Focus trigger:  enabled (min 3s away)",
+				"  Idle trigger:   300s after turn_end",
+				"  Away trigger:   enabled (90s blur)",
 				"  Triggers:       0 (this session)",
 				"  Disabled flags: (none)",
 			].join("\n"),
@@ -535,8 +599,8 @@ describe("buildStatusLine", () => {
 				"recap status",
 				"  Model:          anthropic/claude-sonnet-4-6  (active model)",
 				"  Auto-recap:     enabled",
-				"  Idle trigger:   120s after turn_end",
-				"  Focus trigger:  enabled (min 3s away)",
+				"  Idle trigger:   300s after turn_end",
+				"  Away trigger:   enabled (90s blur)",
 				"  Triggers:       0 (this session)",
 				"  Disabled flags: (none)",
 			].join("\n"),
@@ -559,8 +623,8 @@ describe("buildStatusLine", () => {
 				"  Model:          bogus-provider/does-not-exist  (override failed to resolve, falling back to active)",
 				"                  anthropic/claude-sonnet-4-6  (active model)",
 				"  Auto-recap:     enabled",
-				"  Idle trigger:   120s after turn_end",
-				"  Focus trigger:  enabled (min 3s away)",
+				"  Idle trigger:   300s after turn_end",
+				"  Away trigger:   enabled (90s blur)",
 				"  Triggers:       0 (this session)",
 				"  Disabled flags: (none)",
 			].join("\n"),
@@ -572,35 +636,30 @@ describe("buildStatusLine", () => {
 			...base,
 			override: null,
 			autoRecapEnabled: false,
-			disabledFlags: [],
-			triggerCount: 0,
-			tokenUsage: null,
 		});
 		expect(out).toContain("Auto-recap:     disabled");
 	});
 
-	it("renders `Focus trigger: disabled` and lists `--recap-disable-focus` under Disabled flags", () => {
+	it("renders `Away trigger: disabled` and lists `--recap-disable-focus` under Disabled flags", () => {
 		const out = buildStatusLine({
 			...base,
 			override: null,
-			focusMinSeconds: null,
+			awaySeconds: null,
 			disabledFlags: ["--recap-disable-focus"],
-			triggerCount: 0,
-			tokenUsage: null,
 		});
-		expect(out).toContain("Focus trigger:  disabled");
+		expect(out).toContain("Away trigger:   disabled");
 		expect(out).toContain("Disabled flags: --recap-disable-focus");
 	});
 
-	it("surfaces custom idle and focus-min seconds verbatim", () => {
+	it("surfaces custom idle and away seconds verbatim", () => {
 		const out = buildStatusLine({
 			...base,
 			override: null,
 			idleSeconds: 45,
-			focusMinSeconds: 7,
+			awaySeconds: 7,
 		});
 		expect(out).toContain("Idle trigger:   45s after turn_end");
-		expect(out).toContain("Focus trigger:  enabled (min 7s away)");
+		expect(out).toContain("Away trigger:   enabled (7s blur)");
 	});
 
 	it("renders `(none)` in Disabled flags when nothing is disabled", () => {
@@ -614,10 +673,8 @@ describe("buildStatusLine", () => {
 			...base,
 			override: null,
 			autoRecapEnabled: false,
-			focusMinSeconds: null,
+			awaySeconds: null,
 			disabledFlags: ["--recap-disable-focus"],
-			triggerCount: 0,
-			tokenUsage: null,
 		});
 		expect(out).toContain("Disabled flags: --recap-disable-focus");
 	});
@@ -644,16 +701,15 @@ describe("buildStatusLine", () => {
 		expect(out).toContain("(this session)");
 	});
 
-	it("places Triggers and Token usage between Focus trigger and Disabled flags", () => {
+	it("places Triggers and Token usage between Away trigger and Disabled flags", () => {
 		const out = buildStatusLine({ ...base, override: null, triggerCount: 2, tokenUsage: { input: 1000, output: 500 } });
 		const lines = out.split("\n");
-		const focusIdx = lines.findIndex((l) => l.includes("Focus trigger:"));
+		const awayIdx = lines.findIndex((l) => l.includes("Away trigger:"));
 		const triggersIdx = lines.findIndex((l) => l.includes("Triggers:"));
 		const tokenIdx = lines.findIndex((l) => l.includes("Token usage:"));
 		const flagsIdx = lines.findIndex((l) => l.includes("Disabled flags:"));
-		expect(focusIdx).toBeLessThan(triggersIdx);
+		expect(awayIdx).toBeLessThan(triggersIdx);
 		expect(triggersIdx).toBeLessThan(tokenIdx);
 		expect(tokenIdx).toBeLessThan(flagsIdx);
 	});
-
 });
