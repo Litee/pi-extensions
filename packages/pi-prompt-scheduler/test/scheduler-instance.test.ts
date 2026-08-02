@@ -813,3 +813,363 @@ describe("CronScheduler.addJob — interval callback fires", () => {
 		}
 	});
 });
+
+// ---------------------------------------------------------------------------
+// Branch coverage: interval job without intervalMs (job.intervalMs falsy)
+// ---------------------------------------------------------------------------
+
+describe("CronScheduler.addJob — interval job without intervalMs", () => {
+	it("falls through to cron path when type is interval but intervalMs is undefined", () => {
+		const { scheduler, emit } = makeScheduler();
+		// type=interval but no intervalMs — scheduleJob sees falsy intervalMs
+		// and falls through to the cron branch (which will reject a non-cron schedule).
+		const job = mkJob({
+			id: "interval-no-ms",
+			type: "interval",
+			schedule: "not-a-cron", // invalid as cron, will trigger error branch
+		});
+		scheduler.addJob(job);
+
+		// The scheduler should have emitted an error because the schedule
+		// is not a valid cron expression.
+		const errorCalls = emit.mock.calls
+			.filter(([evt]) => evt === "cron:change")
+			.map(([, payload]) => payload as CronChangeEvent)
+			.filter((p): p is CronChangeEvent => p.type === "error");
+		expect(errorCalls).toHaveLength(1);
+		expect(errorCalls[0]).toMatchObject({ jobId: "interval-no-ms" });
+	});
+});
+
+// ---------------------------------------------------------------------------
+// Branch coverage: handler-error catch with non-Error
+// ---------------------------------------------------------------------------
+
+describe("CronScheduler.executeJobInSubagent — handler-error with non-Error", () => {
+	beforeEach(() => {
+		runSubagentMock.mockClear();
+	});
+
+	async function flushMicrotasks(): Promise<void> {
+		for (let i = 0; i < 5; i++) await Promise.resolve();
+	}
+
+	it("records handler-error via appendEntry when runSubagentOnce throws a string", async () => {
+		// Make runSubagentOnce throw a plain string (non-Error) to exercise the
+		// error instanceof Error else branch. The runSubagentOnce call is not
+		// wrapped in any inner try-catch, so the error reaches the outer catch
+		// block directly.
+		runSubagentMock.mockRejectedValueOnce("not an error object");
+		const job = mkJob({ id: "handler-str-err", model: "anthropic/claude-haiku-4-5" });
+		storage.addJob(job);
+
+		const { pi } = makeFakePi();
+		const scheduler = new CronScheduler(
+			storage,
+			pi as unknown as ExtensionAPI,
+			makeFakeCtx("sess-A") as unknown as ExtensionContext,
+		);
+		schedulers.push(scheduler);
+
+		(scheduler as unknown as SchedulerPrivate).executeJobInSubagent(job);
+		await flushMicrotasks();
+
+		expect(pi.appendEntry).toHaveBeenCalledWith(
+			"schedule-prompt:handler-error",
+			expect.objectContaining({ jobId: job.id }),
+		);
+		// The error string should be captured via String(error)
+		const entryArgs = pi.appendEntry.mock.calls.find(
+			([key]) => key === "schedule-prompt:handler-error",
+		) as unknown as [string, { error: unknown }] | undefined;
+		expect(entryArgs?.[1]?.error).toBe("not an error object");
+	});
+});
+
+// ---------------------------------------------------------------------------
+// Branch coverage: getNextRun with a cron whose next occurrence is null
+// ---------------------------------------------------------------------------
+
+describe("CronScheduler.getNextRun — cron with no next occurrence", () => {
+	it("returns null when croner's nextRun() yields null (Feb 31 never occurs)", () => {
+		const { scheduler } = makeScheduler();
+		// "0 0 0 31 2 *" parses fine (the job lands in this.jobs) but Feb 31
+		// never exists, so croner.nextRun() returns null — hitting `next || null`.
+		scheduler.addJob(mkJob({ id: "never", schedule: "0 0 0 31 2 *" }));
+		expect(scheduler.getNextRun("never")).toBeNull();
+	});
+});
+
+// ---------------------------------------------------------------------------
+// Branch coverage: scheduleJob catch with a non-Error throw
+// ---------------------------------------------------------------------------
+
+describe("CronScheduler.addJob — non-Error throw inside scheduleJob", () => {
+	it("reports a string throw from storage during past-once handling via String(error)", () => {
+		const { scheduler, emit, pi } = makeScheduler();
+		const past = mkJob({ id: "past-boom", type: "once", schedule: "2020-01-01T00:00:00.000Z" });
+		storage.addJob(past);
+		vi.spyOn(storage, "updateJob").mockImplementationOnce(() => {
+			// eslint-disable-next-line @typescript-eslint/only-throw-error
+			throw "storage boom";
+		});
+
+		scheduler.addJob(past);
+
+		expect(pi.appendEntry).toHaveBeenCalledWith(
+			"schedule-prompt:schedule-error",
+			expect.objectContaining({ jobId: "past-boom", error: "storage boom" }),
+		);
+		expect(emit).toHaveBeenCalledWith(
+			"cron:change",
+			expect.objectContaining({ type: "error", jobId: "past-boom", error: "storage boom" }),
+		);
+	});
+});
+
+// ---------------------------------------------------------------------------
+// Branch coverage: executeJob inline — latest read undefined + nextRun truthy
+// ---------------------------------------------------------------------------
+
+describe("CronScheduler.executeJob — latest read undefined + nextRun persisted (inline)", () => {
+	it("falls back to closure runCount and persists nextRun when the latest storage read is undefined", () => {
+		const job = mkJob({
+			id: "inline-latest-undef",
+			type: "cron",
+			schedule: "0 0 * * * *",
+			runCount: 4,
+		});
+		storage.addJob(job);
+		const { scheduler } = makeScheduler();
+		// Register the cron so getNextRun() returns a real Date — exercises the
+		// `...(nextRun ? { nextRun } : {})` truthy side too.
+		scheduler.addJob(job);
+		// First read (`fresh`) must return the enabled job; the later `latest`
+		// read returns undefined so the closure runCount is used.
+		const getJobSpy = vi.spyOn(storage, "getJob").mockReturnValueOnce(job).mockReturnValue(undefined);
+
+		(scheduler as unknown as SchedulerPrivate).executeJob(job);
+		getJobSpy.mockRestore();
+
+		const stored = storage.getJob(job.id)!;
+		expect(stored.lastStatus).toBe("success");
+		expect(stored.runCount).toBe(5);
+		expect(stored.nextRun).toBeDefined();
+	});
+});
+
+// ---------------------------------------------------------------------------
+// Branch coverage: executeJob catch with a non-Error throw
+// ---------------------------------------------------------------------------
+
+describe("CronScheduler.executeJob — non-Error throw from pi.sendUserMessage", () => {
+	it("records error state with String() fallback when pi.sendUserMessage throws a string", () => {
+		storage.addJob(mkJob({ id: "boom-str" }));
+		const { pi, emit } = makeFakePi();
+		vi.mocked(pi.sendUserMessage).mockImplementation(() => {
+			// eslint-disable-next-line @typescript-eslint/only-throw-error
+			throw "pi exploded string";
+		});
+		const scheduler = new CronScheduler(
+			storage,
+			pi as unknown as ExtensionAPI,
+			makeFakeCtx("sess-A") as unknown as ExtensionContext,
+		);
+		schedulers.push(scheduler);
+
+		(scheduler as unknown as SchedulerPrivate).executeJob(mkJob({ id: "boom-str" }));
+
+		expect(storage.getJob("boom-str")?.lastStatus).toBe("error");
+		expect(pi.appendEntry).toHaveBeenCalledWith(
+			"schedule-prompt:execute-error",
+			expect.objectContaining({ jobId: "boom-str", error: "pi exploded string" }),
+		);
+		expect(emit).toHaveBeenCalledWith(
+			"cron:change",
+			expect.objectContaining({ type: "error", jobId: "boom-str", error: "pi exploded string" }),
+		);
+	});
+});
+
+// ---------------------------------------------------------------------------
+// Branch coverage: remaining executeJobInSubagent branches
+// ---------------------------------------------------------------------------
+
+describe("CronScheduler.executeJobInSubagent — remaining branch coverage", () => {
+	beforeEach(() => {
+		runSubagentMock.mockClear();
+		runSubagentMock.mockImplementation(() => Promise.resolve({ ok: true as const, text: "subagent output" }));
+	});
+
+	async function flushMicrotasks(): Promise<void> {
+		for (let i = 0; i < 5; i++) await Promise.resolve();
+	}
+
+	it("falls back to a placeholder when the subagent succeeds with whitespace-only output", async () => {
+		runSubagentMock.mockResolvedValueOnce({ ok: true as const, text: "   " });
+		const job = mkJob({ id: "sub-empty-out", model: "anthropic/claude-haiku-4-5" });
+		storage.addJob(job);
+		const { scheduler, pi } = makeScheduler();
+
+		(scheduler as unknown as SchedulerPrivate).executeJobInSubagent(job);
+		await flushMicrotasks();
+
+		const doneCall = pi.sendMessage.mock.calls[1]![0] as SendMessageArgs;
+		expect(doneCall.details["output"]).toBe("(subagent produced no text output)");
+		expect(doneCall.content).toEqual([{ type: "text", text: "(subagent produced no text output)" }]);
+	});
+
+	it("falls back to a placeholder when the subagent fails with whitespace-only error", async () => {
+		runSubagentMock.mockResolvedValueOnce({ ok: false as const, error: "   " });
+		const job = mkJob({ id: "sub-empty-err", model: "anthropic/claude-haiku-4-5" });
+		storage.addJob(job);
+		const { scheduler, pi } = makeScheduler();
+
+		(scheduler as unknown as SchedulerPrivate).executeJobInSubagent(job);
+		await flushMicrotasks();
+
+		const errCall = pi.sendMessage.mock.calls[1]![0] as SendMessageArgs;
+		expect(errCall.details["error"]).toBe("(subagent failed with empty error)");
+		expect(storage.getJob("sub-empty-err")?.lastStatus).toBe("error");
+	});
+
+	it("falls back to closure runCount and persists nextRun when the latest storage read is undefined", async () => {
+		const job = mkJob({
+			id: "sub-latest-undef",
+			type: "cron",
+			schedule: "0 0 * * * *",
+			model: "anthropic/claude-haiku-4-5",
+			runCount: 7,
+		});
+		storage.addJob(job);
+		const { scheduler } = makeScheduler();
+		// Register the cron so getNextRun() returns a real Date (nextRun truthy
+		// side); the `latest` storage read returns undefined so closure runCount
+		// is used.
+		scheduler.addJob(job);
+		const getJobSpy = vi.spyOn(storage, "getJob").mockReturnValue(undefined);
+
+		(scheduler as unknown as SchedulerPrivate).executeJobInSubagent(job);
+		await flushMicrotasks();
+		getJobSpy.mockRestore();
+
+		const stored = storage.getJob(job.id)!;
+		expect(stored.lastStatus).toBe("success");
+		expect(stored.runCount).toBe(8);
+		expect(stored.nextRun).toBeDefined();
+	});
+
+	it("persists nextRun and wakes the parent (followUp+triggerTurn) on subagent error with notify=true", async () => {
+		runSubagentMock.mockResolvedValueOnce({ ok: false as const, error: "model broke" });
+		const job = mkJob({
+			id: "sub-err-notify",
+			type: "cron",
+			schedule: "0 0 * * * *",
+			model: "anthropic/claude-haiku-4-5",
+			notify: true,
+		});
+		storage.addJob(job);
+		const { scheduler, pi } = makeScheduler();
+		scheduler.addJob(job);
+
+		(scheduler as unknown as SchedulerPrivate).executeJobInSubagent(job);
+		await flushMicrotasks();
+
+		const errorArgs = pi.sendMessage.mock.calls[1]! as [SendMessageArgs, Record<string, unknown>?];
+		expect(errorArgs[1]).toEqual({ deliverAs: "followUp", triggerTurn: true });
+		expect(storage.getJob(job.id)?.lastStatus).toBe("error");
+		expect(storage.getJob(job.id)?.nextRun).toBeDefined();
+	});
+
+	it("records marker-error with String() fallback when sendMessage throws a string on subagent_done", async () => {
+		runSubagentMock.mockResolvedValueOnce({ ok: true as const, text: "great output" });
+		const job = mkJob({ id: "marker-str-done", model: "anthropic/claude-haiku-4-5" });
+		storage.addJob(job);
+
+		const { pi } = makeFakePi();
+		let callCount = 0;
+		vi.mocked(pi.sendMessage).mockImplementation(() => {
+			callCount++;
+			if (callCount >= 2) {
+				// eslint-disable-next-line @typescript-eslint/only-throw-error
+				throw "marker boom";
+			}
+			return undefined;
+		});
+		const scheduler = new CronScheduler(
+			storage,
+			pi as unknown as ExtensionAPI,
+			makeFakeCtx("sess-A") as unknown as ExtensionContext,
+		);
+		schedulers.push(scheduler);
+
+		(scheduler as unknown as SchedulerPrivate).executeJobInSubagent(job);
+		await flushMicrotasks();
+
+		expect(pi.appendEntry).toHaveBeenCalledWith(
+			"schedule-prompt:marker-error",
+			expect.objectContaining({ jobId: job.id, phase: "subagent_done", error: "marker boom" }),
+		);
+	});
+
+	it("records marker-error with String() fallback when sendMessage throws a string on subagent_error", async () => {
+		runSubagentMock.mockResolvedValueOnce({ ok: false as const, error: "model failed" });
+		const job = mkJob({ id: "marker-str-error", model: "anthropic/claude-haiku-4-5" });
+		storage.addJob(job);
+
+		const { pi } = makeFakePi();
+		let callCount = 0;
+		vi.mocked(pi.sendMessage).mockImplementation(() => {
+			callCount++;
+			if (callCount >= 2) {
+				// eslint-disable-next-line @typescript-eslint/only-throw-error
+				throw "marker boom";
+			}
+			return undefined;
+		});
+		const scheduler = new CronScheduler(
+			storage,
+			pi as unknown as ExtensionAPI,
+			makeFakeCtx("sess-A") as unknown as ExtensionContext,
+		);
+		schedulers.push(scheduler);
+
+		(scheduler as unknown as SchedulerPrivate).executeJobInSubagent(job);
+		await flushMicrotasks();
+
+		expect(pi.appendEntry).toHaveBeenCalledWith(
+			"schedule-prompt:marker-error",
+			expect.objectContaining({ jobId: job.id, phase: "subagent_error", error: "marker boom" }),
+		);
+	});
+});
+
+// ---------------------------------------------------------------------------
+// Branch coverage: validateCronExpression catch with a real croner Error
+// ---------------------------------------------------------------------------
+
+describe("CronScheduler.validateCronExpression — Error thrown by real croner", () => {
+	it("surfaces croner's Error message (not the generic fallback)", () => {
+		// scheduler-instance.test.ts does NOT mock croner, so this exercises the
+		// `error instanceof Error ? error.message : "Invalid cron expression"`
+		// Error side against the real library.
+		const result = CronScheduler.validateCronExpression("zz zz zz zz zz zz");
+		expect(result.valid).toBe(false);
+		expect(result.error).toBeDefined();
+		expect(result.error).not.toBe("Invalid cron expression");
+	});
+
+	it("invokes the validation callback when a valid cron's schedule fires", () => {
+		vi.useFakeTimers();
+		try {
+			const result = CronScheduler.validateCronExpression("* * * * * *");
+			expect(result.valid).toBe(true);
+			// croner auto-starts the empty validation callback; advance one second
+			// so the anonymous function body executes (function coverage).
+			vi.advanceTimersByTime(1000);
+		} finally {
+			vi.useRealTimers();
+		}
+	});
+});
+

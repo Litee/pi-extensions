@@ -229,6 +229,22 @@ describe("schedule_prompt tool / add", () => {
 		expect((result.content[0] as { text: string }).text).toContain("notifies parent");
 	});
 
+	it("persists extensions + skills arrays on add (provided sides of the spread)", async () => {
+		const tool = makeTool();
+		const result = await exec(tool, {
+			action: "add",
+			schedule: "0 * * * * *",
+			prompt: "tick",
+			extensions: ["ext1", "ext2"],
+			skills: ["skillA"],
+		});
+		const job = detailsOf(result).jobs[0]!;
+		expect(job.extensions).toEqual(["ext1", "ext2"]);
+		expect(job.skills).toEqual(["skillA"]);
+		expect(storage.getJob(job.id)?.extensions).toEqual(["ext1", "ext2"]);
+		expect(storage.getJob(job.id)?.skills).toEqual(["skillA"]);
+	});
+
 	// Recursion guard — scheduled prompts must not schedule themselves.
 	// This check runs BEFORE the tool's internal try/catch, so it throws
 	// rather than returning a `details.error` result.
@@ -424,6 +440,40 @@ describe("schedule_prompt tool / update", () => {
 		expect(detailsOf(result).error).toContain("non-empty string");
 	});
 
+	it("updates model, notify, extensions, and skills in one pass", async () => {
+		const tool = makeTool();
+		const j = await seedCron();
+		const result = await exec(tool, {
+			action: "update",
+			jobId: j.id,
+			model: "anthropic/claude-haiku-4-5",
+			notify: true,
+			extensions: ["ext1", "ext2"],
+			skills: ["skillA"],
+		});
+		expect(detailsOf(result).error).toBeUndefined();
+		const stored = storage.getJob(j.id)!;
+		expect(stored.model).toBe("anthropic/claude-haiku-4-5");
+		expect(stored.notify).toBe(true);
+		expect(stored.extensions).toEqual(["ext1", "ext2"]);
+		expect(stored.skills).toEqual(["skillA"]);
+	});
+
+	it("persists intervalMs when an interval job's schedule is updated", async () => {
+		const tool = makeTool();
+		const added = await exec(tool, {
+			action: "add",
+			type: "interval",
+			schedule: "5m",
+			prompt: "poll",
+		});
+		const j = detailsOf(added).jobs[0]!;
+		const result = await exec(tool, { action: "update", jobId: j.id, schedule: "10m" });
+		expect(detailsOf(result).error).toBeUndefined();
+		expect(storage.getJob(j.id)?.schedule).toBe("10m");
+		expect(storage.getJob(j.id)?.intervalMs).toBe(10 * 60_000);
+	});
+
 	it("errors on missing jobId / not-found", async () => {
 		const tool = makeTool();
 		expect(detailsOf(await exec(tool, { action: "update" })).error).toContain("jobId is required");
@@ -480,6 +530,47 @@ describe("schedule_prompt tool / list", () => {
 		const tool = makeTool();
 		const result = await exec(tool, { action: "list" }, { sessionId: "sess-Z" });
 		expect(detailsOf(result).jobs.map((j) => j.name)).toEqual(["unbound"]);
+	});
+
+	it("renders ✗ for a disabled job, plus Next / Last / notifies-parent lines", async () => {
+		fakeScheduler.getNextRun.mockReturnValue(new Date("2030-02-01T00:00:00.000Z"));
+		storage.addJob({
+			id: "l-off",
+			name: "off",
+			schedule: "0 * * * * *",
+			prompt: "p",
+			enabled: false,
+			type: "cron",
+			createdAt: "2030-01-01T00:00:00.000Z",
+			runCount: 0,
+			session: "sess-A",
+			lastRun: "2030-01-02T00:00:00.000Z",
+		});
+		storage.addJob({
+			id: "l-model",
+			name: "model",
+			schedule: "0 * * * * *",
+			prompt: "p",
+			enabled: true,
+			type: "cron",
+			createdAt: "2030-01-01T00:00:00.000Z",
+			runCount: 2,
+			session: "sess-A",
+			model: "m",
+			notify: true,
+		});
+
+		const tool = makeTool();
+		const result = await exec(tool, { action: "list" });
+		const text = (result as { content: { type: string; text: string }[] }).content
+			.filter((c) => c.type === "text")
+			.map((c) => c.text)
+			.join("\n");
+		expect(text).toContain("✗");
+		expect(text).toContain("Next: 2030-02-01T00:00:00.000Z");
+		expect(text).toContain("Last: 2030-01-02T00:00:00.000Z");
+		expect(text).toContain("notifies parent");
+		expect(text).toContain("| Next: 2030-02-01T00:00:00.000Z");
 	});
 });
 
@@ -882,6 +973,30 @@ describe("buildJobSummaryLines", () => {
     expect(lines.some(l => l.includes("Prompt:"))).toBe(true);
     expect(lines.some(l => l.includes(prompt))).toBe(true);
   });
+
+  it("includes extension/skill package lists when model is set and extensions/skills are arrays", () => {
+    const lines = buildJobSummaryLines("Created", {
+      name: "test", id: "id6", type: "cron" as const,
+      schedule: "0 9 * * 1-5", prompt: "do stuff", model: "m",
+      extensions: ["ext1", "ext2"], skills: ["skillA"],
+    }, { collapse: false });
+    const modelLine = lines.find((l) => l.startsWith("Model:"))!;
+    expect(modelLine).toContain("extensions: ext1,ext2");
+    expect(modelLine).toContain("skills: skillA");
+  });
+
+  it("shows bare extension/skill markers when extensions/skills are truthy non-arrays (true)", () => {
+    const lines = buildJobSummaryLines("Created", {
+      name: "test", id: "id7", type: "cron" as const,
+      schedule: "0 9 * * 1-5", prompt: "do stuff", model: "m",
+      extensions: true, skills: true,
+    }, { collapse: false });
+    const modelLine = lines.find((l) => l.startsWith("Model:"))!;
+    expect(modelLine).toContain(", extensions");
+    expect(modelLine).not.toContain("extensions:");
+    expect(modelLine).toContain(", skills");
+    expect(modelLine).not.toContain("skills:");
+  });
 });
 
 // ---------------------------------------------------------------------------
@@ -1164,5 +1279,67 @@ describe("renderResult — list with notify=false (line 470)", () => {
 		const text = String((rendered).text);
 		expect(text).toContain("(subagent)");
 		expect(text).not.toContain("notifies parent");
+	});
+});
+
+// ---------------------------------------------------------------------------
+// renderResult — themed list with extensions/skills (tool.ts lines 477-478)
+// ---------------------------------------------------------------------------
+
+describe("renderResult — themed list with extensions/skills", () => {
+	const fakeTheme = {
+		fg: (_cat: string, s: string) => s,
+		bold: (s: string) => s,
+	} as unknown as Theme;
+
+	function renderThemedList(job: CronJob): string {
+		const tool = makeTool();
+		const rendered = (tool.renderResult as unknown as RenderResult)(
+			{
+				content: [{ type: "text", text: "list" }],
+				details: { action: "list" as const, jobs: [job] },
+			},
+			{},
+			fakeTheme,
+		);
+		return String((rendered).text);
+	}
+
+	it("renders extension/skill package lists for a model job", () => {
+		const text = renderThemedList({
+			id: "e1",
+			name: "ext",
+			schedule: "0 * * * * *",
+			prompt: "p",
+			enabled: true,
+			type: "cron",
+			createdAt: "2030-01-01T00:00:00.000Z",
+			runCount: 0,
+			model: "m",
+			extensions: ["ext1", "ext2"],
+			skills: ["skillA"],
+		});
+		expect(text).toContain(", extensions: ext1,ext2");
+		expect(text).toContain(", skills: skillA");
+	});
+
+	it("renders bare extension/skill markers for truthy non-array values", () => {
+		const text = renderThemedList({
+			id: "e2",
+			name: "ext2",
+			schedule: "0 * * * * *",
+			prompt: "p",
+			enabled: true,
+			type: "cron",
+			createdAt: "2030-01-01T00:00:00.000Z",
+			runCount: 0,
+			model: "m",
+			extensions: true,
+			skills: true,
+		});
+		expect(text).toContain(", extensions");
+		expect(text).not.toContain("extensions:");
+		expect(text).toContain(", skills");
+		expect(text).not.toContain("skills:");
 	});
 });
