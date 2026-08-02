@@ -51,6 +51,10 @@ interface DiffColors {
 	fgCtx: string;
 }
 
+interface DiffRenderOptions {
+	compactGutter?: boolean;
+}
+
 const DIFF_PRESETS: Record<string, DiffPreset> = {
 	default: {
 		name: "default",
@@ -139,22 +143,15 @@ let BG_ADD_W = envBg("DIFF_BG_ADD_HL", "\x1b[48;2;45;90;60m");
 let BG_DEL_W = envBg("DIFF_BG_DEL_HL", "\x1b[48;2;100;45;45m");
 let BG_GUTTER_ADD = envBg("DIFF_BG_GUTTER_ADD", "\x1b[48;2;24;42;32m");
 let BG_GUTTER_DEL = envBg("DIFF_BG_GUTTER_DEL", "\x1b[48;2;48;28;28m");
-// @ts-expect-error upstream code uses any/index signatures
-let _BG_EMPTY = "\x1b[48;2;18;18;18m";
 let FG_ADD = envFg("DIFF_FG_ADD", "\x1b[38;2;100;180;120m");
 let FG_DEL = envFg("DIFF_FG_DEL", "\x1b[38;2;200;100;100m");
 let FG_DIM = "\x1b[38;2;80;80;80m";
 let FG_LNUM = "\x1b[38;2;100;100;100m";
-let FG_RULE = "\x1b[38;2;50;50;50m";
 let FG_SAFE_MUTED = "\x1b[38;2;139;148;158m";
-// @ts-expect-error upstream code uses any/index signatures
-let _FG_STRIPE = "\x1b[38;2;40;40;40m";
 function getBorderBar(): string {
 	const style = configIndicatorStyle();
 	return style === "none" ? " " : "▌";
 }
-// @ts-expect-error upstream code uses any/index signatures
-let _DIVIDER = `${FG_RULE}${RST}`;
 const ESC_RE = "\u001b";
 const ANSI_RE = new RegExp(`${ESC_RE}\\[[0-9;]*m`, "g");
 const ANSI_CAPTURE_RE = new RegExp(`${ESC_RE}\\[([^m]*)m`, "g");
@@ -165,8 +162,7 @@ let DEFAULT_DIFF_COLORS: DiffColors = { fgAdd: FG_ADD, fgDel: FG_DEL, fgCtx: FG_
 let _lastResolvedThemeKey = "";
 let _autoDerivePending = true;
 let _hasExplicitBgConfig = false;
-// @ts-expect-error upstream code uses any/index signatures
-let THEME: BundledTheme = (process.env.DIFF_THEME as BundledTheme | undefined) ?? "github-dark";
+let THEME: BundledTheme = (process.env["DIFF_THEME"] as BundledTheme | undefined) ?? "github-dark";
 let paletteApplied = false;
 
 const EXT_LANG: Record<string, BundledLanguage> = {
@@ -337,15 +333,12 @@ function autoDeriveBgFromTheme(theme: any): void {
 		BG_DEL_W = mixBg(delBase, delRgb, 0.35);
 		BG_GUTTER_ADD = mixBg(addBase, addRgb, 0.1);
 		BG_GUTTER_DEL = mixBg(delBase, delRgb, 0.12);
-		_BG_EMPTY = BG_BASE;
 		RST = `\x1b[0m${BG_BASE}`;
-		_DIVIDER = `${FG_RULE}${RST}`;
 	} catch {}
 }
 
 function loadDiffConfig(): DiffUserConfig {
-// @ts-expect-error upstream code uses any/index signatures
-	const paths = [`${process.cwd()}/.pi/settings.json`, `${process.env.HOME ?? ""}/.pi/settings.json`];
+	const paths = [`${process.cwd()}/.pi/settings.json`, `${process.env["HOME"] ?? ""}/.pi/settings.json`];
 	for (const path of paths) {
 		try {
 			if (existsSync(path)) {
@@ -411,9 +404,6 @@ export function applyDiffPalette(): void {
 	applyBg("DIFF_BG_GUTTER_DEL", "bgGutterDel", preset?.bgGutterDel, (value) => {
 		BG_GUTTER_DEL = value;
 	});
-	applyBg(null, "bgEmpty", preset?.bgEmpty, (value) => {
-		_BG_EMPTY = value;
-	});
 	applyFg("DIFF_FG_ADD", "fgAdd", preset?.fgAdd, (value) => {
 		FG_ADD = value;
 	});
@@ -426,19 +416,11 @@ export function applyDiffPalette(): void {
 	applyFg(null, "fgLnum", preset?.fgLnum, (value) => {
 		FG_LNUM = value;
 	});
-	applyFg(null, "fgRule", preset?.fgRule, (value) => {
-		FG_RULE = value;
-	});
-	applyFg(null, "fgStripe", preset?.fgStripe, (value) => {
-		_FG_STRIPE = value;
-	});
 	applyFg(null, "fgSafeMuted", preset?.fgSafeMuted, (value) => {
 		FG_SAFE_MUTED = value;
 	});
-// @ts-expect-error upstream code uses any/index signatures
-	const shikiTheme = overrides.shikiTheme ?? preset?.shikiTheme;
+	const shikiTheme = overrides["shikiTheme"] ?? preset?.shikiTheme;
 	if (shikiTheme) THEME = shikiTheme as BundledTheme;
-	_DIVIDER = `${FG_RULE}${RST}`;
 	DEFAULT_DIFF_COLORS = { fgAdd: FG_ADD, fgDel: FG_DEL, fgCtx: FG_DIM };
 	_autoDerivePending = !_hasExplicitBgConfig;
 }
@@ -569,8 +551,7 @@ function isLowContrastShikiFg(params: string): boolean {
 	if (!params.startsWith("38;2;")) return false;
 	const parts = params.split(";").map(Number);
 	if (parts.length !== 5 || parts.some((value) => !Number.isFinite(value))) return false;
-	const [, , r, g, b] = parts;
-// @ts-expect-error upstream code uses any/index signatures
+	const [, , r = 0, g = 0, b = 0] = parts;
 	const luminance = 0.2126 * r + 0.7152 * g + 0.0722 * b;
 	return luminance < 72;
 }
@@ -651,12 +632,7 @@ function lnum(value: number | null, width: number, fg = FG_LNUM): string {
 	return `${fg}${" ".repeat(Math.max(0, width - text.length))}${text}${RST}`;
 }
 
-// @ts-expect-error upstream code uses any/index signatures
-function _rule(width: number): string {
-	return `${BG_BASE}${FG_RULE}${"─".repeat(width)}${RST}`;
-}
-
-function shouldUseSplit(diff: ParsedDiff, width: number, maxRows: number): boolean {
+function shouldUseSplit(diff: ParsedDiff, width: number, maxRows: number, options: DiffRenderOptions = {}): boolean {
 	if (!diff.lines.length) return false;
 	if (width < SPLIT_MIN_WIDTH) return false;
 	const numberWidth = Math.max(
@@ -664,7 +640,9 @@ function shouldUseSplit(diff: ParsedDiff, width: number, maxRows: number): boole
 		String(Math.max(...diff.lines.map((line) => line.oldNum ?? line.newNum ?? 0), 0)).length,
 	);
 	const half = Math.floor(width / 2);
-	const gutterWidth = numberWidth + 4;
+	const compactGutter = !!options.compactGutter;
+	const gutterWidth = numberWidth + (compactGutter ? 3 : 4);
+
 	const codeWidth = Math.max(12, half - gutterWidth);
 	if (codeWidth < SPLIT_MIN_CODE_WIDTH) return false;
 	const visibleLines = diff.lines.slice(0, maxRows);
@@ -771,11 +749,9 @@ function injectBg(ansiLine: string, ranges: Array<[number, number]>, baseBg: str
 				continue;
 			}
 		}
-// @ts-expect-error upstream code uses any/index signatures
-		while (rangeIndex < ranges.length && visible >= ranges[rangeIndex][1]) rangeIndex += 1;
+		while (rangeIndex < ranges.length && visible >= ranges[rangeIndex]![1]) rangeIndex += 1;
 		const wantsHighlight =
-// @ts-expect-error upstream code uses any/index signatures
-			rangeIndex < ranges.length && visible >= ranges[rangeIndex][0] && visible < ranges[rangeIndex][1];
+			rangeIndex < ranges.length && visible >= ranges[rangeIndex]![0] && visible < ranges[rangeIndex]![1];
 		if (wantsHighlight !== inHighlight) {
 			inHighlight = wantsHighlight;
 			output += inHighlight ? highlightBg : baseBg;
@@ -808,6 +784,7 @@ export async function renderUnified(
 	maxLines: number,
 	colors: DiffColors,
 	width: number,
+	options: DiffRenderOptions = {},
 ): Promise<string> {
 	if (!diff.lines.length) return "";
 	const visible = diff.lines.slice(0, maxLines);
@@ -816,7 +793,9 @@ export async function renderUnified(
 		2,
 		String(Math.max(...visible.map((line) => line.oldNum ?? line.newNum ?? 0), 0)).length,
 	);
-	const gutterWidth = numberWidth + 4;
+	const compactGutter = !!options.compactGutter;
+	const gutterWidth = numberWidth + (compactGutter ? 3 : 4);
+
 	const codeWidth = Math.max(20, renderWidth - gutterWidth);
 	const canHighlight = diff.chars <= MAX_HL_CHARS && visible.length <= maxLines;
 
@@ -844,7 +823,7 @@ export async function renderUnified(
 		bodyBg = "",
 	): void {
 		const borderFg = sign === "-" ? colors.fgDel : sign === "+" ? colors.fgAdd : "";
-		const border = borderFg ? `${borderFg}${getBorderBar()}${RST}` : `${BG_BASE} `;
+		const border = compactGutter ? "" : borderFg ? `${borderFg}${getBorderBar()}${RST}` : `${BG_BASE} `;
 		const numFg = borderFg || FG_LNUM;
 		const gutter = `${border}${gutterBg}${lnum(number, numberWidth, numFg)}${gutterBg} ${signFg}${sign}${gutterBg} ${RST}`;
 		const continuationGutter = `${border}${gutterBg}${" ".repeat(numberWidth + 3)}${RST}`;
@@ -856,10 +835,8 @@ export async function renderUnified(
 	}
 
 	while (index < visible.length) {
-		const line = visible[index];
-// @ts-expect-error upstream code uses any/index signatures
+		const line = visible[index]!;
 		if (line.type === "sep") {
-// @ts-expect-error upstream code uses any/index signatures
 			const label = sepLabelUnified(getSepStyle(), line.hunkMeta, line.newNum, line.content);
 			if (!label) {
 				index++;
@@ -873,11 +850,8 @@ export async function renderUnified(
 			index += 1;
 			continue;
 		}
-// @ts-expect-error upstream code uses any/index signatures
 		if (line.type === "ctx") {
-// @ts-expect-error upstream code uses any/index signatures
 			const highlight = oldHighlights[oldIndex] ?? line.content;
-// @ts-expect-error upstream code uses any/index signatures
 			emitRow(line.newNum, " ", BG_BASE, colors.fgCtx, `${BG_BASE}${DIM}${highlight}`, BG_BASE);
 			oldIndex += 1;
 			newIndex += 1;
@@ -886,52 +860,42 @@ export async function renderUnified(
 		}
 
 		const deletions: Array<{ line: ParsedDiff["lines"][number]; hl: string }> = [];
-// @ts-expect-error upstream code uses any/index signatures
-		while (index < visible.length && visible[index].type === "del") {
+		while (index < visible.length && visible[index]?.type === "del") {
+			const delLine = visible[index]!;
 			deletions.push({
-// @ts-expect-error upstream code uses any/index signatures
-				line: visible[index],
-// @ts-expect-error upstream code uses any/index signatures
-				hl: oldHighlights[oldIndex] ?? visible[index].content,
+				line: delLine,
+				hl: oldHighlights[oldIndex] ?? delLine.content,
 			});
 			oldIndex += 1;
 			index += 1;
 		}
 		const additions: Array<{ line: ParsedDiff["lines"][number]; hl: string }> = [];
-// @ts-expect-error upstream code uses any/index signatures
-		while (index < visible.length && visible[index].type === "add") {
+		while (index < visible.length && visible[index]?.type === "add") {
+			const addLine = visible[index]!;
 			additions.push({
-// @ts-expect-error upstream code uses any/index signatures
-				line: visible[index],
-// @ts-expect-error upstream code uses any/index signatures
-				hl: newHighlights[newIndex] ?? visible[index].content,
+				line: addLine,
+				hl: newHighlights[newIndex] ?? addLine.content,
 			});
 			newIndex += 1;
 			index += 1;
 		}
 
-		const isPaired = deletions.length === 1 && additions.length === 1;
-// @ts-expect-error upstream code uses any/index signatures
-		const wordDiff = isPaired ? wordDiffAnalysis(deletions[0].line.content, additions[0].line.content) : null;
+		const deletion = deletions.length === 1 ? deletions[0] : null;
+		const addition = additions.length === 1 ? additions[0] : null;
+		const wordDiff =
+			deletion && addition ? wordDiffAnalysis(deletion.line.content, addition.line.content) : null;
 		const wordDiffBalanced = wordDiff && wordDiff.oldRanges.length > 0 && wordDiff.newRanges.length > 0;
-		if (isPaired && wordDiffBalanced && wordDiff.similarity >= WORD_DIFF_MIN_SIM && canHighlight) {
-// @ts-expect-error upstream code uses any/index signatures
-			const deletionBody = injectBg(deletions[0].hl, wordDiff.oldRanges, BG_DEL, BG_DEL_W);
-// @ts-expect-error upstream code uses any/index signatures
-			const additionBody = injectBg(additions[0].hl, wordDiff.newRanges, BG_ADD, BG_ADD_W);
-// @ts-expect-error upstream code uses any/index signatures
-			emitRow(deletions[0].line.oldNum, "-", BG_GUTTER_DEL, colors.fgDel, deletionBody, BG_DEL);
-// @ts-expect-error upstream code uses any/index signatures
-			emitRow(additions[0].line.newNum, "+", BG_GUTTER_ADD, colors.fgAdd, additionBody, BG_ADD);
+		if (deletion && addition && wordDiffBalanced && wordDiff.similarity >= WORD_DIFF_MIN_SIM && canHighlight) {
+			const deletionBody = injectBg(deletion.hl, wordDiff.oldRanges, BG_DEL, BG_DEL_W);
+			const additionBody = injectBg(addition.hl, wordDiff.newRanges, BG_ADD, BG_ADD_W);
+			emitRow(deletion.line.oldNum, "-", BG_GUTTER_DEL, colors.fgDel, deletionBody, BG_DEL);
+			emitRow(addition.line.newNum, "+", BG_GUTTER_ADD, colors.fgAdd, additionBody, BG_ADD);
 			continue;
 		}
-		if (isPaired && wordDiffBalanced && wordDiff.similarity >= WORD_DIFF_MIN_SIM && !canHighlight) {
-// @ts-expect-error upstream code uses any/index signatures
-			const plain = plainWordDiff(deletions[0].line.content, additions[0].line.content);
-// @ts-expect-error upstream code uses any/index signatures
-			emitRow(deletions[0].line.oldNum, "-", BG_GUTTER_DEL, colors.fgDel, `${BG_DEL}${plain.old}`, BG_DEL);
-// @ts-expect-error upstream code uses any/index signatures
-			emitRow(additions[0].line.newNum, "+", BG_GUTTER_ADD, colors.fgAdd, `${BG_ADD}${plain.new}`, BG_ADD);
+		if (deletion && addition && wordDiffBalanced && wordDiff.similarity >= WORD_DIFF_MIN_SIM && !canHighlight) {
+			const plain = plainWordDiff(deletion.line.content, addition.line.content);
+			emitRow(deletion.line.oldNum, "-", BG_GUTTER_DEL, colors.fgDel, `${BG_DEL}${plain.old}`, BG_DEL);
+			emitRow(addition.line.newNum, "+", BG_GUTTER_ADD, colors.fgAdd, `${BG_ADD}${plain.new}`, BG_ADD);
 			continue;
 		}
 		for (const deletion of deletions) {
@@ -956,8 +920,10 @@ export async function renderSplit(
 	maxLines: number,
 	colors: DiffColors,
 	width: number,
+	options: DiffRenderOptions = {},
 ): Promise<string> {
-	if (!shouldUseSplit(diff, width, maxLines)) return renderUnified(diff, language, maxLines, colors, width);
+	if (!shouldUseSplit(diff, width, maxLines, options))
+		return renderUnified(diff, language, maxLines, colors, width, options);
 	if (!diff.lines.length) return "";
 
 	// Build rows — process ctx/sep individually, group del/add blocks
@@ -968,17 +934,13 @@ export async function renderSplit(
 	const rows: Row[] = [];
 	let idx = 0;
 	while (idx < diff.lines.length) {
-		const line = diff.lines[idx];
-// @ts-expect-error upstream code uses any/index signatures
+		const line = diff.lines[idx]!;
 		if (line.type === "ctx") {
-// @ts-expect-error upstream code uses any/index signatures
 			rows.push({ left: line, right: line });
 			idx++;
 			continue;
 		}
-// @ts-expect-error upstream code uses any/index signatures
 		if (line.type === "sep") {
-// @ts-expect-error upstream code uses any/index signatures
 			rows.push({ left: line, right: line });
 			idx++;
 			continue;
@@ -1006,7 +968,8 @@ export async function renderSplit(
 		2,
 		String(Math.max(...diff.lines.map((line) => line.oldNum ?? line.newNum ?? 0), 0)).length,
 	);
-	const gutterWidth = numberWidth + 4;
+	const compactGutter = !!options.compactGutter;
+	const gutterWidth = numberWidth + (compactGutter ? 3 : 4);
 	const half = Math.floor(renderWidth / 2);
 	const codeWidth = Math.max(12, half - gutterWidth);
 	const canHighlight = diff.chars <= MAX_HL_CHARS && visible.length * 2 <= maxLines * 2;
@@ -1039,7 +1002,9 @@ export async function renderSplit(
 		if (line.type === "sep") {
 			const label = sepLabelSplit(getSepStyle(), line.hunkMeta, line.newNum, line.content);
 			if (!label) return { gutter: "", continuation: "", bodyRows: [""] };
-			const gutter = `${BG_BASE} ${FG_DIM}${fit("", numberWidth + 3)}${RST}`;
+			const gutter = compactGutter
+				? `${BG_BASE}${FG_DIM}${fit("", numberWidth + 3)}${RST}`
+				: `${BG_BASE} ${FG_DIM}${fit("", numberWidth + 3)}${RST}`;
 			return {
 				gutter,
 				continuation: gutter,
@@ -1054,7 +1019,7 @@ export async function renderSplit(
 		const sign = isDeletion ? "-" : isAddition ? "+" : " ";
 		const number = isDeletion ? line.oldNum : isAddition ? line.newNum : side === "left" ? line.oldNum : line.newNum;
 		const borderFg = isDeletion ? colors.fgDel : isAddition ? colors.fgAdd : "";
-		const border = borderFg ? `${borderFg}${getBorderBar()}${RST}` : `${BG_BASE} `;
+		const border = compactGutter ? "" : borderFg ? `${borderFg}${getBorderBar()}${RST}` : `${BG_BASE} `;
 		const numFg = borderFg || FG_LNUM;
 		let body = isDeletion || isAddition ? injectBg(highlight, [], codeBg, codeBg) : `${BG_BASE}${DIM}${highlight}`;
 		if (ranges && ranges.length > 0) body = injectBg(highlight, ranges, codeBg, isDeletion ? BG_DEL_W : BG_ADD_W);

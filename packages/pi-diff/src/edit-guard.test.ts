@@ -70,9 +70,7 @@ describe("registerEditGuard", () => {
 
 	it("ignores non-array edits and unreadable files", async () => {
 		const handler = captureHandler();
-		expect(
-			await handler({ toolName: "edit", input: { path: "/nope", edits: null } }),
-		).toBeUndefined();
+		expect(await handler({ toolName: "edit", input: { path: "/nope", edits: null } })).toBeUndefined();
 		expect(await handler({ toolName: "edit", input: { path: "/nope" } })).toBeUndefined();
 	});
 });

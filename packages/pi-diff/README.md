@@ -80,6 +80,18 @@ Both views show:
 
 ## Configuration
 
+### Disable pi-diff tools
+
+Add `disabledTools` to `pi-diff.json` to omit pi-diff tools. Disabling `write` or `edit` leaves Pi's built-in tool available; disabling `apply_patch` removes that custom tool.
+
+```json
+{
+  "disabledTools": ["apply_patch"]
+}
+```
+
+See [CONFIG.md](CONFIG.md) for the full `pi-diff.json` reference.
+
 ### Diff Theme Presets
 
 pi-diff ships with built-in theme presets optimized for different terminal backgrounds. Add to your `.pi/settings.json`:
@@ -303,6 +315,10 @@ Extensions can:
 - **Register commands** — `pi.registerCommand("/name", handler)`
 
 See the [pi docs](https://pi.dev) for the full extension API.
+
+## Design notes
+
+How **hashline** (`hashline_read`, `hashline_edit`, `edit` `hashlineChanges`) relates to Pi’s stock **`edit`** tool (exact `edits[]`, bounded fuzzy match, loud failures) is documented in [`.pi/artifacts/DECISIONS.md`](.pi/artifacts/DECISIONS.md) (ADR-001). Summary: stock `edit` stays the portable default; hashline is an opt-in strict anchor path for agents that adopt it.
 
 ## License
 

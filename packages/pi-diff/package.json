@@ -1,6 +1,6 @@
 {
   "name": "pi-diff",
-  "version": "0.6.10",
+  "version": "0.7.6",
   "private": true,
   "description": "Shiki-powered terminal diff renderer for pi — syntax-highlighted, word-level diffs in split and unified views.",
   "license": "MIT",
@@ -16,10 +16,11 @@
   },
   "dependencies": {
     "@shikijs/cli": "^4.3.0",
-    "diff": "^7.0.0"
+    "diff": "^7.0.0",
+    "xxhash-wasm": "^1.1.0"
   },
   "peerDependencies": {
-    "@earendil-works/pi-coding-agent": "^0.80.0",
-    "@earendil-works/pi-tui": "^0.80.0"
+    "@earendil-works/pi-coding-agent": "^0.79.10",
+    "@earendil-works/pi-tui": "^0.79.10"
   }
 }

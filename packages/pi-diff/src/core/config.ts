@@ -21,11 +21,16 @@ import { join } from "node:path";
 // Types
 // ---------------------------------------------------------------------------
 
+export const PI_DIFF_TOOL_NAMES = ["write", "edit", "apply_patch"] as const;
+export type PiDiffToolName = (typeof PI_DIFF_TOOL_NAMES)[number];
+
 /**
  * Full pi-diff.json schema.
  * All fields are optional — missing fields fall through to env → defaults.
  */
 export interface PiDiffJson {
+	/** pi-diff tools to omit. Disabling write or edit restores Pi's built-in tool. */
+	disabledTools?: PiDiffToolName[];
 	/** Hunk separator style. */
 	sepStyle?: "auto" | "simple" | "gap" | "context" | "metadata";
 	/** Show line numbers in gutter. */
@@ -63,7 +68,7 @@ export interface PiDiffJson {
 // Module state — singleton cache
 // ---------------------------------------------------------------------------
 
-let _cachedConfig: PiDiffJson | null | undefined = undefined; // null = not loaded, undefined = attempted/no-file
+let _cachedConfig: PiDiffJson | null | undefined; // null = not loaded, undefined = attempted/no-file
 
 /**
  * Load pi-diff.json from project or global paths.
@@ -75,16 +80,13 @@ export function loadPiDiffConfig(cwd?: string): PiDiffJson {
 	// When a specific cwd is provided (e.g. for testing), only search that path.
 	// When omitted, search project root then global.
 	const searchPaths = cwd
-		? [
-				join(cwd, "pi-diff.json"),
-				join(cwd, ".pi", "pi-diff.json"),
-		  ]
+		? [join(cwd, ".pi", "pi-diff.json"), join(cwd, "pi-diff.json")]
 		: [
-				join(process.cwd(), "pi-diff.json"),
-				join(process.cwd(), ".pi", "pi-diff.json"),
-				join(homedir(), ".pi", "agent", "pi-diff.json"),
 				join(homedir(), ".pi", "pi-diff.json"),
-		  ];
+				join(homedir(), ".pi", "agent", "pi-diff.json"),
+				join(process.cwd(), ".pi", "pi-diff.json"),
+				join(process.cwd(), "pi-diff.json"),
+			];
 
 	// Deduplicate by resolving to absolute paths
 	const seen = new Set<string>();
@@ -97,12 +99,20 @@ export function loadPiDiffConfig(cwd?: string): PiDiffJson {
 		}
 	}
 
-	// Priority: project first, then global. Later files extend/override earlier ones.
+	// Paths are ordered lowest-to-highest priority; later files override earlier ones.
 	let merged: PiDiffJson = {};
 	for (const filePath of uniquePaths) {
 		try {
 			if (!existsSync(filePath)) continue;
-			const raw = JSON.parse(readFileSync(filePath, "utf-8")) as PiDiffJson;
+			const raw = JSON.parse(readFileSync(filePath, "utf-8")) as PiDiffJson & { disabledTools?: unknown };
+			if (Array.isArray(raw.disabledTools)) {
+				raw.disabledTools = raw.disabledTools.filter(
+					(tool): tool is PiDiffToolName =>
+						typeof tool === "string" && PI_DIFF_TOOL_NAMES.includes(tool as PiDiffToolName),
+				);
+			} else {
+				delete raw.disabledTools;
+			}
 			merged = deepMerge(merged, raw);
 		} catch {
 			// Skip invalid files silently
@@ -129,7 +139,7 @@ function deepMerge(a: PiDiffJson, b: PiDiffJson): PiDiffJson {
 		const bVal = b[key];
 		if (bVal === undefined) continue;
 		if (key === "colors" && typeof bVal === "object" && bVal !== null) {
-			result.colors = { ...(a.colors as Record<string, string> || {}), ...(bVal as Record<string, string>) };
+			result.colors = { ...((a.colors as Record<string, string>) || {}), ...(bVal as Record<string, string>) };
 		} else {
 			(result as Record<string, unknown>)[key] = bVal as unknown;
 		}

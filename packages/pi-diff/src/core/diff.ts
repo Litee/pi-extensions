@@ -48,7 +48,7 @@ export interface ParsedDiff {
  * Each file in the patch gets its own entry.
  */
 export function parsePatchFiles(patch: string): ParsedDiff[] {
-	if (!patch || !patch.trim()) return [];
+	if (!patch.trim()) return [];
 
 	// Split into file sections
 	const lines = patch.split("\n");
@@ -223,7 +223,6 @@ export function sepLabelUnified(
 			if (ctx) return ` ${ctx} `;
 			if (gap && gap > 0) return ` +${gap} lines `;
 			return "";
-		case "auto":
 		default:
 			if (ctx && gap && gap > 0) return ` ${ctx} — +${gap} lines `;
 			if (ctx) return ` ${ctx} `;
@@ -261,7 +260,6 @@ export function sepLabelSplit(
 			if (ctx) return ` ${ctx} `;
 			if (gap && gap > 0) return ` ${gap} lines `;
 			return "";
-		case "auto":
 		default:
 			if (ctx && gap && gap > 0) return ` ${ctx} — +${gap} lines `;
 			if (ctx) return ` ${ctx} `;

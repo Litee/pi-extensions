@@ -1,6 +1,15 @@
 import { beforeEach, describe, expect, it } from "vitest";
 
-import { computeHunkBlocks, type HunkMeta, parseDiff, parsePatchFiles, resolveSepStyle, getSepStyle, sepLabelUnified, sepLabelSplit } from "./diff.js";
+import {
+	computeHunkBlocks,
+	getSepStyle,
+	type HunkMeta,
+	parseDiff,
+	parsePatchFiles,
+	resolveSepStyle,
+	sepLabelSplit,
+	sepLabelUnified,
+} from "./diff.js";
 
 // ---------------------------------------------------------------------------
 // parseDiff
@@ -30,10 +39,10 @@ describe("parseDiff", () => {
 		const first = parsed.lines[0]!;
 		expect(first.type).toBe("sep");
 		expect(first.hunkMeta).toBeDefined();
-		expect(first.hunkMeta!.oldStart).toBe(1);
-		expect(first.hunkMeta!.oldLines).toBe(3);
-		expect(first.hunkMeta!.newStart).toBe(1);
-		expect(first.hunkMeta!.newLines).toBe(3);
+		expect(first.hunkMeta?.oldStart).toBe(1);
+		expect(first.hunkMeta?.oldLines).toBe(3);
+		expect(first.hunkMeta?.newStart).toBe(1);
+		expect(first.hunkMeta?.newLines).toBe(3);
 	});
 
 	it("emits hunkMeta on between-hunk separators", () => {
@@ -47,6 +56,10 @@ describe("parseDiff", () => {
 		for (const sep of seps) {
 			expect(sep.hunkMeta).toBeDefined();
 		}
+		expect(seps[0]!.hunkMeta!.oldStart).toBe(1);
+		expect(seps[1]!.hunkMeta!.oldStart).toBe(6);
+		expect(seps[0]?.hunkMeta?.oldStart).toBe(1);
+		expect(seps[1]?.hunkMeta?.oldStart).toBe(6);
 		expect(seps[0]!.hunkMeta!.oldStart).toBe(1);
 		expect(seps[1]!.hunkMeta!.oldStart).toBe(6);
 	});
@@ -64,15 +77,7 @@ describe("parseDiff", () => {
 
 describe("parsePatchFiles", () => {
 	it("parses a simple single-file unified diff", () => {
-		const patch = [
-			"--- a/test.ts",
-			"+++ b/test.ts",
-			"@@ -1,3 +1,4 @@",
-			" a",
-			"-b",
-			"+B",
-			"+c",
-		].join("\n");
+		const patch = ["--- a/test.ts", "+++ b/test.ts", "@@ -1,3 +1,4 @@", " a", "-b", "+B", "+c"].join("\n");
 
 		const result = parsePatchFiles(patch);
 		expect(result).toHaveLength(1);
@@ -147,13 +152,7 @@ describe("parsePatchFiles", () => {
 	});
 
 	it("handles hunk headers without line count (count=1 implied)", () => {
-		const patch = [
-			"--- a/test.ts",
-			"+++ b/test.ts",
-			"@@ -1 +1,2 @@",
-			" a",
-			"+b",
-		].join("\n");
+		const patch = ["--- a/test.ts", "+++ b/test.ts", "@@ -1 +1,2 @@", " a", "+b"].join("\n");
 
 		const result = parsePatchFiles(patch);
 		expect(result).toHaveLength(1);

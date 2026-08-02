@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { parseConflicts, hasConflictMarkers, formatConflictSummary } from "./conflicts.js";
+import { formatConflictSummary, hasConflictMarkers, parseConflicts } from "./conflicts.js";
 
 describe("parseConflicts", () => {
 	it("returns empty result for content without conflicts", () => {
@@ -57,15 +57,7 @@ describe("parseConflicts", () => {
 	});
 
 	it("parses multi-line conflict regions", () => {
-		const content = [
-			"<<<<<<< HEAD",
-			"line1",
-			"line2",
-			"=======",
-			"lineA",
-			"lineB",
-			">>>>>>> other",
-		].join("\n");
+		const content = ["<<<<<<< HEAD", "line1", "line2", "=======", "lineA", "lineB", ">>>>>>> other"].join("\n");
 
 		const result = parseConflicts(content);
 		expect(result.regions).toHaveLength(1);
@@ -93,13 +85,7 @@ describe("parseConflicts", () => {
 	});
 
 	it("handles conflict markers with no ref name", () => {
-		const content = [
-			"<<<<<<<",
-			"change",
-			"=======",
-			"other",
-			">>>>>>>",
-		].join("\n");
+		const content = ["<<<<<<<", "change", "=======", "other", ">>>>>>>"].join("\n");
 
 		const result = parseConflicts(content);
 		expect(result.hasConflicts).toBe(true);
@@ -108,12 +94,7 @@ describe("parseConflicts", () => {
 	});
 
 	it("handles empty conflict sides", () => {
-		const content = [
-			"<<<<<<< HEAD",
-			"=======",
-			"incoming",
-			">>>>>>> branch",
-		].join("\n");
+		const content = ["<<<<<<< HEAD", "=======", "incoming", ">>>>>>> branch"].join("\n");
 
 		const result = parseConflicts(content);
 		expect(result.regions[0]!.current).toEqual([]);
