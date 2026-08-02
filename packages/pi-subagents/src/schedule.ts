@@ -19,8 +19,8 @@ import type { ExtensionAPI, ExtensionContext } from "@earendil-works/pi-coding-a
 import { Cron } from "croner";
 import { nanoid } from "nanoid";
 import type { AgentManager } from "./agent-manager.js";
-import type { Api } from "@earendil-works/pi-ai";
-import type { Model } from "@earendil-works/pi-ai";
+import type { Api, Model } from "@earendil-works/pi-ai";
+import { resolveSpawnType } from "./agent-types.js";
 import { resolveModel } from "./model-resolver.js";
 import type { ScheduleStore } from "./schedule-store.js";
 import type { IsolationMode, ScheduledSubagent, SubagentType, ThinkingLevel } from "./types.js";
@@ -240,7 +240,15 @@ export class SubagentScheduler {
 
     let agentId: string;
     try {
-      agentId = manager.spawn(pi, ctx, job.subagent_type, job.prompt, {
+      // Re-resolve at fire time against the registry as it stands. This does not
+      // reload from disk (the scheduler has no reason to rebuild process-global
+      // state from a timer), so it catches changes that went through /agents or
+      // an Agent call — not a file deleted directly from a shell. The catch below turns
+      // this into lastStatus: "error" plus an error event, like any other
+      // fire-time failure.
+      const dispatch = resolveSpawnType(job.subagent_type);
+      if (!dispatch.ok) throw new Error(dispatch.message);
+      agentId = manager.spawn(pi, ctx, dispatch.type, job.prompt, {
         description: job.description,
         isBackground: true,
         bypassQueue: true,

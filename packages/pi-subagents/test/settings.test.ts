@@ -115,6 +115,25 @@ describe("settings persistence", () => {
     expect(loadSettings(projectDir)).toEqual({}); // non-boolean dropped
   });
 
+
+  it("round-trips widgetMode; keeps valid values, drops invalid", () => {
+    saveSettings({ widgetMode: "off" }, projectDir);
+    expect(loadSettings(projectDir)).toEqual({ widgetMode: "off" });
+    saveSettings({ widgetMode: "background" }, projectDir);
+    expect(loadSettings(projectDir)).toEqual({ widgetMode: "background" });
+    writeProject({ widgetMode: "sideways" });
+    expect(loadSettings(projectDir)).toEqual({}); // invalid value dropped
+  });
+
+  it("round-trips outputTranscript; drops non-boolean", () => {
+    saveSettings({ outputTranscript: false }, projectDir);
+    expect(loadSettings(projectDir)).toEqual({ outputTranscript: false });
+    saveSettings({ outputTranscript: true }, projectDir);
+    expect(loadSettings(projectDir)).toEqual({ outputTranscript: true });
+    writeProject({ outputTranscript: "no" });
+    expect(loadSettings(projectDir)).toEqual({}); // non-boolean dropped
+  });
+
   it("sanitize drops non-boolean schedulingEnabled silently", () => {
     writeProject({ schedulingEnabled: "yes" });
     expect(loadSettings(projectDir)).toEqual({});
@@ -189,6 +208,47 @@ describe("settings persistence", () => {
 
     it("drops graceTurns < 1", () => {
       writeProject({ graceTurns: 0 });
+      expect(loadSettings(projectDir)).toEqual({});
+    });
+
+    it("keeps maxSubagentDepth 0 (nesting off) but drops negative, fractional, and over-ceiling values", () => {
+      writeProject({ maxSubagentDepth: 0 });
+      expect(loadSettings(projectDir)).toEqual({ maxSubagentDepth: 0 });
+      writeProject({ maxSubagentDepth: -1 });
+      expect(loadSettings(projectDir)).toEqual({});
+      writeProject({ maxSubagentDepth: 1.5 });
+      expect(loadSettings(projectDir)).toEqual({});
+      writeProject({ maxSubagentDepth: 17 });
+      expect(loadSettings(projectDir)).toEqual({});
+    });
+
+    it("accepts `none` and `false` as the disabled fallback, nothing else", () => {
+      // Only the boolean needs an alias: it would otherwise be dropped, leaving
+      // the PERMISSIVE default while the author believed strict was on. Every
+      // string stays an agent name, so a mistaken "off" fails loudly at dispatch
+      // instead of meaning one thing here and another in the resolver.
+      for (const spelling of ["none", "NONE", " none ", false]) {
+        writeProject({ fallbackSubagent: spelling });
+        expect(loadSettings(projectDir).fallbackSubagent?.toLowerCase()).toBe("none");
+      }
+      writeProject({ fallbackSubagent: "off" });
+      expect(loadSettings(projectDir)).toEqual({ fallbackSubagent: "off" });
+    });
+
+    it("drops values that aren't a string or `false`, without coercing them", () => {
+      // String(["none"]) is "none" — coercing would silently enable strict mode.
+      for (const junk of [["none"], null, 42, true, {}]) {
+        writeProject({ fallbackSubagent: junk });
+        expect(loadSettings(projectDir)).toEqual({});
+      }
+    });
+
+    it("keeps a named fallback agent and drops non-strings", () => {
+      writeProject({ fallbackSubagent: "  my-router  " });
+      expect(loadSettings(projectDir)).toEqual({ fallbackSubagent: "my-router" });
+      writeProject({ fallbackSubagent: 42 });
+      expect(loadSettings(projectDir)).toEqual({});
+      writeProject({ fallbackSubagent: "   " });
       expect(loadSettings(projectDir)).toEqual({});
     });
 
@@ -325,6 +385,9 @@ describe("settings persistence", () => {
         setToolDescriptionMode: vi.fn(),
         setFleetView: vi.fn(),
         setWidgetMode: vi.fn(),
+        setOutputTranscript: vi.fn(),
+        setMaxSubagentDepth: vi.fn(),
+        setFallbackSubagent: vi.fn(),
       };
     });
 
@@ -338,10 +401,18 @@ describe("settings persistence", () => {
       expect(appliers.setScopeModels).not.toHaveBeenCalled();
     });
 
+    it("applies fallbackSubagent through to the registry", () => {
+      // Without this, deleting the applySettings line for this field leaves the
+      // whole suite green while `subagents.json` silently stops working.
+      applySettings({ fallbackSubagent: "none" }, appliers);
+      expect(appliers.setFallbackSubagent).toHaveBeenCalledWith("none");
+    });
+
     it("applies only the fields that are present", () => {
-      applySettings({ maxConcurrent: 4, graceTurns: 3 }, appliers);
+      applySettings({ maxConcurrent: 4, graceTurns: 3, maxSubagentDepth: 1 }, appliers);
       expect(appliers.setMaxConcurrent).toHaveBeenCalledWith(4);
       expect(appliers.setGraceTurns).toHaveBeenCalledWith(3);
+      expect(appliers.setMaxSubagentDepth).toHaveBeenCalledWith(1);
       expect(appliers.setDefaultMaxTurns).not.toHaveBeenCalled();
       expect(appliers.setDefaultJoinMode).not.toHaveBeenCalled();
       expect(appliers.setSchedulingEnabled).not.toHaveBeenCalled();
@@ -380,6 +451,24 @@ describe("settings persistence", () => {
     it("applies scopeModels: false", () => {
       applySettings({ scopeModels: false }, appliers);
       expect(appliers.setScopeModels).toHaveBeenCalledWith(false);
+    });
+
+
+    it("applies disableDefaultAgents: false", () => {
+      applySettings({ disableDefaultAgents: false }, appliers);
+      expect(appliers.setDisableDefaultAgents).toHaveBeenCalledWith(false);
+    });
+
+    it("applies toolDescriptionMode", () => {
+      applySettings({ toolDescriptionMode: "full" }, appliers);
+      expect(appliers.setToolDescriptionMode).toHaveBeenCalledWith("full");
+    });
+
+    it("applies outputTranscript (both true and false)", () => {
+      applySettings({ outputTranscript: false }, appliers);
+      expect(appliers.setOutputTranscript).toHaveBeenCalledWith(false);
+      applySettings({ outputTranscript: true }, appliers);
+      expect(appliers.setOutputTranscript).toHaveBeenCalledWith(true);
     });
 
     it("applies defaultMaxTurns: 0 as the explicit unlimited marker", () => {
@@ -440,6 +529,9 @@ describe("settings persistence", () => {
         setToolDescriptionMode: vi.fn(),
         setFleetView: vi.fn(),
         setWidgetMode: vi.fn(),
+        setOutputTranscript: vi.fn(),
+        setMaxSubagentDepth: vi.fn(),
+        setFallbackSubagent: vi.fn(),
       };
     });
 

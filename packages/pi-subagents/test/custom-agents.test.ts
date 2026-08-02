@@ -12,29 +12,92 @@ describe("loadCustomAgents", () => {
 
   beforeEach(() => {
     tmpDir = mkdtempSync(join(tmpdir(), "pi-test-"));
-    originalHome = process.env['HOME'];
-    process.env['HOME'] = tmpDir;
-    originalAgentDir = process.env['PI_CODING_AGENT_DIR'];
-    process.env['PI_CODING_AGENT_DIR'] = join(tmpDir, '.pi', 'agent');
+
+    originalHome = process.env["HOME"];
+    originalAgentDir = process.env["PI_CODING_AGENT_DIR"];
+    process.env["HOME"] = tmpDir;
+    delete process.env["PI_CODING_AGENT_DIR"];
   });
 
   afterEach(() => {
-    if (originalHome == null) delete process.env['HOME'];
-    else process.env['HOME'] = originalHome;
-    if (originalAgentDir == null) delete process.env['PI_CODING_AGENT_DIR'];
-    else process.env['PI_CODING_AGENT_DIR'] = originalAgentDir;
+    if (originalHome == null) delete process.env["HOME"];
+    else process.env["HOME"] = originalHome;
+    if (originalAgentDir == null) delete process.env["PI_CODING_AGENT_DIR"];
+    else process.env["PI_CODING_AGENT_DIR"] = originalAgentDir;
     rmSync(tmpDir, { recursive: true, force: true });
   });
 
-  function writeAgent(name: string, content: string) {
-    const dir = join(tmpDir, ".pi", "agents");
+  function writeAgentIn(projectDir: ".agents" | ".pi", name: string, content: string) {
+    const dir = join(tmpDir, projectDir, "agents");
     mkdirSync(dir, { recursive: true });
     writeFileSync(join(dir, `${name}.md`), content);
   }
 
-  it("returns empty map when .pi/agents/ does not exist", () => {
+  function writeAgent(name: string, content: string) {
+    writeAgentIn(".pi", name, content);
+  }
+
+  function writeWorkspaceAgent(name: string, content: string) {
+    writeAgentIn(".agents", name, content);
+  }
+
+  it("returns empty map when custom agent dirs do not exist", () => {
     const result = loadCustomAgents(tmpDir);
     expect(result.size).toBe(0);
+  });
+
+  it("loads a workspace project agent from .agents/agents", () => {
+    writeWorkspaceAgent("reviewer", `---
+description: Workspace Reviewer
+---
+
+Workspace prompt.`);
+
+    const result = loadCustomAgents(tmpDir);
+    expect(result.size).toBe(1);
+    expect(result.get("reviewer")?.description).toBe("Workspace Reviewer");
+    expect(result.get("reviewer")?.systemPrompt).toBe("Workspace prompt.");
+    expect(result.get("reviewer")?.source).toBe("project");
+  });
+
+  it(".pi/agents overrides .agents/agents on a name clash", () => {
+    writeWorkspaceAgent("dupe", `---
+description: Workspace Project
+---
+
+Workspace prompt.`);
+    writeAgent("dupe", `---
+description: Pi Project
+---
+
+Pi prompt.`);
+
+    const result = loadCustomAgents(tmpDir);
+    expect(result.size).toBe(1);
+    expect(result.get("dupe")?.description).toBe("Pi Project");
+    expect(result.get("dupe")?.systemPrompt).toBe("Pi prompt.");
+  });
+
+  it("workspace project agents override global agents", () => {
+    const globalAgentDir = join(tmpDir, "global-agent-dir");
+    process.env["PI_CODING_AGENT_DIR"] = globalAgentDir;
+    const globalAgents = join(globalAgentDir, "agents");
+    mkdirSync(globalAgents, { recursive: true });
+    writeFileSync(join(globalAgents, "dupe.md"), `---
+description: Global
+---
+
+Global prompt.`);
+    writeWorkspaceAgent("dupe", `---
+description: Workspace Project
+---
+
+Workspace prompt.`);
+
+    const result = loadCustomAgents(tmpDir);
+    expect(result.size).toBe(1);
+    expect(result.get("dupe")?.description).toBe("Workspace Project");
+    expect(result.get("dupe")?.systemPrompt).toBe("Workspace prompt.");
   });
 
   it("loads a basic agent with all frontmatter fields", () => {
@@ -45,7 +108,9 @@ model: anthropic/claude-opus-4-6
 thinking: high
 max_turns: 30
 persist_session: true
+output_transcript: false
 session_dir: .seams/pi-sessions/seam-plan-reviewer
+allowed_subagents: scout, reviewer
 prompt_mode: replace
 inherit_context: true
 run_in_background: true
@@ -65,7 +130,9 @@ You are a security auditor.`);
     expect(agent.thinking).toBe("high");
     expect(agent.maxTurns).toBe(30);
     expect(agent.persistSession).toBe(true);
+    expect(agent.outputTranscript).toBe(false);
     expect(agent.sessionDir).toBe(".seams/pi-sessions/seam-plan-reviewer");
+    expect(agent.allowedSubagents).toEqual(["scout", "reviewer"]);
     expect(agent.promptMode).toBe("replace");
     expect(agent.inheritContext).toBe(true);
     expect(agent.runInBackground).toBe(true);
@@ -91,7 +158,9 @@ Just a prompt.`);
     expect(agent.thinking).toBeUndefined();
     expect(agent.maxTurns).toBeUndefined();
     expect(agent.persistSession).toBeUndefined();
+    expect(agent.outputTranscript).toBeUndefined();
     expect(agent.sessionDir).toBeUndefined();
+    expect(agent.allowedSubagents).toBeUndefined();
     expect(agent.promptMode).toBe("replace");
     expect(agent.inheritContext).toBeUndefined();
     expect(agent.runInBackground).toBeUndefined();
@@ -109,6 +178,60 @@ Just a prompt.`);
     expect(agent.description).toBe("bare");
     expect(agent.builtinToolNames).toEqual(BUILTIN_TOOL_NAMES);
     expect(agent.systemPrompt).toBe("Just a system prompt, no frontmatter.");
+  });
+
+  it("parses allowed_subagents: off by default, `all` wildcard, csv restriction", () => {
+    writeAgent("omitted", `---
+---
+Off.`);
+    writeAgent("unrestricted", `---
+allowed_subagents: all
+---
+Unrestricted.`);
+    writeAgent("wildcard", `---
+allowed_subagents: "*"
+---
+Unrestricted.`);
+    writeAgent("mixed-case", `---
+allowed_subagents: scout, ALL
+---
+Unrestricted.`);
+    writeAgent("none", `---
+allowed_subagents: none
+---
+Off.`);
+    writeAgent("blank", `---
+allowed_subagents:
+---
+Off.`);
+    writeAgent("restricted", `---
+allowed_subagents: scout, reviewer
+---
+Restricted.`);
+
+    const result = loadCustomAgents(tmpDir);
+    expect(result.get("omitted")!.allowedSubagents).toBeUndefined();
+    expect(result.get("unrestricted")!.allowedSubagents).toBe("all");
+    expect(result.get("wildcard")!.allowedSubagents).toBe("all");
+    expect(result.get("mixed-case")!.allowedSubagents).toBe("all");
+    expect(result.get("none")!.allowedSubagents).toBeUndefined();
+    expect(result.get("blank")!.allowedSubagents).toBeUndefined();
+    expect(result.get("restricted")!.allowedSubagents).toEqual(["scout", "reviewer"]);
+  });
+
+  it("accepts booleans like extensions:/skills: do, instead of a type named \"true\"", () => {
+    writeAgent("bool-on", `---
+allowed_subagents: true
+---
+On.`);
+    writeAgent("bool-off", `---
+allowed_subagents: false
+---
+Off.`);
+
+    const result = loadCustomAgents(tmpDir);
+    expect(result.get("bool-on")!.allowedSubagents).toBe("all");
+    expect(result.get("bool-off")!.allowedSubagents).toBeUndefined();
   });
 
   it("handles tools: none → empty array", () => {
@@ -172,6 +295,17 @@ Any thinking.`);
     const result = loadCustomAgents(tmpDir);
     // Pi validates at session creation — we just pass through
     expect(result.get("anythink")!.thinking).toBe("turbo");
+  });
+
+  it("loads thinking: max (pi 0.80's top level) unchanged (#147)", () => {
+    writeAgent("deepthink", `---
+thinking: max
+---
+
+Think hard.`);
+
+    const result = loadCustomAgents(tmpDir);
+    expect(result.get("deepthink")!.thinking).toBe("max");
   });
 
   it("accepts max_turns: 0 as unlimited", () => {

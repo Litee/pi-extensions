@@ -1,8 +1,11 @@
 import { describe, expect, it, vi } from "vitest";
+import { renderRunningAgentStatus } from "../src/index.js";
+import type { AgentRecord, WidgetMode } from "../src/types.js";
 import {
   AgentWidget,
   buildInvocationTags,
   describeActivity,
+  fgPreservingNestedStyles,
   formatDuration,
   formatMs,
   formatSessionTokens,
@@ -15,10 +18,16 @@ import {
   type UICtx,
 } from "../src/ui/agent-widget.js";
 import type { AgentManager } from "../src/agent-manager.js";
-import type { AgentRecord } from "../src/types.js";
 
 describe("formatSessionTokens", () => {
   const theme = { fg: (c: string, s: string) => `<${c}>${s}</${c}>`, bold: (s: string) => s };
+  const ansiTheme = {
+    fg: (c: string, s: string) => {
+      const codes: Record<string, string> = { dim: "2", warning: "33", accent: "35" };
+      return `\u001b[${codes[c] ?? "31"}m${s}\u001b[39m`;
+    },
+    bold: (s: string) => s,
+  };
 
   it("applies threshold colors (<70 dim, 70–85 warning, ≥85 error)", () => {
     expect(formatSessionTokens(1234, null, theme)).toBe("<dim>1.2k token</dim>");
@@ -39,7 +48,139 @@ describe("formatSessionTokens", () => {
     // compactions=0 omitted
     expect(formatSessionTokens(1234, 45, theme, 0)).toBe("<dim>1.2k token</dim> (<dim>45%</dim>)");
   });
+
+  it("preserves the outer style after nested annotation styles reset", () => {
+    const tokenText = formatSessionTokens(1234, 70, ansiTheme);
+
+    expect(fgPreservingNestedStyles(ansiTheme, "accent", tokenText)).toBe(
+      "\u001b[35m\u001b[2m1.2k token\u001b[39m\u001b[35m (\u001b[33m70%\u001b[39m\u001b[35m)\u001b[39m",
+    );
+  });
 });
+
+describe("renderRunningAgentStatus", () => {
+  it("renders running status as separate component lines", () => {
+    const theme = { fg: (_c: string, s: string) => s };
+    const component = renderRunningAgentStatus("⠋", "thinking: xhigh · 4 tool uses", "thinking…", theme);
+
+    expect(component.render(120).map((line) => line.trimEnd())).toEqual([
+      "⠋ thinking: xhigh · 4 tool uses",
+      " ⎿ thinking…",
+    ]);
+  });
+});
+
+describe("AgentWidget", () => {
+  const theme = { fg: (_c: string, s: string) => s, bold: (s: string) => s };
+
+  function makeActivity(): AgentActivity {
+    return {
+      activeTools: new Map(),
+      toolUses: 0,
+      responseText: "",
+      turnCount: 1,
+      lifetimeUsage: { input: 0, output: 0, cacheWrite: 0 },
+    };
+  }
+
+  function makeRecord(id: string, opts: { isBackground?: boolean; parentAgentId?: string } = {}) {
+    return {
+      id,
+      type: "general-purpose",
+      description: `${id} description`,
+      status: "running",
+      toolUses: 0,
+      startedAt: Date.now(),
+      lifetimeUsage: { input: 0, output: 0, cacheWrite: 0 },
+      compactionCount: 0,
+      isBackground: opts.isBackground,
+      parentAgentId: opts.parentAgentId,
+    };
+  }
+
+  /** Render the widget for a manager and return the produced lines ("" if nothing rendered). */
+  function renderLines(manager: unknown, activityId: string, mode?: () => WidgetMode): string {
+    const widget = new AgentWidget(
+      manager as AgentManager,
+      new Map([[activityId, makeActivity()]]),
+      mode,
+    );
+    let factory: ((tui: unknown, theme: Theme) => { render(): string[] }) | undefined;
+    widget.setUICtx({
+      setStatus: () => {},
+      setWidget: (_key, content) => { factory = content as typeof factory; },
+    });
+    widget.update();
+    if (!factory) return "";
+    return factory({ terminal: { columns: 120 }, requestRender: () => {} }, theme)
+      .render()
+      .join("\n");
+  }
+
+  // "all" (and the no-policy constructor default) shows every agent.
+  it("shows foreground agents in 'all' mode (and by default)", () => {
+    const manager = { listAgents: () => [makeRecord("foreground", { isBackground: false })] };
+    expect(renderLines(manager, "foreground")).toContain("foreground description");
+    expect(renderLines(manager, "foreground", () => "all")).toContain("foreground description");
+  });
+
+  it("hides nested children in every coordinator widget mode", () => {
+    const manager = {
+      listAgents: () => [makeRecord("nested", { isBackground: true, parentAgentId: "parent" })],
+    };
+    expect(renderLines(manager, "nested", () => "all")).toBe("");
+    expect(renderLines(manager, "nested", () => "background")).toBe("");
+  });
+
+  it("excludes foreground agents in 'background' mode", () => {
+    const manager = { listAgents: () => [makeRecord("foreground", { isBackground: false })] };
+    expect(renderLines(manager, "foreground", () => "background")).toBe("");
+  });
+
+  // Also covers scheduler-spawned agents (isBackground=true, no `invocation`
+  // snapshot): if the filter still keyed off `invocation.runInBackground` —
+  // #118's original approach — this would wrongly vanish.
+  it("renders background agents in 'background' mode", () => {
+    const manager = { listAgents: () => [makeRecord("background", { isBackground: true })] };
+    const lines = renderLines(manager, "background", () => "background");
+    expect(lines).toContain("Agents");
+    expect(lines).toContain("background description");
+  });
+
+  // 'background' excludes only agents *known* to be foreground; one with no
+  // isBackground flag (e.g. a cross-extension RPC spawn) is kept, not hidden.
+  it("keeps agents with no isBackground flag in 'background' mode", () => {
+    const manager = { listAgents: () => [makeRecord("unflagged", {})] };
+    expect(renderLines(manager, "unflagged", () => "background")).toContain("unflagged description");
+  });
+
+  // "off" hides the widget entirely — even a background agent renders nothing.
+  it("renders nothing in 'off' mode", () => {
+    const manager = { listAgents: () => [makeRecord("background", { isBackground: true })] };
+    expect(renderLines(manager, "background", () => "off")).toBe("");
+  });
+});
+
+// ─── Widget rendering helpers (local coverage additions) ──────────────────
+
+function makeStubWidget(records: AgentRecord[], activity = new Map<string, AgentActivity>()) {
+  const stubManager = { listAgents: () => records } as unknown as AgentManager;
+  let capturedFactory: ((tui: unknown, theme: Theme) => { render(): string[] }) | undefined;
+  const stubUiCtx: UICtx = {
+    setStatus: () => {},
+    setWidget: (_key, content) => {
+      if (content) capturedFactory = content as typeof capturedFactory;
+    },
+  };
+  const widget = new AgentWidget(stubManager, activity);
+  widget.setUICtx(stubUiCtx);
+  return { widget, getFactory: () => capturedFactory };
+}
+
+const plainTheme: Theme = { fg: (_c: string, s: string) => s, bold: (s: string) => s };
+const stubTui = { terminal: { columns: 200 }, requestRender: vi.fn() };
+
+// ─── Local coverage additions (kept across upstream sync) ───
 
 describe("AgentWidget running-agent stats line", () => {
   const theme: Theme = { fg: (c: string, s: string) => `<${c}>${s}</${c}>`, bold: (s: string) => s };
@@ -225,8 +366,6 @@ describe("AgentWidget — update() and dispose()", () => {
   });
 });
 
-// ─── Pure formatting helpers ──────────────────────────────────────────────
-
 describe("formatTokens", () => {
   it("formats values below 1000 as plain number", () => {
     expect(formatTokens(0)).toBe("0 token");
@@ -382,25 +521,6 @@ describe("getPromptModeLabel", () => {
     expect(label === undefined || typeof label === "string").toBe(true);
   });
 });
-
-// ─── Widget rendering with finished agents ────────────────────────────────
-
-function makeStubWidget(records: AgentRecord[], activity = new Map<string, AgentActivity>()) {
-  const stubManager = { listAgents: () => records } as unknown as AgentManager;
-  let capturedFactory: ((tui: unknown, theme: Theme) => { render(): string[] }) | undefined;
-  const stubUiCtx: UICtx = {
-    setStatus: () => {},
-    setWidget: (_key, content) => {
-      if (content) capturedFactory = content as typeof capturedFactory;
-    },
-  };
-  const widget = new AgentWidget(stubManager, activity);
-  widget.setUICtx(stubUiCtx);
-  return { widget, getFactory: () => capturedFactory };
-}
-
-const plainTheme: Theme = { fg: (_c: string, s: string) => s, bold: (s: string) => s };
-const stubTui = { terminal: { columns: 200 }, requestRender: vi.fn() };
 
 describe("AgentWidget — finished agents rendering", () => {
   function makeFinishedRecord(id: string, status: AgentRecord["status"]): AgentRecord {
@@ -633,8 +753,6 @@ describe("AgentWidget — setUICtx context change resets registration", () => {
   });
 });
 
-// ─── More renderWidget coverage ───────────────────────────────────────────
-
 describe("AgentWidget — running agent with activity stats", () => {
   const theme: Theme = { fg: (_c: string, s: string) => s, bold: (s: string) => s };
   const stubTui2 = { terminal: { columns: 200 }, requestRender: vi.fn() };
@@ -760,10 +878,6 @@ describe("AgentWidget — status bar text with queued count", () => {
     expect(lastStatus).toContain("queued");
   });
 });
-
-// ---------------------------------------------------------------------------
-// Overflow with queued + finished agents (lines 424-425, 430-434)
-// ---------------------------------------------------------------------------
 
 describe("AgentWidget — overflow with queued and finished agents", () => {
   function makeRunningRec(id: string): AgentRecord {

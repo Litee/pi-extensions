@@ -5,6 +5,7 @@
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { getAgentDir } from "@earendil-works/pi-coding-agent";
+import { NO_FALLBACK } from "./agent-types.js";
 import type { JoinMode, WidgetMode } from "./types.js";
 
 export interface SubagentsSettings {
@@ -50,8 +51,8 @@ export interface SubagentsSettings {
   scopeModels?: boolean;
   /**
    * When true, the three built-in default agents (general-purpose, Explore, Plan)
-   * are not registered at startup. User-defined agents from .pi/agents/*.md are
-   * completely unaffected — only the hardcoded DEFAULT_AGENTS are suppressed.
+   * are not registered at startup. User-defined agents from project/global custom
+   * agent dirs are completely unaffected — only the hardcoded DEFAULT_AGENTS are suppressed.
    * Defaults to false.
    */
   disableDefaultAgents?: boolean;
@@ -83,6 +84,39 @@ export interface SubagentsSettings {
    * widget).
    */
   widgetMode?: WidgetMode;
+  /**
+   * Project/global default for writing each subagent's `.output` transcript
+   * (a JSON-lines copy of the run, stored under the OS temp dir).
+   * Defaults to `true`. Set `false` to make transcripts opt-in for the whole
+   * project (e.g. a repo that shouldn't leave run transcripts on disk for backup
+   * or DLP tooling to ingest). A custom agent's `output_transcript` frontmatter
+   * overrides this per agent. This governs only the transcript — it does NOT
+   * affect the persisted pi session (`persist_session`), worktree commits
+   * (`isolation: worktree`), or memory files.
+   */
+  outputTranscript?: boolean;
+  /**
+   * Hard ceiling on nested subagent delegation, counted from the main session:
+   * main = 0, its subagents = 1, their children = 2. Defaults to `2`; `0` or `1`
+   * disables nesting project-wide. Read when a subagent session is built, so a
+   * change applies to agents started after it.
+   */
+  maxSubagentDepth?: number;
+  /**
+   * Agent type substituted when a caller-supplied `subagent_type` doesn't
+   * resolve to exactly one enabled agent (unknown, disabled, or ambiguous by
+   * case). Omitted keeps the historical `general-purpose` fallback; a type name
+   * routes those calls to that agent instead; `"none"` disables the fallback so
+   * dispatch fails closed with an error naming the available types.
+   *
+   * The boolean `false` is accepted as a spelling of `"none"`, because a boolean
+   * would otherwise be dropped as the wrong type and silently leave the
+   * PERMISSIVE default in place while the author believes strict dispatch is on
+   * — the wrong direction to fail for this setting. Every other value is an
+   * agent name, so a mistaken `"off"` fails loudly at dispatch rather than
+   * meaning one thing here and another in the resolver.
+   */
+  fallbackSubagent?: string | undefined;
 }
 
 export type ToolDescriptionMode = "full" | "compact" | "custom";
@@ -99,6 +133,9 @@ export interface SettingsAppliers {
   setToolDescriptionMode: (mode: ToolDescriptionMode) => void;
   setFleetView: (b: boolean) => void;
   setWidgetMode: (mode: WidgetMode) => void;
+  setOutputTranscript: (b: boolean) => void;
+  setMaxSubagentDepth: (n: number) => void;
+  setFallbackSubagent: (v: string | undefined) => void;
 }
 
 /** Emit callback — a subset of `pi.events.emit` to keep helpers testable. */
@@ -114,6 +151,7 @@ const VALID_WIDGET_MODES: ReadonlySet<string> = new Set<WidgetMode>(["all", "bac
 const MAX_CONCURRENT_CEILING = 1024;
 const MAX_TURNS_CEILING = 10_000;
 const GRACE_TURNS_CEILING = 1_000;
+const SUBAGENT_DEPTH_CEILING = 16;
 
 /** Drop fields that don't match the expected shape. Silent — garbage becomes absent. */
 function sanitize(raw: unknown): SubagentsSettings {
@@ -141,6 +179,13 @@ function sanitize(raw: unknown): SubagentsSettings {
   ) {
     out.graceTurns = r['graceTurns'] as number;
   }
+  if (
+    Number.isInteger(r['maxSubagentDepth']) &&
+    (r['maxSubagentDepth'] as number) >= 0 &&
+    (r['maxSubagentDepth'] as number) <= SUBAGENT_DEPTH_CEILING
+  ) {
+    out.maxSubagentDepth = r['maxSubagentDepth'] as number;
+  }
   if (typeof r['defaultJoinMode'] === "string" && VALID_JOIN_MODES.has(r['defaultJoinMode'])) {
     out.defaultJoinMode = r['defaultJoinMode'] as JoinMode;
   }
@@ -161,6 +206,19 @@ function sanitize(raw: unknown): SubagentsSettings {
   }
   if (typeof r['widgetMode'] === "string" && VALID_WIDGET_MODES.has(r['widgetMode'])) {
     out.widgetMode = r['widgetMode'] as WidgetMode;
+  }
+  if (typeof r['outputTranscript'] === "boolean") {
+    out.outputTranscript = r['outputTranscript'];
+  }
+  if (r['fallbackSubagent'] === false) {
+    // The only non-string spelling worth accepting: a boolean would otherwise be
+    // dropped, silently leaving the PERMISSIVE default in place. Every string is
+    // an agent name except the `none` sentinel, which the resolver recognizes —
+    // so a mistaken "off" fails loudly at dispatch instead of meaning something
+    // different here than it does there.
+    out.fallbackSubagent = NO_FALLBACK;
+  } else if (typeof r['fallbackSubagent'] === "string" && r['fallbackSubagent'].trim()) {
+    out.fallbackSubagent = r['fallbackSubagent'].trim();
   }
   return out;
 }
@@ -216,6 +274,8 @@ export function applySettings(s: SubagentsSettings, appliers: SettingsAppliers):
   if (typeof s.maxConcurrent === "number") appliers.setMaxConcurrent(s.maxConcurrent);
   if (typeof s.defaultMaxTurns === "number") appliers.setDefaultMaxTurns(s.defaultMaxTurns);
   if (typeof s.graceTurns === "number") appliers.setGraceTurns(s.graceTurns);
+  if (typeof s.maxSubagentDepth === "number") appliers.setMaxSubagentDepth(s.maxSubagentDepth);
+  if (typeof s.fallbackSubagent === "string") appliers.setFallbackSubagent(s.fallbackSubagent);
   if (s.defaultJoinMode) appliers.setDefaultJoinMode(s.defaultJoinMode);
   if (typeof s.schedulingEnabled === "boolean") appliers.setSchedulingEnabled(s.schedulingEnabled);
   if (typeof s.scopeModels === "boolean") appliers.setScopeModels(s.scopeModels);
@@ -223,6 +283,7 @@ export function applySettings(s: SubagentsSettings, appliers: SettingsAppliers):
   if (s.toolDescriptionMode) appliers.setToolDescriptionMode(s.toolDescriptionMode);
   if (typeof s.fleetView === "boolean") appliers.setFleetView(s.fleetView);
   if (s.widgetMode) appliers.setWidgetMode(s.widgetMode);
+  if (typeof s.outputTranscript === "boolean") appliers.setOutputTranscript(s.outputTranscript);
 }
 
 /**

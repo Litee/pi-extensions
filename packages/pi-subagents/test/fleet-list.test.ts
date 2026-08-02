@@ -1,4 +1,4 @@
-import { visibleWidth, type TUI } from "@earendil-works/pi-tui";
+import { Editor, visibleWidth, type TUI } from "@earendil-works/pi-tui";
 import type { AgentSession } from "@earendil-works/pi-coding-agent";
 import { describe, expect, it, vi } from "vitest";
 import type { AgentManager } from "../src/agent-manager.js";
@@ -59,6 +59,8 @@ interface Harness {
   overlayClosed: () => boolean;
   /** Simulate the viewer closing itself (Esc → done); flushes the close microtask. */
   closeOverlay: () => Promise<void>;
+  /** The fake `tui` handed to the widget factory; tests set `focusedComponent` on it. */
+  widgetTui: { requestRender(): void; focusedComponent?: unknown };
 }
 
 function harness(agents: AgentRecord[]): Harness {
@@ -99,6 +101,7 @@ function harness(agents: AgentRecord[]): Harness {
     overlayOpened: () => opened,
     overlayClosed: () => closed,
     closeOverlay: async () => { overlayDone?.(undefined); await Promise.resolve(); },
+    widgetTui: fakeTui,
   };
 }
 
@@ -128,6 +131,16 @@ describe("FleetList navigation", () => {
     expect(h.render()).toEqual([]);
   });
 
+  it("hides nested child records from the coordinator fleet", () => {
+    const h = harness([
+      makeRecord({ id: "top", description: "top-level" }),
+      makeRecord({ id: "nested", description: "nested-child", parentAgentId: "top" }),
+    ]);
+    const output = h.render().join("\n");
+    expect(output).toContain("top-level");
+    expect(output).not.toContain("nested-child");
+  });
+
   it("activates on ↓ at an empty prompt, consuming the key", () => {
     const h = harness([makeRecord()]);
     const res = h.press(DOWN);
@@ -154,11 +167,11 @@ describe("FleetList navigation", () => {
     ]);
     h.press(DOWN);          // activate → selection on main (idx 0)
     h.press(DOWN_RELEASE);  // release half of the SAME tap — must be a no-op
-    expect(h.render().find(l => l.includes("main"))).toContain("⏺");
+    expect(h.render().find(l => l.includes("main"))).toContain("●");
     h.press(DOWN);          // a real second tap → first agent
     h.press(DOWN_RELEASE);
-    expect(h.render().find(l => l.includes("one"))).toContain("⏺");
-    expect(h.render().find(l => l.includes("two"))).toContain("◯");
+    expect(h.render().find(l => l.includes("one"))).toContain("●");
+    expect(h.render().find(l => l.includes("two"))).toContain("○");
   });
 
   it("moves selection down/up and clamps at the ends", () => {
@@ -169,11 +182,11 @@ describe("FleetList navigation", () => {
     const h = harness(agents);
     h.press(DOWN); // activate → index 0 (main)
     h.press(DOWN); // → 1 (a1)
-    expect(h.render().find(l => l.includes("one"))).toContain("⏺");
+    expect(h.render().find(l => l.includes("one"))).toContain("●");
     h.press(DOWN); // → 2 (a2)
     h.press(DOWN); // clamp at 2
-    expect(h.render().find(l => l.includes("two"))).toContain("⏺");
-    expect(h.render().find(l => l.includes("one"))).toContain("◯");
+    expect(h.render().find(l => l.includes("two"))).toContain("●");
+    expect(h.render().find(l => l.includes("one"))).toContain("○");
   });
 
   it("↑ above 'main' deactivates (returns to the prompt)", () => {
@@ -229,15 +242,67 @@ describe("FleetList navigation", () => {
   });
 });
 
+describe("FleetList vs other focused components (#123)", () => {
+  // pi dispatches terminal input to extension listeners BEFORE the focused
+  // component (pi-tui TUI.handleInput), and ctx.ui.select/confirm/input swap
+  // the prompt editor out of the editor container while getEditorText() still
+  // reads the detached (empty) editor. So while another component owns the
+  // keyboard — another extension's selector (rpiv-ask-user-question), pi's own
+  // menus, our /agents settings — the list must not consume its keys.
+
+  /** A minimal real Editor — what pi focuses at the prompt (CustomEditor extends it). */
+  function realEditor(): Editor {
+    const fakeTui = { requestRender: () => {} };
+    const theme = { borderColor: (s: string) => s, selectList: {} };
+    return new Editor(fakeTui as unknown as ConstructorParameters<typeof Editor>[0], theme as unknown as ConstructorParameters<typeof Editor>[1]);
+  }
+
+  /** Hand the fleet list its `tui` (happens on first widget render in pi) with the given focus. */
+  function focusInHarness(h: Harness, focused: unknown): void {
+    h.widgetTui.focusedComponent = focused;
+    h.render();
+  }
+
+  it("does not steal ↓ from a focused selector (activation)", () => {
+    const h = harness([makeRecord()]);
+    focusInHarness(h, { kind: "selector" }); // e.g. ExtensionSelectorComponent
+    expect(h.press(DOWN)).toBeUndefined(); // must flow through to the selector
+  });
+
+  it("does not steal navigation keys from a selector opened while the list was active", () => {
+    const h = harness([makeRecord()]);
+    focusInHarness(h, realEditor());
+    expect(h.press(DOWN)).toEqual({ consume: true }); // activate at the prompt
+    focusInHarness(h, { kind: "selector" });          // a dialog takes focus
+    expect(h.press(DOWN)).toBeUndefined();
+    expect(h.press(ENTER)).toBeUndefined();
+    expect(h.press(ESC)).toBeUndefined();
+    // and the list dropped back to its inactive hint
+    expect(h.render().some(l => l.includes("← for agents"))).toBe(true);
+  });
+
+  it("still activates when the prompt editor has focus", () => {
+    const h = harness([makeRecord()]);
+    focusInHarness(h, realEditor());
+    expect(h.press(DOWN)).toEqual({ consume: true });
+  });
+
+  it("assumes the editor when focus is unknowable (no tui yet / nothing focused)", () => {
+    const h = harness([makeRecord()]);
+    // No render yet → the list has never seen a tui: activation must still work.
+    expect(h.press(DOWN)).toEqual({ consume: true });
+  });
+});
+
 describe("FleetList rendering", () => {
   it("renders main + agent rows with markers, type, description and right-aligned stats", () => {
     const h = harness([makeRecord({ description: "Sleep then report 1" })]);
     const lines = h.render(120);
     // hint + blank + main + one agent
     expect(lines[0]).toContain("← for agents");
-    expect(lines.find(l => l.includes("main"))).toContain("⏺"); // main selected by default
+    expect(lines.find(l => l.includes("main"))).toContain("●"); // main selected by default
     const agentLine = lines.find(l => l.includes("Sleep then report 1"))!;
-    expect(agentLine).toContain("◯");
+    expect(agentLine).toContain("○");
     expect(agentLine).toContain(getDisplayName("general-purpose"));
     expect(agentLine).toContain("↓ 13.1k tokens");
     expect(agentLine).toMatch(/\d+s · ↓/); // "<seconds>s · ↓ ..." (timing-agnostic)
@@ -293,7 +358,7 @@ describe("FleetList rendering", () => {
     // step down to the last agent (8 agents → roster index 8)
     for (let i = 0; i < 8; i++) h.press(DOWN);
     const lines = h.render(120);
-    expect(lines.find(l => l.includes("report 7"))).toContain("⏺");
+    expect(lines.find(l => l.includes("report 7"))).toContain("●");
     expect(lines.some(l => l.includes("↑"))).toBe(true); // hidden-above indicator
   });
 });
@@ -323,8 +388,8 @@ describe("FleetList overlay lifecycle", () => {
     agents.splice(0, 1);
     await h.closeOverlay();
     // Selection follows a2 ("two") to its new position, not whatever is at idx 2 now.
-    expect(h.render().find(l => l.includes("two"))).toContain("⏺");
-    expect(h.render().find(l => l.includes("three"))).toContain("◯");
+    expect(h.render().find(l => l.includes("two"))).toContain("●");
+    expect(h.render().find(l => l.includes("three"))).toContain("○");
   });
 
   it("does NOT auto-close when the viewed agent finishes (final output stays readable)", () => {

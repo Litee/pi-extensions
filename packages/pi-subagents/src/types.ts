@@ -43,8 +43,15 @@ export interface AgentConfig {
   maxTurns?: number | undefined;
   /** Persist this subagent as a normal pi session instead of keeping it in memory only. */
   persistSession?: boolean | undefined;
+  /** Write the subagent's .output transcript. Defaults to true; false suppresses only that transcript. */
+  outputTranscript?: boolean | undefined;
   /** Optional session directory used when persistSession is true. Omitted = pi's normal session location. */
   sessionDir?: string | undefined;
+  /**
+   * Nested delegation, off by default: undefined = no nested tools;
+   * "all" = any enabled agent; string[] = only those agent types.
+   */
+  allowedSubagents?: "all" | string[] | undefined;
   systemPrompt: string;
   promptMode: "replace" | "append";
   /** Default for spawn: fork parent conversation. undefined = caller decides. */
@@ -126,6 +133,18 @@ export interface AgentRecord {
   isBackground?: boolean;
   /** Resolved spawn params, captured for UI display. Fixed at spawn time. */
   invocation?: AgentInvocation | undefined;
+  /** Nesting depth: top-level subagent = 1. */
+  depth?: number | undefined;
+  /** Parent agent ID for ownership-scoped nested controls. */
+  parentAgentId?: string | undefined;
+  /** Effective inherited nesting cap for this branch. */
+  maxSubagentDepth?: number | undefined;
+  /**
+   * Session id of the root (main) session this branch descends from. Nested
+   * spawns inherit it so their transcripts file under the same session
+   * directory as their ancestors' instead of the child session's own id.
+   */
+  rootSessionId?: string | undefined;
 }
 
 export interface AgentInvocation {

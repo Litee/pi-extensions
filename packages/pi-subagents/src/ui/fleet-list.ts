@@ -2,7 +2,7 @@
  * fleet-list.ts — Claude Code-style "FleetView" list rendered below the editor.
  *
  * Shows `main` + each running/queued subagent as a navigable list. Pressing ↓ (or
- * ←) at an empty prompt activates the list; ↑/↓ move the selection (filled ⏺ marker),
+ * ←) at an empty prompt activates the list; ↑/↓ move the selection (filled ● marker),
  * Enter opens the selected agent's live conversation overlay, Esc returns to the prompt.
  * A viewer stays open when its agent finishes; finished agents linger briefly in the list.
  *
@@ -11,7 +11,7 @@
  * can `consume` keys — gated on `getEditorText() === ""` so normal typing is untouched.
  */
 
-import { isKeyRelease, Key, matchesKey, truncateToWidth, visibleWidth, type TUI } from "@earendil-works/pi-tui";
+import { Editor, isKeyRelease, Key, matchesKey, truncateToWidth, visibleWidth, type TUI } from "@earendil-works/pi-tui";
 import type { AgentManager } from "../agent-manager.js";
 import type { AgentRecord } from "../types.js";
 import { getLifetimeTotal } from "../usage.js";
@@ -189,7 +189,7 @@ export class FleetList {
   private agentRecords(): AgentRecord[] {
     const now = Date.now();
     return this.manager.listAgents()
-      .filter(a => a.session && (
+      .filter(a => !a.parentAgentId && a.session && (
         a.status === "running" || a.status === "queued"
         || a.id === this.viewingAgentId
         || (a.completedAt != null && now - a.completedAt < FINISHED_LINGER_MS)
@@ -218,6 +218,14 @@ export class FleetList {
     if (isKeyRelease(data)) return undefined;
     // While an overlay is open, let it own all input.
     if (this.viewerClose) return undefined;
+    // Input listeners fire BEFORE the focused component, and dialogs
+    // (ctx.ui.select/confirm/input, pi's own menus) swap the prompt editor out
+    // while getEditorText() still reads the detached — empty — editor. So when
+    // anything but the editor owns the keyboard, stay out of its keys (#123).
+    if (!this.editorHasFocus()) {
+      if (this.active) this.deactivate();
+      return undefined;
+    }
 
     if (!this.active) {
       // Activate: ↓ or ← at an empty prompt moves focus into the list.
@@ -250,6 +258,19 @@ export class FleetList {
     // Any other key cancels navigation and flows to the editor.
     this.deactivate();
     return undefined;
+  }
+
+  /**
+   * True when pi's prompt editor owns the keyboard. pi's editor is an `Editor`
+   * subclass (CustomEditor) while every dialog/selector is not, and the loader
+   * aliases pi-tui to pi's own copy, so `instanceof` is a reliable identity
+   * check. `focusedComponent` is TUI-private (no public accessor), hence the
+   * best-effort peek: unknowable focus (no tui seen yet, nothing focused)
+   * counts as the editor so activation keeps working.
+   */
+  private editorHasFocus(): boolean {
+    const focused = (this.tui as { focusedComponent?: unknown } | undefined)?.focusedComponent;
+    return focused == null || focused instanceof Editor;
   }
 
   private deactivate(): void {
@@ -347,7 +368,7 @@ export class FleetList {
   }
 
   private bullet(rosterIndex: number, sel: number, theme: Theme): string {
-    return rosterIndex === sel ? theme.fg("accent", "⏺") : theme.fg("dim", "◯");
+    return rosterIndex === sel ? theme.fg("accent", "●") : theme.fg("dim", "○");
   }
 
   private renderAgentRow(rosterIndex: number, sel: number, record: AgentRecord, width: number, theme: Theme): string {
