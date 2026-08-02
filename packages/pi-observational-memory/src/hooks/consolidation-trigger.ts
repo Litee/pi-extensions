@@ -6,6 +6,7 @@ import { observationPoolMetrics } from "../agents/dropper/pool.js";
 import { runObserver } from "../agents/observer/agent.js";
 import { runReflector } from "../agents/reflector/agent.js";
 import { debugLog, withDebugLogContext } from "../debug-log.js";
+import { resolveObserverChunkMaxTokens } from "../config.js";
 import { type ResolveResult, type Runtime } from "../runtime.js";
 import { serializeSourceAddressedBranchEntries } from "../serialize.js";
 import {
@@ -74,6 +75,10 @@ function mergeReflections(existing: Reflection[], additional: Reflection[]): Ref
 function anyStageDue(entries: Entry[], runtime: Runtime): boolean {
 	return rawTokensSinceObservationCoverage(entries) >= runtime.config.observeAfterTokens
 		|| rawTokensSinceReflectionCoverage(entries) >= runtime.config.reflectAfterTokens;
+}
+
+function shouldNotifyWorker(runtime: Runtime, ctx: ConsolidationCtx): boolean {
+	return runtime.config.showWorkerNotifications && ctx.hasUI;
 }
 
 function makeModelResolver(runtime: Runtime, ctx: ConsolidationCtx): (stage: "observer" | "reflector" | "dropper") => Promise<ResolvedModel | undefined> {
@@ -192,33 +197,58 @@ async function runObserverStage(
 	const tokens = rawTokensSinceObservationCoverage(entries);
 	if (tokens < runtime.config.observeAfterTokens) return "continue";
 
+	// Resolve the model before building the chunk: the default chunk cap
+	// derives from the resolved model's context window.
+	const resolved = await resolveModel("observer");
+	if (!resolved) return "abort";
+
 	const lastCoverageIdx = latestCoverageIndex(entries, OM_OBSERVATIONS_RECORDED);
-	const chunkEntries = sourceEntriesAfter(entries, lastCoverageIdx);
-	const coversUpToId = chunkEntries.at(-1)?.id;
+	const backlogEntries = sourceEntriesAfter(entries, lastCoverageIdx);
+
+	// Budget the text that is actually sent to the observer, including source
+	// labels and rendered message content. Complete entries are kept intact.
+	// Only a first entry that cannot fit by itself is represented by a clearly
+	// marked head/tail excerpt; the original ledger entry remains untouched.
+	const contextWindow = (resolved.model as { contextWindow?: number }).contextWindow;
+	const maxChunkTokens = resolveObserverChunkMaxTokens(runtime.config, contextWindow);
+	const {
+		text: chunk,
+		sourceEntryIds,
+		estimatedTokens: chunkTokens,
+		truncatedSourceEntryIds,
+	} = serializeSourceAddressedBranchEntries(backlogEntries, { maxTokens: maxChunkTokens });
+	if (!chunk.trim() || sourceEntryIds.length === 0) return "continue";
+	const coversUpToId = sourceEntryIds.at(-1);
 	if (!coversUpToId) return "continue";
 
-	const { text: chunk, sourceEntryIds } = serializeSourceAddressedBranchEntries(chunkEntries);
-	if (!chunk.trim() || sourceEntryIds.length === 0) return "continue";
+	if (sourceEntryIds.length < backlogEntries.length || truncatedSourceEntryIds.length > 0) {
+		debugLog("observer.chunk_capped", {
+			maxChunkTokens,
+			backlogEntries: backlogEntries.length,
+			backlogTokens: tokens,
+			chunkEntries: sourceEntryIds.length,
+			chunkTokens,
+			truncatedSourceEntryIds,
+		});
+	}
 
 	const memory = fullProjection(entries);
 	const priorReflections = memory.reflections.map(reflectionToSummaryLine);
 	const priorObservations = memory.observations.map(observationToSummaryLine);
 
-	if (ctx.hasUI) ctx.ui?.notify(
-		`Observational memory: observer running on ~${tokens.toLocaleString()}-token chunk`,
+	if (shouldNotifyWorker(runtime, ctx)) ctx.ui?.notify(
+		`Observational memory: observer running on ~${chunkTokens.toLocaleString()}-token chunk`,
 		"info",
 	);
 	debugLog("observer.start", {
 		tokens,
+		chunkTokens,
 		coversUpToId,
 		sourceEntryIds,
 		sourceEntryCount: sourceEntryIds.length,
 		priorReflections: priorReflections.length,
 		priorObservations: priorObservations.length,
 	});
-
-	const resolved = await resolveModel("observer");
-	if (!resolved) return "abort";
 
 	const observations = await runObserver({
 		model: resolved.model as Model<Api>,
@@ -249,7 +279,7 @@ async function runObserverStage(
 	});
 	appendEntry(pi, OM_OBSERVATIONS_RECORDED, data);
 	debugLog("observer.appended", { count: observations.length, coversUpToId });
-	if (ctx.hasUI) ctx.ui?.notify(
+	if (shouldNotifyWorker(runtime, ctx)) ctx.ui?.notify(
 		`Observational memory: ${observations.length} observation${observations.length === 1 ? "" : "s"} recorded`,
 		"info",
 	);
@@ -269,7 +299,7 @@ async function runReflectorStage(
 	const observationCoverageId = latestCoverageMarkerId(entries, OM_OBSERVATIONS_RECORDED);
 	if (!observationCoverageId) return { outcome: "continue", sameRunReflections: [] };
 
-	if (ctx.hasUI) ctx.ui?.notify(
+	if (shouldNotifyWorker(runtime, ctx)) ctx.ui?.notify(
 		`Observational memory: reflector running (~${reflectionTokens.toLocaleString()} tokens)`,
 		"info",
 	);
@@ -341,7 +371,7 @@ async function runDropperStage(
 		maxDropsAllowed: metrics.maxDropsAllowed,
 	});
 
-	if (ctx.hasUI) ctx.ui?.notify(
+	if (shouldNotifyWorker(runtime, ctx)) ctx.ui?.notify(
 		`Observational memory: dropper running after reflection — active observation pool ~${metrics.observationTokens.toLocaleString()} / ${metrics.targetTokens.toLocaleString()} target tokens (${Math.round(metrics.fullness * 100).toLocaleString()}%)`,
 		"info",
 	);

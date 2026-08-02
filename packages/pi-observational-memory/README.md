@@ -208,6 +208,8 @@ A typical config:
     "observeAfterTokens": 10000,
     "reflectAfterTokens": 20000,
     "compactAfterTokens": 81000,
+    "compactAfterTokensMode": "calibrated",
+    "compactAfterTokensRatio": 0.68,
     "observationsPoolMaxTokens": 20000,
     "observationsPoolTargetTokens": 10000,
     "agentMaxTurns": 16,
@@ -216,6 +218,7 @@ A typical config:
       "id": "google/gemma-4-31b-it",
       "thinking": "low"
     },
+    "showWorkerNotifications": true,
     "passive": false,
     "debugLog": false
   }
@@ -224,17 +227,58 @@ A typical config:
 
 Most users can start with the defaults and tune only if they have a specific reason.
 
+### Scaling compaction to the model's context window
+
+By default `compactAfterTokensMode` is `"calibrated"`, so the proactive
+compaction trigger fires at the fixed `compactAfterTokens` value (81,000 by
+default). That is backwards-compatible and works well for typical ~128K–200K
+context models.
+
+On a large-context model (e.g. 1M tokens) the calibrated default preempts
+compaction at ~81K, wasting most of the window. Switch to `"ratio"` mode to let
+the trigger scale with the active model's `contextWindow`:
+
+```json
+{
+  "observational-memory": {
+    "compactAfterTokens": 81000,
+    "compactAfterTokensMode": "ratio",
+    "compactAfterTokensRatio": 0.5
+  }
+}
+```
+
+In ratio mode the effective threshold is
+`floor(model.contextWindow * compactAfterTokensRatio)` (clamped to a minimum of
+1). With the example above, a 1,000,000-token window compacts at ~500,000 raw
+tokens; a 200,000-token window compacts at ~100,000.
+
+`compactAfterTokensRatio` is user-tunable precisely because **context window ≠
+attention**. Some models advertise a large window but degrade at long range; set
+a lower ratio (e.g. `0.4`) to compact earlier on those, or a higher ratio
+(e.g. `0.7`) on models that stay sharp. The default ratio is `0.68`.
+
+`compactAfterTokens` is always retained as the fallback: in `"calibrated"`
+mode it is the threshold directly, and in `"ratio"` mode it is used whenever
+the active model's `contextWindow` is unavailable (undefined, 0, or negative),
+so compaction still triggers safely. `/om:status` shows the resolved threshold
+on the `Next compaction` line regardless of mode.
+
 ### Defaults
 
 | Setting                     | Default       | Meaning                                                                                           |
 | --------------------------- | ------------- | ------------------------------------------------------------------------------------------------- |
 | `observeAfterTokens`        | `10000`       | Raw/source token threshold for observation runs.                                                  |
+| `observerChunkMaxTokens`    | derived       | Max estimated tokens serialized into one observer chunk (minimum `256`). Unset: `floor(contextWindow * 0.2)` of the resolved memory model, or `60000` when the window is unknown. Larger backlogs drain oldest-first; a single over-budget source is sent as a marked head/tail excerpt while the original source remains in the session ledger. |
 | `reflectAfterTokens`        | `20000`       | Raw/source token threshold for reflection runs; successful reflection creates dropper opportunities. |
-| `compactAfterTokens`        | `81000`       | Raw/source token threshold for proactive auto-compaction.                                         |
+| `compactAfterTokens`        | `81000`       | Raw/source token threshold for proactive auto-compaction (used directly in `"calibrated"` mode, and as the fallback in `"ratio"` mode). |
+| `compactAfterTokensMode`    | `"calibrated"`| `"calibrated"` uses `compactAfterTokens` directly (default, backwards-compatible). `"ratio"` scales the threshold by the active model's `contextWindow`. |
+| `compactAfterTokensRatio`   | `0.68`        | In `"ratio"` mode, the threshold is `floor(contextWindow * ratio)`. Tunable because large windows do not always mean strong long-range attention. Must be in `(0, 1)`. |
 | `observationsPoolMaxTokens` | `20000`       | Observation-token budget used for compaction full-fold pressure.                                  |
 | `observationsPoolTargetTokens` | half of max | Active observation target used by post-reflection dropper maintenance.                            |
 | `agentMaxTurns`             | `16`          | Shared turn cap for background memory-agent loops.                                                |
 | `model`                     | session model | Optional memory-worker model override: `{ provider, id, thinking }`.                              |
+| `showWorkerNotifications`   | `true`        | Shows routine observer, reflector, and dropper progress notifications. Warnings and errors are unaffected. |
 | `passive`                   | `false`       | Disables proactive background observation, reflection, maintenance, and auto-compaction triggers. |
 | `debugLog`                  | `false`       | Writes opt-in per-session extension debug events to Pi's agent directory.                         |
 
@@ -248,6 +292,8 @@ Valid `model.thinking` values are:
 * `xhigh`
 
 If no `model` is configured, memory workers use the session model.
+
+Set `showWorkerNotifications` to `false` to hide routine worker start and completion messages. Model fallback/unavailability, no-output warnings, worker failures, compaction notifications, and explicit `/om:*` command output remain visible.
 
 `observationsPoolMaxTokens` and `observationsPoolTargetTokens` intentionally describe different pools. Max tokens control when compaction performs a full fold over visible memory. Target tokens control the folded active observation pool that the dropper maintains after successful reflection. If the target is omitted, it defaults to half of max.
 
