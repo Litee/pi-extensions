@@ -21,6 +21,10 @@ function makeFakePi(): StubPi {
   return { on, handlers };
 }
 
+function makeCtx() {
+  return { ui: { setStatus: vi.fn() } };
+}
+
 // ---------------------------------------------------------------------------
 // Helpers — build synthetic message events
 // ---------------------------------------------------------------------------
@@ -87,7 +91,7 @@ describe("message_start — assistant", () => {
       {
         message: makeMessage("assistant", 42, [thinkingPart("hello world")]),
       },
-      {},
+      makeCtx(),
     );
 
     // If we got here without early-return, the message_start set currentMessageId
@@ -110,7 +114,7 @@ describe("message_start — assistant", () => {
       {
         message: makeMessage("user", 99, [thinkingPart("should not count")]),
       },
-      {},
+      makeCtx(),
     );
 
     // If currentMessageId was never set, the update handler early-returns
@@ -140,7 +144,7 @@ describe("message_update — role filter", () => {
       {
         message: makeMessage("user", 1, [thinkingPart("ignored")]),
       },
-      {},
+      makeCtx(),
     );
 
     // No error = early return worked
@@ -169,7 +173,7 @@ describe("message_update — timestamp filter", () => {
       {
         message: makeMessage("assistant", 20, [thinkingPart("old message")]),
       },
-      {},
+      makeCtx(),
     );
 
     // No error = early return worked
@@ -192,7 +196,7 @@ describe("message_update — timestamp filter", () => {
       {
         message: makeMessage("assistant", 42, [thinkingPart("new thinking")]),
       },
-      {},
+      makeCtx(),
     );
 
     // No error = processing happened
@@ -221,7 +225,7 @@ describe("message_update — content accumulation", () => {
       {
         message: makeMessage("assistant", 1, [thinkingPart("hello")]),
       },
-      {},
+      makeCtx(),
     );
 
     // Second update: more thinking (10 chars) — should update
@@ -229,7 +233,7 @@ describe("message_update — content accumulation", () => {
       {
         message: makeMessage("assistant", 1, [thinkingPart("hello world")]),
       },
-      {},
+      makeCtx(),
     );
 
     expect(true).toBe(true);
@@ -251,7 +255,7 @@ describe("message_update — content accumulation", () => {
       {
         message: makeMessage("assistant", 1, [thinkingPart("1234567890")]),
       },
-      {},
+      makeCtx(),
     );
 
     // Try with fewer chars — should NOT update (chars <= thinkingCharCount)
@@ -259,7 +263,7 @@ describe("message_update — content accumulation", () => {
       {
         message: makeMessage("assistant", 1, [thinkingPart("abc")]),
       },
-      {},
+      makeCtx(),
     );
 
     expect(true).toBe(true);
@@ -281,7 +285,7 @@ describe("message_update — content accumulation", () => {
       {
         message: makeMessage("assistant", 1, [textPart("just text")]),
       },
-      {},
+      makeCtx(),
     );
 
     // No error = non-thinking parts were skipped
@@ -308,7 +312,7 @@ describe("message_update — content accumulation", () => {
           [thinkingPart("think"), textPart("hello"), thinkingPart(" more")],
         ),
       },
-      {},
+      makeCtx(),
     );
 
     expect(true).toBe(true);
@@ -330,7 +334,7 @@ describe("message_update — content accumulation", () => {
       {
         message: makeMessage("assistant", 1, [thinkingPart("")]),
       },
-      {},
+      makeCtx(),
     );
 
     expect(true).toBe(true);
@@ -352,7 +356,7 @@ describe("message_update — content accumulation", () => {
       {
         message: makeMessage("assistant", 1, [{ type: "thinking" }]),
       },
-      {},
+      makeCtx(),
     );
 
     expect(true).toBe(true);
@@ -374,7 +378,7 @@ describe("message_update — content accumulation", () => {
       {
         message: makeMessage("assistant", 1, []),
       },
-      {},
+      makeCtx(),
     );
 
     expect(true).toBe(true);
@@ -403,7 +407,7 @@ describe("full lifecycle", () => {
       {
         message: makeMessage("assistant", 1, [thinkingPart("msg1 thinking")]),
       },
-      {},
+      makeCtx(),
     );
 
     // Message 2 starts — should reset counters
@@ -416,7 +420,7 @@ describe("full lifecycle", () => {
       {
         message: makeMessage("assistant", 1, [thinkingPart("old msg1")]),
       },
-      {},
+      makeCtx(),
     );
 
     // Add thinking to message 2
@@ -424,7 +428,7 @@ describe("full lifecycle", () => {
       {
         message: makeMessage("assistant", 2, [thinkingPart("msg2 thinking")]),
       },
-      {},
+      makeCtx(),
     );
 
     expect(true).toBe(true);
@@ -453,7 +457,7 @@ describe("full lifecycle", () => {
           ],
         ),
       },
-      {},
+      makeCtx(),
     );
 
     expect(true).toBe(true);
