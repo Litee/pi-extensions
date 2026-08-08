@@ -11,7 +11,8 @@ the information below to diff against upstream and pick up future changes.
 
 ## Ported versions
 
-- **Design anchor:** `ac93d26` — "Simplify continual-learning to one subagent", authored 2026-03-13 by ericzakariasson <eric@anysphere.co>. This commit introduced the one-subagent architecture that our package mirrors.
+- **Initially ported:** `ac93d26` — "Simplify continual-learning to one subagent", authored 2026-03-13 by ericzakariasson <eric@anysphere.co> (local commit `4dad3f2`). This commit introduced the one-subagent architecture that our package mirrors.
+- **Last synced:** `ac93d26` (upstream unchanged since anchor; three memory-updater skill contracts — create-with-only-these-sections, explicit semantic dedup, 12-bullet cap — ported 2026-08-08).
 
 The upstream plugin content is unchanged from `ac93d26` to `origin/HEAD`
 except a `hooks.json` command-path variable, so `ac93d26` is the correct
@@ -33,9 +34,8 @@ anchor for diffing.
 2. **Trigger event:** Cursor's `stop` hook fires on `status === "completed" && loop_count === 0`. pi version listens on `agent_end` and detects success via the last assistant message's `stopReason ∉ {error, aborted}` (pi's `agent_end` carries no status flag).
 3. **New-content dedup:** Cursor uses `lastProcessedGenerationId` + transcript-file `mtime`. pi version has no transcript files, so it uses a `processedMarker` = `sessionId:leafId` computed from session content.
 4. **Env vars:** `CONTINUAL_LEARNING_*` (with `CONTINUOUS_LEARNING_*` legacy) → `PI_CONTINUAL_LEARNING_*`.
-5. **No 12-bullet cap:** Cursor's updater caps each learned section at 12 bullets; pi version does not.
-6. **Section names & no-op contract are identical:** `## Learned User Preferences` / `## Learned Workspace Facts` and the exact string `No high-signal memory updates.` are kept verbatim from upstream.
-7. **Trial mode identical:** 3 turns / 15 min / 24 h, matching upstream's `TRIAL_DEFAULT_MIN_TURNS = 3`, `TRIAL_DEFAULT_MIN_MINUTES = 15`, `TRIAL_DEFAULT_DURATION_MINUTES = 24 * 60`.
+5. **Section names & no-op contract are identical:** `## Learned User Preferences` / `## Learned Workspace Facts` and the exact string `No high-signal memory updates.` are kept verbatim from upstream. The three memory-updater contracts from `agents-memory-updater.md` (create-with-only-these-sections, explicit semantic dedup, 12-bullet cap) are also kept.
+6. **Trial mode identical:** 3 turns / 15 min / 24 h, matching upstream's `TRIAL_DEFAULT_MIN_TURNS = 3`, `TRIAL_DEFAULT_MIN_MINUTES = 15`, `TRIAL_DEFAULT_DURATION_MINUTES = 24 * 60`.
 
 ## How to check for upstream changes
 

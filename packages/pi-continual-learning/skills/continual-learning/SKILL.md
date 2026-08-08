@@ -20,13 +20,17 @@ Dispatches a **memory-updater subagent** whose sole job is to:
    durable signal (recurring corrections, explicit preferences, consistent
    style choices, stable facts about the codebase or project).
 2. Update `AGENTS.md` in the project root (or cwd), editing **only** these
-   two sections (creating them if absent):
+   two sections:
    - `## Learned User Preferences` — recurring corrections, style choices,
      workflow habits the user repeatedly applies.
    - `## Learned Workspace Facts` — durable truths about the codebase or
      project that are not already in AGENTS.md.
-3. Make **surgical** edits: update or add individual bullets in place; never
-   rewrite the whole file or touch other sections.
+   If `AGENTS.md` does not exist, create it with **only** these two
+   sections (no other content).
+3. Make **surgical** edits: update or add individual bullets in place;
+   deduplicate semantically similar bullets; keep each learned section to
+   at most 12 bullets; never rewrite the whole file or touch other
+   sections.
 4. Exclude transient details, one-offs, and any secrets or credentials.
 5. If nothing meaningful is found, respond with exactly:
    `No high-signal memory updates.`
@@ -56,12 +60,18 @@ You are a memory-consolidation assistant. Your only job is to update the
    - Explicit preferences stated across multiple turns.
    - Stable workspace facts not already documented.
 
-2. Open `{AGENTS_MD_PATH}`. If the two target sections do not exist, append
-   them at the end of the file.
+2. Open `{AGENTS_MD_PATH}`. If it does not exist, create it with **only**
+   these two sections (no other content):
+   - `## Learned User Preferences`
+   - `## Learned Workspace Facts`
+   If it exists but the two target sections are missing, append them at the
+   end of the file.
 
 3. Make **surgical** edits only:
    - Add new bullets to the relevant section.
    - Update existing bullets that are now stale.
+   - Deduplicate semantically similar bullets.
+   - Keep each learned section to at most 12 bullets.
    - Do NOT rewrite existing sections, delete content, or touch any other
      part of the file.
 
