@@ -30,8 +30,8 @@ anchor for diffing.
 
 ## Differences from upstream
 
-1. **Runtime:** Cursor = `stop` hook + skill + subagent (Bun). pi = `agent_end` extension hook + skill + subagent (TypeScript via pi extension API).
-2. **Trigger event:** Cursor's `stop` hook fires on `status === "completed" && loop_count === 0`. pi version listens on `agent_end` and detects success via the last assistant message's `stopReason ∉ {error, aborted}` (pi's `agent_end` carries no status flag).
+1. **Runtime:** Cursor = `stop` hook + skill + subagent (Bun). pi = `agent_settled` extension hook + skill + subagent (TypeScript via pi extension API).
+2. **Trigger event:** Cursor's `stop` hook fires on `status === "completed" && loop_count === 0`. pi version listens on `agent_settled` (fires only after any retry, auto-compaction, or queued follow-up drain is ruled out), guarded by `ctx.isIdle()` so a run another extension already started from its own `agent_settled` handler is never counted; success is detected by scanning the settled session's last assistant message `stopReason ∉ {error, aborted}` (`agent_settled` carries no message payload).
 3. **New-content dedup:** Cursor uses `lastProcessedGenerationId` + transcript-file `mtime`. pi version has no transcript files, so it uses a `processedMarker` = `sessionId:leafId` computed from session content.
 4. **Env vars:** `CONTINUAL_LEARNING_*` (with `CONTINUOUS_LEARNING_*` legacy) → `PI_CONTINUAL_LEARNING_*`.
 5. **Section names & no-op contract are identical:** `## Learned User Preferences` / `## Learned Workspace Facts` and the exact string `No high-signal memory updates.` are kept verbatim from upstream. The three memory-updater contracts from `agents-memory-updater.md` (create-with-only-these-sections, explicit semantic dedup, 12-bullet cap) are also kept.

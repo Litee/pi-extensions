@@ -89,7 +89,7 @@ You are a memory-consolidation assistant. Your only job is to update the
 - The extension automatically invokes this skill via
   `pi.sendMessage({ customType: "pi-continual-learning:consolidate", … }, { triggerTurn: true })`
   after the configured thresholds are met.
-- The triggered turn itself produces an `agent_end` event, but both the
+- The triggered turn itself produces an `agent_settled` event, but both the
   `turnsSinceLastRun` reset (condition 2) and the `processedMarker` advance
   (condition 4) prevent immediate re-triggering.
 - To adjust thresholds without modifying code, set environment variables:

@@ -1,29 +1,60 @@
 /**
  * pi-continual-learning — periodic memory consolidation extension.
  *
- * Wires a single agent_end handler. After each successful agent invocation,
- * evaluates whether enough activity has accumulated to warrant a consolidation
- * pass and, if so, injects a follow-up message that asks the agent to run the
- * continual-learning skill (which updates AGENTS.md).
+ * Wires a single agent_settled handler. The event fires only once the agent
+ * run has fully settled — after any retry, auto-compaction, or queued
+ * follow-up drain has been ruled out — so activity is never counted
+ * mid-recovery. After each settled successful invocation, evaluates whether
+ * enough activity has accumulated to warrant a consolidation pass and, if so,
+ * injects a follow-up message that asks the agent to run the
+ * continual-learning skill (which updates AGENTS.md). A ctx.isIdle() guard
+ * skips the count when another extension already started a new run.
  */
 
-import type { AgentEndEvent, ExtensionAPI } from "@earendil-works/pi-coding-agent";
+import type {
+	AgentSettledEvent,
+	ExtensionAPI,
+	ExtensionContext,
+} from "@earendil-works/pi-coding-agent";
 
 import { isTrialActive, resolveThresholds } from "./config.js";
 import {
 	buildMarker,
 	decideConsolidation,
 	isSuccess,
+	type MinimalMessage,
 } from "./decide.js";
 import { buildConsolidationMessage, CONSOLIDATE_MESSAGE_TYPE } from "./message.js";
 import { loadState, saveState } from "./state.js";
 
+/**
+ * Reconstruct session messages from persisted entries. agent_settled carries
+ * no message payload, so success detection reads the settled session instead.
+ */
+function sessionMessages(ctx: ExtensionContext): MinimalMessage[] {
+	const messages: MinimalMessage[] = [];
+	for (const entry of ctx.sessionManager.getEntries()) {
+		if (entry.type === "message") {
+			messages.push(entry.message);
+		}
+	}
+	return messages;
+}
+
 export default function piContinualLearning(pi: ExtensionAPI): void {
-	pi.on("agent_end", (event: AgentEndEvent, ctx) => {
+	pi.on("agent_settled", (_event: AgentSettledEvent, ctx) => {
+		// ----------------------------------------------------------------
+		// 0. Settled guard — another extension may have started a new run
+		//    from its own agent_settled handler; handlers run sequentially
+		//    in one shared ctx, so isIdle() is false then. Skip so a run
+		//    that is no longer the settled one is never counted.
+		// ----------------------------------------------------------------
+		if (!ctx.isIdle()) return;
+
 		// ----------------------------------------------------------------
 		// 1. Success check — abort / error invocations are not counted.
 		// ----------------------------------------------------------------
-		if (!isSuccess(event.messages)) return;
+		if (!isSuccess(sessionMessages(ctx))) return;
 
 		// ----------------------------------------------------------------
 		// 2. Compute current content marker.

@@ -2,7 +2,7 @@
  * Integration-style tests for the pi-continual-learning extension wiring.
  *
  * We build a minimal ExtensionAPI stub (makePi) and ExtensionContext stub
- * (makeCtx) so we can drive the agent_end event handler without a live pi
+ * (makeCtx) so we can drive the agent_settled event handler without a live pi
  * runtime.
  *
  * Coverage focus:
@@ -11,6 +11,8 @@
  *  - Successful invocations meeting all thresholds → sendMessage with correct
  *    customType + triggerTurn:true; state reset.
  *  - Re-firing with the same marker → dedup blocks second trigger.
+ *  - ctx.isIdle() false (another extension started a run) → race guard blocks.
+ *  - agent_end (mid-recovery) events are ignored entirely.
  */
 
 import { mkdirSync, rmSync } from "node:fs";
@@ -80,6 +82,7 @@ afterEach(() => {
 interface PiHarness {
 	pi: ExtensionAPI;
 	sendMessageMock: ReturnType<typeof vi.fn>;
+	registeredEvents: () => string[];
 	fireEvent: (name: string, event: unknown, ctx: unknown) => Promise<void>;
 }
 
@@ -101,31 +104,47 @@ function makePi(): PiHarness {
 		}
 	};
 
-	return { pi, sendMessageMock, fireEvent };
+	return {
+		pi,
+		sendMessageMock,
+		registeredEvents: () => Object.keys(handlers),
+		fireEvent,
+	};
 }
 
 interface CtxOpts {
 	sessionId?: string;
 	leafId?: string | null;
+	messages?: Array<{ role: string; stopReason?: string }>;
+	isIdle?: boolean;
 }
 
 function makeCtx(opts: CtxOpts = {}): unknown {
 	return {
+		isIdle: () => opts.isIdle ?? true,
 		sessionManager: {
 			getSessionId: () => opts.sessionId ?? "test-session",
 			getLeafId: () => (opts.leafId !== undefined ? opts.leafId : "test-leaf"),
+			getEntries: () =>
+				(opts.messages ?? [{ role: "assistant", stopReason: "stop" }]).map((message) => ({
+					type: "message",
+					message,
+				})),
 		},
 	};
 }
 
-function makeAgentEndEvent(
-	stopReason: "stop" | "length" | "toolUse" | "error" | "aborted" = "stop",
-): unknown {
-	return {
-		type: "agent_end",
+type SettledStopReason = "stop" | "length" | "toolUse" | "error" | "aborted";
+
+/** Context whose settled session ends with one assistant message of the given stopReason. */
+function makeSettledCtx(stopReason: SettledStopReason = "stop", extraOpts: CtxOpts = {}): unknown {
+	return makeCtx({
 		messages: [{ role: "assistant", stopReason }],
-	};
+		...extraOpts,
+	});
 }
+
+const SETTLED_EVENT = { type: "agent_settled" } as const;
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -153,7 +172,7 @@ describe("pi-continual-learning — aborted / errored invocations", () => {
 		const { pi, sendMessageMock, fireEvent } = makePi();
 		piContinualLearning(pi);
 
-		await fireEvent("agent_end", makeAgentEndEvent("error"), makeCtx());
+		await fireEvent("agent_settled", SETTLED_EVENT, makeSettledCtx("error"));
 
 		expect(sendMessageMock).not.toHaveBeenCalled();
 		// State file should not have been written (no turns incremented)
@@ -166,7 +185,7 @@ describe("pi-continual-learning — aborted / errored invocations", () => {
 		const { pi, sendMessageMock, fireEvent } = makePi();
 		piContinualLearning(pi);
 
-		await fireEvent("agent_end", makeAgentEndEvent("aborted"), makeCtx());
+		await fireEvent("agent_settled", SETTLED_EVENT, makeSettledCtx("aborted"));
 
 		expect(sendMessageMock).not.toHaveBeenCalled();
 		const state = loadState();
@@ -179,9 +198,9 @@ describe("pi-continual-learning — aborted / errored invocations", () => {
 		piContinualLearning(pi);
 
 		await fireEvent(
-			"agent_end",
-			{ type: "agent_end", messages: [{ role: "user" }] },
-			makeCtx(),
+			"agent_settled",
+			SETTLED_EVENT,
+			makeCtx({ messages: [{ role: "user" }] }),
 		);
 
 		expect(sendMessageMock).not.toHaveBeenCalled();
@@ -194,7 +213,7 @@ describe("pi-continual-learning — successful invocation below thresholds", () 
 		const { pi, sendMessageMock, fireEvent } = makePi();
 		piContinualLearning(pi);
 
-		await fireEvent("agent_end", makeAgentEndEvent("stop"), makeCtx());
+		await fireEvent("agent_settled", SETTLED_EVENT, makeSettledCtx("stop"));
 
 		expect(sendMessageMock).not.toHaveBeenCalled();
 		const state = loadState();
@@ -206,9 +225,9 @@ describe("pi-continual-learning — successful invocation below thresholds", () 
 		const { pi, sendMessageMock, fireEvent } = makePi();
 		piContinualLearning(pi);
 
-		await fireEvent("agent_end", makeAgentEndEvent("stop"), makeCtx({ leafId: "leaf-1" }));
-		await fireEvent("agent_end", makeAgentEndEvent("stop"), makeCtx({ leafId: "leaf-2" }));
-		await fireEvent("agent_end", makeAgentEndEvent("stop"), makeCtx({ leafId: "leaf-3" }));
+		await fireEvent("agent_settled", SETTLED_EVENT, makeSettledCtx("stop", { leafId: "leaf-1" }));
+		await fireEvent("agent_settled", SETTLED_EVENT, makeSettledCtx("stop", { leafId: "leaf-2" }));
+		await fireEvent("agent_settled", SETTLED_EVENT, makeSettledCtx("stop", { leafId: "leaf-3" }));
 
 		expect(sendMessageMock).not.toHaveBeenCalled();
 		const state = loadState();
@@ -222,7 +241,7 @@ describe("pi-continual-learning — trigger consolidation", () => {
 		const { pi, sendMessageMock, fireEvent } = makePi();
 		piContinualLearning(pi);
 
-		await fireEvent("agent_end", makeAgentEndEvent("stop"), makeCtx());
+		await fireEvent("agent_settled", SETTLED_EVENT, makeSettledCtx("stop"));
 
 		expect(sendMessageMock).toHaveBeenCalledOnce();
 		const [msgArg, optArg] = sendMessageMock.mock.calls[0] as [
@@ -241,7 +260,7 @@ describe("pi-continual-learning — trigger consolidation", () => {
 		const { pi, fireEvent } = makePi();
 		piContinualLearning(pi);
 
-		await fireEvent("agent_end", makeAgentEndEvent("stop"), makeCtx());
+		await fireEvent("agent_settled", SETTLED_EVENT, makeSettledCtx("stop"));
 
 		const state = loadState();
 		expect(state.turnsSinceLastRun).toBe(0);
@@ -253,7 +272,7 @@ describe("pi-continual-learning — trigger consolidation", () => {
 		const { pi, fireEvent } = makePi();
 		piContinualLearning(pi);
 
-		await fireEvent("agent_end", makeAgentEndEvent("stop"), makeCtx());
+		await fireEvent("agent_settled", SETTLED_EVENT, makeSettledCtx("stop"));
 
 		const state = loadState();
 		expect(state.lastRunAt).not.toBeNull();
@@ -265,8 +284,8 @@ describe("pi-continual-learning — trigger consolidation", () => {
 		const { pi, fireEvent } = makePi();
 		piContinualLearning(pi);
 
-		const ctx = makeCtx({ sessionId: "sess-x", leafId: "leaf-y" });
-		await fireEvent("agent_end", makeAgentEndEvent("stop"), ctx);
+		const ctx = makeSettledCtx("stop", { sessionId: "sess-x", leafId: "leaf-y" });
+		await fireEvent("agent_settled", SETTLED_EVENT, ctx);
 
 		const state = loadState();
 		expect(state.processedMarker).toBe("sess-x:leaf-y");
@@ -277,7 +296,7 @@ describe("pi-continual-learning — trigger consolidation", () => {
 		const { pi, sendMessageMock, fireEvent } = makePi();
 		piContinualLearning(pi);
 
-		await fireEvent("agent_end", makeAgentEndEvent("length"), makeCtx());
+		await fireEvent("agent_settled", SETTLED_EVENT, makeSettledCtx("length"));
 
 		expect(sendMessageMock).toHaveBeenCalledOnce();
 	});
@@ -287,7 +306,7 @@ describe("pi-continual-learning — trigger consolidation", () => {
 		const { pi, sendMessageMock, fireEvent } = makePi();
 		piContinualLearning(pi);
 
-		await fireEvent("agent_end", makeAgentEndEvent("toolUse"), makeCtx());
+		await fireEvent("agent_settled", SETTLED_EVENT, makeSettledCtx("toolUse"));
 
 		expect(sendMessageMock).toHaveBeenCalledOnce();
 	});
@@ -298,16 +317,16 @@ describe("pi-continual-learning — deduplication (same marker)", () => {
 		setLowThresholds();
 		const { pi, sendMessageMock, fireEvent } = makePi();
 		piContinualLearning(pi);
-		const ctx = makeCtx({ sessionId: "sess-1", leafId: "leaf-1" });
+		const ctx = makeSettledCtx("stop", { sessionId: "sess-1", leafId: "leaf-1" });
 
 		// First invocation → triggers
-		await fireEvent("agent_end", makeAgentEndEvent("stop"), ctx);
+		await fireEvent("agent_settled", SETTLED_EVENT, ctx);
 		expect(sendMessageMock).toHaveBeenCalledOnce();
 
 		sendMessageMock.mockClear();
 
 		// Second invocation with same context → dedup blocks it
-		await fireEvent("agent_end", makeAgentEndEvent("stop"), ctx);
+		await fireEvent("agent_settled", SETTLED_EVENT, ctx);
 		expect(sendMessageMock).not.toHaveBeenCalled();
 	});
 
@@ -315,13 +334,13 @@ describe("pi-continual-learning — deduplication (same marker)", () => {
 		setLowThresholds();
 		const { pi, fireEvent } = makePi();
 		piContinualLearning(pi);
-		const ctx = makeCtx({ sessionId: "sess-1", leafId: "leaf-same" });
+		const ctx = makeSettledCtx("stop", { sessionId: "sess-1", leafId: "leaf-same" });
 
 		// First call: triggers, resets turns to 0, sets processedMarker
-		await fireEvent("agent_end", makeAgentEndEvent("stop"), ctx);
+		await fireEvent("agent_settled", SETTLED_EVENT, ctx);
 
 		// Second call with same marker: should skip entirely (dedup)
-		await fireEvent("agent_end", makeAgentEndEvent("stop"), ctx);
+		await fireEvent("agent_settled", SETTLED_EVENT, ctx);
 
 		const state = loadState();
 		// After first call state.turnsSinceLastRun was reset to 0.
@@ -335,13 +354,21 @@ describe("pi-continual-learning — deduplication (same marker)", () => {
 		piContinualLearning(pi);
 
 		// First invocation with leaf-A → trigger, processedMarker = "s:leaf-A"
-		await fireEvent("agent_end", makeAgentEndEvent("stop"), makeCtx({ leafId: "leaf-A" }));
+		await fireEvent(
+			"agent_settled",
+			SETTLED_EVENT,
+			makeSettledCtx("stop", { leafId: "leaf-A" }),
+		);
 		expect(sendMessageMock).toHaveBeenCalledOnce();
 
 		sendMessageMock.mockClear();
 
 		// New leaf → new marker → triggers again
-		await fireEvent("agent_end", makeAgentEndEvent("stop"), makeCtx({ leafId: "leaf-B" }));
+		await fireEvent(
+			"agent_settled",
+			SETTLED_EVENT,
+			makeSettledCtx("stop", { leafId: "leaf-B" }),
+		);
 		expect(sendMessageMock).toHaveBeenCalledOnce();
 	});
 });
@@ -356,9 +383,51 @@ describe("pi-continual-learning — trial mode activation", () => {
 		const { pi, fireEvent } = makePi();
 		piContinualLearning(pi);
 
-		await fireEvent("agent_end", makeAgentEndEvent("stop"), makeCtx());
+		await fireEvent("agent_settled", SETTLED_EVENT, makeSettledCtx("stop"));
 
 		const state = loadState();
 		expect(state.trialStartedAt).not.toBeNull();
+	});
+});
+
+describe("pi-continual-learning — agent_settled semantics", () => {
+	it("registers a handler for agent_settled and NOT for agent_end", () => {
+		const { pi, registeredEvents } = makePi();
+		piContinualLearning(pi);
+
+		expect(registeredEvents()).toContain("agent_settled");
+		expect(registeredEvents()).not.toContain("agent_end");
+	});
+
+	it("ignores agent_end events entirely (mid-recovery) and only reacts once settled", async () => {
+		setLowThresholds();
+		const { pi, sendMessageMock, fireEvent } = makePi();
+		piContinualLearning(pi);
+
+		// A mid-recovery agent_end with a "successful" stopReason must be ignored.
+		await fireEvent(
+			"agent_end",
+			{ type: "agent_end", messages: [{ role: "assistant", stopReason: "stop" }] },
+			makeCtx(),
+		);
+		expect(sendMessageMock).not.toHaveBeenCalled();
+		expect(loadState().turnsSinceLastRun).toBe(0);
+
+		// Once the run settles, the same content triggers consolidation.
+		await fireEvent("agent_settled", SETTLED_EVENT, makeSettledCtx("stop"));
+		expect(sendMessageMock).toHaveBeenCalledOnce();
+	});
+
+	it("does not trigger when ctx.isIdle() is false (another extension started a run)", async () => {
+		setLowThresholds();
+		const { pi, sendMessageMock, fireEvent } = makePi();
+		piContinualLearning(pi);
+
+		await fireEvent("agent_settled", SETTLED_EVENT, makeSettledCtx("stop", { isIdle: false }));
+
+		expect(sendMessageMock).not.toHaveBeenCalled();
+		// Race guard returns before any state write — turns stay at 0.
+		const state = loadState();
+		expect(state.turnsSinceLastRun).toBe(0);
 	});
 });
