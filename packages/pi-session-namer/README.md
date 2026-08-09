@@ -8,7 +8,8 @@ session display name. It is a no-op outside herdr (`HERDR_ENV !== "1"`).
 | Event | Behaviour |
 |-------|-----------|
 | `session_start` (startup, resume, reload, fork) | Resets guards and attempts an immediate rename with the current session name. |
-| `agent_end` | Checks whether the session name changed since the last successful rename; renames if so. Catches `/name` and any other name-change mechanism that takes effect before a turn ends. |
+| `session_info_changed` (pi >= 0.80.3) | Renames the workspace label immediately when the session display name is set via `/name`, RPC, or `pi.setSessionName()`. |
+| `agent_end` | Fallback: checks whether the session name changed since the last successful rename; renames if so. Catches any name change that bypasses `session_info_changed` before a turn ends. |
 
 ## Commands
 
@@ -49,11 +50,13 @@ new herdr context (startup, resume, fork, reload).
 
 ## Caveats
 
-- The built-in `/name` command is handled at the TUI layer before extension routing, so the
-  `input` event never fires for it. The extension picks up the new name at `agent_end` (end of
-  the next turn). The same applies to `pi.setSessionName()` calls from other extensions or RPC
-  `set_session_name` messages. Use `/name-session-and-space` when you want the herdr workspace
-  renamed immediately without waiting for a turn.
+- On pi >= 0.80.3, the built-in `/name` command, RPC `set_session_name`, and
+  `pi.setSessionName()` from other extensions now sync the herdr label **immediately**
+  via `session_info_changed`. The `agent_end` handler remains as a fallback for any
+  name change that bypasses the event. The `input` event never fires for built-in
+  commands — `/name` is handled at the TUI layer before extension routing. Use
+  `/name-session-and-space` when you want the herdr workspace renamed immediately
+  *and* a forced retry past the failure backoff.
 - Rename failures are silently retried only when the session name changes or a new
   `session_start` fires. The backoff guard (`lastAttemptedName`) prevents repeated CLI
   calls and warning toasts for the same failing name.

@@ -1,5 +1,5 @@
 import type { AssistantMessage } from "@earendil-works/pi-ai";
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { beforeEach, describe, expect, it, vi, type Mock } from "vitest";
 
 import createExtension from "../src/index.js";
 import { STATE_CUSTOM_TYPE } from "../src/state.js";
@@ -42,8 +42,8 @@ const WS_ID = "w652f1910e89a56";
 interface StubPi {
 	on: ReturnType<typeof vi.fn>;
 	exec: ReturnType<typeof vi.fn>;
-	getSessionName: ReturnType<typeof vi.fn>;
-	setSessionName: ReturnType<typeof vi.fn>;
+	getSessionName: Mock<() => string | undefined>;
+	setSessionName: Mock<(name: string) => void>;
 	appendEntry: ReturnType<typeof vi.fn>;
 	registerCommand: ReturnType<typeof vi.fn>;
 	readonly handlers: Map<string, (...args: unknown[]) => unknown>;
@@ -66,13 +66,26 @@ function makeFakePi(overrides?: {
 		? vi.fn(overrides.execImpl)
 		: defaultExec;
 
+	// Simulate pi >= 0.80.3: the session display name lives in closure state,
+	// getSessionName reads it, and setSessionName updates it AND synchronously
+	// emits session_info_changed (fire-and-forget via void, mirroring real pi).
+	let sessionName: string | undefined = overrides?.sessionName;
+	const eventCtx = {
+		ui: { notify: vi.fn() },
+		sessionManager: { getEntries: () => [], getBranch: () => [] },
+	};
+
 	return {
 		on: vi.fn((evt: string, fn: (...a: unknown[]) => unknown) => {
 			handlers.set(evt, fn);
 		}),
 		exec,
-		getSessionName: vi.fn().mockReturnValue(overrides?.sessionName),
-		setSessionName: vi.fn(),
+		getSessionName: vi.fn(() => sessionName),
+		setSessionName: vi.fn((name: string) => {
+			sessionName = name;
+			const handler = handlers.get("session_info_changed");
+			if (handler) void handler({ type: "session_info_changed", name }, eventCtx);
+		}),
 		appendEntry: vi.fn(),
 		registerCommand: vi.fn((name: string, opts: { description: string; handler: (args: string, ctx: unknown) => Promise<void> }) => {
 			commands.set(name, opts.handler);
@@ -150,6 +163,19 @@ async function fireAgentEnd(
 	});
 }
 
+async function fireSessionInfoChanged(
+	pi: StubPi,
+	ctx: ReturnType<typeof makeFakeCtx>,
+	env: Record<string, string>,
+): Promise<void> {
+	await withEnv(env, async () => {
+		await pi.handlers.get("session_info_changed")?.(
+			{ type: "session_info_changed", name: pi.getSessionName() },
+			ctx,
+		);
+	});
+}
+
 // ---------------------------------------------------------------------------
 // Herdr gating — registration-time gate
 // ---------------------------------------------------------------------------
@@ -177,6 +203,7 @@ describe("pi-herdr-integration — herdr gating", () => {
 
 		expect(pi.on).toHaveBeenCalledWith("session_start", expect.any(Function));
 		expect(pi.on).toHaveBeenCalledWith("agent_end", expect.any(Function));
+		expect(pi.on).toHaveBeenCalledWith("session_info_changed", expect.any(Function));
 		expect(pi.commands.has("name-session-and-space")).toBe(true);
 	});
 });
@@ -186,13 +213,14 @@ describe("pi-herdr-integration — herdr gating", () => {
 // ---------------------------------------------------------------------------
 
 describe("pi-herdr-integration — wiring", () => {
-	it("subscribes to session_start and agent_end; does NOT subscribe to session_shutdown or input; registers /name-session-and-space command", () => {
+	it("subscribes to session_start, agent_end, and session_info_changed; does NOT subscribe to session_shutdown or input; registers /name-session-and-space command", () => {
 		const pi = makeFakePi();
 		createExtensionInHerdr(pi);
 
 		const subscribed = pi.on.mock.calls.map((c: unknown[]) => c[0] as string);
 		expect(subscribed).toContain("session_start");
 		expect(subscribed).toContain("agent_end");
+		expect(subscribed).toContain("session_info_changed");
 		expect(subscribed).not.toContain("session_shutdown");
 		expect(subscribed).not.toContain("input");
 		expect(pi.commands.has("name-session-and-space")).toBe(true);
@@ -476,6 +504,91 @@ describe("pi-herdr-integration — agent_end", () => {
 });
 
 // ---------------------------------------------------------------------------
+// session_info_changed — immediate rename when the display name is set
+// ---------------------------------------------------------------------------
+
+describe("pi-herdr-integration — session_info_changed", () => {
+	it("renames immediately when the session display name is set (e.g. /name or pi.setSessionName())", async () => {
+		const pi = makeFakePi({ sessionName: "new name" });
+		const ctx = makeFakeCtx();
+		createExtensionInHerdr(pi);
+
+		await fireSessionInfoChanged(pi, ctx, { HERDR_ENV: "1", HERDR_PANE_ID: "p_6" });
+
+		expect(pi.exec).toHaveBeenCalledTimes(2);
+		expect(pi.exec.mock.calls[1]?.[1]).toEqual(["workspace", "rename", WS_ID, "new name"]);
+	});
+
+	it("no-op when the name is unchanged since the last rename", async () => {
+		const pi = makeFakePi({ sessionName: "my session" });
+		const ctx = makeFakeCtx();
+		createExtensionInHerdr(pi);
+
+		// First rename via session_start
+		await fireSessionStart(pi, ctx, { HERDR_ENV: "1", HERDR_PANE_ID: "p_6" });
+		const callCountAfterFirst = pi.exec.mock.calls.length;
+
+		// session_info_changed with the same name: no-op
+		await fireSessionInfoChanged(pi, ctx, { HERDR_ENV: "1", HERDR_PANE_ID: "p_6" });
+		expect(pi.exec.mock.calls.length).toBe(callCountAfterFirst);
+	});
+
+	it("skips when there is no session name", async () => {
+		const pi = makeFakePi({ sessionName: undefined });
+		const ctx = makeFakeCtx();
+		createExtensionInHerdr(pi);
+
+		await fireSessionInfoChanged(pi, ctx, { HERDR_ENV: "1", HERDR_PANE_ID: "p_6" });
+
+		expect(pi.exec).not.toHaveBeenCalled();
+	});
+
+	it("renames again when the name changed since the last rename", async () => {
+		const pi = makeFakePi({ sessionName: "original" });
+		const ctx = makeFakeCtx();
+		createExtensionInHerdr(pi);
+
+		await fireSessionStart(pi, ctx, { HERDR_ENV: "1", HERDR_PANE_ID: "p_6" });
+
+		// Name changed since the last rename
+		pi.getSessionName.mockReturnValue("renamed");
+		pi.exec.mockResolvedValueOnce({ code: 0, stdout: PANE_GET_JSON, stderr: "" });
+		pi.exec.mockResolvedValue({ code: 0, stdout: "", stderr: "" });
+		await fireSessionInfoChanged(pi, ctx, { HERDR_ENV: "1", HERDR_PANE_ID: "p_6" });
+
+		const renameCalls = pi.exec.mock.calls.filter(
+			(c: unknown[]) => Array.isArray(c[1]) && (c[1] as string[])[1] === "rename",
+		);
+		expect(renameCalls[renameCalls.length - 1]?.[1]).toEqual(["workspace", "rename", WS_ID, "renamed"]);
+	});
+
+	it("skips subagent-pattern names", async () => {
+		const pi = makeFakePi({ sessionName: "andrey-implementer#763834d1" });
+		const ctx = makeFakeCtx();
+		createExtensionInHerdr(pi);
+
+		await fireSessionInfoChanged(pi, ctx, { HERDR_ENV: "1", HERDR_PANE_ID: "p_6" });
+
+		expect(pi.exec).not.toHaveBeenCalled();
+	});
+
+	it("an external pi.setSessionName() call renames herdr via the event immediately", async () => {
+		const pi = makeFakePi();
+		createExtensionInHerdr(pi);
+
+		await withEnv({ HERDR_ENV: "1", HERDR_PANE_ID: "p_6" }, async () => {
+			pi.setSessionName("brand new");
+			// Flush the fire-and-forget session_info_changed event handler so
+			// its rename completes while HERDR env vars are still set.
+			await new Promise((r) => setTimeout(r, 0));
+		});
+
+		expect(pi.exec).toHaveBeenCalledTimes(2);
+		expect(pi.exec.mock.calls[1]?.[1]).toEqual(["workspace", "rename", WS_ID, "brand new"]);
+	});
+});
+
+// ---------------------------------------------------------------------------
 // /name-session-and-space command
 // ---------------------------------------------------------------------------
 
@@ -493,6 +606,13 @@ describe("pi-herdr-integration — /name-session-and-space command", () => {
 		expect(pi.setSessionName).toHaveBeenCalledWith("my label");
 		expect(pi.exec.mock.calls[0]).toEqual(["herdr", ["pane", "get", "p_6"], { timeout: 5000 }]);
 		expect(pi.exec.mock.calls[1]).toEqual(["herdr", ["workspace", "rename", WS_ID, "my label"], { timeout: 5000 }]);
+
+		// Exactly one rename — the session_info_changed event emitted synchronously
+		// by setSessionName must not race a duplicate herdr CLI call.
+		const renameCalls = pi.exec.mock.calls.filter(
+			(c: unknown[]) => Array.isArray(c[1]) && (c[1] as string[])[1] === "rename",
+		);
+		expect(renameCalls).toHaveLength(1);
 	});
 
 	it("trims whitespace from args", async () => {

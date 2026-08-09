@@ -5,14 +5,17 @@
  * Triggers:
  *   - `session_start` (startup, resume, reload, fork): reset guards, attempt
  *     an immediate rename if the session has a name.
- *   - `agent_end`: check whether the session name changed since the last
- *     successful rename (catches `/name` and any other way the name can be
- *     set, e.g. pi.setSessionName() from another extension or RPC).
+ *   - `session_info_changed` (pi >= 0.80.3): rename immediately when the session
+ *     display name is set via `/name`, RPC, or `pi.setSessionName()` — no
+ *     waiting for the next turn.
+ *   - `agent_end`: fallback that checks whether the session name changed since
+ *     the last successful rename; catches any name change that bypasses
+ *     `session_info_changed`.
  *     NOTE: the `input` event does NOT fire for built-in commands like `/name`
  *     (they are handled at the TUI layer before extension routing). Registering
  *     an extension command called "name" conflicts with the built-in and is
- *     also skipped. `agent_end` is therefore the reliable hook for turn-boundary
- *     updates.
+ *     also skipped. `agent_end` is therefore the reliable fallback hook for
+ *     turn-boundary updates.
  *   - `/name-session-and-space <label>` command: sets the pi session name AND
  *     immediately renames the herdr workspace in the same keystroke — no waiting
  *     for the next turn. When called WITHOUT arguments, the extension uses the
@@ -112,6 +115,20 @@ export default function createExtension(pi: ExtensionAPI): void {
 		ctx.ui.notify(`herdr workspace renamed to "${name}"`, "info");
 	}
 
+	/**
+	 * Set the pi session name and rename herdr, forcing a fresh attempt past the
+	 * failure backoff. `lastAttemptedName` is armed BEFORE `setSessionName`:
+	 * on pi >= 0.80.3 the call synchronously emits `session_info_changed`, whose
+	 * handler would otherwise race this rename with a duplicate herdr CLI call.
+	 * The guard makes that handler no-op; the forced rename below is the single
+	 * attempt.
+	 */
+	async function setSessionNameAndRename(name: string, ctx: ExtensionContext): Promise<void> {
+		lastAttemptedName = name;
+		pi.setSessionName(name);
+		await tryRenameWithName(name, ctx, { force: true });
+	}
+
 	// ---- session_start -------------------------------------------------------
 
 	pi.on("session_start", async (_event, ctx) => {
@@ -130,6 +147,17 @@ export default function createExtension(pi: ExtensionAPI): void {
 	// ---- agent_end -----------------------------------------------------------
 
 	pi.on("agent_end", async (_event, ctx) => {
+		const name = pi.getSessionName();
+		if (!name) return;
+		await tryRenameWithName(name, ctx);
+	});
+
+	// ---- session_info_changed --------------------------------------------------
+	// Emitted synchronously when the session display name is set via /name, RPC,
+	// or pi.setSessionName(). Renaming here syncs the herdr label immediately
+	// instead of waiting for the next agent_end, which stays as a fallback for
+	// any name change that bypasses the event.
+	pi.on("session_info_changed", async (_event, ctx) => {
 		const name = pi.getSessionName();
 		if (!name) return;
 		await tryRenameWithName(name, ctx);
@@ -162,8 +190,7 @@ export default function createExtension(pi: ExtensionAPI): void {
 			const name = args.trim();
 			if (name) {
 				// Explicit name provided — apply it immediately.
-				pi.setSessionName(name);
-				await tryRenameWithName(name, ctx, { force: true });
+				await setSessionNameAndRename(name, ctx);
 				return;
 			}
 
@@ -201,8 +228,7 @@ export default function createExtension(pi: ExtensionAPI): void {
 						return;
 					}
 
-					pi.setSessionName(generated);
-					await tryRenameWithName(generated, ctx, { force: true });
+					await setSessionNameAndRename(generated, ctx);
 					tryNotify(ctx, `Session name set to "${generated}"`, "info");
 				} catch (err) {
 					const message = err instanceof Error ? err.message : String(err);
