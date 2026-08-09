@@ -38,8 +38,9 @@ function makeMessage(
   role: string,
   timestamp: number,
   content: ContentPart[] = [],
+  usage?: Record<string, unknown>,
 ): Record<string, unknown> {
-  return { role, timestamp, content };
+  return { role, timestamp, content, ...(usage ? { usage } : {}) };
 }
 
 function thinkingPart(text: string): ContentPart {
@@ -71,6 +72,23 @@ describe("pi-thinking-tokens-counter — wiring", () => {
 });
 
 // ---------------------------------------------------------------------------
+// message_start — clears status for every role
+// ---------------------------------------------------------------------------
+
+describe("message_start — clears status", () => {
+  it("clears the status for any role", () => {
+    const pi = makeFakePi();
+    createExtension(pi as never);
+    const handler = pi.handlers.get("message_start")!;
+
+    const ctx = makeCtx();
+    handler({ message: makeMessage("user", 99, [textPart("hi")]) }, ctx);
+
+    expect(ctx.ui.setStatus).toHaveBeenCalledWith("thinking-tokens", undefined);
+  });
+});
+
+// ---------------------------------------------------------------------------
 // message_start — assistant role resets counters
 // ---------------------------------------------------------------------------
 
@@ -83,7 +101,7 @@ describe("message_start — assistant", () => {
     // Fire with an assistant message — should set currentMessageId
     handler({
       message: makeMessage("assistant", 42, [thinkingPart("initial")]),
-    });
+    }, makeCtx());
 
     // Now fire a message_update with the same timestamp and verify it's accepted
     const updateHandler = pi.handlers.get("message_update")!;
@@ -106,7 +124,7 @@ describe("message_start — assistant", () => {
     // Fire with a user message — should NOT set currentMessageId
     handler({
       message: makeMessage("user", 99, [textPart("hi")]),
-    });
+    }, makeCtx());
 
     // Fire a message_update with that timestamp — should be skipped
     const updateHandler = pi.handlers.get("message_update")!;
@@ -136,7 +154,7 @@ describe("message_update — role filter", () => {
     const startHandler = pi.handlers.get("message_start")!;
     startHandler({
       message: makeMessage("assistant", 1, []),
-    });
+    }, makeCtx());
 
     // Now fire a message_update with a user role — should be skipped
     const updateHandler = pi.handlers.get("message_update")!;
@@ -165,7 +183,7 @@ describe("message_update — timestamp filter", () => {
     const startHandler = pi.handlers.get("message_start")!;
     startHandler({
       message: makeMessage("assistant", 10, []),
-    });
+    }, makeCtx());
 
     // Fire update with a different timestamp — should be skipped
     const updateHandler = pi.handlers.get("message_update")!;
@@ -188,7 +206,7 @@ describe("message_update — timestamp filter", () => {
     const startHandler = pi.handlers.get("message_start")!;
     startHandler({
       message: makeMessage("assistant", 42, []),
-    });
+    }, makeCtx());
 
     // Fire update with matching timestamp and thinking content
     const updateHandler = pi.handlers.get("message_update")!;
@@ -216,7 +234,7 @@ describe("message_update — content accumulation", () => {
     const startHandler = pi.handlers.get("message_start")!;
     startHandler({
       message: makeMessage("assistant", 1, []),
-    });
+    }, makeCtx());
 
     const updateHandler = pi.handlers.get("message_update")!;
 
@@ -246,7 +264,7 @@ describe("message_update — content accumulation", () => {
     const startHandler = pi.handlers.get("message_start")!;
     startHandler({
       message: makeMessage("assistant", 1, []),
-    });
+    }, makeCtx());
 
     const updateHandler = pi.handlers.get("message_update")!;
 
@@ -276,7 +294,7 @@ describe("message_update — content accumulation", () => {
     const startHandler = pi.handlers.get("message_start")!;
     startHandler({
       message: makeMessage("assistant", 1, []),
-    });
+    }, makeCtx());
 
     const updateHandler = pi.handlers.get("message_update")!;
 
@@ -299,7 +317,7 @@ describe("message_update — content accumulation", () => {
     const startHandler = pi.handlers.get("message_start")!;
     startHandler({
       message: makeMessage("assistant", 1, []),
-    });
+    }, makeCtx());
 
     const updateHandler = pi.handlers.get("message_update")!;
 
@@ -325,7 +343,7 @@ describe("message_update — content accumulation", () => {
     const startHandler = pi.handlers.get("message_start")!;
     startHandler({
       message: makeMessage("assistant", 1, []),
-    });
+    }, makeCtx());
 
     const updateHandler = pi.handlers.get("message_update")!;
 
@@ -347,7 +365,7 @@ describe("message_update — content accumulation", () => {
     const startHandler = pi.handlers.get("message_start")!;
     startHandler({
       message: makeMessage("assistant", 1, []),
-    });
+    }, makeCtx());
 
     const updateHandler = pi.handlers.get("message_update")!;
 
@@ -369,7 +387,7 @@ describe("message_update — content accumulation", () => {
     const startHandler = pi.handlers.get("message_start")!;
     startHandler({
       message: makeMessage("assistant", 1, []),
-    });
+    }, makeCtx());
 
     const updateHandler = pi.handlers.get("message_update")!;
 
@@ -382,6 +400,150 @@ describe("message_update — content accumulation", () => {
     );
 
     expect(true).toBe(true);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// message_end — exact token count from usage.reasoning
+// ---------------------------------------------------------------------------
+
+describe("message_end — exact token count", () => {
+  function fullUsage(reasoning: number): Record<string, unknown> {
+    return {
+      reasoning,
+      output: 100,
+      input: 200,
+      cacheRead: 0,
+      cacheWrite: 0,
+      totalTokens: 100 + 200 + reasoning,
+      cost: { input: 0.1, output: 0.2, cacheRead: 0, cacheWrite: 0 },
+    };
+  }
+
+  it("uses usage.reasoning when the provider reports it", () => {
+    const pi = makeFakePi();
+    createExtension(pi as never);
+
+    const startCtx = makeCtx();
+    pi.handlers.get("message_start")!({
+      message: makeMessage("assistant", 42, []),
+    }, startCtx);
+
+    const endCtx = makeCtx();
+    pi.handlers.get("message_end")!({
+      message: makeMessage("assistant", 42, [], fullUsage(1234)),
+    }, endCtx);
+
+    expect(endCtx.ui.setStatus).toHaveBeenCalledWith(
+      "thinking-tokens",
+      "thinking: 1.2k t (exact)",
+    );
+  });
+
+  it("formats small exact counts without the k suffix", () => {
+    const pi = makeFakePi();
+    createExtension(pi as never);
+
+    pi.handlers.get("message_start")!({
+      message: makeMessage("assistant", 42, []),
+    }, makeCtx());
+
+    const endCtx = makeCtx();
+    pi.handlers.get("message_end")!({
+      message: makeMessage("assistant", 42, [], fullUsage(500)),
+    }, endCtx);
+
+    expect(endCtx.ui.setStatus).toHaveBeenCalledWith(
+      "thinking-tokens",
+      "thinking: 500 t (exact)",
+    );
+  });
+
+  it("treats zero as a valid exact count", () => {
+    const pi = makeFakePi();
+    createExtension(pi as never);
+
+    pi.handlers.get("message_start")!({
+      message: makeMessage("assistant", 42, []),
+    }, makeCtx());
+
+    const endCtx = makeCtx();
+    pi.handlers.get("message_end")!({
+      message: makeMessage("assistant", 42, [], fullUsage(0)),
+    }, endCtx);
+
+    expect(endCtx.ui.setStatus).toHaveBeenCalledWith(
+      "thinking-tokens",
+      "thinking: 0 t (exact)",
+    );
+  });
+
+  it("clears the status when the provider reports no reasoning", () => {
+    const pi = makeFakePi();
+    createExtension(pi as never);
+
+    pi.handlers.get("message_start")!({
+      message: makeMessage("assistant", 42, []),
+    }, makeCtx());
+
+    const endCtx = makeCtx();
+    pi.handlers.get("message_end")!({
+      message: makeMessage("assistant", 42, []),
+    }, endCtx);
+
+    expect(endCtx.ui.setStatus).toHaveBeenCalledWith("thinking-tokens", undefined);
+  });
+
+  it("ignores non-assistant messages", () => {
+    const pi = makeFakePi();
+    createExtension(pi as never);
+
+    const endCtx = makeCtx();
+    pi.handlers.get("message_end")!({
+      message: makeMessage("user", 42, [textPart("hi")]),
+    }, endCtx);
+
+    expect(endCtx.ui.setStatus).not.toHaveBeenCalled();
+  });
+
+  it("ignores timestamp mismatches", () => {
+    const pi = makeFakePi();
+    createExtension(pi as never);
+
+    pi.handlers.get("message_start")!({
+      message: makeMessage("assistant", 42, []),
+    }, makeCtx());
+
+    const endCtx = makeCtx();
+    pi.handlers.get("message_end")!({
+      message: makeMessage("assistant", 99, [], fullUsage(1234)),
+    }, endCtx);
+
+    expect(endCtx.ui.setStatus).not.toHaveBeenCalled();
+  });
+
+  it("resets currentMessageId after a matching message_end", () => {
+    const pi = makeFakePi();
+    createExtension(pi as never);
+
+    pi.handlers.get("message_start")!({
+      message: makeMessage("assistant", 42, []),
+    }, makeCtx());
+
+    const firstEndCtx = makeCtx();
+    pi.handlers.get("message_end")!({
+      message: makeMessage("assistant", 42, [], fullUsage(1234)),
+    }, firstEndCtx);
+    expect(firstEndCtx.ui.setStatus).toHaveBeenCalled();
+
+    // Second message_end with the same timestamp on a fresh ctx: currentMessageId
+    // is now null, so it must early-return without touching the status.
+    const secondEndCtx = makeCtx();
+    pi.handlers.get("message_end")!({
+      message: makeMessage("assistant", 42, [], fullUsage(1234)),
+    }, secondEndCtx);
+
+    expect(secondEndCtx.ui.setStatus).not.toHaveBeenCalled();
   });
 });
 
@@ -400,7 +562,7 @@ describe("full lifecycle", () => {
     // Message 1 starts
     startHandler({
       message: makeMessage("assistant", 1, []),
-    });
+    }, makeCtx());
 
     // Add thinking to message 1
     updateHandler(
@@ -413,7 +575,7 @@ describe("full lifecycle", () => {
     // Message 2 starts — should reset counters
     startHandler({
       message: makeMessage("assistant", 2, []),
-    });
+    }, makeCtx());
 
     // Update message 1 again — should be ignored (wrong timestamp)
     updateHandler(
@@ -443,7 +605,7 @@ describe("full lifecycle", () => {
 
     startHandler({
       message: makeMessage("assistant", 1, []),
-    });
+    }, makeCtx());
 
     updateHandler(
       {

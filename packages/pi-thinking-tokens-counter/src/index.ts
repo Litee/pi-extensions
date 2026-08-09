@@ -1,10 +1,14 @@
-import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
+import type { ExtensionAPI, ExtensionContext, MessageEndEvent, MessageStartEvent, MessageUpdateEvent } from "@earendil-works/pi-coding-agent";
 
 // Rough heuristic: ~4 chars per token for English text
 const CHARS_PER_TOKEN = 4;
 
 // Throttle status updates to once per second
 const THROTTLE_MS = 1000;
+
+function formatTokens(count: number): string {
+  return count < 1000 ? String(count) : `${(count / 1000).toFixed(1)}k`;
+}
 
 export default function (pi: ExtensionAPI): void {
   let currentMessageId: number | null = null;
@@ -16,8 +20,10 @@ export default function (pi: ExtensionAPI): void {
   let prevTime = 0;
   let firstSample = true;
 
-  // Reset when a new assistant message starts
-  pi.on("message_start", (event) => {
+  // Reset when a new message starts
+  pi.on("message_start", (event: MessageStartEvent, ctx: ExtensionContext) => {
+    // Clear any leftover exact count from the previous message for every role
+    ctx.ui.setStatus("thinking-tokens", undefined);
     if (event.message.role === "assistant") {
       currentMessageId = event.message.timestamp;
       thinkingCharCount = 0;
@@ -28,7 +34,7 @@ export default function (pi: ExtensionAPI): void {
   });
 
   // Listen to message_update events during streaming
-  pi.on("message_update", (event, ctx) => {
+  pi.on("message_update", (event: MessageUpdateEvent, ctx: ExtensionContext) => {
     if (event.message.role !== "assistant") return;
     if (event.message.timestamp !== currentMessageId) return;
 
@@ -65,18 +71,21 @@ export default function (pi: ExtensionAPI): void {
       // Update display only if values changed (reduces flicker)
       if (estimatedTokens !== displayedTokens) {
         displayedTokens = estimatedTokens;
-        const formattedTokens = estimatedTokens < 1000
-          ? String(estimatedTokens)
-          : `${(estimatedTokens / 1000).toFixed(1)}k`;
-        ctx.ui.setStatus("thinking-tokens", `thinking: ${formattedTokens} t, ${displayedRate.toFixed(1)}/s`);
+        ctx.ui.setStatus("thinking-tokens", `thinking: ${formatTokens(estimatedTokens)} t, ${displayedRate.toFixed(1)}/s`);
       }
     }
   });
 
-  // Clear status when message ends
-  pi.on("message_end", (event, ctx) => {
-    if (event.message.role === "assistant" && event.message.timestamp === currentMessageId) {
-      currentMessageId = null;
+  pi.on("message_end", (event: MessageEndEvent, ctx: ExtensionContext) => {
+    if (event.message.role !== "assistant") return;
+    if (event.message.timestamp !== currentMessageId) return;
+    currentMessageId = null;
+    // Replace the streaming chars/CHARS_PER_TOKEN estimate with the provider's
+    // exact thinking-token count when it reports one (pi >= 0.80.3).
+    const exact = event.message.usage?.reasoning;
+    if (exact != null) {
+      ctx.ui.setStatus("thinking-tokens", `thinking: ${formatTokens(exact)} t (exact)`);
+    } else {
       ctx.ui.setStatus("thinking-tokens", undefined);
     }
   });
