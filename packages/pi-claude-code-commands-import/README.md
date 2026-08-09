@@ -7,7 +7,7 @@ Pi extension that imports Claude Code slash commands into pi as prompt templates
 On every `resources_discover` event (startup and `/reload`), the extension contributes prompt-template paths from:
 
 1. `$CLAUDE_CONFIG_DIR/commands` (or `~/.claude/commands` when the env var is unset)
-2. `<cwd>/.claude/commands` — project-local Claude Code commands
+2. `<cwd>/.claude/commands` — project-local Claude Code commands, imported only when the current project is trusted
 
 Each `.md` file found directly in those directories becomes a pi slash command named after its filename (without the `.md` extension). For example, `~/.claude/commands/review-pr.md` becomes `/review-pr` in pi.
 

@@ -18,10 +18,11 @@ function makeFakePi() {
 	};
 }
 
-function makeCtx(cwd: string) {
+function makeCtx(cwd: string, trusted = true) {
 	return {
 		cwd,
 		ui: { notify: vi.fn() },
+		isProjectTrusted: vi.fn(() => trusted),
 	};
 }
 
@@ -119,6 +120,35 @@ describe("extension default export", () => {
 			makeCtx(cwd),
 		)) as { promptPaths: string[] };
 		expect(result.promptPaths).toEqual([userCmds, projectCmds]);
+	});
+
+	it("resources_discover omits the project commands dir when the project is not trusted", async () => {
+		const userCmds = mkdir(tmpRoot, "claude/commands");
+		const cwd = mkdir(tmpRoot, "project");
+		mkdir(tmpRoot, "project/.claude/commands");
+		const pi = makeFakePi();
+
+		createExtension(pi as unknown as ExtensionAPI);
+		const handler = pi.handlers.get("resources_discover")!;
+		const result = (await handler(
+			{ cwd, reason: "startup" },
+			makeCtx(cwd, false),
+		)) as { promptPaths: string[] };
+		expect(result.promptPaths).toEqual([userCmds]);
+	});
+
+	it("resources_discover returns no project commands dir when only it exists and project is not trusted", async () => {
+		const cwd = mkdir(tmpRoot, "project");
+		mkdir(tmpRoot, "project/.claude/commands");
+		const pi = makeFakePi();
+
+		createExtension(pi as unknown as ExtensionAPI);
+		const handler = pi.handlers.get("resources_discover")!;
+		const result = (await handler(
+			{ cwd, reason: "startup" },
+			makeCtx(cwd, false),
+		)) as { promptPaths: string[] };
+		expect(result.promptPaths).toEqual([]);
 	});
 
 	it("resources_discover is a safe no-op when Claude Code is not installed", async () => {
