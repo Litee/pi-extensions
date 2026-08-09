@@ -55,7 +55,7 @@
  * subscriptions + the `/recap` / `/recap-settings` commands + stats.
  */
 
-import { completeSimple, getModel } from "@earendil-works/pi-ai";
+import { completeSimple, getModel } from "@earendil-works/pi-ai/compat";
 import { getAgentDir, type ExtensionAPI, type ExtensionContext } from "@earendil-works/pi-coding-agent";
 import { feedFocusBytes } from "./focusParser.js";
 import { type DisabledFlag, splitModel, type StatusLineOptions } from "./helpers.js";

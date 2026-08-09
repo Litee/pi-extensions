@@ -4,12 +4,12 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import createExtension from "../src/index.js";
 import { STATE_CUSTOM_TYPE } from "../src/state.js";
 
-vi.mock("@earendil-works/pi-ai", () => ({
+vi.mock("@earendil-works/pi-ai/compat", () => ({
 	completeSimple: vi.fn(),
 }));
 
 // Re-import the mocked completeSimple after the mock is registered
-import { completeSimple } from "@earendil-works/pi-ai";
+import { completeSimple } from "@earendil-works/pi-ai/compat";
 
 // ---------------------------------------------------------------------------
 // Fixtures

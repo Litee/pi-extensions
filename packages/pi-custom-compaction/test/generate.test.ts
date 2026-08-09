@@ -10,7 +10,7 @@ import {
 // ---------------------------------------------------------------------------
 // Mock external dependencies
 // ---------------------------------------------------------------------------
-vi.mock("@earendil-works/pi-ai", () => ({
+vi.mock("@earendil-works/pi-ai/compat", () => ({
 	completeSimple: vi.fn(),
 }));
 vi.mock("@earendil-works/pi-coding-agent", () => ({
@@ -18,7 +18,7 @@ vi.mock("@earendil-works/pi-coding-agent", () => ({
 	serializeConversation: vi.fn().mockReturnValue("user: hello\nassistant: world"),
 }));
 
-import { completeSimple } from "@earendil-works/pi-ai";
+import { completeSimple } from "@earendil-works/pi-ai/compat";
 const mockCompleteSimple = vi.mocked(completeSimple);
 
 afterEach(() => {

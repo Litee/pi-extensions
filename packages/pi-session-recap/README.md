@@ -178,14 +178,6 @@ upstream `session-recap` v0.2.2:
 - **Recap-model override.** User-level settings can pin a recap model
   regardless of the session's active model; still falls back to
   session-active with reasoning/thinking disabled when unset.
-- **pi-ai main-import adaptation.** Upstream imports
-  `@earendil-works/pi-ai/compat`; this monorepo pins
-  `@earendil-works/pi-ai@^0.79.10`, which has no `/compat` export, so the
-  port imports from the main entry instead. pi-coding-agent 0.79.10
-  bridges `pi.registerProvider` → pi-ai's `registerApiProvider`, so
-  pi-registered custom providers still route; providers unknown to pi-ai
-  hit the same catchable "No API provider registered for api:" error and
-  are skipped silently (matching upstream v0.2.2 behaviour).
 - **Widget / status keys prefixed with the package name** so multiple
   extensions registering the same generic key no longer clash in the TUI.
 - **Flag key hygiene.** `pi.getFlag(...)` called with bare keys (no `--`

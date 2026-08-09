@@ -4,7 +4,7 @@
  * No pi/runtime imports — fully unit-testable in isolation.
  */
 
-export type StopReason = "stop" | "length" | "toolUse" | "error" | "aborted";
+export type StopReason = "stop" | "length" | "toolUse" | "error" | "aborted" | "pending" | "deferred";
 
 /**
  * Minimal shape of an agent message that this module needs. The full

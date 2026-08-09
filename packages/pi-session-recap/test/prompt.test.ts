@@ -33,12 +33,12 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 // Hoisted: every import of `@earendil-works/pi-ai` in this file's module graph
 // resolves to these mocks. `completeSimple` captures its args via a vi.fn;
 // `getModel` is unused on the no-override path this suite exercises.
-vi.mock("@earendil-works/pi-ai", () => ({
+vi.mock("@earendil-works/pi-ai/compat", () => ({
 	completeSimple: vi.fn(),
 	getModel: vi.fn(() => undefined),
 }));
 
-import { completeSimple } from "@earendil-works/pi-ai";
+import { completeSimple } from "@earendil-works/pi-ai/compat";
 
 import createExtension from "../src/index.js";
 

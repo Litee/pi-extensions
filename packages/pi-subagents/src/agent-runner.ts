@@ -6,7 +6,7 @@ import { readFileSync } from "node:fs";
 import { homedir } from "node:os";
 import { basename, dirname, isAbsolute, join, resolve } from "node:path";
 import type { Model, Api } from "@earendil-works/pi-ai";
-import type { ExtensionContext, LoadExtensionsResult } from "@earendil-works/pi-coding-agent";
+import type { ExtensionContext, LoadExtensionsResult, ModelRuntime } from "@earendil-works/pi-coding-agent";
 import {
   type AgentSession,
   type AgentSessionEvent,
@@ -841,7 +841,7 @@ export async function runAgent(
   // Pi 0.80.8 replaced createAgentSession's modelRegistry option with
   // modelRuntime, but ExtensionContext still exposes only the registry facade.
   // Pass both so the full supported Pi range retains the parent's providers.
-  const parentModelRuntime = (ctx.modelRegistry as unknown as { runtime?: unknown }).runtime;
+  const parentModelRuntime = (ctx.modelRegistry as unknown as { runtime?: ModelRuntime }).runtime;
   const sessionOpts: NonNullable<Parameters<typeof createAgentSession>[0]> & {
     modelRegistry: ExtensionContext["modelRegistry"];
     modelRuntime?: unknown;

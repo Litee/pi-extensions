@@ -536,6 +536,10 @@ function createHarness(
   };
 
   const model = { provider: "test-provider", id: "test-model", api: "openai-responses" };
+  // Mirrors pi 0.80.8+: the ModelRegistry facade exposed on ExtensionContext
+  // carries the parent session's ModelRuntime (forwarded to createAgentSession
+  // as the modelRuntime option).
+  const btwModelRuntime = { isParentRuntime: true };
   let idle = true;
   let hasCredentials = true;
   let mainThinkingLevel: string = "off";
@@ -632,6 +636,7 @@ function createHarness(
     ui: ui as unknown as ExtensionContext["ui"],
     sessionManager: sessionManager as unknown as ExtensionContext["sessionManager"],
     modelRegistry: {
+      runtime: btwModelRuntime,
       getApiKeyAndHeaders: vi.fn((requestedModel: { provider: string; id: string; api: string }) => {
         if (credentialResolver) {
           const key = credentialResolver(requestedModel);
@@ -764,7 +769,7 @@ describe("btw runtime behavior", () => {
 
     const options = createAgentSessionMock.mock.calls[0]![0] as CreateAgentSessionOptions;
     expect(options.model).toBe(harness.baseCtx.model);
-    expect(options.modelRegistry).toBe(harness.baseCtx.modelRegistry);
+    expect(options.modelRuntime).toBe(harness.baseCtx.modelRegistry.runtime);
     expect(options.tools).toEqual(["read", "bash", "edit", "write"]);
     expect(options.resourceLoader!.getAppendSystemPrompt()[0]).toContain(
       "You are having an aside conversation with the user, separate from their main working session.",

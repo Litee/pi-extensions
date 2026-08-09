@@ -15,10 +15,10 @@
     ]
   },
   "peerDependencies": {
-    "@earendil-works/pi-agent-core": "^0.79.10",
-    "@earendil-works/pi-ai": "^0.79.10",
-    "@earendil-works/pi-coding-agent": "^0.79.10",
-    "@earendil-works/pi-tui": "^0.79.10"
+    "@earendil-works/pi-agent-core": "^0.84.1",
+    "@earendil-works/pi-ai": "^0.84.1",
+    "@earendil-works/pi-coding-agent": "^0.84.1",
+    "@earendil-works/pi-tui": "^0.84.1"
   },
   "dependencies": {
     "croner": "^10.0.1",

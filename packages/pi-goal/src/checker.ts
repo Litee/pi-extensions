@@ -14,7 +14,7 @@
  *    undefined apiKey would lock us out of Amazon Bedrock entirely.
  */
 
-import type { completeSimple as completeSimpleFn, getModel as getModelFn } from "@earendil-works/pi-ai";
+import type { completeSimple as completeSimpleFn, getModel as getModelFn } from "@earendil-works/pi-ai/compat";
 import type { ExtensionContext } from "@earendil-works/pi-coding-agent";
 
 import { buildCheckerUserPrompt, CHECKER_SYSTEM_PROMPT } from "./prompt.js";

@@ -50,7 +50,7 @@ async function tryResolveModel(
 		return {
 			model,
 			...(auth.apiKey !== undefined ? { apiKey: auth.apiKey } : {}),
-			...(auth.headers !== undefined ? { headers: auth.headers } : {}),
+			...(auth.headers !== undefined ? { headers: auth.headers as Record<string, string> } : {}),
 		};
 	} catch (error) {
 		const message = error instanceof Error ? error.message : String(error);

@@ -1,7 +1,7 @@
 import { agentLoop, type AgentContext, type AgentLoopConfig, type AgentTool } from "@earendil-works/pi-agent-core";
 import type { Message, Model, ModelThinkingLevel, Api } from "@earendil-works/pi-ai";
 import { Type } from "@earendil-works/pi-ai";
-import { streamSimple } from "@earendil-works/pi-ai/base";
+import { streamSimple } from "@earendil-works/pi-ai/compat";
 import type { Static, TSchema } from "typebox";
 import { hashId } from "../../ids.js";
 import { logAgentStreamError } from "../stream-errors.js";

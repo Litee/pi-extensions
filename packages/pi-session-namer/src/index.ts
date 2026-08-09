@@ -29,7 +29,7 @@
  * command, no event handlers — so it is completely invisible to pi.
  */
 
-import { completeSimple } from "@earendil-works/pi-ai";
+import { completeSimple } from "@earendil-works/pi-ai/compat";
 import type { ExtensionAPI, ExtensionCommandContext, ExtensionContext } from "@earendil-works/pi-coding-agent";
 
 import { isInsideHerdr, renameWorkspace, resolveWorkspaceId } from "./herdr.js";

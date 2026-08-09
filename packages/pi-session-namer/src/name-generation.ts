@@ -6,7 +6,7 @@
  * completion, and parse the response.
  */
 
-import type { completeSimple as completeSimpleFn } from "@earendil-works/pi-ai";
+import type { completeSimple as completeSimpleFn } from "@earendil-works/pi-ai/compat";
 import type { ExtensionContext } from "@earendil-works/pi-coding-agent";
 
 /** Infer the Model type from the completeSimple function signature. */

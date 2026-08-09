@@ -28,6 +28,7 @@ import {
   type ExtensionAPI,
   type ExtensionCommandContext,
   type ExtensionContext,
+  type ModelRuntime,
   type ResourceLoader,
 } from "@earendil-works/pi-coding-agent";
 import { type AssistantMessage, type Api, type Message, type Model, type ThinkingLevel as AiThinkingLevel, type UserMessage } from "@earendil-works/pi-ai";
@@ -196,7 +197,9 @@ function createBtwResourceLoader(
     getThemes: () => ({ themes: [], diagnostics: [] }),
     getAgentsFiles: () => ({ agentsFiles: [] }),
     getSystemPrompt: () => systemPrompt,
+    getSystemPromptSource: () => undefined,
     getAppendSystemPrompt: () => appendSystemPrompt,
+    getAppendSystemPromptSources: () => [],
     extendResources: () => {},
     reload: async () => {},
   };
@@ -1676,10 +1679,13 @@ export default function (pi: ExtensionAPI) {
       throw new Error(settings.fallbackReason || "No active model selected.");
     }
 
+    // Pi 0.80.8 replaced createAgentSession's modelRegistry option with
+    // modelRuntime; forward the parent's runtime when the registry exposes it.
+    const parentModelRuntime = (ctx.modelRegistry as unknown as { runtime?: ModelRuntime }).runtime;
     const { session } = await createAgentSession({
       sessionManager: SessionManager.inMemory(),
       model: settings.model,
-      modelRegistry: ctx.modelRegistry,
+      ...(parentModelRuntime !== undefined ? { modelRuntime: parentModelRuntime } : {}),
       thinkingLevel: settings.thinkingLevel,
       // Match pi's default coding-agent toolset (read/bash/edit/write).
       tools: ["read", "bash", "edit", "write"],
@@ -2238,10 +2244,13 @@ export default function (pi: ExtensionAPI) {
       throw new Error(auth.ok ? `No credentials available for ${model.provider}/${model.id}.` : auth.error);
     }
 
+    // Pi 0.80.8 replaced createAgentSession's modelRegistry option with
+    // modelRuntime; forward the parent's runtime when the registry exposes it.
+    const parentModelRuntime = (ctx.modelRegistry as unknown as { runtime?: ModelRuntime }).runtime;
     const { session } = await createAgentSession({
       sessionManager: SessionManager.inMemory(),
       model,
-      modelRegistry: ctx.modelRegistry,
+      ...(parentModelRuntime !== undefined ? { modelRuntime: parentModelRuntime } : {}),
       thinkingLevel: "off",
       tools: [],
       resourceLoader: createBtwResourceLoader(ctx, [BTW_SUMMARIZE_SYSTEM_PROMPT]),

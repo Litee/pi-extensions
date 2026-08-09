@@ -21,6 +21,7 @@ import {
   DefaultResourceLoader,
   type ExtensionContext,
   getAgentDir,
+  type ModelRuntime,
   SessionManager,
   SettingsManager,
   type LoadExtensionsResult,
@@ -151,12 +152,15 @@ export async function runSubagentOnce(
     });
     await loader.reload();
 
+    // Pi 0.80.8 replaced createAgentSession's modelRegistry option with
+    // modelRuntime; forward the parent's runtime when the registry exposes it.
+    const parentModelRuntime = (ctx.modelRegistry as unknown as { runtime?: ModelRuntime }).runtime;
     const sessionConfig: Parameters<typeof createAgentSession>[0] = {
       cwd: ctx.cwd,
       agentDir,
       sessionManager: SessionManager.inMemory(ctx.cwd),
       settingsManager: SettingsManager.create(ctx.cwd, agentDir),
-      modelRegistry: ctx.modelRegistry,
+      ...(parentModelRuntime !== undefined ? { modelRuntime: parentModelRuntime } : {}),
       model,
       resourceLoader: loader,
     };
